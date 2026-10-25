@@ -1,0 +1,39 @@
+[package]
+name = "perf-lab"
+version = "0.1.0"
+edition = "2024"
+default-run = "app"
+
+[[bin]]
+name = "app"
+path = "src/main.rs"
+
+# Named profiles built on top of `release`: one setting changed each (and `tiny`, all of
+# them together). `cargo build --profile small` builds into target/small/.
+[profile.small]
+inherits = "release"
+opt-level = "z"
+
+[profile.lto]
+inherits = "release"
+lto = true
+
+[profile.one-unit]
+inherits = "release"
+codegen-units = 1
+
+[profile.abort]
+inherits = "release"
+panic = "abort"
+
+[profile.stripped]
+inherits = "release"
+strip = true
+
+[profile.tiny]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

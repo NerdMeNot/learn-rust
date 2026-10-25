@@ -1,0 +1,237 @@
+<p class="lr-layer">The toolkit</p>
+
+A **tuple** groups a fixed number of values (its **slots**; the std docs say elements), and each slot can have its own type. Rust has no special syntax for returning several values: a function returns one tuple, and the caller unpacks it. Outputs come from Linux on 64-bit ARM with Rust 1.99.1.
+
+## A tuple has numbered slots
+
+The type is written like the value: `(i32, &str, bool)`. You read a slot with a dot and a literal number, `t.0`, `t.1` ([Declarations and Types](/learn/declarations-types/#the-pieces-in-one-table)).
+
+<Snippet file="basics.rs" />
+
+The slots sit inside the variable: `(i32, i32)` is 8 bytes, just the two numbers. `(u8, u32)` is 8 too, not 5, because the compiler adds padding for alignment and the language lets it reorder slots. The [layout of a tuple is not promised](https://doc.rust-lang.org/reference/type-layout.html); the sizes are what this compiler printed.
+
+A tuple is not a list. `t[0]` is refused because the slot has to be a literal, so the compiler knows its type. A `for` loop is refused because the slots can have different types, so there is no single type for `x`:
+
+<Snippet file="tuple-index.fail.rs" />
+
+<Snippet file="tuple-loop.fail.rs" />
+
+| | Tuple `(A, B)` | Array `[T; N]` | `Vec<T>` |
+|---|---|---|---|
+| Types of the slots | each its own | all the same | all the same |
+| Length | fixed, part of the type | fixed, part of the type | grows |
+| Read a slot | `t.0`, a literal only | `a[i]`, any `usize` | `v[i]` |
+| Loop over it | no | yes | yes |
+
+Arrays and `Vec` are in [Vectors](/learn/vectors/#arrays). The rows are run by `check-rows.rs`.
+
+## Returning several values
+
+Declare the return type as a tuple and build it as the tail expression (the last line, with no `;`; [Statements and Expressions](/learn/statements-expressions/#the-semicolon-decides)). The caller either unpacks the pair into names or keeps it whole:
+
+<Snippet file="returning.rs" />
+
+## Unpacking
+
+`let (q, r) = ...` is a **pattern** ([patterns in `let`](/learn/declarations-types/#patterns-in-let-and-shadowing)): it has the shape of the value and names its parts (Python calls this unpacking; Kotlin, C# and JavaScript, destructuring). The same shape works in a function's parameters and in a `for` loop, and `..` skips every slot you do not name. Without `..`, both sides must have the same number of slots:
+
+<Snippet file="patterns.rs" />
+
+<Snippet file="arity.fail.rs" />
+
+Python raises an error for the same mistake only when the line runs. Rust refuses it while compiling.
+
+<ForLang only="python">
+
+<Snippet file="arity.fail.py" />
+
+</ForLang>
+
+## Swapping
+
+The right side of `(a, b) = (b, a)` is built before anything is assigned, so no temporary is needed. This is **destructuring assignment**: unlike `let`, it updates variables that already exist, so a variable that already has a value must be `mut`:
+
+<Snippet file="swap.rs" />
+
+## Tuples the standard library hands you
+
+Many std methods return tuples, and you meet them with the same `let (a, b) = ...`. `overflowing_add` is used in [Types](/learn/types/):
+
+<Snippet file="std-tuples.rs" />
+
+## A missing pair, a failed pair
+
+A pair that might not exist is an `Option<(A, B)>`, and one that might fail is a `Result<(A, B), E>`: the tuple goes inside. `str::split_once` returns the first kind. [Option](/learn/option/) and [Errors](/learn/errors/) teach how to open them. The type records that the value may be missing, so you cannot reach it without deciding what to do about `None` or `Err`. That is why a Go `(value, err)` pair is a `Result` in Rust, not a tuple of two values.
+
+## Comparing tuples
+
+Tuples compare slot by slot, left to right: the first slot that differs decides, and later slots only break ties (the std docs say this for `PartialOrd` and `Ord`). `==` compares slot by slot too. That makes a list of tuples sortable, and a tuple a usable [map key](/learn/maps/#keys-need-hash-and-eq) when its parts are (`check-rows.rs` runs one):
+
+<Snippet file="compare.rs" />
+
+## Tuple or struct?
+
+A tuple does not say what its slots mean. When both slots have the same type, the compiler cannot catch a swapped pair:
+
+<Snippet file="vs-struct.rs" />
+
+`aspect((9, 16))` compiles and gives a different answer. A [struct](/learn/structs/) names the fields, so a caller writes `width: 16` and cannot mix them up.
+
+| Reach for a tuple when | Reach for a struct when |
+|---|---|
+| the result is short-lived and the caller unpacks it at once | the value is stored, passed around or returned from a public API |
+| the slots have different types, so mixing them up does not compile | two slots share a type, or the slots keep growing in number |
+
+## Your language, in Rust
+
+<ForLang only="go" title="What you write today">
+
+| In Go | In Rust |
+|---|---|
+| `func f() (int, int)` | `fn f() -> (i32, i32)` |
+| `return a, b` | `(a, b)` as the last expression, `return (a, b);` early |
+| `a, b := f()` | `let (a, b) = f();` |
+| `_, b := f()` | `let (_, b) = f();` |
+| `a, b = b, a` | `(a, b) = (b, a);` |
+| `r := f()` is an error | `let r = f();` is a tuple: `r.0`, `r.1` |
+| `g(f())` spreads the results (when they match) | refused: `let (a, b) = f(); g(a, b);` |
+| `fmt.Println(f())` | `println!("{:?}", f())` prints the tuple as one value |
+| `v, err := f()` | a `Result` ([Errors](/learn/errors/)) |
+| `v, ok := m[k]`, `lo, hi, ok := f()` | an `Option`: `m.get(&k)`, `Option<(i32, i32)>` ([Option](/learn/option/)) |
+| named results `(lo, hi int)` | none: use a struct if the names matter |
+
+Go will not keep several results in one variable (its way to name them is a small struct), and it will spread them into another call:
+
+<Snippet file="keep-whole.fail.go" />
+
+<Snippet file="spread.go" />
+
+Rust is the other way round. A tuple is one value you can store, and it is not spread into arguments:
+
+<Snippet file="spread.fail.rs" />
+
+The commonest slip is the early exit. `return a, b` is not Rust; the pair needs its parentheses:
+
+<Snippet file="early-return.fail.rs" />
+
+Go makes an unused local an error, which is why Go code writes `_`. Rust only warns, and `_` or a `_name` prefix silences it ([Variables you do not use](/learn/variables/#variables-you-do-not-use); the Go program is in the Go block under "Your language" there).
+
+</ForLang>
+
+<ForLang only="java kotlin csharp" title="What you write today">
+
+| Java | Kotlin | C# | In Rust |
+|---|---|---|---|
+| a `record MinMax(int lo, int hi)` | `Pair<Int, Int>` | `(int Lo, int Hi)` | `(i32, i32)`, or a struct if names matter |
+| `r.lo()` | `p.first` | `r.Lo`, or `r.Item1` | `t.0` |
+| `r instanceof MinMax(int lo, int hi)` (Java 21) | `val (lo, hi) = p` | `var (lo, hi) = r;` | `let (lo, hi) = t;` |
+| a temporary variable | `a = b.also { b = a }` | `(a, b) = (b, a);` | `(a, b) = (b, a);` |
+| no built-in tuple type | `Triple(a, b, c)`, `a to b` | `(a, b, c)` | `(a, b, c)` |
+| a record's fields are named | a `data class` destructures by position | tuple elements can be named | slots have no names: use a struct |
+| | | `int.TryParse(s, out var n)` | `s.parse::<i32>()` returns a `Result` ([Errors](/learn/errors/)) |
+
+Java's record patterns unpack inside `instanceof` and `switch`, not in a plain declaration. A Rust tuple is closest to the C# value tuple, a struct stored in place; the Java record and the Kotlin `Pair` are classes, and all of them compare by value, as `==` does on tuples:
+
+<Snippet file="record-pattern.java" />
+
+<Snippet file="pair.kt" />
+
+<Snippet file="tuples.cs" />
+
+</ForLang>
+
+<ForLang only="python typescript" title="What you write today">
+
+| In Python or TypeScript | In Rust |
+|---|---|
+| `return a, b` / `return [a, b]` | `(a, b)` |
+| `lo, hi = f()` / `const [lo, hi] = f()` | `let (lo, hi) = f();` |
+| `a, b, c = b, c, a` | `(a, b, c) = (b, c, a);` |
+| `const [, hi] = f()` | `let (_, hi) = f();` |
+| `first, *rest = t` / `const [first, ...rest] = t` | `let (first, ..) = t;`: `rest` cannot be bound from a tuple |
+| `t[0]` | `t.0` |
+| `for x in t` | refused: the slots can have different types, so there is no single `x` |
+| `namedtuple`, `{ lo, hi }` | a struct |
+| `divmod(a, b)` | `(a / b, a % b)` truncates; for `b > 0` use `(a.div_euclid(b), a.rem_euclid(b))` |
+
+In Python `first, *rest = t` makes `rest` a list, and a Python tuple cannot change in place (a Rust tuple in a `mut` variable can). Rust refuses to bind the rest of a tuple (a slice pattern can, in [Match](/learn/match/)):
+
+<Snippet file="unpack.py" />
+
+<Snippet file="unpack.ts" />
+
+<Snippet file="tuple-rest.fail.rs" />
+
+Python tuples compare slot by slot, as in Rust. A TypeScript tuple is an array, and `<` on arrays compares them as text, so `[1, 10] < [1, 9]` is `true` ("1,10" sorts before "1,9"). `strict` does not object:
+
+<Snippet file="compare.ts" />
+
+</ForLang>
+
+<ForLang only="c cpp" title="What you write today">
+
+| In C or C++ | In Rust |
+|---|---|
+| a `struct MinMax` return, or `std::pair` / `std::tuple` | `(i32, i32)` |
+| `void f(int *q, int *r)` | return a tuple (an out parameter is possible with `&mut`) |
+| `int ok = parse(s, &n);` | an `Option` or a `Result` ([Option](/learn/option/), [Errors](/learn/errors/)) |
+| `std::get<0>(t)`, `p.first` | `t.0` |
+| `auto [q, r] = f();` | `let (q, r) = f();` |
+| `std::tie(a, b) = f();` | `(a, b) = f();`, which assigns into existing variables |
+| `std::tie(std::ignore, b) = f();` | `(_, b) = f();`, or `let (_, b) = f();` |
+| `std::tuple` `<` | the same: slot by slot |
+
+The C way and the Rust way, side by side:
+
+<Snippet file="out-param.c" />
+
+<Snippet file="out-param.rs" />
+
+Returning is the usual choice in Rust, and the caller declares nothing in advance. The `&mut` form is explained in [Mutable Borrows](/learn/mutable-borrows/).
+
+<Snippet file="tuples.cpp" />
+
+A Rust tuple is not a C struct: its layout is unspecified, so across an `extern "C"` boundary use a `#[repr(C)]` struct. The compiler's `improper_ctypes_definitions` lint says so:
+
+<Snippet file="ffi.fail.rs" />
+
+</ForLang>
+
+<p class="lr-layer">Going deeper</p>
+
+## The empty tuple and the one-slot tuple
+
+`()` is the tuple with no slots, called **unit** ([the value for "nothing"](/learn/statements-expressions/#-the-value-for-nothing)); `Result<(), E>` means "it worked, there is nothing to hand back". A one-slot tuple needs a comma, because `(5)` is just `5` in parentheses:
+
+<Snippet file="unit.rs" />
+
+<Snippet file="one-tuple.fail.rs" />
+
+## Tuples stop at twelve, for the standard traits
+
+Any length is a legal tuple type. But the traits that give a tuple `{:?}` printing, `==`, ordering, a default value and hashing (`Debug`, `PartialEq`, `PartialOrd`, `Ord`, `Eq`, `Default`, `Hash`; see [Traits](/learn/traits/)) are implemented only up to 12 slots. The std docs call it a "temporary restriction in Rust's type system" that "may change". `Clone` and `Copy` have no limit:
+
+<Snippet file="tuple-limit.rs" />
+
+<Snippet file="tuple-limit.fail.rs" />
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Open each exercise in the Playground, replace the `todo!()`, and run it until it prints `all checks passed`.
+
+<Exercise name="fib-pair" title="Two Fibonacci numbers at once">
+Return `(F(n), F(n + 1))` as a `(u64, u64)`. Keep the pair in two `mut` variables and update both at once with a destructuring assignment. The checks go as far as `F(93)`, the largest Fibonacci number a `u64` holds.
+</Exercise>
+
+<Exercise name="bounding-box" title="The smallest rectangle around some points">
+Return the bottom-left and top-right corners of a slice of `(i32, i32)` points, as a tuple of tuples. A check puts the smallest x and the smallest y on different points, and the caller unpacks the result with a nested pattern.
+</Exercise>
+
+## Read more
+
+- [The Rust Book, chapter 3.2: Data Types](https://doc.rust-lang.org/book/ch03-02-data-types.html#the-tuple-type), the tuple type, and [chapter 19.3: Pattern Syntax](https://doc.rust-lang.org/book/ch19-03-pattern-syntax.html#destructuring-structs-and-tuples) for destructuring.
+- [Rust by Example: Tuples](https://doc.rust-lang.org/rust-by-example/primitives/tuples.html).
+- [The `tuple` primitive type](https://doc.rust-lang.org/std/primitive.tuple.html) in the std docs, with the list of traits and the 12-slot limit, and [Tuple types](https://doc.rust-lang.org/reference/types/tuple.html) and [Type layout](https://doc.rust-lang.org/reference/type-layout.html) in the Reference.
+- Methods used above: [`str::split_once`](https://doc.rust-lang.org/std/primitive.str.html#method.split_once), [`slice::split_at`](https://doc.rust-lang.org/std/primitive.slice.html#method.split_at), [`u8::overflowing_add`](https://doc.rust-lang.org/std/primitive.u8.html#method.overflowing_add).

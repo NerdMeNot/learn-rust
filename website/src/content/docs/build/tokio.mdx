@@ -1,0 +1,103 @@
+---
+title: "Async with Tokio"
+description: "Rust has async and .await built into the language, like Python, TypeScript and C# (Kotlin has suspend functions in the language, and its async and await come from the kotlinx.coroutines library). What it doesn't have built in is the runtime that runs them. You pick one, and Tokio is the one you will meet most. If futures and polling are new to you, the Async Basics lesson explains them first, with no runtime."
+---
+
+import { Files, GuideGotcha, Remember, Session, Tree } from '../../../components/guide'
+
+Rust has `async` and `.await` built into the language, like Python, TypeScript and C#. (Kotlin builds on `suspend` functions in the language, and its `async { }` and `.await()` are functions of the kotlinx.coroutines library.) What it doesn't have built in is the runtime that runs them. You pick one, and Tokio is the one you will meet most (see [Do I have to use Tokio?](#do-i-have-to-use-tokio)). If futures and polling are new to you, [Async Basics](/learn/async-basics/) explains them first, with no runtime.
+
+<Remember>An `async fn` returns a future that does nothing until you `.await` it or hand it to the runtime. `tokio::spawn` turns it into a task that runs on its own.</Remember>
+
+<Tree guide="tokio" dir="rust" name="async-basics" title="Project layout" notes={{"src/main.rs":"the program on this page","Cargo.lock":"created by Cargo","Cargo.toml":"dependencies go here"}} />
+
+<Files guide="tokio" dir="rust" files={["Cargo.toml"]} />
+
+<div class="lr-compare">
+<Files guide="tokio" dir="rust" files={["src/main.rs"]} run="run" />
+<Files guide="tokio" dir="go" files={["main.go"]} run="go" lang="go" />
+</div>
+
+- **`#[tokio::main]`** starts the runtime and runs your `async fn main`. Think of it as the event loop (Node, asyncio) or scheduler (Go), switched on for this program. With the `full` feature this guide uses, its default runtime is multi-threaded (see the [Tokio docs](https://docs.rs/tokio/latest/tokio/attr.main.html)), which is why a spawned future must be `Send` ([Send and Sync](/learn/send-sync/)).
+- **`tokio::spawn`** is like `go func()`: the task starts running right away, even if you never await its handle (the [`spawn` docs](https://docs.rs/tokio/1.54.1/tokio/task/fn.spawn.html) say so). Awaiting the handle waits for the task and gives you its result, wrapped in a `Result` (next section).
+- **A future does nothing until it is awaited, spawned or passed to `join!`.** Calling `fetch(...)` alone does nothing, unlike a goroutine. [Async Basics](/learn/async-basics/#a-future-is-a-value-that-has-not-run) shows that with no runtime at all.
+- **`timeout`** and **`tokio::select!`** cover timeouts and racing tasks, like `asyncio.wait_for`, `Promise.race` or Go's `select`. When one branch of `select!` wins, the others are dropped, and dropping a future cancels it. The table below shows that `Promise.race` does not cancel the loser.
+- **Blocking work** like heavy math or a slow file read goes in `tokio::task::spawn_blocking`. Its [docs](https://docs.rs/tokio/1.54.1/tokio/task/fn.spawn_blocking.html) say that a blocking call or a lot of compute in a future without yielding "may prevent the executor from driving other futures forward", and that `spawn_blocking` runs the closure "on a thread dedicated to blocking operations". [Async Basics](/learn/async-basics/#many-tasks-on-one-thread-and-blocking) shows the problem on a one-thread executor.
+
+## Errors, and what happens to a task
+
+Three things to know about tasks, all in this run:
+
+- `?` works in an `async fn` that returns a `Result`, as in any other function ([Errors](/learn/errors/)).
+- `.await` on a `JoinHandle<T>` gives `Result<T, JoinError>`. Here `T` is itself a `Result`, so `good` and `bad` have two layers.
+- A panic inside a task ends that task, not the program: the handle's `Err` answers `is_panic()` with `true`. `abort()` cancels a task from outside (`is_cancelled()`). Dropping the handle does not stop the task: the [`JoinHandle` docs](https://docs.rs/tokio/1.54.1/tokio/task/struct.JoinHandle.html) say it detaches it, and the last line shows the task still ran.
+
+The panic message itself still goes to stderr. This run hides stderr with `2>/dev/null`, because the message contains a thread number that changes from run to run ([Errors](/learn/errors/#panics-when-the-thread-stops) covers panics).
+
+<Files guide="tokio" dir="snippet-handles" files={["src/main.rs"]} run="handles" />
+
+## `select!` drops the losers
+
+`select!` waits for several futures and returns when the first one finishes. Dropping the others is a cancellation, so it matters what a future had already done: [Async Basics](/learn/async-basics/#dropping-a-future-cancels-it) defines cancellation safety. In this run `slow_next` takes item 1 off the channel and then waits; the stop signal is already sent, so it wins and `slow_next` is dropped. Item 1 is gone, and only 2 and 3 are left. With `recv` as the branch, nothing was taken before the drop and the next `recv` still gets its message. (`biased;` makes `select!` poll the branches in the order written, so the output is the same every run. By default, the docs say, it picks a branch to check first at random.)
+
+<Files guide="tokio" dir="snippet-select" files={["src/main.rs"]} run="select" />
+
+The [`select!` docs](https://docs.rs/tokio/1.54.1/tokio/macro.select.html) list `mpsc::Receiver::recv` as cancellation safe, and `AsyncReadExt::read_exact`, `AsyncWriteExt::write_all` and `Mutex::lock` as not. `Mutex::lock` is on the "not" list for a different reason: it uses a queue for fairness and "cancellation makes you lose your place in the queue". They define a safe future this way: "it must be a no-op to drop that future and recreate it".
+
+## A lock held across an `.await`
+
+The gotcha at the bottom is the compile error you get from `spawn`. Without `spawn` there is no `Send` check, and the compiler accepts a std lock held across an `.await`. On a runtime with one thread it then hangs: the holder waits for its timer, and the asker's `lock()` blocks the only thread, so the timer is never polled. The step is run under `timeout 3`, and exit code 124 means the program was still running when it was stopped. [Async Basics](/learn/async-basics/#many-tasks-on-one-thread-and-blocking) shows the same hang without Tokio. The build output is left out.
+
+<Files guide="tokio" dir="snippet-mutex-hang" files={["src/main.rs"]} run="mutex-hang" />
+
+`tokio::sync::Mutex` is the lock made for this. The [docs](https://docs.rs/tokio/1.54.1/tokio/sync/struct.Mutex.html) say its `lock` "is an async method so does not block, and the lock guard is designed to be held across .await points". This run does the gotcha's program with it (it compiles, even with `spawn`), then the holder and the asker, where the asker now waits its turn. The same page says "it is ok and often preferred to use the ordinary Mutex from the standard library in asynchronous code": the async mutex is more expensive, and what it adds is keeping the lock across an `.await`. Kotlin's kotlinx.coroutines has a `Mutex` whose [`lock` is a suspending function](https://kotlinlang.org/api/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines.sync/-mutex/) (docs only, not run here).
+
+<Files guide="tokio" dir="snippet-tokio-mutex" files={["src/main.rs"]} run="tokio-mutex" />
+
+## Do I have to use Tokio?
+
+No. Rust's `async` needs a runtime to drive it, and the language doesn't include one, so you choose a crate. By crates.io's numbers Tokio is far ahead of the other two runtimes I checked: on 25 October 2026 the `recent_downloads` field (the 90-day count) of [crates.io's API](https://crates.io/api/v1/crates/tokio) was 274,409,987 for `tokio`, against 11,769,534 for [`async-std`](https://crates.io/api/v1/crates/async-std) and 7,213,990 for [`smol`](https://crates.io/api/v1/crates/smol). The numbers change every day; open those URLs to see today's. A download count includes every project that pulls the crate in indirectly, so it shows how often Tokio is depended on, not how many people picked it. The [`async-std` README](https://github.com/async-rs/async-std) now says it "has been discontinued; use `smol` instead", and the [smol](https://github.com/smol-rs/smol) README describes it as "A small and fast async runtime."
+
+The crates you will meet build on Tokio: in this site's own `Cargo.lock` files, `axum` ([axum guide](/build/axum/)), `reqwest` (it appears in the axum guide's lock file), `tonic` ([gRPC guide](/build/grpc/)) and `sqlx-core` ([sqlx guide](/build/sqlx/), which turns Tokio on with its `runtime-tokio` feature) all list `tokio` as a dependency.
+
+## The same job in your language
+
+Each cell below is the Rust program's job: two tasks, two at once, then a 50 ms deadline on a 500 ms call. The runs below used the image's Python 3.13, Node 24, Java 25, Kotlin 2.4 and .NET 10. The C and C++ cells name the usual tools and nothing was run for them.
+
+| Language | Usual choice | What the run showed |
+| --- | --- | --- |
+| Rust | Tokio, a crate | above |
+| Go | goroutines, channels and `context`, built in | the Go program above prints the same four lines |
+| Python | `asyncio`, built in | `wait_for` cancelled the slow call: it printed `(slow was cancelled)` before the timeout line |
+| TypeScript | Promises and the event loop, built in | `Promise.race` returned at the deadline, and the slow call still finished: `(slow finished anyway, nobody was waiting)` printed after it |
+| Java | `CompletableFuture` (with `orTimeout`), or threads including virtual threads | `CompletableFuture` printed the same four lines; virtual threads not run here |
+| Kotlin | coroutines, with the kotlinx.coroutines library | the same four lines, using the copy of the library in the Kotlin compiler's `lib` directory (not a project dependency) |
+| C# | `async`/`await` with `Task`, built in | the same four lines with `Task.WhenAll` and `WaitAsync` |
+| C | threads, or an event loop library like libuv | not run |
+| C++ | C++20 coroutines with a library such as Asio | not run |
+
+<Session guide="tokio" run="langs" />
+
+In Python and Rust the slow call is stopped at the deadline: Python printed that it was cancelled, and the [`timeout` docs](https://docs.rs/tokio/1.54.1/tokio/time/fn.timeout.html) say that after the deadline "the future is canceled". In TypeScript the slow call was already running and `Promise.race` did not stop it. I did not check what happens to the slow call in the Java and C# runs.
+
+## Try it yourself
+
+Run these in the project from the top of the page; each result below comes from a run in the image.
+
+1. **Make the deadline longer than the slow call.** Change `from_millis(50)` to `from_millis(600)` in `src/main.rs`. The run below does it with `sed -i`, which is the GNU form used in the image; on macOS write `sed -i ''` or edit the file by hand. Then `cargo run`. Look at the last line: the call finished first, so it prints `slow done after 500ms` and not `slow call timed out`.
+2. **Run on one thread.** Start from the original program again (undo step 1, because the 600 ms deadline changes the last line). Change `#[tokio::main]` to `#[tokio::main(flavor = "current_thread")]` (the [docs](https://docs.rs/tokio/1.54.1/tokio/attr.main.html) list both flavors). Look at the output: the same four lines. The flavors differ in how many threads run tasks and so in what can go wrong, as the lock section showed.
+
+<Session guide="tokio" run="try" />
+
+<Session guide="tokio" run="try-one-thread" />
+
+<GuideGotcha guide="tokio" />
+
+## Read more
+
+- [The Tokio tutorial](https://tokio.rs/tokio/tutorial): `spawn`, shared state, channels and `select!` step by step.
+- [`tokio` on docs.rs](https://docs.rs/tokio/1.54.1/tokio/), the version this page pins (1.54.1): the [`select!` cancellation safety lists](https://docs.rs/tokio/1.54.1/tokio/macro.select.html), [`JoinHandle`](https://docs.rs/tokio/1.54.1/tokio/task/struct.JoinHandle.html) and [`sync::Mutex`](https://docs.rs/tokio/1.54.1/tokio/sync/struct.Mutex.html) with its "Which kind of mutex should you use?" section.
+- [Asynchronous Programming in Rust](https://rust-lang.github.io/async-book/), the Async Book. Its front page says it is being rewritten and is incomplete.
+- In this course: [Async Basics](/learn/async-basics/), [Send and Sync](/learn/send-sync/), [Shared state](/learn/shared-state/) for `Mutex`, and [Channels](/learn/channels/).
+
+<p class="lr-fine">The version this page is about is tokio 1.54.1, as pinned in <code>Cargo.lock</code>.</p>

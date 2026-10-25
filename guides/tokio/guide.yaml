@@ -1,0 +1,133 @@
+# Async with Tokio
+name: async-basics
+sessions:
+  run:
+    dir: rust
+    steps:
+      - cmd: cargo run
+  go:
+    dir: go
+    steps:
+      - cmd: go run .
+  lock-across-await:
+    dir: rust
+    overlay:
+      src/main.rs: gotcha/main.rs
+    steps:
+      - cmd: cargo build
+        expect: fail
+  lock-after-await:
+    dir: rust
+    overlay:
+      src/main.rs: gotcha/fixed.rs
+    steps:
+      - cmd: cargo run
+  go-lock:
+    dir: gotcha-go
+    steps:
+      - cmd: go run .
+  # `?`, JoinHandle, JoinError, abort, a dropped handle (snippet-handles).
+  handles:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-handles/src/main.rs
+    steps:
+      # stderr is hidden: the panic message holds a thread number that changes between runs
+      - cmd: cargo run 2>/dev/null
+  # What select! throws away (snippet-select).
+  select:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-select/src/main.rs
+    steps:
+      - cmd: cargo run
+  # A std lock held across an await, on a runtime with one thread. The program hangs, so the
+  # step runs the built binary under `timeout` (exit 124 means it was still running).
+  mutex-hang:
+    dir: rust
+    local_target: true
+    overlay:
+      src/main.rs: snippet-mutex-hang/src/main.rs
+    steps:
+      - cmd: cargo build
+      - cmd: timeout 3 target/debug/async-basics; echo "exit code $?"
+  tokio-mutex:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-tokio-mutex/src/main.rs
+    steps:
+      - cmd: cargo run
+  # Try it yourself, task 1 and 2: each step edits the page's program with sed, as a reader would.
+  try:
+    dir: rust
+    steps:
+      - cmd: sed -i 's/from_millis(50)/from_millis(600)/' src/main.rs
+      - cmd: cargo run
+  try-one-thread:
+    dir: rust
+    steps:
+      - cmd: sed -i 's/#\[tokio::main\]/#[tokio::main(flavor = "current_thread")]/' src/main.rs
+      - cmd: cargo run
+  # The same job in each language's own async tools (the page's table).
+  langs:
+    dir: langs
+    steps:
+      - cmd: python3 fetch.py
+        cwd: py
+        show: "$ python3 fetch.py   # Python, asyncio"
+      - cmd: node fetch.ts
+        cwd: ts
+        show: "$ node fetch.ts   # TypeScript, Promises"
+      - cmd: javac Main.java && java Main
+        cwd: java
+        show: "$ java Main   # Java, CompletableFuture"
+      - cmd: kotlinc -cp /opt/kotlinc/lib/kotlinx-coroutines-core-jvm.jar fetch.kt -include-runtime -d fetch.jar && java -cp fetch.jar:/opt/kotlinc/lib/kotlinx-coroutines-core-jvm.jar FetchKt
+        cwd: kt
+        show: "$ java -cp fetch.jar:kotlinx-coroutines-core-jvm.jar FetchKt   # Kotlin, kotlinx.coroutines"
+      - cmd: bash cs.sh fetch.cs
+        cwd: cs
+        show: "$ dotnet run   # C#, Task"
+  go-lock-cs:
+    dir: gotcha-cs
+    steps:
+      - cmd: bash cs.sh Program.cs
+        expect: fail
+        show: "$ dotnet build"
+gotcha:
+  kind: compile
+  title: Holding a lock across an `.await`
+  verdict: rust-rule
+  looks_fine: >-
+    Taking a lock, waiting, then changing the data and unlocking is ordinary code. Go's
+    `sync` docs even say a locked `Mutex` "is not associated with a particular goroutine".
+  rust_sees: >-
+    `tokio::spawn` asks for a future that is `Send`, because the default runtime can resume
+    a task on a different worker thread after any `.await`. The guard from a standard
+    `Mutex` is not `Send`: the standard library docs say that on platforms that use POSIX
+    threads a lock must be released on the thread that acquired it, so the guard may not
+    travel with the task.
+  why: >-
+    The Tokio docs say it is "ok and often preferred" to use the standard `Mutex` in async
+    code. The rule is to drop the guard before the next `.await`: lock, change and unlock
+    in one statement, as the fix does. If the lock has to stay held across an `.await`
+    (the docs' example is a database connection), use `tokio::sync::Mutex`, whose guard
+    is designed for it. The compiler is not the only protection you need: the section above
+    shows the same mistake, without `spawn`, compiling and then hanging, so for the one-thread case it is a real Rust bug and not only a rule.
+  code: { file: gotcha/main.rs, name: src/main.rs }
+  session: lock-across-await
+  fixed: { file: gotcha/fixed.rs, name: src/main.rs, session: lock-after-await }
+  langs:
+    go:
+      status: runs
+      says: >-
+        Go compiles and runs this. A `sync.Mutex` is not tied to a goroutine or a thread
+        (the sync docs), so holding it while the goroutine sleeps is allowed.
+      file: gotcha-go/main.go
+      session: go-lock
+    csharp:
+      status: refuses
+      says: >-
+        C# rejects an `await` inside a `lock` statement. The C# docs say "You can't use the
+        await expression in the body of a lock statement."
+      file: gotcha-cs/Program.cs
+      session: go-lock-cs

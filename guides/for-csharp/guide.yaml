@@ -1,0 +1,208 @@
+# Rust for C# developers
+name: for-csharp
+sessions:
+  h1-cs:
+    dir: cs
+    steps:
+      - cmd: 'bash cs.sh Shares.cs'
+        show: "$ dotnet run"
+  h1-moved:
+    dir: rust
+    steps:
+      - cmd: 'cargo run --bin moved'
+        show: "$ cargo run"
+        expect: fail
+  h2-cs:
+    dir: cs
+    steps:
+      - cmd: 'bash cs.sh StructCopy.cs'
+        show: "$ dotnet run"
+  h2-copy-vec:
+    dir: rust
+    steps:
+      - cmd: 'cargo run --bin copy_vec'
+        show: "$ cargo run"
+        expect: fail
+  h2-team-clone:
+    dir: rust
+    steps:
+      - cmd: 'cargo run --bin team_clone'
+        show: "$ cargo run"
+  h3-cs:
+    dir: cs
+    steps:
+      - cmd: 'bash cs.sh Inherit.cs'
+        show: "$ dotnet run"
+  h3-shapes:
+    dir: rust
+    steps:
+      - cmd: 'cargo run --bin shapes'
+        show: "$ cargo run"
+  h4-cs:
+    dir: cs
+    steps:
+      - cmd: 'bash cs.sh Nullable.cs'
+        show: "$ dotnet run"
+  h4-strict:
+    dir: cs
+    steps:
+      - cmd: 'bash strict.sh Nullable.cs'
+        show: "$ dotnet run   # with <WarningsAsErrors>nullable</WarningsAsErrors> in the csproj"
+        expect: fail
+  h4-option-missing:
+    dir: rust
+    steps:
+      - cmd: 'cargo run --bin option_missing'
+        show: "$ cargo run"
+        expect: fail
+  h5-cs:
+    dir: cs
+    steps:
+      - cmd: 'bash cs.sh Exceptions.cs'
+        show: "$ dotnet run"
+  h5-parse:
+    dir: rust
+    steps:
+      - cmd: 'cargo run --bin parse'
+        show: "$ cargo run"
+  h6-cs:
+    dir: cs
+    steps:
+      - cmd: 'bash cs.sh Linq.cs'
+        show: "$ dotnet run"
+  h6-iter-resume:
+    dir: rust
+    steps:
+      - cmd: 'cargo run --bin iter_resume'
+        show: "$ cargo run"
+  h6-iter-twice:
+    dir: rust
+    steps:
+      - cmd: 'cargo run --bin iter_twice'
+        show: "$ cargo run"
+        expect: fail
+  h7-cs:
+    dir: cs
+    steps:
+      - cmd: 'bash cs.sh Hot.cs'
+        show: "$ dotnet run"
+  h7-lazy:
+    dir: rust
+    steps:
+      - cmd: 'cargo run --bin lazy'
+        show: "$ cargo run"
+  h8-cs:
+    dir: cs
+    steps:
+      - cmd: 'bash cs.sh Dispose.cs'
+        show: "$ dotnet run"
+  h8-drop:
+    dir: rust
+    steps:
+      - cmd: 'cargo run --bin drop'
+        show: "$ cargo run"
+  h9-cs:
+    dir: cs
+    steps:
+      - cmd: 'bash cs.sh Grow.cs'
+        show: "$ dotnet run"
+  h9-grow:
+    dir: rust
+    steps:
+      - cmd: 'cargo run --bin grow'
+        show: "$ cargo run"
+        expect: fail
+  h9-grow-ok:
+    dir: rust
+    steps:
+      - cmd: 'cargo run --bin grow_ok'
+        show: "$ cargo run"
+  h10-cs:
+    dir: cs
+    steps:
+      - cmd: 'bash cs.sh Generic.cs'
+        show: "$ dotnet run"
+  h10-unbounded:
+    dir: rust
+    steps:
+      - cmd: 'cargo run --bin unbounded'
+        show: "$ cargo run"
+        expect: fail
+  h10-bounded:
+    dir: rust
+    steps:
+      - cmd: 'cargo run --bin bounded'
+        show: "$ cargo run"
+  idioms-cs:
+    dir: cs
+    steps:
+      - cmd: 'bash cs.sh Idioms.cs'
+        show: "$ dotnet run"
+  idioms-rs:
+    dir: rust
+    steps:
+      - cmd: 'cargo run --bin idioms'
+        show: "$ cargo run"
+  reflect-cs:
+    dir: cs
+    steps:
+      - cmd: 'bash cs.sh Reflect.cs'
+        show: "$ dotnet run"
+  reflect-rs:
+    dir: rust
+    steps:
+      - cmd: 'cargo run --bin reflect'
+        show: "$ cargo run"
+  # Section 3 and the toolchain map.
+  tools-rs:
+    dir: rust
+    steps:
+      - cmd: 'cargo --version && rustc --version'
+      - cmd: 'cargo fmt --check && echo "cargo fmt: nothing to change"'
+      - cmd: 'cargo clippy --bin shapes -- -D warnings && echo "clippy: no warnings"'
+        show: "$ cargo clippy --bin shapes -- -D warnings"
+      - cmd: 'cargo test --bin adder'
+        varies: true
+      - cmd: 'cargo doc --no-deps --bin shapes'
+  tools-cs:
+    dir: cs
+    steps:
+      - cmd: 'dotnet --version'
+      - cmd: 'dotnet new console -o app --no-restore && dotnet format app --verify-no-changes && echo "dotnet format: nothing to change"'
+        show: "$ dotnet new console -o app && dotnet format app --verify-no-changes"
+      - cmd: 'dotnet new xunit -o tests > /dev/null && cd tests && dotnet test -v q --nologo -p:NoWarn=NETSDK1188 2>&1 | tail -3'
+        show: "$ dotnet new xunit -o tests && dotnet test -v q --nologo -p:NoWarn=NETSDK1188 2>&1 | tail -3   # needs network: NuGet restore"
+        varies: true
+        timeout: 300
+  add-rs:
+    dir: rust
+    steps:
+      - cmd: 'cd /tmp && cargo new demo --quiet && cd demo && cargo add itoa@1'
+        show: "$ cargo new demo && cargo add itoa@1   # needs network: crates.io"
+        raw: true
+        varies: true
+  # What you will miss.
+  miss-rs:
+    dir: rust
+    steps:
+      - cmd: 'echo ''fn main() { println!("hi"); }'' > one.rs && cargo one.rs'
+        show: "$ cargo one.rs   # a single-file script"
+        expect: fail
+  miss-cs:
+    dir: cs
+    steps:
+      - cmd: 'echo ''Console.WriteLine("hi");'' > one.cs && dotnet run one.cs'
+        show: "$ dotnet run one.cs   # a single-file program"
+  # Things to try: one step per task on the page.
+  try-rs:
+    dir: rust
+    steps:
+      - cmd: 'sed -i ''s/let mut b = a;/let mut b = a.clone();/'' src/bin/moved.rs && cargo run --bin moved'
+        show: "$ cargo run   # moved.rs with `a.clone()` in place of `a`"
+      - cmd: 'sed -i ''s/println!("working");/drop(_b);\n        println!("working");/'' src/bin/drop.rs && cargo run --bin drop'
+        show: "$ cargo run   # drop.rs with `drop(_b);` before the \"working\" line"
+  try-cs:
+    dir: cs
+    steps:
+      - cmd: 'sed ''s/string? Find/string Find/'' Nullable.cs > Plain.cs && bash cs.sh Plain.cs'
+        show: "$ dotnet run   # Nullable.cs with the `?` taken off `string? Find`"

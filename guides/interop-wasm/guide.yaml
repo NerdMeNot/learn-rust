@@ -1,0 +1,249 @@
+# Rust and WebAssembly: a cargo workspace (lab/) of small crates built for the wasm targets,
+# and the Node 24 scripts that load them.
+#
+# NEEDS NETWORK: every session starts with `rustup target add` (the image ships only the
+# native target), and some download one pinned prebuilt tool with `sh setup.sh <tool>`
+# (wasm-bindgen 0.2.129, wasm-pack 0.15.0, wasmtime 50.0.0, wasmer 7.5.0, binaryen version_133)
+# or run `npm install` (AssemblyScript 0.28.20). Like every cargo session here, the extract
+# fails without a network. The image is not changed: a session's installs vanish with it.
+name: wasm-lab
+sessions:
+  # The targets, and what the compiler knows about them.
+  targets:
+    dir: lab
+    steps:
+      - cmd: rustup -q target add wasm32-unknown-unknown wasm32-wasip1
+        show: "$ rustup target add wasm32-unknown-unknown wasm32-wasip1   # needs network"
+      - cmd: rustup target list --installed
+        show: "$ rustup target list --installed   # at this point: the wasip2 target is added in a later session"
+      - cmd: rustc --print cfg --target wasm32-unknown-unknown | grep -E 'target_(arch|os|family|pointer_width)'
+  # Plain `extern "C"` exports and a host written in JavaScript (Node 24).
+  plain:
+    dir: lab
+    local_target: true
+    steps:
+      - cmd: rustup -q target add wasm32-unknown-unknown
+        show: "$ rustup target add wasm32-unknown-unknown   # needs network"
+      - cmd: cargo build -p adder --target wasm32-unknown-unknown --release
+      - cmd: node run.mjs
+  # The same module built in debug: the overflow check is compiled in.
+  debug:
+    dir: lab
+    local_target: true
+    steps:
+      - cmd: rustup -q target add wasm32-unknown-unknown
+        show: "$ rustup target add wasm32-unknown-unknown   # needs network"
+      - cmd: cargo build -p adder --target wasm32-unknown-unknown
+      - cmd: |-
+          node run.mjs target/wasm32-unknown-unknown/debug/adder.wasm 2>&1 | grep -o -E '^add\(.*|^fib.*|RuntimeError: unreachable|panic_const_add_overflow'
+        show: "$ node run.mjs target/wasm32-unknown-unknown/debug/adder.wasm   # keeping the lines that name the trap"
+  # Leave out what the module imports.
+  link-error:
+    dir: lab
+    local_target: true
+    steps:
+      - cmd: rustup -q target add wasm32-unknown-unknown
+        show: "$ rustup target add wasm32-unknown-unknown   # needs network"
+      - cmd: cargo build -p adder --target wasm32-unknown-unknown --release
+      - cmd: |-
+          node -e 'WebAssembly.instantiate(require("fs").readFileSync("target/wasm32-unknown-unknown/release/adder.wasm"), {}).catch(e => console.log(e.name + ": " + e.message))'
+  # Take out the attribute that names the module an import comes from.
+  no-module:
+    dir: lab
+    local_target: true
+    steps:
+      - cmd: rustup -q target add wasm32-unknown-unknown
+        show: "$ rustup target add wasm32-unknown-unknown   # needs network"
+      - cmd: |-
+          sed -i '/wasm_import_module/d' adder/src/lib.rs && cargo build -p adder --target wasm32-unknown-unknown --release 2>&1 | grep -o 'undefined symbol: host_log' | head -1
+        show: "$ sed -i '/wasm_import_module/d' adder/src/lib.rs; cargo build -p adder --target wasm32-unknown-unknown --release   # the line of the linker error that names the problem"
+  # Size of the same code under different builds, and wasm-opt.
+  sizes:
+    dir: lab
+    local_target: true
+    timeout: 600
+    steps:
+      - cmd: rustup -q target add wasm32-unknown-unknown
+        show: "$ rustup target add wasm32-unknown-unknown   # needs network"
+      - cmd: cargo build -p adder -p tiny --target wasm32-unknown-unknown
+        show: "$ cargo build -p adder -p tiny --target wasm32-unknown-unknown   # debug"
+      - cmd: cargo build -p adder -p tiny --target wasm32-unknown-unknown --release
+      - cmd: cargo build -p adder -p tiny --target wasm32-unknown-unknown --profile small
+      - cmd: "stat -c '%9s bytes  %n' target/wasm32-unknown-unknown/*/adder.wasm target/wasm32-unknown-unknown/*/tiny.wasm"
+        show: "$ stat -c '%s bytes  %n' target/wasm32-unknown-unknown/*/*.wasm   # Linux ARM64, rustc 1.99.1"
+        varies: true
+      - cmd: cargo build -p adder -p tiny --target wasm32-unknown-unknown --config profile.dev.debug=0
+        show: "$ cargo build -p adder -p tiny --target wasm32-unknown-unknown --config profile.dev.debug=0   # debug build again, without debug information"
+      - cmd: "stat -c '%9s bytes  %n' target/wasm32-unknown-unknown/debug/adder.wasm target/wasm32-unknown-unknown/debug/tiny.wasm"
+        show: "$ stat -c '%s bytes  %n' target/wasm32-unknown-unknown/debug/*.wasm"
+        varies: true
+      - cmd: sh setup.sh wasm-opt
+        show: "$ sh setup.sh wasm-opt   # needs network: downloads binaryen version_133"
+      - cmd: wasm-opt -Oz -o adder-opt.wasm target/wasm32-unknown-unknown/small/adder.wasm 2>&1 | head -1
+        show: "$ wasm-opt -Oz -o adder-opt.wasm target/wasm32-unknown-unknown/small/adder.wasm   # first line of the output"
+      - cmd: cargo build -p adder --target wasm32-unknown-unknown --profile small --config profile.small.strip=false --target-dir unstripped
+        show: "$ cargo build -p adder --target wasm32-unknown-unknown --profile small --config profile.small.strip=false --target-dir unstripped   # the same profile without strip"
+      - cmd: wasm-opt -Oz -o unstripped-opt.wasm unstripped/wasm32-unknown-unknown/small/adder.wasm && echo "wasm-opt finished with no error"
+        show: "$ wasm-opt -Oz -o unstripped-opt.wasm unstripped/wasm32-unknown-unknown/small/adder.wasm   # no --all-features this time"
+      - cmd: rustc --print cfg --target wasm32-unknown-unknown | grep target_feature
+      - cmd: wasm-opt -Oz --all-features -o adder-opt.wasm target/wasm32-unknown-unknown/small/adder.wasm
+      - cmd: "stat -c '%9s bytes  %n' adder-opt.wasm"
+      - cmd: node run.mjs adder-opt.wasm | grep -E '^(add|sum)'
+        show: "$ node run.mjs adder-opt.wasm   # keeping the add and sum lines"
+  # wasm-bindgen: the generated glue, the TypeScript declarations, and a call from Node.
+  bindgen:
+    dir: lab
+    local_target: true
+    timeout: 900
+    steps:
+      - cmd: rustup -q target add wasm32-unknown-unknown
+        show: "$ rustup target add wasm32-unknown-unknown   # needs network"
+      - cmd: sh setup.sh wasm-bindgen
+        show: "$ sh setup.sh wasm-bindgen   # needs network: downloads the prebuilt 0.2.129 command"
+      - cmd: wasm-bindgen --version
+      - cmd: cargo build -p greeter --target wasm32-unknown-unknown --release
+        show: "$ cargo build -p greeter --target wasm32-unknown-unknown --release   # needs network: downloads the wasm-bindgen crates"
+      - cmd: wasm-bindgen --target nodejs --out-dir bindgen/pkg target/wasm32-unknown-unknown/release/greeter.wasm
+      - cmd: "stat -c '%9s bytes  %n' bindgen/pkg/*"
+        show: "$ stat -c '%s bytes  %n' bindgen/pkg/*"
+      - cmd: cat bindgen/pkg/greeter.d.ts
+      - cmd: node use.js
+  # wasm-pack: the same steps in one command, plus wasm-opt.
+  pack:
+    dir: lab
+    local_target: true
+    timeout: 900
+    steps:
+      - cmd: rustup -q target add wasm32-unknown-unknown
+        show: "$ rustup target add wasm32-unknown-unknown   # needs network"
+      # Hidden on the page: a wasm-pack that finds wasm-bindgen or wasm-opt on the PATH uses
+      # them instead of downloading its own, so start from a PATH that has neither.
+      - cmd: rm -f /usr/local/bin/wasm-opt /usr/local/bin/wasm-bindgen
+      - cmd: sh setup.sh wasm-pack
+        show: "$ sh setup.sh wasm-pack   # needs network: downloads the prebuilt 0.15.0 command"
+      - cmd: wasm-pack build bindgen --target nodejs --release 2>&1 | grep -v 'Done in'
+        show: "$ wasm-pack build bindgen --target nodejs --release   # needs network (with no wasm-bindgen or wasm-opt on the PATH it downloads its own); the 'Done in' line is left out because its time varies"
+        timeout: 900
+      - cmd: "stat -c '%9s bytes  %n' bindgen/pkg/*"
+        show: "$ stat -c '%s bytes  %n' bindgen/pkg/*"
+      - cmd: ls ~/.cache/.wasm-pack
+        show: "$ ls ~/.cache/.wasm-pack   # where wasm-pack keeps the tools it downloaded"
+      - cmd: node use.js
+  # WASI: a program with main, run by three different hosts.
+  wasi:
+    dir: lab
+    local_target: true
+    timeout: 900
+    steps:
+      - cmd: rustup -q target add wasm32-wasip1
+        show: "$ rustup target add wasm32-wasip1   # needs network"
+      - cmd: cargo build -p wasi-demo --target wasm32-wasip1 --release
+      - cmd: sh setup.sh wasmtime
+        show: "$ sh setup.sh wasmtime   # needs network: downloads the prebuilt v50.0.0 command"
+      - cmd: mkdir sandbox
+      - cmd: echo "hello wasi" | wasmtime run --dir sandbox --env GREETING=hi target/wasm32-wasip1/release/wasi-demo.wasm one two
+      - cmd: cat sandbox/note.txt
+      - cmd: echo "hello wasi" | wasmtime run target/wasm32-wasip1/release/wasi-demo.wasm
+      - cmd: sh setup.sh wasmer
+        show: "$ sh setup.sh wasmer   # needs network: downloads the prebuilt v7.5.0 command"
+      - cmd: echo "hello wasi" | wasmer run --volume sandbox:/sandbox target/wasm32-wasip1/release/wasi-demo.wasm -- one two
+      - cmd: echo "hello wasi" | node --no-warnings wasi.mjs target/wasm32-wasip1/release/wasi-demo.wasm
+      - cmd: "stat -c '%9s bytes  %n' target/wasm32-wasip1/release/wasi-demo.wasm"
+        show: "$ stat -c '%s bytes  %n' target/wasm32-wasip1/release/wasi-demo.wasm"
+  # The component-model target: the same source, a different kind of file.
+  wasip2:
+    dir: lab
+    local_target: true
+    timeout: 600
+    steps:
+      - cmd: rustup -q target add wasm32-wasip2
+        show: "$ rustup target add wasm32-wasip2   # needs network"
+      - cmd: cargo build -p wasi-demo --target wasm32-wasip2 --release
+      - cmd: sh setup.sh wasmtime
+        show: "$ sh setup.sh wasmtime   # needs network: downloads the prebuilt v50.0.0 command"
+      - cmd: mkdir sandbox
+      - cmd: echo "hello wasi" | wasmtime run --dir sandbox target/wasm32-wasip2/release/wasi-demo.wasm x
+  # Gotcha: std compiles for the target; some calls fail when they run.
+  gotcha-native:
+    dir: lab
+    steps:
+      - cmd: cargo run -q -p probe
+  gotcha:
+    dir: lab
+    local_target: true
+    steps:
+      - cmd: rustup -q target add wasm32-wasip1
+        show: "$ rustup target add wasm32-wasip1   # needs network"
+      - cmd: sh setup.sh wasmtime
+        show: "$ sh setup.sh wasmtime   # needs network: downloads the prebuilt v50.0.0 command"
+      - cmd: cargo build -q -p probe --target wasm32-wasip1
+      - cmd: wasmtime run target/wasm32-wasip1/debug/probe.wasm
+  fixed:
+    dir: lab
+    local_target: true
+    overlay:
+      gotcha/src/main.rs: fixes/probe.rs
+    steps:
+      - cmd: rustup -q target add wasm32-wasip1
+        show: "$ rustup target add wasm32-wasip1   # needs network"
+      - cmd: sh setup.sh wasmtime
+        show: "$ sh setup.sh wasmtime   # needs network: downloads the prebuilt v50.0.0 command"
+      - cmd: cargo build -q -p probe --target wasm32-wasip1
+      - cmd: wasmtime run target/wasm32-wasip1/debug/probe.wasm
+  # Go: GOOS=js GOARCH=wasm, run with the Node script that ships with Go.
+  go-js:
+    dir: lab
+    steps:
+      - cmd: GOOS=js GOARCH=wasm go build -o main.wasm .
+        cwd: go
+      - cmd: node "$(go env GOROOT)/lib/wasm/wasm_exec_node.js" main.wasm one two
+        cwd: go
+        show: "$ node $(go env GOROOT)/lib/wasm/wasm_exec_node.js main.wasm one two"
+      - cmd: "stat -c '%9s bytes  %n' main.wasm"
+        cwd: go
+        show: "$ stat -c '%s bytes  %n' main.wasm"
+  # The same `add` function from Rust, Go and AssemblyScript, called by one Node script.
+  langs:
+    dir: lab
+    local_target: true
+    timeout: 900
+    steps:
+      - cmd: rustup -q target add wasm32-unknown-unknown
+        show: "$ rustup target add wasm32-unknown-unknown   # needs network"
+      - cmd: cargo build -p tiny --target wasm32-unknown-unknown --profile small
+        show: "$ cargo build -p tiny --target wasm32-unknown-unknown --profile small   # Rust"
+      - cmd: GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -o goexport.wasm .
+        cwd: goexport
+        show: "$ GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -o goexport.wasm .   # Go"
+      - cmd: npm install --silent
+        cwd: assemblyscript
+        show: "$ npm install   # needs network: AssemblyScript 0.28.20, pinned in package.json"
+      - cmd: npx asc add.ts -o add.wasm -O3 --runtime stub
+        cwd: assemblyscript
+        show: "$ npx asc add.ts -o add.wasm -O3 --runtime stub   # AssemblyScript"
+      - cmd: node --no-warnings callAdd.mjs target/wasm32-unknown-unknown/small/tiny.wasm goexport/goexport.wasm assemblyscript/add.wasm
+        show: "$ node callAdd.mjs tiny.wasm goexport.wasm add.wasm   # one script calls all three"
+gotcha:
+  kind: runtime
+  title: "`std` compiles for the target, then the call fails"
+  verdict: different-result
+  looks_fine: >-
+    `Command::output` and `thread::Builder::spawn` are ordinary `std` functions. They compile
+    for the WebAssembly target as they do for your own machine, and the run on Linux or macOS
+    succeeds.
+  rust_sees: >-
+    The standard library is present on `wasm32-wasip1`, but there the rustc book says spawning a
+    thread or a process always returns an error (a separate `wasm32-wasip1-threads` target
+    exists for threads; I did not run it). Both functions return `Err` (`ErrorKind::Unsupported`) instead of
+    failing to compile, because their signatures already allow an error. The compiler checked
+    the types, not what the target can do.
+  why: >-
+    The rustc book's page for the target says that "spawning a thread will always return an
+    error" and "spawning a process will always return an error", while operations such as
+    opening a file call the WASI functions. The page for `wasm32-unknown-unknown` says
+    `std::thread::spawn` will panic there. The fix is to treat the error as an answer for that
+    target: check for `ErrorKind::Unsupported`, and do the work on the calling thread or ask
+    the host.
+  code: { file: lab/gotcha/src/main.rs, name: src/main.rs }
+  session: gotcha
+  fixed: { file: fixes/probe.rs, name: src/main.rs, session: fixed }

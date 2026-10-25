@@ -1,0 +1,73 @@
+---
+title: "Errors in real apps: anyhow and thiserror"
+description: "thiserror writes precise error types, anyhow makes errors easy in applications and adds context to them, like wrapping an exception with a cause in Java or C#, or fmt.Errorf(\"...: %w\") in Go."
+---
+
+import { Files, GuideGotcha, Remember, Session, Tree } from '../../../components/guide'
+
+[Errors](/learn/errors/) showed the by-hand version: an `enum`, `impl Display`, `impl Error`, `impl From`. Two crates help with this. **thiserror** generates that code from attributes. Its docs say it "deliberately does not appear in your public API", so a library can use it without its callers noticing. **anyhow** is, in its docs' words, an error type "for easy idiomatic error handling in Rust applications", and it adds context to errors (a message wrapped around the original error), like wrapping an exception with a cause in Java or C#, or `fmt.Errorf("...: %w")` in Go.
+
+<Remember>A rule of thumb: a library defines its own error types (thiserror writes the boilerplate). An application returns `anyhow::Result` and adds `.context(...)` as errors travel up.</Remember>
+
+<Tree guide="app-errors" dir="rust" name="app-errors" title="Project layout" notes={{"src/main.rs":"the program on this page","Cargo.lock":"created by Cargo","Cargo.toml":"dependencies go here"}} />
+
+<Files guide="app-errors" dir="rust" files={["Cargo.toml"]} />
+
+<div class="lr-compare">
+<Files guide="app-errors" dir="rust" files={["src/main.rs"]} run="run" />
+<Files guide="app-errors" dir="go" files={["main.go"]} run="go" lang="go" />
+</div>
+
+- **thiserror** writes the boring parts of an error enum for you: the `Display` message (`#[error("...")]`) and the conversions (`#[from]`, which also makes the field the error's `source`).
+- **`anyhow::Result`** can hold any error type that implements `std::error::Error` and is `Send + Sync + 'static` ([Send and Sync](/learn/send-sync/) explains those bounds), which is the role of `Exception` in Java or C#, or Go's `error` interface. The docs say it works a lot like `Box<dyn Error>` (the lesson's [catch-all](/learn/errors/#boxdyn-error-the-catch-all)). `?` converts into it.
+- **`.context("...")`** wraps an error with a message, much like `%w`. Print with `{:#}` to see the whole chain on one line: the output above matches the Go program's.
+- **`downcast_ref`** looks for a specific error type inside an `anyhow::Error`, a bit like `errors.As`. The docs say that after you add context of type `C` to an error of type `E`, you can still downcast to either, so adding context does not break a downcast that worked before.
+
+In this program `read_config` throws the `io::Error` away (`map_err(|_| ...)`), keeping only the path. The Go version does the same, because its `readConfig` formats a new error instead of using `%w`. The first task below keeps the cause.
+
+## The same job in your language
+
+I ran a small program for each row in the image behind this page (Java 25, Kotlin 2.4, .NET 10, `tsc` with `--target es2022`, Python 3.13, gcc 14, Go 1.27). Each one made a call fail on purpose (parsing `"eighty"`, or `fopen` on a missing file) and then wrapped or reported the failure with a message.
+
+| Language | Usual choice | Wrapping with a cause |
+| --- | --- | --- |
+| Go | error values, `errors.Is` and `errors.As` | `fmt.Errorf("...: %w", err)` (the Go program above) |
+| Python | exceptions | `raise ... from e`, read back as `__cause__` |
+| TypeScript | `throw` | `new Error(msg, { cause })`, compiled here with `--target es2022` |
+| Java | exceptions | `new RuntimeException(msg, cause)`, read back with `getCause()` |
+| Kotlin | exceptions, and `Result` through `runCatching` | the same constructor and `cause` property as Java |
+| C# | exceptions | `new Exception(msg, inner)`, read back as `InnerException` |
+| C | return codes and `errno` | the run printed only `errno=2` and its text, so any context message is built by the caller |
+| C++ | exceptions, or `std::expected` in C++23 | `std::throw_with_nested` and `std::rethrow_if_nested`; `std::expected` compiled with `-std=c++23` |
+
+## Try it yourself
+
+I ran all three in the image, as separate programs that replace `src/main.rs`.
+
+1. **Keep the cause.** Give the enum a `#[from]` variant for each source error, so that `?` converts for you, and wrap the result with `with_context`. In the output, the context comes first, then the enum's message, then the original error's text. The downcast still finds the `ConfigError` and its `io::Error` inside, and `io.kind()` printed `NotFound`:
+
+   <Files guide="app-errors" dir="snippet-from" files={["src/main.rs"]} run="from" />
+
+2. **Print one error three ways.** `{}` printed only the outermost message, `{:#}` put the causes after it on one line, and `{:?}` listed them under "Caused by". The `anyhow::Error` docs say `{:?}` also includes a backtrace if one was captured. None was captured in this run, because I had not asked for one (see the next task):
+
+   <Files guide="app-errors" dir="snippet-show" files={["src/main.rs"]} run="show" />
+
+3. **Return the error from `main`.** With `fn main() -> Result<()>`, an `Err` ends the program with `Error:` and the `{:?}` form, and exit code 1 (the `echo` shows it). This is the lesson's [`main` can return a `Result`](/learn/errors/#main-can-return-a-result) with `anyhow` as the error type:
+
+   <Files guide="app-errors" dir="snippet-main" files={["src/main.rs"]} run="main-result" />
+
+   The lesson notes that `RUST_BACKTRACE=1` adds nothing to a `Box<dyn Error>` returned from `main`. With anyhow it can: the first command counts the lines containing "Stack backtrace" in the output with the variable set, and the second is the control, the same run without it (a debug build, so I print the counts and not the frames):
+
+   <Session guide="app-errors" run="backtrace" />
+
+<GuideGotcha guide="app-errors" />
+
+## Read more
+
+- [`anyhow`](https://docs.rs/anyhow/1.0.104/anyhow/) on docs.rs, with the [`Error`](https://docs.rs/anyhow/1.0.104/anyhow/struct.Error.html) type (display formats, `downcast_ref`, `chain`) and the [`Context`](https://docs.rs/anyhow/1.0.104/anyhow/trait.Context.html) trait.
+- [`thiserror`](https://docs.rs/thiserror/2.0.21/thiserror/) on docs.rs: `#[error]`, `#[from]`, `#[source]` and `transparent`.
+- In this course: [Errors](/learn/errors/), especially [Your own error type](/learn/errors/#your-own-error-type) and [Error chains and `source`](/learn/errors/#error-chains-and-source).
+- The Rust Book: [Recoverable errors with `Result`](https://doc.rust-lang.org/book/ch09-02-recoverable-errors-with-result.html) and [To panic or not to panic](https://doc.rust-lang.org/book/ch09-03-to-panic-or-not-to-panic.html).
+- [`std::error::Error`](https://doc.rust-lang.org/std/error/trait.Error.html), including `source`.
+
+<p class="lr-fine">The versions this page is about are anyhow 1.0.104 and thiserror 2.0.21, as pinned in <code>Cargo.lock</code>.</p>

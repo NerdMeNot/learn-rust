@@ -1,0 +1,273 @@
+<p class="lr-layer">The toolkit</p>
+
+Outputs come from Linux on 64-bit ARM with Rust 1.99.1, edition 2024, debug build. No program here prints the result of undefined behavior, because that result is not predictable (defined below).
+
+## What `unsafe` unlocks
+
+The Rust Book says it plainly: ["`unsafe` doesn't turn off the borrow checker or disable any of Rust's other safety checks"](https://doc.rust-lang.org/book/ch20-01-unsafe-rust.html#performing-unsafe-superpowers). It lets you do five more things. The compiler cannot check any of them, so each comes with a promise, and breaking one is *undefined behavior* (UB). That is not an exception, a crash you can reproduce or a wrong answer. A program with UB has no defined meaning: the compiler may assume it never happens, so the program can do anything, including look fine until the optimizer changes. The [Nomicon](https://doc.rust-lang.org/nomicon/what-unsafe-does.html) says UB "gives the compiler full rights to do arbitrarily bad things to your program". The Reference's [list](https://doc.rust-lang.org/reference/behavior-considered-undefined.html) of what counts, which is not exhaustive, includes data races, accessing a dangling or misaligned place, and producing an invalid value such as a `bool` that is not 0 or 1. To *dereference* a pointer is to read or write the value at its address.
+
+| `unsafe` lets you | You promise |
+|---|---|
+| dereference a raw pointer (see [Raw pointers](#raw-pointers)) | it is not null, is [aligned](/learn/stack-heap/#padding-and-alignment-optional) for its type, points at a live value of that type, and no other access conflicts with it |
+| call an `unsafe fn` | the conditions in its `# Safety` documentation hold |
+| read or write a `static mut` | no other access happens at the same time |
+| implement an `unsafe trait` | you meet the contract the trait states ([`Send` and `Sync`](/learn/send-sync/) are the ones you meet) |
+| read a field of a `union` (all its fields share the same bytes) | the bytes are a valid value of that field's type |
+
+The [Reference](https://doc.rust-lang.org/reference/unsafety.html) lists a few more, such as declaring an `extern` block and applying an `unsafe` attribute; these five are the ones you will meet first. Each appears in this program, and the `ZeroIsValid` trait shows the pattern for a trait: its author writes the contract, and each `unsafe impl` signs it.
+
+<Snippet file="five.rs" />
+
+Without the `unsafe` blocks, the dereference, the call, the `static mut` and the union read are each an E0133 error, as in the gotcha above. And the block does not switch the borrow checker off: two `&mut` into one vector are still refused inside it.
+
+<Snippet file="still-checked.fail.rs" />
+
+## Should you write it?
+
+Usually not. It is needed to call C or an operating system, to build a primitive such as `Vec` that safe Rust cannot express, and for a structure the borrow checker rejects (the [borrow checker lesson](/learn/borrow-checker/) lists the safe alternatives first). It is not a speed switch. If you know `sun.misc.Unsafe` as the Java way to go faster, do not carry that over: `get_unchecked` skips one check and hands you a proof to write, and this page has no timing. Try safe code, then std (`split_at_mut`, `swap`, `mem::take`), then a well-used crate, and only then your own block, small and commented, behind a safe function.
+
+## Raw pointers
+
+A raw pointer, `*const T` or `*mut T`, is an address with a type and nothing else: no lifetime, no promise that it is valid, and it can be null or dangling (pointing at memory that is gone). You can make one from a reference (`&raw const x`, `&raw mut x`, or `as_ptr()`), and arithmetic that only produces a pointer (`wrapping_add`) is safe too. Reading or writing through one is the unsafe part.
+
+<Snippet file="raw-pointers.rs" />
+
+Safe code cannot get a dangling reference, but it can make a dangling pointer. Reading this one would be undefined behavior, so it only checks for null:
+
+<Snippet file="dangling.rs" />
+
+The compiler does not follow raw pointers, so it cannot tell you two of them overlap. That is the second half of "you promise": here `a` and `b` point at the same `n` and nothing complains (with two `&mut n` it would be E0499).
+
+<Snippet file="raw-alias.rs" />
+
+Raw pointers may alias, as in C. References may not: a `&mut` is a promise that nothing else reaches that place, like a C `restrict` pointer, and merely creating two `&mut` to one place is UB even if neither is used. Turning raw pointers back into references is a common way to get UB inside `unsafe`.
+
+## `unsafe fn`, blocks and `// SAFETY:` comments
+
+The `unsafe` keyword has two jobs, and the [Reference](https://doc.rust-lang.org/reference/unsafe-keyword.html) names them: it is "used to create or discharge the obligation to prove something safe". An `unsafe fn` creates an obligation: its caller must meet the conditions it lists. An `unsafe` block discharges one: the author says "I checked". The habit that makes this readable is two comments. On the function, a `# Safety` section in the docs lists the conditions, as [`get_unchecked`](https://doc.rust-lang.org/std/primitive.slice.html#method.get_unchecked) does ("Calling this method with an out-of-bounds index is undefined behavior"). On each block, a `// SAFETY:` comment says why the conditions hold *here*. The Book calls the `SAFETY` comment idiomatic. Clippy can ask for both: `missing_safety_doc` is on by default for a `pub unsafe fn`, `undocumented_unsafe_blocks` is opt-in (the page build does not run Clippy).
+
+Since the 2024 edition, the body of an `unsafe fn` is no longer an unsafe block. The [edition guide](https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html) says the `unsafe_op_in_unsafe_fn` lint "now warns by default" (warning-level output is not shown on this page, so the snippet denies it to show the message):
+
+<Snippet file="unsafe-fn-body.fail.rs" />
+
+Keep blocks small, as the Book advises.
+
+## A safe function over unsafe code
+
+The aim is not to scatter `unsafe` through a program. It is to hide it behind a function that is safe to call, whose checks make the promise true for every input. The classic case is `split_at_mut`: two non-overlapping `&mut` halves of one slice. Safe Rust cannot write it, because the borrow checker sees two borrows of `v`, even though they cover different elements:
+
+<Snippet file="split-naive.fail.rs" />
+
+The standard library has `split_at_mut` already. Writing it again with raw parts shows the shape:
+
+<Snippet file="split.rs" />
+
+Who is responsible for what?
+
+| Piece | Who makes the promise | Written as |
+|---|---|---|
+| `from_raw_parts_mut` (an `unsafe fn`) | the code that calls it | its `# Safety` docs, your `// SAFETY:` |
+| `split_at_mut` (a safe `fn`) | its author, for **every** caller and input | the `assert!`, and the comment above the block |
+| a private field that must stay true (an *invariant*) | the module that owns it ([Modules](/learn/modules/)) | no code outside can break it |
+
+If the `assert!` were missing, a safe call with a big `mid` could create slices past the end. Such a function is called *unsound*: safe code can cause undefined behavior through it. With the check, a bad input is a panic, which is defined:
+
+<Snippet file="split-panic.panic.rs" />
+
+`Vec` is built the same way. By the [documentation](https://doc.rust-lang.org/std/vec/struct.Vec.html#guarantees) it is "a (pointer, capacity, length) triplet", with `len` initialized elements followed by `capacity - len` uninitialized ones. Safe methods are the only code that can change `len`, so they can keep it true, and safe code never sees the uninitialized slots.
+
+This is also why Rust's standard library needs `unsafe` when Java's `ArrayList` and Python's `list` do not. They sit on a layer that is already unchecked: `ArrayList` on an array the JVM allocates and bounds-checks (HotSpot is C++), a `list` on C code inside CPython. Rust has no such runtime underneath, so that layer is Rust: a small amount of `unsafe` inside `Vec` and friends, behind safe methods.
+
+<Snippet file="vec-parts.rs" />
+
+## Globals and `static mut`
+
+A `static mut` is a global you can change, and every read or write is `unsafe`. [What Rust doesn't have](/learn/what-rust-lacks/#no-mutable-globals) shows the edition 2024 error for creating a reference to one (`static_mut_refs`, deny by default). The fix is usually a type that makes the sharing safe: an atomic for a counter, a `Mutex` for a collection, a `OnceLock` for a value set once ([Shared state](/learn/shared-state/)). `Mutex::new` is a `const fn`, so it can start a `static`:
+
+<Snippet file="static-fix.rs" />
+
+The same goes for `unsafe impl Send` and `Sync`: [Send and Sync](/learn/send-sync/#making-the-promise-yourself) shows when that promise can be made.
+
+## Calling C
+
+Rust cannot see inside a C function, so calling one is a main reason to need `unsafe`. In edition 2024 the block that declares them must itself be `unsafe`:
+
+<Snippet file="extern-block.fail.rs" />
+
+Each item inside is unsafe to call unless you mark it `safe`, which is you promising on the C function's behalf ([edition guide](https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-extern.html)). `sqrt` can carry that mark because it is defined for every `f64`; C's `abs` could not, because `abs(INT_MIN)` is undefined behavior in C.
+
+<Snippet file="ffi.rs" />
+
+`strlen` counts bytes, not characters: `héllo` is 6. [Rust and C/C++](/interop/c-cpp/) goes through the whole boundary: who frees what, `repr(C)`, and panics.
+
+## Counting `unsafe` in your own code
+
+The `unsafe_code` lint is allowed by default and reports `unsafe` code. `#![forbid(unsafe_code)]` turns any `unsafe` in the crate into an error, so the crate itself provably has none:
+
+<Snippet file="forbid.fail.rs" />
+
+<p class="lr-layer">Going deeper</p>
+
+## What can be detected?
+
+Some UB can be shown. The compiler runs `const` code in an interpreter that checks some of these rules, so a violation there is a compile error (E0080). `transmute` reinterprets a value's bits as another type of the same size:
+
+<Snippet file="ub-bool.fail.rs" />
+
+At run time the net has holes. In a debug build, the standard library checks some preconditions of unsafe functions, and the message admits it is optional:
+
+<Snippet file="precondition.panic.rs" />
+
+The runner builds only in debug, so a release build was not run. The proper tool is [Miri](https://github.com/rust-lang/miri), "an Undefined Behavior detection tool for Rust". It needs a nightly toolchain and is not installed in this site's image, so **not run here**. For C and C++ the equivalent is a sanitizer (below).
+
+## Reviewing a block: five questions
+
+When you read someone's `unsafe` block, or write your own, ask the questions that the Reference's list of undefined behavior turns into. They are the choices in the first exercise.
+
+| Ask | What goes wrong if the answer is no |
+|---|---|
+| Is the index or offset **in bounds**? | an access past the end of the allocation (`get_unchecked`, `ptr.add`) |
+| Is the pointer [**aligned**](/learn/stack-heap/#padding-and-alignment-optional) for the type it is read as? | a misaligned access, which the Reference lists as undefined behavior |
+| Is what it points at **alive**? | a dangling access, as with the pointer to `x` above |
+| Is the memory **initialized**, and a valid value of the type? | an invalid value, such as the `bool` that held 3 |
+| Is anything else using the same memory (is it **aliased**)? | two `&mut` to one place, or a data race ([Send and Sync](/learn/send-sync/)) |
+
+A good `// SAFETY:` comment answers the ones that apply, with the reason: "`mid` is at most `len`, asserted above" answers the first and the last in `split_at_mut`. A comment that says "this is fine" answers none.
+
+## How much `unsafe` is out there
+
+A 2020 study ([Evans, Campbell and Soffa](https://arxiv.org/abs/2007.00752)) found `unsafe` "in less than 30% of Rust libraries", while more than half of the libraries "cannot be entirely statically checked by the Rust compiler because of Unsafe Rust hidden somewhere in a library's call chain". Both facts matter: your own code may have none, and your program still runs on code that does.
+
+## Translating from what you know
+
+<ForLang only="go">
+Go's `unsafe` package ["contains operations that step around the type safety of Go programs"](https://pkg.go.dev/unsafe), and its docs add that importing it may make a package "non-portable" and outside the Go 1 compatibility promise. Unlike Rust there is no block: any code in a file that imports it can use it. A typical use is a `[]byte` over a string's memory with no copy, where the docs say the bytes of a string must not be modified:
+
+<Snippet file="view.go" />
+
+In Rust that view needs no `unsafe`, because a `&[u8]` cannot be written through:
+
+<Snippet file="as-bytes.rs" />
+
+One more difference: Go's garbage collector follows an `unsafe.Pointer` and keeps its target alive (a `uintptr` it does not, the docs say). A Rust raw pointer keeps nothing alive, which is how a dangling one can exist.
+
+| In Go | In Rust |
+|---|---|
+| `import "unsafe"` in the file | an `unsafe` block at each use, with a `// SAFETY:` comment |
+| `unsafe.Pointer`, traced by the garbage collector | `*const T`, `*mut T`, which keep nothing alive |
+| `unsafe.Add(p, n)`, `n` in bytes | `p.add(n)`, `n` in elements |
+| `unsafe.Slice(p, n)` | `slice::from_raw_parts(p, n)` |
+| cgo for C | `unsafe extern "C"` |
+</ForLang>
+
+<ForLang only="java kotlin">
+Java has no keyword. `sun.misc.Unsafe` reads and writes by address, and JDK 25 says so when you use it: the compiler warns that it is "internal proprietary API", and at run time it warns that `allocateMemory` "will be removed in a future release".
+
+<Snippet file="unsafe-class.java" />
+
+The replacement is `java.lang.foreign`, which also replaces JNI for calling C. Its memory segments are bounds-checked, and calling C needs a "restricted" method, for which JDK 25 prints a warning unless you pass `--enable-native-access` (the page's runner does not):
+
+<Snippet file="bounds.java" />
+
+<Snippet file="panama.java" />
+
+The code is greppable and the JDK warns, but these are library calls: no keyword marks a block, and callers do nothing special. In Rust, calling an `unsafe fn` is itself unsafe. Kotlin on the JVM uses the same classes.
+
+| In Java, Kotlin | In Rust |
+|---|---|
+| `sun.misc.Unsafe` | raw pointers in an `unsafe` block |
+| `java.lang.foreign` | `unsafe extern "C"` and `CString` |
+</ForLang>
+
+<ForLang only="csharp">
+C# has the keyword, behind a project switch (`AllowUnsafeBlocks`). The runner's project does not set it, so this is refused ([docs](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/unsafe-code)):
+
+<Snippet file="unsafe-block.fail.cs" />
+
+By default, C#'s `unsafe` places no obligation on callers, the docs say; a preview model in C# 15 adds one (not run here). In Rust, calling an `unsafe fn` is itself unsafe.
+
+Calling C needs no `unsafe` in C#. P/Invoke compiles in that same project:
+
+<Snippet file="pinvoke.cs" />
+
+In Rust every call across an `extern` block is `unsafe` unless you vouch for it with `safe`. `fixed` pins an array so the garbage collector cannot move it while you hold a pointer; Rust has no moving collector, so there is nothing to pin.
+
+| In C# | In Rust |
+|---|---|
+| `unsafe` method or block, pointers | `unsafe` block, raw pointers |
+| `fixed` | nothing to pin |
+| `DllImport`, no keyword needed | `unsafe extern "C"`, calls in `unsafe` unless marked `safe` |
+| `Unsafe.Add(ref x, n)` | `p.add(n)` |
+</ForLang>
+
+<ForLang only="python">
+`ctypes` loads C libraries and builds pointers. Its documentation warns that it is "bypassing Python's safety mechanisms" and that without `argtypes` "the number of arguments is not checked". Nothing in the language marks a call as risky:
+
+<Snippet file="ctypes-call.py" />
+
+`strlen` counts bytes, `len` counts characters. In Rust the same call needs a `CString` and an `unsafe` block ([Calling C](#calling-c)).
+
+| In Python | In Rust |
+|---|---|
+| `ctypes.CDLL`, `argtypes` | `unsafe extern "C" { ... }` |
+| `ctypes.cast(...)[i]` | `*p.add(i)` in `unsafe` |
+</ForLang>
+
+<ForLang only="typescript">
+TypeScript has nothing to compare with raw pointers. Its escape hatch is a cast, `as`, which switches off the type checker for one expression and leaves memory alone. The result is a wrong type at run time, not a wrong address:
+
+<Snippet file="as-lie.ts" />
+
+Raw memory is a `DataView` over an `ArrayBuffer`, and it is bounds-checked:
+
+<Snippet file="bounds.ts" />
+
+| In TypeScript | In Rust |
+|---|---|
+| `x as number` overrides the type checker | `as` converts between number and pointer types and cannot claim a wrong type; the closest is `transmute` in an `unsafe` block, which reinterprets the bits of a value as another type of the same size |
+| `DataView` reads at an offset, bounds-checked | `*p.add(n)` in `unsafe`, with no bounds check |
+</ForLang>
+
+<ForLang only="c cpp">
+In C and C++ nothing in the language says which part is the unsafe part, so Rust's `unsafe` is not a new power; it is a line drawn around the places that use it, with stricter rules for references than C has ([Raw pointers](#raw-pointers)). The program below compiles, and AddressSanitizer reports the read one past the end of a three-element heap array (built with `gcc -g -fsanitize=address`; addresses and ids are placeholders in the page build). Without the sanitizer the same program compiles under `-Wall -Wextra`, prints a number and exits 0: nothing marks the bug.
+
+<Snippet file="overflow.crash.asan.c" />
+
+C++ has `at()` as a checked alternative, which you must choose each time. Rust's indexing panics by default, and the unchecked form is the one with a long name:
+
+<Snippet file="at-checked.cpp" />
+
+| In C, C++ | In Rust |
+|---|---|
+| `p[i]`, `*(p + i)` | `v[i]` panics; `*p.add(i)` needs `unsafe` |
+| `at()`, which throws | `v.get(i)` returns an `Option` |
+| `-fsanitize=address` | Miri ([Going deeper](#what-can-be-detected)) |
+| `reinterpret_cast` between pointer types | `as` between raw pointer types |
+</ForLang>
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Each exercise has checks in `main`: replace the `todo!()` calls and run until it prints `all checks passed`. The starters compile and fail when run.
+
+<Exercise name="audit" title="Audit six unsafe blocks">
+Six functions have a `// SAFETY:` comment. For each, name the condition its block relies on and the code does not make true, using the choices in [the five questions](#reviewing-a-block-five-questions) (`NothingMissing` for the one that is sound). `slice::from_raw_parts(p, n)` builds a `&[T]` from a pointer and a length, the shared twin of `from_raw_parts_mut`. Do not call the functions: five are undefined behavior on some input, and Miri is not run here, so reading is the point. A wrong answer names the first wrong function and asks a question to reason from, not the answer.
+</Exercise>
+
+<Exercise name="wrap" title="Wrap an unsafe function">
+`swap_unchecked` is an `unsafe fn`. Write `swap_checked`, a safe function that returns an error for a bad index and calls it otherwise. The unsafe function only counts a bad call, so a mistake cannot corrupt memory here. The checks count calls to it: using the safe `slice::swap` instead (real code would), or calling it without checking, fails.
+</Exercise>
+
+<Exercise name="registry" title="Share state without `unsafe`">
+This is the lesson's "do not reach for `unsafe`" exercise. A registry of names has to be shared by four threads. Declare the global yourself and write `register` and `names`; count and push under one lock. The file has `#![forbid(unsafe_code)]`, so `static mut` will not compile. The checks run 1,000 registrations on four threads and want every returned count to be different, then register one more name and expect `names` to contain it.
+</Exercise>
+
+## Read more
+
+- The Rust Book, [Unsafe Rust](https://doc.rust-lang.org/book/ch20-01-unsafe-rust.html), and Rust by Example, [Unsafe Operations](https://doc.rust-lang.org/rust-by-example/unsafe.html).
+- The Rustonomicon, [Meet Safe and Unsafe](https://doc.rust-lang.org/nomicon/meet-safe-and-unsafe.html) and [What Unsafe Can Do](https://doc.rust-lang.org/nomicon/what-unsafe-does.html).
+- The Reference: [the `unsafe` keyword](https://doc.rust-lang.org/reference/unsafe-keyword.html), [unsafety](https://doc.rust-lang.org/reference/unsafety.html) and [behavior considered undefined](https://doc.rust-lang.org/reference/behavior-considered-undefined.html).
+- The 2024 edition guide: [`unsafe extern`](https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-extern.html), [`unsafe_op_in_unsafe_fn`](https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html) and [`static mut` references](https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html).
+- [Miri](https://github.com/rust-lang/miri), for checking unsafe code.
+- Errors: [E0133](https://doc.rust-lang.org/error_codes/E0133.html), [E0080](https://doc.rust-lang.org/error_codes/E0080.html), or [this site's index](/errors/).

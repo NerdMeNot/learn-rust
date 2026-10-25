@@ -1,0 +1,135 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Lifetimes"
+part: "abstractions"
+intro: >-
+  A lifetime is the stretch of the program during which a reference is valid. Every
+  reference has one, and the compiler usually works it out. You write one, like `'a`,
+  when a signature or a struct has to say which values a reference borrows from. It
+  describes a link the compiler checks. It never makes anything live longer.
+coming_from:
+  go: >-
+    Go has no lifetimes: the garbage collector keeps whatever you can still reach alive.
+    Rust has no collector, so a function that returns a reference, or a struct that
+    stores one, names the input it borrows from with `'a`, and the compiler checks the
+    link.
+  kotlin: >-
+    The JVM keeps an object alive while any reference to it exists, so there is nothing
+    to annotate. In Rust `'a` is a label saying which inputs a returned or stored
+    reference borrows from. The compiler checks the label; it does not change how long
+    anything lives.
+  python: >-
+    Python keeps an object alive while a name or container still refers to it, so
+    nothing needs naming. In Rust, `'a` is a label for "this reference borrows from that
+    input", and the compiler rejects any use of it after the input is gone.
+  typescript: >-
+    JavaScript's garbage collector keeps an object alive while it is reachable, and
+    TypeScript's types never mention it. In Rust a signature or struct that holds a
+    reference says which value it borrows from (`'a`), and the compiler checks every use.
+  java: >-
+    Java keeps an object alive while any reference to it exists, so no signature says how
+    long a result is valid. In Rust `'a` says it: the result borrows from these inputs and
+    is valid while they are.
+  csharp: >-
+    The .NET garbage collector keeps an object alive while it is reachable. The nearest
+    compile-time ideas are `Span<T>`, which the compiler stops from escaping, and the
+    `scoped` keyword; Rust applies a check of this kind to every reference and names the
+    link with `'a`.
+  c: >-
+    A C pointer carries no lifetime, so which input a returned pointer points into, and
+    until when, lives in a comment. Rust writes it in the signature (`'a`) and checks
+    every use.
+  cpp: >-
+    A C++ reference or `std::string_view` carries no lifetime in its type either. Compilers
+    flag a few recognised shapes, and clang has an opt-in `[[clang::lifetimebound]]`
+    attribute, but nothing checks every call. `'a` is the same contract, written in the
+    signature and checked everywhere.
+notes:
+  - >-
+    `'a` is a name. `longest<'a>(a: &'a str, b: &'a str) -> &'a str` says: the result
+    borrows from `a` and from `b`, so it is valid only while both are. The signature
+    describes the link; the compiler checks it. Writing `'a` never keeps a value alive.
+  - >-
+    Most signatures need none. When the inputs have exactly one lifetime, or the method has
+    `&self`, the compiler fills in the obvious link (the elision rules). You write `'a`
+    when two or more inputs could be the source, or when a struct holds a reference.
+  - >-
+    `struct Excerpt<'a> { part: &'a str }` says an `Excerpt` cannot outlive the text its
+    `part` points into. A struct that owns its data (`String`, `Vec`) has no lifetime to
+    write, which is why the Structs lesson had none.
+  - >-
+    `'static` is the longest lifetime: string literals have it, and `T: 'static` means "`T`
+    holds no borrow that ends early". Code that owns its data (`String`, `Vec`) writes few
+    lifetimes, and when they start to pile up, owning the data is usually the way out.
+gotcha:
+  title: "A result used after one of its inputs is gone"
+  verdict: "fine-elsewhere"
+  looks_fine: >-
+    In Go, Java, Kotlin, Python, TypeScript and C#, `result` refers to one of the two
+    strings and that string stays valid for as long as `result` refers to it. Here the
+    result is `s1`, which is still in scope, so nothing can go wrong. (C and C++ are the
+    exceptions; see their entries.)
+  rust_sees: >-
+    The signature says the result may borrow from `a` or from `b`; which one depends
+    on the lengths at run time. The compiler checks the call with the signature alone, so
+    it must assume the result could be `s2`, which is dropped at the closing `}` while
+    `result` is still used.
+  why: >-
+    This run would be fine, because `s1` is the longer string. The compiler reasons from
+    types, not from values, and with a shorter `s1` the same code would read freed memory,
+    so it refuses both. The six garbage-collected languages never break on this shape,
+    because the collector keeps `s2`'s string alive for as long as `result` refers to it.
+    In C and C++ the shorter-`s1` version is a real use after free. Adding more `'a`
+    annotations cannot help: they only describe the link, they do not lengthen it. Keep
+    `s2` in scope as long as `result` is used, as `fixed.rs` does, or return an owned
+    `String`.
+  langs:
+    go:
+      status: "runs"
+      says: >-
+        Go runs this and prints both lines. The strings are built at run time, so they are
+        garbage-collected values, not literals. `s2` and `s3` are only names that went out
+        of scope: the second line shows that `result` keeps the longer string alive after
+        the block ends.
+    kotlin:
+      status: "runs"
+      says: >-
+        Kotlin runs this and prints both lines. The strings are built at run time. The
+        longer `s3` is out of scope after the block, but the string stays alive while
+        `other` refers to it, and nothing in the signature says which input it is.
+    python:
+      status: "runs"
+      says: >-
+        Python prints both lines. The strings are built at run time. Python has no block
+        scope, so `s2` and `s3` are still defined names afterwards, and each string stays
+        alive while anything refers to it.
+    typescript:
+      status: "runs"
+      says: >-
+        Prints both lines. `s3` is out of scope after the block, but its string stays alive
+        while `other` can reach it.
+    java:
+      status: "runs"
+      says: >-
+        Java runs this and prints both lines. `s3` is out of scope after the block, but the
+        String it held stays alive as long as `other` refers to it.
+    csharp:
+      status: "runs"
+      says: >-
+        C# runs this and prints both lines. The string from `s3` stays alive while `other`
+        can reach it, whatever happened to the variable.
+    c:
+      status: "runs"
+      says: >-
+        C runs this and prints the long string here, because the result is `s1`. Nothing in
+        a C signature says the result points into `a` or `b`. With a shorter `s1` and a
+        longer `s2`, `result` points into an array that is out of scope after the block,
+        and AddressSanitizer reports stack-use-after-scope (the C and C++ block below
+        shows the run).
+    cpp:
+      status: "runs"
+      says: >-
+        C++ runs this and prints the long string here, because the result is `s1`. The
+        signature returns a reference but does not say into which argument. With a shorter
+        `s1` and a longer `s2`, `result` points at a destroyed `std::string`, and
+        AddressSanitizer reports heap-use-after-free (the C and C++ block below shows the
+        run).

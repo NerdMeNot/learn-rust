@@ -1,0 +1,155 @@
+---
+title: "Checkpoint: Collections"
+description: "Eight short programs on loops over collections, closures and iterators. Predict what each prints or which error it gets, then open the answer and compare it with a real run."
+---
+
+import { Files, Remember, Session } from '../../../components/guide'
+
+This checkpoint is for the Collections part of the course (looping over collections, closures, iterators) and the parts before it. Each question is a short program. Read it, decide your answer on paper, and only then open the answer. Every answer is a real run of that exact file with Rust 1.99.1 in the course image, so the compiler text is what you would see.
+
+<Remember>Guess first. If you cannot say what a program prints, say which line you are unsure about; that line is what to re-read.</Remember>
+
+## Predict the output
+
+### Question 1: who runs first?
+
+<Files guide="checkpoint-collections" dir="rust" files={["src/bin/q1.rs"]} />
+
+Does it compile? What does it print, in order?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-collections" run="q1" />
+
+Building the chain prints nothing. Each `next()` pulls one item at a time through `map` and then `filter`, and keeps pulling until an item passes: `1` doubles to `2` and is dropped by the filter, then `2` doubles to `4` and comes out. The second `next()` continues from `3`. See [What an iterator is](/learn/iterators/#what-an-iterator-is) and [Watching a chain, and running totals](/learn/iterators/#watching-a-chain-and-running-totals).
+
+</details>
+
+### Question 2: the item that disappeared
+
+<Files guide="checkpoint-collections" dir="rust" files={["src/bin/q2.rs"]} />
+
+Does it compile? What does it print?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-collections" run="q2" />
+
+`take_while` has to pull `3` to find out that it fails the test, and a pulled item is gone from the iterator. `by_ref()` lent the iterator out, so `numbers` carries on from `4`. See [An iterator can only be used once](/learn/iterators/#an-iterator-can-only-be-used-once).
+
+</details>
+
+### Question 3: whose variable?
+
+<Files guide="checkpoint-collections" dir="rust" files={["src/bin/q3.rs"]} />
+
+Does it compile? What are the three lines of output?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-collections" run="q3" />
+
+The first closure borrows `count` and changes the real variable, so it ends at `2`. `move` gives the second closure its own copy of `n`, because a number is copied, and the two calls change that copy to 11 and then 12. The outer `n` is still `10`. See [What a closure captures](/learn/closures/#what-a-closure-captures) and [`move`: take ownership](/learn/closures/#move-take-ownership).
+
+</details>
+
+### Question 4: numbering backwards
+
+<Files guide="checkpoint-collections" dir="rust" files={["src/bin/q4.rs"]} />
+
+Both loops compile: a slice iterator can run from the back, which `rev` needs, and `enumerate` keeps that ability when it wraps one. What are the six lines? Do both loops print the same pairs?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-collections" run="q4" />
+
+The order of the adaptors matters. `rev().enumerate()` reverses first and then counts the items it is handed, so `c` gets the number 0. `enumerate().rev()` attaches the positions first and then walks backwards, so `c` keeps 2. See [Position and backwards](/learn/for-collections/#position-and-backwards).
+
+</details>
+
+## Predict the error
+
+### Question 5: an adder that cannot leave home
+
+<Files guide="checkpoint-collections" dir="rust" files={["src/bin/q5.rs"]} />
+
+Does it compile? If not, which error code, and what does the compiler suggest?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-collections" run="q5" />
+
+Without `move`, the closure borrows `n`, which belongs to `make_adder` and is gone when the function returns. The compiler suggests `move`, which makes the closure own its own `n`. See [Returning closures](/learn/closures/#returning-closures).
+
+</details>
+
+### Question 6: a collection with no name
+
+<Files guide="checkpoint-collections" dir="rust" files={["src/bin/q6.rs"]} />
+
+Does it compile? If not, which error code?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-collections" run="q6" />
+
+`collect` can build many kinds of collection, and nothing in the program says which one. The message points at `doubled` and says its type must be known at `.len()`, because `len` could mean any of them. `Vec<_>` on the `let` is enough, with `_` left for Rust to work out. See [Consumers: collect](/learn/iterators/#consumers-collect).
+
+</details>
+
+### Question 7: calling twice
+
+<Files guide="checkpoint-collections" dir="rust" files={["src/bin/q7.rs"]} />
+
+Does it compile? If not, which error code, and which trait does the message name?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-collections" run="q7" />
+
+The closure moves `name` out of itself when it runs (`drop(name)`), so it can run once; that is `FnOnce`. Calling it consumes it, so the second call uses a moved value. See [`Fn`, `FnMut` and `FnOnce`](/learn/closures/#fn-fnmut-and-fnonce).
+
+</details>
+
+## Fix it
+
+### Question 8: adding to a list while looping
+
+<Files guide="checkpoint-collections" dir="rust" files={["src/bin/q8.rs"]} />
+
+This does not compile. Which error code? Change the program so that it prints `[1, 2, 3, 20]` (there is more than one way).
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-collections" run="q8" />
+
+`for x in &items` keeps a borrow of `items` for the whole loop, and `push` needs to change it. One fix is to collect the additions in a separate vector and add them after the loop:
+
+<Files guide="checkpoint-collections" dir="rust" files={["src/bin/q8_fixed.rs"]} run="q8-fixed" />
+
+A second fix keeps one vector and loops over positions, so no borrow lasts across the `push`; the compiler's own help line names both ideas:
+
+<Files guide="checkpoint-collections" dir="rust" files={["src/bin/q8_index.rs"]} run="q8-index" />
+
+See [Changing a list while looping over it](/learn/for-collections/#changing-a-list-while-looping-over-it).
+
+</details>
+
+## If you missed one
+
+Count a question as right only if you named the code or the output lines before opening the answer. Six or more of eight right means you can move on; fewer means the lesson below is worth another pass, this time with the example open next to the page.
+
+- Questions 1, 2 and 6: [Iterators](/learn/iterators/).
+- Question 4: [Looping over collections](/learn/for-collections/).
+- Questions 3, 5 and 7: [Closures](/learn/closures/).
+- Question 8: [Looping over collections](/learn/for-collections/) and [Mutable borrows](/learn/mutable-borrows/).
+
+The next checkpoint covers [traits, generics, lifetimes and modules](/checkpoints/abstractions/).

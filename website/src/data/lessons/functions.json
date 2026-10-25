@@ -1,0 +1,349 @@
+{
+ "id": "functions",
+ "title": "Functions",
+ "part": "basics",
+ "intro": "Parameters always have types. The return type comes after `->`. The last line, written without a semicolon, is the return value.",
+ "coming_from": {
+  "go": "Types come after names like Go, with `-> i32` for the return type. The last expression without a semicolon is the return value, and `return` is still there for leaving early.",
+  "kotlin": "The shape is Kotlin's `fun add(a: Int, b: Int): Int`, with `->` before the return type. Braces are always required (there is no `= a + b` body), and the last expression without a semicolon is the result, so `return` is only for leaving early.",
+  "python": "Like a fully type-hinted `def`, except the compiler enforces the hints and you must write them for every parameter. The last expression without a semicolon is returned, so leaving out `return` doesn't give you `None`.",
+  "typescript": "Same shape as `function add(a: number, b: number): number`, with `->` before the return type. Parameter types must always be written, and so must any return type other than nothing. The last expression without a semicolon is the return value.",
+  "java": "The return type goes after `->`, and the last expression without a semicolon is the return value, so `return` is only needed for early exits. Rust has no overloading, so two functions need two different names.",
+  "csharp": "The return type comes after `->`, and a block's last expression (no semicolon) is its result. Unlike an expression-bodied `=>` member, the block can hold statements first. Rust has no method overloading and no default or named arguments.",
+  "c": "`fn add(a: i32, b: i32) -> i32` is `int add(int a, int b)` with the return type moved to the end. The last expression without a semicolon is returned, and falling off the end of a function that should return a value is a compile error, not junk.",
+  "cpp": "The trailing `-> i32` is like C++'s trailing return type, and the last expression without `;` is the return value. Forgetting to return a value is a compile error rather than undefined behaviour, and Rust has no overloading or default arguments."
+ },
+ "notes": [
+  "`return a + b;` also works. The no-semicolon style is just shorter, and it is what most Rust code uses.",
+  "`&str` is the type for text you only read; a string literal such as `\"kotlin\"` has it. [Strings](/learn/strings/) comes later.",
+  "Functions can be declared after they are used. Their order in the file doesn't matter.",
+  "Arguments are passed by value, and a `String` passed in is moved, not copied ([Ownership](/learn/ownership/)). There are no default or named arguments and no overloading ([What Rust lacks](/learn/what-rust-lacks/))."
+ ],
+ "gotcha": {
+  "title": "A semicolon on the last line",
+  "verdict": "rust-rule",
+  "looks_fine": "Go, Kotlin, Java and C# need an explicit `return`, so a stray semicolon changes nothing.",
+  "rust_sees": "In Rust a block's value is its last expression. Adding `;` turns `a + b` into a statement that produces nothing, written `()` and called the unit type.",
+  "why": "So the function now promises an `i32` and gives back `()`. The compiler's `help:` line points at the exact semicolon to remove.",
+  "langs": {
+   "go": {
+    "status": "refuses",
+    "says": "Go refuses this too: `a + b` is \"not used\" and the function has a `missing return`. Go always needs an explicit `return`, so a stray semicolon can't change what a function returns.",
+    "code": "package main\n\nimport \"fmt\"\n\nfunc add(a int, b int) int {\n\ta + b\n}\n\nfunc main() {\n\tfmt.Println(add(2, 3))\n}\n",
+    "error": "# command-line-arguments\n./main.go:6:2: a + b (value of type int) is not used\n./main.go:7:1: missing return"
+   },
+   "kotlin": {
+    "status": "refuses",
+    "says": "Kotlin refuses this too: a block body needs `return`, so a body whose last line is just `a + b` gives `missing return statement`.",
+    "code": "fun add(a: Int, b: Int): Int {\n    a + b\n}\n\nfun main() {\n    println(add(2, 3))\n}\n",
+    "error": "Main.kt:3:1: error: missing return statement.\n}\n^"
+   },
+   "python": {
+    "status": "wrong",
+    "says": "Python prints None. Without `return`, the last line is worked out and thrown away, and the function gives back None.",
+    "code": "def add(a: int, b: int) -> int:\n    a + b\n\n\nprint(add(2, 3))\n",
+    "out": "None\n"
+   },
+   "typescript": {
+    "status": "refuses",
+    "says": "TypeScript refuses this too: `add` promises a `number` but has no `return`. Without the `: number` it would compile and quietly return `undefined`.",
+    "code": "function add(a: number, b: number): number {\n  a + b;\n}\n\nconsole.log(add(2, 3));\n",
+    "error": "main.ts(1,37): error TS2355: A function whose declared type is neither 'undefined', 'void', nor 'any' must return a value."
+   },
+   "java": {
+    "status": "refuses",
+    "says": "Java refuses this too: `a + b;` is \"not a statement\". Java always needs an explicit `return`, so a stray semicolon can't change what a method returns.",
+    "code": "public class Main {\n    static int add(int a, int b) {\n        a + b;\n    }\n\n    public static void main(String[] args) {\n        System.out.println(add(2, 3));\n    }\n}\n",
+    "error": "Main.java:3: error: not a statement\n        a + b;\n          ^\n1 error"
+   },
+   "csharp": {
+    "status": "refuses",
+    "says": "C# refuses this too: `a + b;` is not a valid statement on its own, and the method never returns a value (CS0201, CS0161). C# always needs an explicit `return`.",
+    "code": "Console.WriteLine(Add(2, 3));\n\nstatic int Add(int a, int b)\n{\n    a + b;\n}\n",
+    "error": "Program.cs(5,5): error CS0201: Only assignment, call, increment, decrement, await, and new object expressions can be used as a statement\nProgram.cs(3,12): error CS0161: 'Add(int, int)': not all code paths return a value"
+   },
+   "c": {
+    "status": "wrong",
+    "says": "gcc only warns that `a + b` does nothing and that `add` never returns. The program prints 2 instead of 5: whatever value happened to be left behind. Another compiler or machine can print something else.",
+    "code": "#include <stdio.h>\n\nint add(int a, int b) {\n    a + b;\n}\n\nint main(void) {\n    printf(\"%d\\n\", add(2, 3));\n    return 0;\n}\n",
+    "warnings": "main.c: In function ‘add’:\nmain.c:4:7: warning: statement with no effect [-Wunused-value]\n    4 |     a + b;\n      |     ~~^~~\nmain.c:5:1: warning: control reaches end of non-void function [-Wreturn-type]\n    5 | }\n      | ^",
+    "out": "2\n"
+   },
+   "cpp": {
+    "status": "crash",
+    "says": "g++ warns that `a + b;` does nothing and that `add` never returns, then builds it anyway. Running off the end is undefined behaviour, and here g++ plants a trap so the program dies before printing. On ARM, this site's machine, that is a trap signal (SIGTRAP); on x86 it is an illegal-instruction signal (SIGILL).",
+    "code": "#include <iostream>\n\nint add(int a, int b) {\n    a + b;\n}\n\nint main() {\n    std::cout << add(2, 3) << \"\\n\";\n}\n",
+    "warnings": "main.cpp: In function ‘int add(int, int)’:\nmain.cpp:4:7: warning: statement has no effect [-Wunused-value]\n    4 |     a + b;\n      |     ~~^~~\nmain.cpp:5:1: warning: no return statement in function returning non-void [-Wreturn-type]\n    5 | }\n      | ^",
+    "out": ""
+   }
+  },
+  "code": "fn add(a: i32, b: i32) -> i32 {\n    a + b;\n}\n\nfn main() {\n    println!(\"{}\", add(2, 3));\n}\n",
+  "error": "error[E0308]: mismatched types\n --> src/main.rs:1:27\n  |\n1 | fn add(a: i32, b: i32) -> i32 {\n  |    ---                    ^^^ expected `i32`, found `()`\n  |    |\n  |    implicitly returns `()` as its body has no tail or `return` expression\n2 |     a + b;\n  |          - help: remove this semicolon to return this value\n",
+  "error_code": "E0308",
+  "fixed": {
+   "code": "fn add(a: i32, b: i32) -> i32 {\n    a + b\n}\n\nfn main() {\n    println!(\"{}\", add(2, 3));\n}\n",
+   "out": "5\n"
+  }
+ },
+ "order": 13,
+ "program": {
+  "rust": {
+   "code": "fn add(a: i32, b: i32) -> i32 {\n    a + b // no semicolon: this is what the function returns\n}\n\nfn greet(name: &str) {       // no -> means it returns nothing\n    println!(\"hi {name}\");\n}\n\nfn main() {\n    println!(\"{}\", add(2, 3));\n    greet(\"kotlin\");\n}\n",
+   "out": "5\nhi kotlin\n"
+  },
+  "go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc add(a, b int) int {\n\treturn a + b\n}\n\nfunc greet(name string) {\n\tfmt.Println(\"hi\", name)\n}\n\nfunc main() {\n\tfmt.Println(add(2, 3))\n\tgreet(\"kotlin\")\n}\n",
+   "out": "5\nhi kotlin\n"
+  },
+  "kotlin": {
+   "code": "fun add(a: Int, b: Int): Int {\n    return a + b\n}\n\nfun greet(name: String) {\n    println(\"hi $name\")\n}\n\nfun main() {\n    println(add(2, 3))\n    greet(\"kotlin\")\n}\n",
+   "out": "5\nhi kotlin\n"
+  },
+  "python": {
+   "code": "def add(a: int, b: int) -> int:\n    return a + b  # return gives the value back\n\n\ndef greet(name: str) -> None:\n    print(f\"hi {name}\")\n\n\nprint(add(2, 3))\ngreet(\"kotlin\")\n",
+   "out": "5\nhi kotlin\n"
+  },
+  "typescript": {
+   "code": "function add(a: number, b: number): number {\n  return a + b;\n}\n\nfunction greet(name: string): void { // void: returns nothing\n  console.log(`hi ${name}`);\n}\n\nconsole.log(add(2, 3));\ngreet(\"kotlin\");\n",
+   "out": "5\nhi kotlin\n"
+  },
+  "java": {
+   "code": "public class Main {\n    static int add(int a, int b) {\n        return a + b;\n    }\n\n    static void greet(String name) {   // void means it returns nothing\n        System.out.println(\"hi \" + name);\n    }\n\n    public static void main(String[] args) {\n        System.out.println(add(2, 3));\n        greet(\"kotlin\");\n    }\n}\n",
+   "out": "5\nhi kotlin\n"
+  },
+  "csharp": {
+   "code": "Console.WriteLine(Add(2, 3));\nGreet(\"kotlin\");\n\nstatic int Add(int a, int b) => a + b;\n\nstatic void Greet(string name)   // void: returns nothing\n{\n    Console.WriteLine($\"hi {name}\");\n}\n",
+   "out": "5\nhi kotlin\n"
+  },
+  "c": {
+   "code": "#include <stdio.h>\n\nint add(int a, int b) {\n    return a + b;            // return gives the value back\n}\n\nvoid greet(const char *name) {   // void means it returns nothing\n    printf(\"hi %s\\n\", name);\n}\n\nint main(void) {\n    printf(\"%d\\n\", add(2, 3));\n    greet(\"kotlin\");\n    return 0;\n}\n",
+   "out": "5\nhi kotlin\n"
+  },
+  "cpp": {
+   "code": "#include <iostream>\n#include <string_view>\n\nint add(int a, int b) {\n    return a + b;\n}\n\nvoid greet(std::string_view name) {   // void: returns nothing\n    std::cout << \"hi \" << name << \"\\n\";\n}\n\nint main() {\n    std::cout << add(2, 3) << \"\\n\";\n    greet(\"kotlin\");\n}\n",
+   "out": "5\nhi kotlin\n"
+  }
+ },
+ "faq": [],
+ "snippets": {
+  "check-rows.rs": {
+   "code": "// Backs the \"in Rust\" cells of the tables in lesson.mdx. Never shown.\nfn greet(_name: &str) {}\n\nfn greet_explicit(_name: &str) -> () {}\n\nfn divmod(a: i32, b: i32) -> (i32, i32) {\n    (a / b, a % b)\n}\n\nfn sum(nums: &[i32]) -> i32 {\n    let mut total = 0;\n    for n in nums {\n        total += n;\n    }\n    total\n}\n\nfn area(w: u32, h: Option<u32>) -> u32 {\n    w * h.unwrap_or(1)\n}\n\nfn apply_ptr(f: fn(i32) -> i32, x: i32) -> i32 {\n    f(x)\n}\n\nfn apply_impl(f: impl Fn(i32) -> i32, x: i32) -> i32 {\n    f(x)\n}\n\nfn bump(x: &mut i32) {\n    *x += 1;\n}\n\nconst fn square(n: usize) -> usize {\n    n * n\n}\n\nfn double_text(s: &str) -> Result<i32, String> {\n    let n: i32 = s.parse().map_err(|_| format!(\"not a number: {s}\"))?;\n    Ok(n * 2)\n}\n\nfn ignore(_x: i32) {}\n\nstruct Size {\n    w: u32,\n    h: u32,\n}\n\nfn area_of(s: Size) -> u32 {\n    s.w * s.h\n}\n\nstruct Counter {\n    n: i32,\n}\n\nimpl Counter {\n    fn inc(&mut self) {\n        self.n += 1;\n    }\n}\n\nfn add_item(xs: &mut Vec<i32>) {\n    xs.push(1);\n}\n\nfn text_len(s: &str) -> usize {\n    s.len()\n}\n\nfn show(x: impl std::fmt::Display) -> String {\n    format!(\"{x}\")\n}\n\nfn total(opts: &std::collections::HashMap<String, i32>) -> i32 {\n    opts.values().sum()\n}\n\nfn never() -> ! {\n    panic!(\"stop\")\n}\n\nfn later() -> i32 {\n    todo!(\"not yet\")\n}\n\nfn main() {\n    // `fn f()` and `fn f() -> ()` have the same type.\n    let a: fn(&str) = greet;\n    let b: fn(&str) -> () = greet;\n    let c: fn(&str) = greet_explicit;\n    a(\"x\");\n    b(\"x\");\n    c(\"x\");\n\n    assert_eq!(divmod(7, 2), (3, 1));\n    let (q, r) = divmod(7, 2);\n    assert_eq!((q, r), (3, 1));\n\n    assert_eq!(sum(&[1, 2, 3]), 6);\n    assert_eq!(sum(&[]), 0);\n    let v = vec![4, 5];\n    assert_eq!(sum(&v), 9);\n\n    assert_eq!(area(3, None), 3);\n    assert_eq!(area(3, Some(4)), 12);\n\n    let offset = 5;\n    assert_eq!(apply_ptr(|n| n + 1, 1), 2);\n    assert_eq!(apply_impl(|n| n + offset, 1), 6);\n    let f: fn(i32) -> i32 = |x| x + 1;\n    assert_eq!(f(1), 2);\n\n    let mut n = 1;\n    bump(&mut n);\n    assert_eq!(n, 2);\n\n    assert_eq!(double_text(\"21\"), Ok(42));\n    assert_eq!(double_text(\"x\"), Err(\"not a number: x\".to_string()));\n\n    ignore(1);\n    let (_, r) = divmod(7, 2);\n    assert_eq!(r, 1);\n\n    assert_eq!(area_of(Size { w: 3, h: 4 }), 12);\n\n    let mut c = Counter { n: 0 };\n    c.inc();\n    assert_eq!(c.n, 1);\n\n    let mut xs = vec![0];\n    add_item(&mut xs);\n    assert_eq!(xs, [0, 1]);\n    assert_eq!(text_len(&String::from(\"abc\")), 3);\n    assert_eq!(show(5), \"5\");\n    assert_eq!(show(\"x\"), \"x\");\n\n    let mut opts = std::collections::HashMap::new();\n    opts.insert(\"retries\".to_string(), 3);\n    opts.insert(\"delay\".to_string(), 4);\n    assert_eq!(total(&opts), 7);\n\n    // `!` and `todo!()` type-check where a function is expected.\n    let _f: fn() -> ! = never;\n    let _g: fn() -> i32 = later;\n\n    let grid = [0u8; square(3)];\n    assert_eq!(grid.len(), 9);\n    println!(\"all checks passed\");\n}\n",
+   "out": "all checks passed\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-vec-moved.fail.rs": {
+   "code": "fn take(xs: Vec<i32>) -> usize {\n    xs.len()\n}\n\nfn main() {\n    let xs = vec![1, 2, 3];\n    let n = take(xs);\n    println!(\"{n} {}\", xs.len());\n}\n",
+   "error": "error[E0382]: borrow of moved value: `xs`\n --> src/main.rs:8:24\n  |\n6 |     let xs = vec![1, 2, 3];\n  |         -- move occurs because `xs` has type `Vec<i32>`, which does not implement the `Copy` trait\n7 |     let n = take(xs);\n  |                  -- value moved here\n8 |     println!(\"{n} {}\", xs.len());\n  |                        ^^ value borrowed here after move\n  |\nnote: consider changing this parameter type in function `take` to borrow instead if owning the value isn't necessary\n --> src/main.rs:1:13\n  |\n1 | fn take(xs: Vec<i32>) -> usize {\n  |    ----     ^^^^^^^^ this parameter takes ownership of the value\n  |    |\n  |    in this function\nhelp: consider cloning the value if the performance cost is acceptable\n  |\n7 |     let n = take(xs.clone());\n  |                    ++++++++\n",
+   "lang": "rust"
+  },
+  "closure-before.fail.rs": {
+   "code": "fn main() {\n    println!(\"{}\", inc(1));\n    let inc = |n: i32| n + 1;\n}\n",
+   "error": "error[E0425]: cannot find function `inc` in this scope\n --> src/main.rs:2:20\n  |\n2 |     println!(\"{}\", inc(1));\n  |                    ^^^ not found in this scope\n",
+   "lang": "rust"
+  },
+  "const-fn.fail.rs": {
+   "code": "fn helper() -> u32 {\n    1\n}\n\nconst fn f() -> u32 {\n    helper()\n}\n\nfn main() {\n    println!(\"{}\", f());\n}\n",
+   "error": "error[E0015]: cannot call non-const function `helper` in constant functions\n --> src/main.rs:6:5\n  |\n6 |     helper()\n  |     ^^^^^^^^\n  |\nnote: function `helper` is not const\n --> src/main.rs:1:1\n  |\n1 | fn helper() -> u32 {\n  | ^^^^^^^^^^^^^^^^^^\n  = note: calls in constant functions are limited to constant functions, tuple structs and tuple variants\n",
+   "lang": "rust"
+  },
+  "const-fn.rs": {
+   "code": "const fn square(n: u32) -> u32 {\n    n * n\n}\n\nconst AREA: u32 = square(12);\nstatic GRID: [u8; square(3) as usize] = [0; square(3) as usize];\n\nfn main() {\n    println!(\"AREA: {AREA}\");\n    println!(\"GRID.len(): {}\", GRID.len());\n    println!(\"square(7) at run time: {}\", square(7));\n}\n",
+   "out": "AREA: 144\nGRID.len(): 9\nsquare(7) at run time: 49\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "diverge.panic.rs": {
+   "code": "fn fail(msg: &str) -> ! {\n    panic!(\"{msg}\")\n}\n\nfn half(n: i32) -> i32 {\n    if n % 2 == 0 {\n        n / 2\n    } else {\n        fail(\"odd number\")\n    }\n}\n\nfn main() {\n    println!(\"half(10): {}\", half(10));\n    println!(\"half(7): {}\", half(7));\n}\n",
+   "out": "half(10): 5\n\nthread 'main' (1) panicked at src/main.rs:2:5:\nodd number\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+   "lang": "rust",
+   "exit": 101
+  },
+  "early.rs": {
+   "code": "fn sign(n: i32) -> i32 {\n    if n < 0 {\n        return -1;\n    }\n    if n == 0 {\n        return 0;\n    }\n    1\n}\n\nfn next_multiple(of: u32, above: u32) -> u32 {\n    let mut n = above + 1;\n    loop {\n        if n % of == 0 {\n            return n;\n        }\n        n += 1;\n    }\n}\n\nfn main() {\n    println!(\"sign(-7): {}\", sign(-7));\n    println!(\"sign(0): {}\", sign(0));\n    println!(\"sign(12): {}\", sign(12));\n    println!(\"next_multiple(7, 20): {}\", next_multiple(7, 20));\n}\n",
+   "out": "sign(-7): -1\nsign(0): 0\nsign(12): 1\nnext_multiple(7, 20): 21\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "fn-pointer-capture.fail.rs": {
+   "code": "fn apply(f: fn(i32) -> i32, x: i32) -> i32 {\n    f(x)\n}\n\nfn main() {\n    let extra = 100;\n    println!(\"{}\", apply(|n| n + extra, 4));\n}\n",
+   "error": "error[E0308]: mismatched types\n --> src/main.rs:7:26\n  |\n7 |     println!(\"{}\", apply(|n| n + extra, 4));\n  |                    ----- ^^^^^^^^^^^^^ expected fn pointer, found closure\n  |                    |\n  |                    arguments to this function are incorrect\n  |\n  = note: expected fn pointer `fn(i32) -> i32`\n                found closure `{closure@src/main.rs:7:26: 7:29}`\nnote: closures can only be coerced to `fn` types if they do not capture any variables\n --> src/main.rs:7:34\n  |\n7 |     println!(\"{}\", apply(|n| n + extra, 4));\n  |                                  ^^^^^ `extra` captured here\nnote: function defined here\n --> src/main.rs:1:4\n  |\n1 | fn apply(f: fn(i32) -> i32, x: i32) -> i32 {\n  |    ^^^^^ -----------------\n",
+   "lang": "rust"
+  },
+  "fn-pointer.rs": {
+   "code": "fn double(n: i32) -> i32 {\n    n * 2\n}\n\nfn negate(n: i32) -> i32 {\n    -n\n}\n\nfn apply(f: fn(i32) -> i32, x: i32) -> i32 {\n    f(x)\n}\n\nfn main() {\n    println!(\"apply(double, 4): {}\", apply(double, 4));\n    println!(\"apply(negate, 4): {}\", apply(negate, 4));\n    // A closure that captures nothing converts to a fn pointer.\n    println!(\"apply(|n| n + 100, 4): {}\", apply(|n| n + 100, 4));\n\n    let ops: [fn(i32) -> i32; 2] = [double, negate];\n    for f in ops {\n        println!(\"f(10): {}\", f(10));\n    }\n}\n",
+   "out": "apply(double, 4): 8\napply(negate, 4): -4\napply(|n| n + 100, 4): 104\nf(10): 20\nf(10): -10\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "grouped.fail.rs": {
+   "code": "fn add(a, b: i32) -> i32 {\n    a + b\n}\n\nfn main() {\n    println!(\"add(2, 3): {}\", add(2, 3));\n}\n",
+   "error": "error: expected one of `:`, `@`, or `|`, found `,`\n --> src/main.rs:1:9\n  |\n1 | fn add(a, b: i32) -> i32 {\n  |         ^ expected one of `:`, `@`, or `|`\n  |\nhelp: if this is a parameter name, give it a type\n  |\n1 | fn add(a: TypeName, b: i32) -> i32 {\n  |         ++++++++++\nhelp: if this is a type, explicitly ignore the parameter name\n  |\n1 | fn add(_: a, b: i32) -> i32 {\n  |        ++",
+   "lang": "rust"
+  },
+  "impl-arg.rs": {
+   "code": "use std::fmt::Display;\n\nfn apply(f: impl Fn(i32) -> i32, x: i32) -> i32 {\n    f(x)\n}\n\nfn show(x: impl Display) -> String {\n    format!(\"<{x}>\")\n}\n\nfn main() {\n    let extra = 100;\n    println!(\"apply(|n| n + extra, 4): {}\", apply(|n| n + extra, 4));\n    println!(\"show(5): {}\", show(5));\n    println!(\"show(\\\"hi\\\"): {}\", show(\"hi\"));\n}\n",
+   "out": "apply(|n| n + extra, 4): 104\nshow(5): <5>\nshow(\"hi\"): <hi>\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "moved.fail.rs": {
+   "code": "fn length(s: String) -> usize {\n    s.len()\n}\n\nfn main() {\n    let name = String::from(\"Ferris\");\n    let n = length(name);\n    println!(\"{n} {name}\");\n}\n",
+   "error": "error[E0382]: borrow of moved value: `name`\n --> src/main.rs:8:20\n  |\n6 |     let name = String::from(\"Ferris\");\n  |         ---- move occurs because `name` has type `String`, which does not implement the `Copy` trait\n7 |     let n = length(name);\n  |                    ---- value moved here\n8 |     println!(\"{n} {name}\");\n  |                    ^^^^ value borrowed here after move\n  |\nnote: consider changing this parameter type in function `length` to borrow instead if owning the value isn't necessary\n --> src/main.rs:1:14\n  |\n1 | fn length(s: String) -> usize {\n  |    ------    ^^^^^^ this parameter takes ownership of the value\n  |    |\n  |    in this function\nhelp: consider cloning the value if the performance cost is acceptable\n  |\n7 |     let n = length(name.clone());\n  |                        ++++++++\n",
+   "lang": "rust"
+  },
+  "nested-capture.fail.rs": {
+   "code": "fn total_with_tax(price: u32) -> u32 {\n    let rate = 20;\n    fn tax(p: u32) -> u32 {\n        p * rate / 100\n    }\n    println!(\"rate: {rate}\");\n    price + tax(price)\n}\n\nfn main() {\n    println!(\"total: {}\", total_with_tax(50));\n}\n",
+   "error": "error[E0434]: can't capture dynamic environment in a fn item\n --> src/main.rs:4:13\n  |\n4 |         p * rate / 100\n  |             ^^^^\n  |\n  = help: use the `|| { ... }` closure form instead\n",
+   "lang": "rust"
+  },
+  "nested-closure.rs": {
+   "code": "fn total_with_tax(price: u32) -> u32 {\n    let rate = 20;\n    let tax = |p: u32| p * rate / 100;\n    println!(\"rate: {rate}\");\n    price + tax(price)\n}\n\nfn main() {\n    println!(\"total: {}\", total_with_tax(50));\n}\n",
+   "out": "rate: 20\ntotal: 60\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "nested.rs": {
+   "code": "fn describe(n: i32) -> String {\n    fn is_even(n: i32) -> bool {\n        n % 2 == 0\n    }\n    let kind = if is_even(n) { \"even\" } else { \"odd\" };\n    format!(\"{n} is {kind}\")\n}\n\nfn main() {\n    println!(\"{}\", describe(7));\n    println!(\"{}\", describe(10));\n}\n",
+   "out": "7 is odd\n10 is even\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "no-return-type.fail.rs": {
+   "code": "fn add(a: i32, b: i32) {\n    a + b\n}\n\nfn main() {\n    add(2, 3);\n}\n",
+   "error": "error[E0308]: mismatched types\n --> src/main.rs:2:5\n  |\n1 | fn add(a: i32, b: i32) {\n  |                       - help: try adding a return type: `-> i32`\n2 |     a + b\n  |     ^^^^^ expected `()`, found `i32`\n",
+   "lang": "rust"
+  },
+  "order.rs": {
+   "code": "fn main() {\n    println!(\"area: {}\", area(3, 4));\n}\n\nfn area(w: u32, h: u32) -> u32 {\n    w * h\n}\n",
+   "out": "area: 12\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "params.rs": {
+   "code": "fn bump(mut n: i32) -> i32 {\n    n += 1;\n    n\n}\n\nfn cap(qty: u32) -> u32 {\n    let qty = qty.min(10); // a new variable that hides the parameter\n    qty * 3\n}\n\nfn main() {\n    let a = 5;\n    let b = bump(a);\n    println!(\"a: {a}, b: {b}\");\n    println!(\"cap(4): {}\", cap(4));\n    println!(\"cap(50): {}\", cap(50));\n}\n",
+   "out": "a: 5, b: 6\ncap(4): 12\ncap(50): 30\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "recursion.panic.rs": {
+   "code": "fn depth(n: u64) -> u64 {\n    if n == 0 { 0 } else { 1 + depth(n - 1) }\n}\n\nfn main() {\n    println!(\"depth(1_000): {}\", depth(1_000));\n    println!(\"depth(100_000_000): {}\", depth(100_000_000));\n}\n",
+   "out": "depth(1_000): 1000\n\nthread 'main' (1) has overflowed its stack\nfatal runtime error: stack overflow, aborting\n",
+   "lang": "rust",
+   "exit": -6
+  },
+  "signature.rs": {
+   "code": "fn add(a: i32, b: i32) -> i32 {\n    a + b\n}\n\nfn greet(name: &str) {\n    println!(\"hello, {name}\");\n}\n\nfn main() {\n    println!(\"add(2, 3): {}\", add(2, 3));\n    greet(\"Ferris\");\n}\n",
+   "out": "add(2, 3): 5\nhello, Ferris\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-c.c": {
+   "code": "#include <stdio.h>\n#include <stdarg.h>\n#include <stdlib.h>\n\nstatic int twice(int x);\n\nstatic void divmod(int a, int b, int *q, int *r) {\n    *q = a / b;\n    *r = a % b;\n}\n\nstatic int apply(int (*f)(int), int x) {\n    return f(x);\n}\n\nstatic int twice(int x) {\n    return x * 2;\n}\n\nstatic int sum_n(int count, ...) {\n    va_list ap;\n    va_start(ap, count);\n    int total = 0;\n    for (int i = 0; i < count; i++) total += va_arg(ap, int);\n    va_end(ap);\n    return total;\n}\n\nint main(void) {\n    int q, r;\n    divmod(7, 2, &q, &r);\n    if (q != 3 || r != 1) abort();\n    if (apply(twice, 4) != 8) abort();\n    if (sum_n(3, 1, 2, 3) != 6) abort();\n    puts(\"all checks passed\");\n    return 0;\n}\n",
+   "out": "all checks passed\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "check-cpp.cpp": {
+   "code": "#include <cstdlib>\n#include <functional>\n#include <iostream>\n#include <string>\n#include <tuple>\n\nconstexpr int square(int n) { return n * n; }\n\nint area(int w, int h = 1) { return w * h; }\n\nint add(int a, int b) { return a + b; }\ndouble add(double a, double b) { return a + b; }\n\nint apply(std::function<int(int)> f, int x) { return f(x); }\n\n[[noreturn]] void die() { std::abort(); }\n\nstd::size_t by_value(std::string s) {\n    s += \"!\";\n    return s.size();\n}\n\nstd::size_t by_ref(const std::string& s) { return s.size(); }\n\nvoid by_mut_ref(std::string& s) { s += \"!\"; }\n\nint show_size(auto x) { return static_cast<int>(sizeof(x)); }\n\nint main() {\n    static_assert(square(12) == 144);\n    int grid[square(3)] = {};\n    if (sizeof(grid) / sizeof(grid[0]) != 9) std::abort();\n    if (area(3) != 3 || area(3, 4) != 12) std::abort();\n    if (add(1, 2) != 3 || add(1.5, 2.5) != 4.0) std::abort();\n    int extra = 100;\n    if (apply([extra](int n) { return n + extra; }, 4) != 104) std::abort();\n    std::string name = \"cpp\";\n    if (by_value(name) != 4 || name != \"cpp\") std::abort();  // by value copies\n    if (by_ref(name) != 3) std::abort();\n    by_mut_ref(name);\n    if (name != \"cpp!\") std::abort();\n    std::string moved = std::move(name);  // `name` is still a usable string afterwards\n    if (moved != \"cpp!\" || name.size() > 4) std::abort();\n    if (show_size(1) != 4) std::abort();\n    if (false) die();\n    std::cout << \"all checks passed\\n\";\n}\n",
+   "out": "all checks passed\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "check-cs.cs": {
+   "code": "static void Must(bool ok, string what)\n{\n    if (!ok) throw new Exception(what);\n}\n\nstatic int TotalWithTax(int price)\n{\n    int rate = 20;\n    int Tax(int p) => p * rate / 100; // a local function may use `rate`\n    return price + Tax(price);\n}\n\nstatic int Area(int w, int h = 1) => w * h;\n\nstatic void DivMod(int a, int b, out int q, out int r)\n{\n    q = a / b;\n    r = a % b;\n}\n\nstatic int Sum(params int[] xs)\n{\n    int total = 0;\n    foreach (var x in xs) total += x;\n    return total;\n}\n\nstatic (int, int) DivMod2(int a, int b) => (a / b, a % b);\n\nstatic void Fill(List<string> xs)\n{\n    xs.Add(\"x\");\n}\n\nstatic int Bump(int n)\n{\n    n += 1; // a parameter can be reassigned\n    return n;\n}\n\nstatic int Twice(int n) => n * 2;\n\nMust(TotalWithTax(50) == 60, \"local function captures\");\nMust(Area(3) == 3 && Area(3, 4) == 12 && Area(w: 2, h: 5) == 10, \"default and named\");\nDivMod(7, 2, out int q, out int r);\nMust(q == 3 && r == 1, \"out parameters\");\nMust(Sum(1, 2, 3) == 6, \"params\");\nvar (q2, r2) = DivMod2(7, 2);\nMust(q2 == 3 && r2 == 1, \"tuple\");\nvar xs = new List<string>();\nFill(xs);\nMust(xs.Count == 1, \"the caller sees the callee's change\");\nMust(Bump(1) == 2, \"reassign parameter\");\nFunc<int, int> f = Twice;\nMust(f(4) == 8, \"method group\");\nConsole.WriteLine(\"all checks passed\");\n",
+   "out": "all checks passed\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "check-go.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc must(ok bool, what string) {\n\tif !ok {\n\t\tpanic(what)\n\t}\n}\n\nfunc main() {\n\t// Package-level functions can be used before their definition.\n\tmust(later(2) == 4, \"order\")\n\n\t// Parameters of one type can share it.\n\tmust(add(2, 3) == 5, \"grouped parameters\")\n\n\t// Multiple results.\n\tq, r := divmod(7, 2)\n\tmust(q == 3 && r == 1, \"divmod\")\n\n\t// Variadic.\n\tmust(sum(1, 2, 3) == 6 && sum() == 0, \"variadic\")\n\txs := []int{4, 5}\n\tmust(sum(xs...) == 9, \"spread\")\n\n\t// Function types and literals.\n\tvar f func(int) int = later\n\tmust(f(5) == 10, \"func value\")\n\tg := func(n int) int { return n + 1 }\n\tmust(g(1) == 2, \"func literal\")\n\n\t// Named results with a bare return.\n\tmust(named() == 3, \"named result\")\n\n\t// A func literal captures freely.\n\toffset := 5\n\th := func(n int) int { return n + offset }\n\tmust(h(1) == 6, \"closure captures\")\n\n\t// Discarding a result and an unused parameter.\n\tq2, _ := divmod(7, 2)\n\tmust(q2 == 3, \"blank identifier\")\n\tignore(1)\n\n\t// A string or a struct passed by value is copied; the caller keeps its own.\n\tname := \"go\"\n\tmust(length(name) == 2 && name == \"go\", \"string copy\")\n\tbox := Box{n: 1}\n\tgrow(box)\n\tmust(box.n == 1, \"struct copy\")\n\n\t// A pointer parameter writes through.\n\tx := 1\n\tinc(&x)\n\tmust(x == 2, \"pointer parameter\")\n\n\t// A method.\n\tc := Counter{}\n\tc.Inc()\n\tmust(c.n == 1, \"method\")\n\n\tfmt.Println(\"all checks passed\")\n}\n\nfunc ignore(_ int) {}\n\nfunc length(s string) int { return len(s) }\n\ntype Box struct{ n int }\n\nfunc grow(b Box) { b.n++ }\n\nfunc inc(p *int) { *p++ }\n\ntype Counter struct{ n int }\n\nfunc (c *Counter) Inc() { c.n++ }\n\nfunc later(n int) int { return n * 2 }\n\nfunc add(a, b int) int { return a + b }\n\nfunc divmod(a, b int) (int, int) { return a / b, a % b }\n\nfunc sum(nums ...int) int {\n\ttotal := 0\n\tfor _, n := range nums {\n\t\ttotal += n\n\t}\n\treturn total\n}\n\nfunc named() (n int) {\n\tn = 3\n\treturn\n}\n",
+   "out": "all checks passed\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "check-java.java": {
+   "code": "public class Main {\n    static void must(boolean ok, String what) {\n        if (!ok) throw new RuntimeException(what);\n    }\n\n    static int add(int a, int b) {\n        return a + b;\n    }\n\n    static double add(double a, double b) {\n        return a + b;\n    }\n\n    static int sum(int... xs) {\n        int total = 0;\n        for (int x : xs) total += x;\n        return total;\n    }\n\n    record Pair(int q, int r) {}\n\n    static Pair divmod(int a, int b) {\n        return new Pair(a / b, a % b);\n    }\n\n    static int parse(String s) throws Exception {\n        if (s.isEmpty()) throw new Exception(\"empty\");\n        return Integer.parseInt(s);\n    }\n\n    static void fill(java.util.List<String> xs) {\n        xs.add(\"x\");\n    }\n\n    static int bump(int n) {\n        n += 1; // a parameter can be reassigned\n        return n;\n    }\n\n    static int twice(int n) {\n        return n * 2;\n    }\n\n    public static void main(String[] args) {\n        must(later(2) == 4, \"methods can be declared after use\");\n        must(add(1, 2) == 3 && add(1.5, 2.5) == 4.0, \"overloads\");\n        must(sum(1, 2, 3) == 6 && sum() == 0, \"varargs\");\n        must(divmod(7, 2).q() == 3 && divmod(7, 2).r() == 1, \"record result\");\n        boolean threw = false;\n        try {\n            parse(\"\");\n        } catch (Exception e) {\n            threw = true;\n        }\n        must(threw, \"throws\");\n        java.util.List<String> xs = new java.util.ArrayList<>();\n        fill(xs);\n        must(xs.size() == 1, \"the caller sees the callee's change\");\n        must(bump(1) == 2, \"reassign parameter\");\n        java.util.function.Function<Integer, Integer> f = Main::twice;\n        must(f.apply(4) == 8, \"method reference\");\n        System.out.println(\"all checks passed\");\n    }\n\n    static int later(int n) {\n        return n * 2;\n    }\n}\n",
+   "out": "all checks passed\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "check-kt.kt": {
+   "code": "fun totalWithTax(price: Int): Int {\n    val rate = 20\n    fun tax(p: Int) = p * rate / 100 // a local function may use `rate`\n    return price + tax(price)\n}\n\nfun area(w: Int, h: Int = 1) = w * h\n\nfun sum(vararg xs: Int) = xs.sum()\n\nfun nothing() {}\n\nfun twice(n: Int) = n * 2\n\nfun fill(xs: MutableList<String>) {\n    xs.add(\"x\")\n}\n\nfun todoLater(): Nothing = TODO(\"later\")\n\nfun depth(n: Long): Long = if (n == 0L) 0 else 1 + depth(n - 1)\n\nfun later() = 1\n\nfun main() {\n    check(totalWithTax(50) == 60) { \"local function captures\" }\n    check(area(3) == 3 && area(3, 4) == 12 && area(w = 2, h = 5) == 10) { \"default and named\" }\n    check(sum(1, 2, 3) == 6) { \"vararg\" }\n    check(nothing() == Unit) { \"Unit\" }\n    val (q, r) = Pair(7 / 2, 7 % 2)\n    check(q == 3 && r == 1) { \"Pair\" }\n    val f: (Int) -> Int = ::twice\n    check(f(4) == 8) { \"function reference\" }\n    val xs = mutableListOf<String>()\n    fill(xs)\n    check(xs.size == 1) { \"the caller sees the callee's change\" }\n    val g: () -> Nothing = ::todoLater\n    check(try { g(); false } catch (e: NotImplementedError) { true }) { \"TODO\" }\n    val deep = try { depth(100_000_000L); false } catch (e: StackOverflowError) { true }\n    check(deep) { \"StackOverflowError is catchable\" }\n    println(\"all checks passed\")\n}\n",
+   "out": "all checks passed\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "check-py.py": {
+   "code": "def total_with_tax(price):\n    rate = 20\n\n    def tax(p):\n        return p * rate // 100  # a nested def may use `rate`\n\n    return price + tax(price)\n\n\ndef area(w, h=1):\n    return w * h\n\n\ndef total(*args, **kwargs):\n    return sum(args) + sum(kwargs.values())\n\n\ndef divmod_pair(a, b):\n    return a // b, a % b\n\n\ndef no_return():\n    1 + 1\n\n\ndef fill(xs):\n    xs.append(\"x\")\n\n\ndef calls_later():\n    return defined_later()\n\n\ndef defined_later():\n    return 5\n\n\nassert calls_later() == 5  # a body may call a def that comes later\ntry:\n    not_yet()\n    raised = False\nexcept NameError:\n    raised = True\nassert raised  # at module level, a call must come after the def\n\n\ndef not_yet():\n    return 1\n\n\nxs = []\nfill(xs)\nassert xs == [\"x\"]  # the caller sees the callee's change\nassert total_with_tax(50) == 60\nassert area(3) == 3 and area(3, 4) == 12 and area(h=5, w=2) == 10\nassert total(1, 2, x=3) == 6\nq, r = divmod_pair(7, 2)\nassert (q, r) == (3, 1)\nassert no_return() is None\n\n\ndef hinted(x: int) -> int:\n    return x\n\n\nassert hinted(\"not an int\") == \"not an int\"  # hints are not checked at run time\nprint(\"all checks passed\")\n",
+   "out": "all checks passed\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "check-ts.ts": {
+   "code": "function must(ok: boolean, what: string): void {\n  if (!ok) throw new Error(what);\n}\n\nfunction useIt(): number {\n  return arrow(1);\n}\n\n// A function declaration is hoisted, so it can be called before its line.\nmust(hoisted() === 5, \"hoisting\");\nfunction hoisted(): number {\n  return 5;\n}\n\n// An arrow function stored in a const is not.\nlet threw = false;\ntry {\n  useIt();\n} catch (e) {\n  threw = e instanceof ReferenceError;\n}\nconst arrow = (n: number): number => n + 1;\nmust(threw, \"const arrow used before its line throws\");\nmust(useIt() === 2, \"works after\");\n\nfunction totalWithTax(price: number): number {\n  const rate = 20;\n  function tax(p: number): number {\n    return (p * rate) / 100; // a nested function may use `rate`\n  }\n  return price + tax(price);\n}\nmust(totalWithTax(50) === 60, \"nested function captures\");\n\nfunction area(w: number, h: number = 1): number {\n  return w * h;\n}\nfunction total(...xs: number[]): number {\n  return xs.reduce((a, b) => a + b, 0);\n}\nmust(area(3) === 3 && area(3, 4) === 12, \"default\");\nmust(total(1, 2, 3) === 6, \"rest\");\nfunction noReturn(): void {}\nmust((noReturn() as unknown) === undefined, \"no return gives undefined\");\nfunction size(x: string): number;\nfunction size(x: number[]): number;\nfunction size(x: string | number[]): number {\n  return x.length;\n}\nmust(size(\"abc\") === 3 && size([1, 2]) === 2, \"overload signatures\");\n\nfunction connect({ retries = 3 }: { retries?: number }): number {\n  return retries;\n}\nmust(connect({}) === 3 && connect({ retries: 5 }) === 5, \"options object\");\n\nfunction fill(xs: number[]): void {\n  xs.push(1);\n}\nconst list: number[] = [];\nfill(list);\nmust(list.length === 1, \"the caller sees the callee's change\");\nconsole.log(\"all checks passed\");\n",
+   "out": "all checks passed\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "deep.crash.c": {
+   "code": "#include <stdio.h>\n\nlong depth(long n) {\n    return n == 0 ? 0 : 1 + depth(n - 1);\n}\n\nint main(void) {\n    printf(\"depth(500): %ld\\n\", depth(500));\n    fflush(stdout);\n    printf(\"depth(100000000): %ld\\n\", depth(100000000));\n    return 0;\n}\n",
+   "out": "depth(500): 500\n",
+   "lang": "c",
+   "exit": -11
+  },
+  "deep.crash.cs": {
+   "code": "static long Depth(long n) => n == 0 ? 0 : 1 + Depth(n - 1);\n\nConsole.WriteLine($\"depth(500): {Depth(500)}\");\ntry\n{\n    Console.WriteLine($\"depth(100_000_000): {Depth(100_000_000)}\");\n}\ncatch (Exception)\n{\n    Console.WriteLine(\"caught\"); // never reached\n}\n",
+   "out": "depth(500): 500\nStack overflow.\nRepeated 174591 times:\n--------------------------------\n   at Program.<<Main>$>g__Depth|0_0(Int64)\n--------------------------------\n   at Program.<Main>$(System.String[])\n",
+   "varies": true,
+   "lang": "csharp",
+   "exit": -6
+  },
+  "deep.crash.ts": {
+   "code": "function depth(n: number): number {\n  return n === 0 ? 0 : 1 + depth(n - 1);\n}\n\nconsole.log(\"depth(500):\", depth(500));\nconsole.log(\"depth(100_000_000):\", depth(100_000_000));\n",
+   "out": "depth(500): 500\nmain.js:3\nfunction depth(n) {\n              ^\n\nRangeError: Maximum call stack size exceeded\n    at depth (main.js:3:15)\n    at depth (main.js:4:30)\n    at depth (main.js:4:30)\n    at depth (main.js:4:30)\n    at depth (main.js:4:30)\n    at depth (main.js:4:30)\n    at depth (main.js:4:30)\n    at depth (main.js:4:30)\n    at depth (main.js:4:30)\n    at depth (main.js:4:30)\n\nNode.js v24.22.1\n",
+   "lang": "typescript",
+   "exit": 1
+  },
+  "deep.fail.py": {
+   "code": "import sys\n\n\ndef depth(n):\n    return 0 if n == 0 else 1 + depth(n - 1)\n\n\nprint(\"recursion limit:\", sys.getrecursionlimit())\nprint(\"depth(500):\", depth(500))\nprint(\"depth(100_000_000):\", depth(100_000_000))\n",
+   "out": "recursion limit: 1000\ndepth(500): 500\nTraceback (most recent call last):\n  File \"main.py\", line 10, in <module>\n    print(\"depth(100_000_000):\", depth(100_000_000))\n                                 ~~~~~^^^^^^^^^^^^^\n  File \"main.py\", line 5, in depth\n    return 0 if n == 0 else 1 + depth(n - 1)\n                                ~~~~~^^^^^^^\n  File \"main.py\", line 5, in depth\n    return 0 if n == 0 else 1 + depth(n - 1)\n                                ~~~~~^^^^^^^\n  File \"main.py\", line 5, in depth\n    return 0 if n == 0 else 1 + depth(n - 1)\n                                ~~~~~^^^^^^^\n  [Previous line repeated 996 more times]\nRecursionError: maximum recursion depth exceeded\n",
+   "lang": "python",
+   "exit": 1
+  },
+  "deep.go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"os\"\n\t\"os/exec\"\n\t\"strings\"\n)\n\nfunc depth(n int) int {\n\tif n == 0 {\n\t\treturn 0\n\t}\n\treturn 1 + depth(n-1)\n}\n\nfunc main() {\n\tif len(os.Args) > 1 { // the child process: the overflow happens here\n\t\tdefer func() {\n\t\t\trecover() // does not help: a stack overflow is a fatal error, not a panic\n\t\t}()\n\t\tfmt.Println(\"depth(100_000_000):\", depth(100_000_000))\n\t\treturn\n\t}\n\tfmt.Println(\"depth(500):\", depth(500))\n\t// Run this program again as a child, and keep only its \"fatal error\" line,\n\t// because Go also prints hundreds of lines of trace.\n\tout, err := exec.Command(os.Args[0], \"child\").CombinedOutput()\n\tfor _, line := range strings.Split(string(out), \"\\n\") {\n\t\tif strings.HasPrefix(line, \"fatal error\") {\n\t\t\tfmt.Println(line)\n\t\t}\n\t}\n\tfmt.Println(\"child:\", err)\n}\n",
+   "out": "depth(500): 500\nfatal error: stack overflow\nchild: exit status 2\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "deep.java": {
+   "code": "public class Main {\n    static long depth(long n) {\n        return n == 0 ? 0 : 1 + depth(n - 1);\n    }\n\n    public static void main(String[] args) {\n        System.out.println(\"depth(500): \" + depth(500));\n        try {\n            System.out.println(\"depth(100_000_000): \" + depth(100_000_000));\n        } catch (StackOverflowError e) {\n            System.out.println(\"caught StackOverflowError, still running\");\n        }\n    }\n}\n",
+   "out": "depth(500): 500\ncaught StackOverflowError, still running\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "proto.fail.c": {
+   "code": "#include <stdio.h>\n\nint main(void) {\n    printf(\"area: %d\\n\", area(3, 4));\n    return 0;\n}\n\nint area(int w, int h) {\n    return w * h;\n}\n",
+   "error": "main.c: In function ‘main’:\nmain.c:4:26: error: implicit declaration of function ‘area’ [-Wimplicit-function-declaration]\n    4 |     printf(\"area: %d\\n\", area(3, 4));\n      |                          ^~~~",
+   "lang": "c"
+  }
+ },
+ "exercises": {
+  "pick-and-apply": {
+   "starter": "fn double(n: i32) -> i32 {\n    n * 2\n}\n\nfn negate(n: i32) -> i32 {\n    -n\n}\n\nfn identity(n: i32) -> i32 {\n    n\n}\n\n/// The function called `name`: \"double\", \"negate\", or `identity` for anything else.\nfn by_name(name: &str) -> fn(i32) -> i32 {\n    todo!(\"a match on name whose arms are function names, with no parentheses\")\n}\n\n/// Apply `f` to `x`, then to the result, `times` times in all. `f` may capture variables.\nfn apply_n(f: impl Fn(i32) -> i32, times: u32, x: i32) -> i32 {\n    todo!(\"a for loop over 0..times that updates a mutable copy of x\")\n}\n\nfn main() {\n    assert_eq!(by_name(\"double\")(4), 8);\n    assert_eq!(by_name(\"negate\")(4), -4);\n    assert_eq!(by_name(\"nope\")(4), 4);\n\n    assert_eq!(apply_n(double, 3, 1), 8);\n    assert_eq!(apply_n(negate, 2, 7), 7);\n    // Zero times means the input comes back unchanged.\n    assert_eq!(apply_n(double, 0, 5), 5);\n    // A closure that captures `step` works because the parameter is `impl Fn`.\n    let step = 7;\n    assert_eq!(apply_n(|n| n + step, 3, 0), 21);\n\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "fn double(n: i32) -> i32 {\n    n * 2\n}\n\nfn negate(n: i32) -> i32 {\n    -n\n}\n\nfn identity(n: i32) -> i32 {\n    n\n}\n\n/// The function called `name`: \"double\", \"negate\", or `identity` for anything else.\nfn by_name(name: &str) -> fn(i32) -> i32 {\n    match name {\n        \"double\" => double,\n        \"negate\" => negate,\n        _ => identity,\n    }\n}\n\n/// Apply `f` to `x`, then to the result, `times` times in all. `f` may capture variables.\nfn apply_n(f: impl Fn(i32) -> i32, times: u32, x: i32) -> i32 {\n    let mut value = x;\n    for _ in 0..times {\n        value = f(value);\n    }\n    value\n}\n\nfn main() {\n    assert_eq!(by_name(\"double\")(4), 8);\n    assert_eq!(by_name(\"negate\")(4), -4);\n    assert_eq!(by_name(\"nope\")(4), 4);\n\n    assert_eq!(apply_n(double, 3, 1), 8);\n    assert_eq!(apply_n(negate, 2, 7), 7);\n    // Zero times means the input comes back unchanged.\n    assert_eq!(apply_n(double, 0, 5), 5);\n    // A closure that captures `step` works because the parameter is `impl Fn`.\n    let step = 7;\n    assert_eq!(apply_n(|n| n + step, 3, 0), 21);\n\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "small-functions": {
+   "starter": "/// `n` limited to the range `lo..=hi`.\nfn clamp(n: i32, lo: i32, hi: i32) -> i32 {\n    todo!(\"return lo if n < lo, hi if n > hi, otherwise n: an early return, then a tail expression\")\n}\n\n/// Gregorian leap year: divisible by 4, except centuries, except every 400th year.\nfn is_leap_year(year: u32) -> bool {\n    todo!(\"one boolean expression with && and ||, and no semicolon at the end\")\n}\n\n/// The greatest common divisor, by Euclid's rule: gcd(a, 0) is a, otherwise gcd(b, a % b).\nfn gcd(a: u32, b: u32) -> u32 {\n    todo!(\"the base case is an early return; otherwise the function calls itself\")\n}\n\nfn main() {\n    assert_eq!(clamp(5, 0, 10), 5);\n    assert_eq!(clamp(-3, 0, 10), 0);\n    assert_eq!(clamp(99, 0, 10), 10);\n    assert_eq!(clamp(0, 0, 10), 0);\n\n    assert!(is_leap_year(2024));\n    assert!(!is_leap_year(2023));\n    // Centuries are not leap years, unless divisible by 400.\n    assert!(!is_leap_year(1900));\n    assert!(is_leap_year(2000));\n\n    assert_eq!(gcd(12, 18), 6);\n    assert_eq!(gcd(17, 5), 1);\n    // The base case, whichever side is zero.\n    assert_eq!(gcd(7, 0), 7);\n    assert_eq!(gcd(0, 5), 5);\n\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "/// `n` limited to the range `lo..=hi`.\nfn clamp(n: i32, lo: i32, hi: i32) -> i32 {\n    if n < lo {\n        return lo;\n    }\n    if n > hi {\n        return hi;\n    }\n    n\n}\n\n/// Gregorian leap year: divisible by 4, except centuries, except every 400th year.\nfn is_leap_year(year: u32) -> bool {\n    year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)\n}\n\n/// The greatest common divisor, by Euclid's rule: gcd(a, 0) is a, otherwise gcd(b, a % b).\nfn gcd(a: u32, b: u32) -> u32 {\n    if b == 0 {\n        return a;\n    }\n    gcd(b, a % b)\n}\n\nfn main() {\n    assert_eq!(clamp(5, 0, 10), 5);\n    assert_eq!(clamp(-3, 0, 10), 0);\n    assert_eq!(clamp(99, 0, 10), 10);\n    assert_eq!(clamp(0, 0, 10), 0);\n\n    assert!(is_leap_year(2024));\n    assert!(!is_leap_year(2023));\n    // Centuries are not leap years, unless divisible by 400.\n    assert!(!is_leap_year(1900));\n    assert!(is_leap_year(2000));\n\n    assert_eq!(gcd(12, 18), 6);\n    assert_eq!(gcd(17, 5), 1);\n    // The base case, whichever side is zero.\n    assert_eq!(gcd(7, 0), 7);\n    assert_eq!(gcd(0, 5), 5);\n\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}

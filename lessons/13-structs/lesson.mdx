@@ -1,0 +1,413 @@
+<p class="lr-layer">The toolkit</p>
+
+A **struct** groups several values under one name, each with a name of its own. It is how you make a type for a real thing in your program: a user, a point, a config. Outputs on this page come from Linux on 64-bit ARM with Rust 1.99.1; where a fact depends on the machine or the compiler version, the text says so.
+
+## Defining and building a struct
+
+You list the fields and their types once. Then you build values by giving every field a value:
+
+<Snippet file="define.rs" />
+
+- Fields can be written in any order. Reading is `book.title`.
+- **Every field is required.** Nothing is filled in for you, not even zero. The gotcha above shows the error. When you want defaults, you ask for them on purpose (see [derive](#derive-asking-the-compiler-for-standard-behaviour)).
+- You cannot add a field later. A name that is not in the definition is a compile error:
+
+<Snippet file="no-such-field.fail.rs" />
+
+A [tuple](/learn/tuples/) is the quick way to return two or three values. Reach for a struct when the parts need names, or when you want a type of your own that the compiler will not mix up with another.
+
+`mut` belongs to the whole variable. You cannot write `mut` on one field:
+
+<Snippet file="immutable-field.fail.rs" />
+
+(A few special types, such as `Cell`, can be changed through a variable that is not `mut`, on purpose. [Smart pointers](/learn/smart-pointers/#cell-and-refcell-change-it-through-a-shared-reference) covers them.)
+
+## Field init shorthand
+
+When a variable has the same name as the field, write the name once. This is common in functions that build a struct from their arguments:
+
+<Snippet file="shorthand.rs" />
+
+Rust has no constructors. A plain function that returns the struct does the job. By habit it is called `new`, and it lives in an `impl` block, which the [next lesson](/learn/methods/) covers.
+
+## Building one struct from another
+
+**Struct update syntax** takes the fields you did not list from another value of the same struct. `..base` goes last:
+
+<Snippet file="update.rs" />
+
+In the first case, `base` is still whole because `..base` only took `retries` and `verbose`, which are copied. If `..base` has to supply a `String` or any other owned value, that value is **moved** out of `base`, as in `let b = a;` ([Ownership](/learn/ownership/)). Then `base` can't be used as a whole:
+
+<Snippet file="update-moves.fail.rs" />
+
+To keep `base`, take a copy with `..base.clone()`, as the second case does. `..Default::default()` fills the rest from the struct's defaults, as in the gotcha's fix.
+
+## Tuple structs and unit structs
+
+A **tuple struct** has fields without names, reached by position. A **unit struct** has no fields at all:
+
+<Snippet file="tuple-unit.rs" />
+
+A tuple struct with one field is called a [**newtype**](/learn/idioms/#newtype-a-type-for-each-meaning). Here `Meters` takes no more space than the `f64` inside it (8 bytes, on this compiler), but it is a new type to the compiler, so a function that wants `Meters` will not accept feet by accident:
+
+<Snippet file="newtype.fail.rs" />
+
+A unit struct takes no space. It is used as a marker, or to hang behaviour on once you meet [traits](/learn/traits/).
+
+## Nested structs
+
+A field can be another struct. Chain the dots to reach inside, and to change it:
+
+<Snippet file="nested.rs" />
+
+The inner struct lives inside the outer one, in the same block of memory. The sizes show it: a `Point` is two `i32`s (8 bytes), and a `Circle` is that plus a `u32` (12), with no room for a pointer.
+
+<ForLang only="java kotlin csharp python typescript">
+In a Java, Kotlin, Python or TypeScript class, a field holding another object holds a reference to a separate object. Here it is inline. (C# `struct` fields are inline too.)
+</ForLang>
+
+## Derive: asking the compiler for standard behaviour
+
+A new struct can't do much: it can't be printed, compared or copied. `#[derive(…)]` above a struct asks the compiler to write that code for you, using the fields. Each name in the list is a **trait**: a named ability a type can have. [Traits](/learn/traits/) come later; for now each one is a switch.
+
+| Derive | What you get | Needs |
+|---|---|---|
+| `Debug` | `{:?}` and `{:#?}` printing | every field is `Debug` |
+| `Clone` | `.clone()`, a full copy | every field is `Clone` |
+| `Copy` | assignment copies instead of moving (needs `Clone` too) | every field is `Copy`, so no `String` or `Vec` |
+| `PartialEq` | `==` and `!=`, field by field | every field is `PartialEq` |
+| `Eq` | signals that every value is equal to itself | every field is `Eq`, so no `f64` |
+| `PartialOrd`, `Ord` | `<`, `>` and sorting, field by field in the order you declared them | every field has it; `Ord` also excludes `f64` |
+| `Hash` | use in a `HashSet`, or as a `HashMap` key (with `Eq`) | every field is `Hash` |
+| `Default` | `Type::default()`, with `0`, `false` and `""` | every field has a default |
+
+<Snippet file="derive.rs" />
+
+`1.10 > 1.9` is true because the derived comparison looks at `major` first, then `minor`, as numbers. The `Partial` versions exist because `f64` has a value, `NaN` ("not a number"), that is not equal to itself, as the last line shows. A struct holding an `f64` can derive `PartialEq` but not `Eq`: that is a compile error (E0277). And `#[derive(Copy)]` on a struct with a `String` is refused (E0204), because a bitwise copy of a `String` would mean two owners of one heap block.
+
+`Hash` plus `Eq` lets a struct be an item in a set, or a key in a [map](/learn/maps/) (covered later):
+
+<Snippet file="derive-hash.rs" />
+
+### Printing: `{:?}` and `{:#?}`
+
+`{}` needs a trait called `Display`, which you write yourself ([Common traits](/learn/common-traits/#printing-debug-and-display), later). `{:?}` uses `Debug`, which the compiler can write for you. `{:#?}` is the same on many lines, which helps with nested structs:
+
+<Snippet file="debug-print.rs" />
+
+Without the derive, the error says what to add:
+
+<Snippet file="no-debug.fail.rs" />
+
+Debug output is for programmers: logs, `assert_eq!` failures, quick checks. The standard library docs say derived `Debug` formats are not stable and may change in future Rust versions, so don't parse them.
+
+## Passing structs to functions
+
+A struct follows the borrowing rules you already know, as a whole. The signature tells the reader what the function may do: `&Account` reads it, `&mut Account` changes it, `Account` takes it over.
+
+<Snippet file="borrow-struct.rs" />
+
+Field access looks through a reference, so `a.owner` works whether `a` is an `Account` or a `&Account`. Passing the struct by value moves it, and the caller has nothing left:
+
+<Snippet file="move-struct.fail.rs" />
+
+The fix is the one from [Borrowing](/learn/borrowing/): take `&Order`, unless the function really needs to keep it.
+
+## Structs that own data, and structs that borrow
+
+Every struct so far *owns* its fields. A `String` field owns its text, a `Vec<String>` field owns its list, and when the struct goes away its fields are freed with it. This is the default, and the right choice for most structs.
+
+A field can also be a reference, like `&str`, which borrows text owned by someone else. Rust must then know that the struct will not outlive that text. You write that down with a **lifetime**, which is the later lesson [Lifetimes](/learn/lifetimes/). Until then, the compiler asks for it:
+
+<Snippet file="borrowed-field.fail.rs" />
+
+The `'a` in the suggestion is a lifetime name. Don't worry about it yet. Use `String` and `Vec` fields until you meet lifetimes.
+
+## Who can see the fields
+
+By default, a field can be used only by code in the same **module**, or in modules nested inside it. A module is a named group of code (`mod shop { … }`; a file can be a module too). Mark a field `pub` to let code anywhere use it. Privacy is per field, and a struct can mix both kinds:
+
+<Snippet file="private-field.fail.rs" />
+
+Code inside `shop` can read `price_cents`:
+
+<Snippet file="privacy.rs" />
+
+Code outside the module can't build an `Item` with a literal either, because a literal must name every field, private ones included (E0451). The module offers a function like `make_item` instead. So a private field can be changed later without breaking code outside the module.
+
+## Structs in your language
+
+<ForLang only="go">
+
+Go's `type User struct` and Rust's `struct User` are close relatives. The differences are in the defaults:
+
+| In Go | In Rust |
+|---|---|
+| `User{Name: "ana"}`, the rest becomes zero | every field must be given; `..Default::default()` asks for zeros. Go's `*int` for "unset" is `Option<u32>` ([Option](/learn/option/)) |
+| `var u User`, a zero value | `User::default()` after `#[derive(Default)]` |
+| `NewUser(…)` by convention | `User::new(…)` by convention (next lesson) |
+| each field exported by its capital letter, for the whole package | `pub` on each field you open; the unit is the module, which is like a package but several fit in one file and they nest (it has nothing to do with `go.mod`) |
+| `shop.Item{Name: "x"}` compiles from another package, with unexported fields at zero | refused from outside the module (E0451): a function inside must build it |
+| `loud := base; loud.Verbose = true` | `Config { verbose: true, ..base }`: moves `base`'s `String`; use `..base.clone()` to keep `base` |
+| `b := a` copies the struct, but a slice, map or pointer inside it is shared | `let b = a;` moves; `a.clone()` copies everything, deeply |
+| `f(u)` copies `u`, `f(&u)` may change it | `f(u)` moves; `f(&u)` reads; `f(&mut u)` changes |
+| `type Meters float64` | `struct Meters(f64)` |
+| `struct{}` | a unit struct |
+| `u1 == u2`; `map[Point]bool` | `#[derive(PartialEq)]`; add `Eq, Hash` for a set or map key |
+| `fmt.Printf("%+v", u)` | `println!("{u:?}")` or `{u:#?}` |
+| embedding `User` inside `Admin` | a named field `user: User` |
+
+Go's `*User` does two jobs, "don't copy" and "may change". Rust splits them in two: `&User` cannot change anything. Calling by value is where Go and Rust differ most:
+
+<Snippet file="args.go" />
+
+A Go defined type is already a newtype, and the compiler refuses the wrong one, but an untyped constant slips through. Rust has no such constant:
+
+<Snippet file="meters.fail.go" />
+
+<Snippet file="meters.go" />
+
+<Snippet file="newtype-literal.fail.rs" />
+
+Rust refuses `describe(1200.0)`: you write `Meters(1200.0)`. Embedding does two jobs in Go: it saves writing the path to inner fields, and it makes the outer type satisfy interfaces by promotion. Rust does not promote automatically. You write the path (`a.user.name`), or write a small forwarding function. Traits cover the interface half, [later](/learn/traits/). Note the shared slice in Go's copy:
+
+<Snippet file="embedded.go" />
+
+<Snippet file="composition.rs" />
+
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+
+A Java `record`, Kotlin `data class` and C# `record` are all "a type with named fields, plus equality and printing written for you". In Rust that is a `struct` with derives:
+
+| In Java, Kotlin, C# | In Rust |
+|---|---|
+| `record User(String name, int age)` | `struct User { name: String, age: u32 }` |
+| generated `equals`, `hashCode`, `toString` | `#[derive(PartialEq, Eq, Hash, Debug)]`; `Debug` is the closest to `toString`, not a user-facing format |
+| Kotlin `u.copy(age = 31)`, C# `u with { Age = 31 }` | `User { age: 31, ..u }` (moves) or `..u.clone()` |
+| a class with setters | `pub` fields and a `let mut` variable |
+| `new User()`, a no-argument constructor | none; `#[derive(Default)]` and `User::default()` |
+| `class Admin extends User` | no inheritance: `Admin` holds a `user: User` field |
+
+Here is what a Java record generates:
+
+<Snippet file="record-eq.java" />
+
+Kotlin's `copy` and C#'s `with` are **shallow**. They copy the references in the fields, not what they point at, so the new value and the old share one list:
+
+<Snippet file="copy-shallow.kt" />
+
+<Snippet file="with-shallow.cs" />
+
+A `Vec` field cannot be shared by accident. `..a` either moves the list out of `a` or, with `.clone()`, makes an independent copy:
+
+<Snippet file="team-copy.rs" />
+
+If you know C# `struct`: it is a value type that copies on assignment. A Rust struct is not tied to either idea. It lives where you put it, and `let b = a;` moves it (or copies it, if it is `Copy`).
+
+</ForLang>
+
+<ForLang only="python typescript">
+
+| In Python and TypeScript | In Rust |
+|---|---|
+| `@dataclass class User` / `interface User` | `struct User` |
+| `User(name="ana", age=30)` / `{ name: "ana", age: 30 }` | `User { name: …, age: 30 }` |
+| `dataclasses.replace(u, age=31)` / `{ ...u, age: 31 }` | `User { age: 31, ..u }` (moves) or `..u.clone()` |
+| `u == v` (a dataclass generates it; in TS objects compare by identity) | `#[derive(PartialEq)]` then `u == v` |
+| `print(u)` / `console.log(u)` | `println!("{u:?}")`, needs `#[derive(Debug)]` |
+| `u.nickname = "an"` (TypeScript refuses it too) | compile error: no such field |
+| `const u = {…}; u.age = 4` works | `let u = …; u.age = 4` is an error; `let mut` allows it |
+| `_price`, a convention | `price` without `pub`, enforced |
+| `class Admin(User)` | no inheritance: `Admin` holds a `user: User` field |
+
+A Python dataclass is a normal class. By default its fields can be changed and new attributes can be added to one object, and the type hints are not checked when the program runs, as this run shows (a type checker such as mypy checks them, separately):
+
+<Snippet file="dataclass.py" />
+
+The mistake to watch for is `b = a`. In your language it makes two names for one object. In Rust it **moves**. And a copy made by `replace` or `{ ...u }` is shallow: it shares the list.
+
+<Snippet file="alias.py" />
+
+<Snippet file="spread.ts" />
+
+In Rust, `..u` moves the list out of `u`, and `..u.clone()` makes an independent copy:
+
+<Snippet file="team-copy.rs" />
+
+A TypeScript `interface` is checked by **shape** (structural typing). Anything with the right fields fits, whatever it is called. A Rust struct is checked by **name** (nominal typing): two structs with the same fields are different types.
+
+<Snippet file="structural.ts" />
+
+TypeScript accepts the `Feet` where `Meters` is wanted. In Rust the [newtype example](#tuple-structs-and-unit-structs) is refused.
+
+</ForLang>
+
+<ForLang only="c cpp">
+
+A Rust struct reads like a C struct with designated initializers. The differences are in what the compiler fills in, who can see the fields, and where they go.
+
+| In C or C++ | In Rust |
+|---|---|
+| `struct User u = {.name = "ana"};`, the rest is zero | every field must be given |
+| `struct User u = {0};` or `User u{};` | `User::default()` after `#[derive(Default)]` |
+| `p->name` | `p.name`, for a value and for a reference |
+| C++ `struct` members are public by default; `class` and `private:` | private by default, per field, per module (no `friend`); `pub` opens a field |
+| `b = a;` copies the bytes (C), runs the copy constructor (C++) | `let b = a;` moves; `a.clone()` copies. [Ownership](/learn/ownership/) has the C++ comparison |
+| `std::move(a.owner)` typically leaves an empty string behind | `std::mem::take(&mut a.owner)` does that; from a plain `&` you can only borrow or clone |
+| C++ `operator==` (`= default` in C++20), `operator<<` | `#[derive(PartialEq)]`, `#[derive(Debug)]` |
+| C `typedef struct { … } User;` | not needed: `struct User` is the type name |
+| `alignas(N)`, `#pragma pack` | `#[repr(align(N))]`, `#[repr(packed)]`; see the [Reference](https://doc.rust-lang.org/reference/type-layout.html) |
+
+Designated initializers exist in both languages, with a twist. C accepts them in any order. The C++20 standard requires declaration order, and GCC 14 (the compiler the runner uses) rejects the other order. Rust takes any order, as `define.rs` did.
+
+<Snippet file="designated.c" />
+
+<Snippet file="designated-order.fail.cpp" />
+
+A C++ empty struct is at least one byte, so that two objects have different addresses. A Rust unit struct is zero bytes, as `tuple-unit.rs` printed:
+
+<Snippet file="empty.cpp" />
+
+Field order in memory is covered in [Size, alignment and padding](#size-alignment-and-padding).
+
+</ForLang>
+
+<p class="lr-layer">Going deeper</p>
+
+## Moving a struct, and moving out of one
+
+A struct you own can be taken apart one field at a time. Moving a field out is a **partial move**. The other fields stay usable, but the struct as a whole no longer is:
+
+<Snippet file="partial-move.rs" />
+
+<Memory
+  title="let customer = order.customer;"
+  stack={[
+    { name: 'order.customer', type: 'String', cells: ['ptr', 'len 3', 'cap 3'], to: 'name', gone: 'moved' },
+    { name: 'order.items', type: 'Vec<String>', cells: ['ptr', 'len 1', 'cap 1'], to: 'items' },
+    { name: 'order.id', type: 'u32', cells: ['7'] },
+    { name: 'customer', type: 'String', cells: ['ptr', 'len 3', 'cap 3'], to: 'name' },
+  ]}
+  heap={[
+    { id: 'name', label: '3 bytes of UTF-8', cells: ['a', 'n', 'a'] },
+    { id: 'items', label: '1 String', cells: ['"tea"'] },
+  ]}
+  caption="The three fields of `order` sit together in one struct; they are listed on separate rows here to show what moved. Only `order.customer` moved. The text on the heap did not (`same heap bytes: true`), and `order.id` and `order.items` are still usable. The three numbers of a `String` are drawn as ptr, len, cap; the order inside the real `String` is not specified."
+/>
+
+Using the struct whole is the part that no longer works:
+
+<Snippet file="partial-move.fail.rs" />
+
+Behind a reference you can't move fields out at all, because the owner would be left with a hole. This is the error you get from `fn owner_name(a: &Account) -> String { a.owner }`:
+
+<Snippet file="move-out-of-ref.fail.rs" />
+
+The compiler's suggestion, `.clone()`, is the simplest fix, and `borrow-struct.rs` above uses it. If you only need to look at the text, borrow it (`&a.owner`).
+
+## What a struct looks like in memory
+
+A struct is its fields placed next to each other in one block. For a struct with a `String`, the block holds the `String`'s three numbers, and the text lives on the heap:
+
+<Memory
+  title={'let u = User { name: String::from("ana"), age: 30, active: true };'}
+  stack={[
+    { name: 'u', type: 'User, 32 bytes', cells: ['name: ptr', 'len 3', 'cap 3', 'age: 30', 'active: true', 'padding 3'], to: 'buf' },
+  ]}
+  heap={[{ id: 'buf', label: '3 bytes of UTF-8', cells: ['a', 'n', 'a'] }]}
+  caption="On this compiler `name` takes the first 24 bytes, `age` the next 4 and `active` 1 more, then 3 bytes of padding (the offsets printed below). The three numbers inside `String` are drawn as ptr, len, cap; their real order is not specified. When `u` goes out of scope, the heap bytes are freed with it."
+/>
+
+The program prints the numbers behind the picture:
+
+<Snippet file="memory.rs" />
+
+`offset_of!` is the byte position of a field inside its struct. The fields add up to 24 + 4 + 1 = 29 bytes, but `User` is 32. The missing 3 bytes are **padding**.
+
+## Size, alignment and padding
+
+Every type has an **alignment**: a value of alignment `n` can only be stored at an address that is a multiple of `n`. A struct is laid out so that each field sits at an address that suits it, and the whole struct's size is a multiple of its alignment. The gaps this leaves are padding.
+
+In what order do the fields go? Take `u8`, `u32`, `u8`, in that order:
+
+<Snippet file="layout.rs" />
+
+`CLayout` has the fields in the order written: `a` at 0, 3 bytes of padding so `b` can sit at 4, `c` at 8, and padding at the end to reach a multiple of 4. That is 12 bytes for 6 bytes of data. `Plain` is 8, because rustc put `b` first, then `a` and `c`, and the padding shrank.
+
+<Memory
+  title="The bytes inside one struct (not a stack)"
+  stack={[
+    { name: 'Plain', type: 'size 8', cells: ['b: 4 bytes', 'a: 1', 'c: 1', 'padding 2'], note: 'offsets: b 0, a 4, c 5' },
+    { name: 'CLayout', type: 'size 12', cells: ['a: 1', 'padding 3', 'b: 4 bytes', 'c: 1', 'padding 3'], note: 'offsets: a 0, b 4, c 8' },
+  ]}
+  caption="The same three fields. The first row is what rustc 1.99.1 chose for the default layout. The second is `#[repr(C)]`, which fixes the order to the one you wrote."
+/>
+
+What is promised and what is only what happened here? The [Rust Reference](https://doc.rust-lang.org/reference/type-layout.html) says:
+
+- **Promised, default layout:** fields do not overlap, each is aligned, and the size is a multiple of the alignment.
+- **Not promised, default layout:** the order of the fields, so also the offsets and the 8 against 12. Those are rustc 1.99.1 on this machine. The compiler is free to reorder to save space, and here it did.
+- **Promised with `#[repr(C)]`:** the order you wrote, with the padding C would add.
+
+Use `#[repr(C)]` when another program expects exactly this layout, such as C code you call. For files and network messages, write the fields one at a time: padding bytes hold no meaningful value, and byte order is yours to choose. Otherwise leave the default.
+
+For one struct, the saving is nothing. For ten million in a `Vec` it is 4 bytes each here, which is 40 MB. You never need to choose it, and your code should not depend on the field order or the size unless you wrote `#[repr(C)]`.
+
+<ForLang only="c">
+
+C promises the declaration order: padding is added, but fields are never moved. The same struct in C:
+
+<Snippet file="layout.c" />
+
+Same size and offsets as `CLayout`. In C you save space by ordering the fields yourself, most strictly aligned first. rustc may do that for you, but nothing promises it.
+
+</ForLang>
+
+<ForLang only="cpp">
+
+For a struct like this one, C++ also keeps the declaration order and adds padding. The same struct in C++:
+
+<Snippet file="layout.cpp" />
+
+Same size and offsets as `CLayout`. In C++ you save space by ordering the fields yourself, most strictly aligned first. rustc may do that for you, but nothing promises it.
+
+</ForLang>
+
+<ForLang only="go">
+
+Go keeps the order you wrote, as C does. This is the same struct in Go:
+
+<Snippet file="layout.go" />
+
+That matches `CLayout`: 12 bytes, not 8. To save space in Go you order the fields yourself, most strictly aligned first.
+
+</ForLang>
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Each exercise is a small program with checks in `main`. Open it in the Playground, replace the `todo!()`, and run it until it prints `all checks passed`. The checks include the case people get wrong.
+
+<Exercise name="settings" title="Update a struct, and ask for defaults">
+Write `rename` and `quieter` with struct update syntax, and `fresh`, which asks for the defaults. Note which of the first two needs `.clone()`, and why the other does not.
+</Exercise>
+
+<Exercise name="rects" title="Rectangles by reference">
+Write `area`, `contains` and `shift` for a `Rect` with a `Point` inside it. They must also work for the huge rectangle at the end of `main`, and `contains` has to treat the edges the right way round.
+</Exercise>
+
+<Exercise name="basket" title="A struct that owns its data">
+Write `add`, `describe` and `checkout` for a `Basket` that owns a `String` and a `Vec<String>`. `checkout` moves both fields out. The empty basket needs its own message.
+</Exercise>
+
+## Read more
+
+- [The Rust Book, chapter 5: Using Structs to Structure Related Data](https://doc.rust-lang.org/book/ch05-00-structs.html), with [defining and instantiating structs](https://doc.rust-lang.org/book/ch05-01-defining-structs.html) (shorthand, update syntax, tuple and unit structs) and [an example program](https://doc.rust-lang.org/book/ch05-02-example-structs.html).
+- [The Rust Book, appendix C: Derivable Traits](https://doc.rust-lang.org/book/appendix-03-derivable-traits.html), what each derive generates.
+- [Rust by Example: Structures](https://doc.rust-lang.org/rust-by-example/custom_types/structs.html) and [Derive](https://doc.rust-lang.org/rust-by-example/trait/derive.html).
+- [The Rust Reference: Type layout](https://doc.rust-lang.org/reference/type-layout.html), what is promised about the default layout and `repr(C)`; and [`offset_of!`](https://doc.rust-lang.org/std/mem/macro.offset_of.html), [`size_of`](https://doc.rust-lang.org/std/mem/fn.size_of.html) and [`align_of`](https://doc.rust-lang.org/std/mem/fn.align_of.html) in `std::mem`.
+- [The Rust Book, chapter 7.2: Control Scope and Privacy with Modules](https://doc.rust-lang.org/book/ch07-02-defining-modules-to-control-scope-and-privacy.html), and [the Reference on visibility and privacy](https://doc.rust-lang.org/reference/visibility-and-privacy.html).
+- [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html) and [`Default`](https://doc.rust-lang.org/std/default/trait.Default.html) in the standard library docs.

@@ -1,0 +1,108 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Match"
+part: "basics"
+intro: >-
+  `match` is Rust's `switch` / `when`. It also returns a value, it must cover every
+  possible value, and its patterns can take a value apart (a tuple, a list, a range).
+coming_from:
+  go: >-
+    `match` is a `switch` with no fall-through, where `_` is `default`, `6 | 7` lists
+    values, and `1..=5` matches a range. It must cover every possible value, and it
+    gives back a value, so there is no `var kind string` to fill in.
+  kotlin: >-
+    `match` is your `when`: `_` is `else`, `6 | 7` is `6, 7`, and `1..=5` is `in 1..5`.
+    It must cover every value even for an `Int` used as a statement, which Kotlin's
+    `when` does not check. A pattern can also take a value apart (`(0, y)`, `[first, ..]`),
+    which a `when` branch cannot.
+  python: >-
+    This is Python's `match`/`case`, with `|` and `_` meaning the same thing. The
+    differences are that `match` gives back a value, and the compiler refuses to build
+    if some value isn't covered.
+  typescript: >-
+    `match` replaces `switch`, with no fall-through and no `break`. Each arm gives a
+    value, and the compiler checks that every case is covered, which is the `never`
+    trick built in.
+  java: >-
+    `match` is a Java 21 `switch` expression with arrows: it returns a value and must
+    cover every case. `6 | 7` is `case 6, 7`, `_` is `default`, and the range `1..=5` is
+    a pattern of its own, where Java uses a `when` guard (on an `Object` or `Integer`).
+  csharp: >-
+    `match` is your switch expression: `1..=5` is `>= 1 and <= 5`, `6 | 7` is `6 or 7`,
+    and `_` is the same discard. The real difference is that a missing case is a compile
+    error in Rust, not a CS8509 warning followed by a runtime exception.
+  c: >-
+    `match` is a `switch` that returns a value and never falls through, so there is no
+    `break`. The compiler refuses a `match` that misses a possible value, where C would
+    quietly skip it.
+  cpp: >-
+    `match` is a `switch` with no fall-through that produces a value, plus ranges
+    (`1..=5`) and alternatives (`6 | 7`). Leaving out a case is a hard compile error. In
+    C++ a `switch` over an `int` with no `default` says nothing at all.
+notes:
+  - >-
+    Cases never fall through to the next one. There is no `break` to forget.
+  - "`|` means \"or\". `1..=5` is a range that includes 5; `1..5` stops before it."
+  - >-
+    A plain name in a pattern is a new variable that fits anything. It does not
+    compare with a variable of the same name.
+  - >-
+    `match` gets much more useful with enums, Option and Result (lessons below).
+gotcha:
+  title: "Leaving out the \"anything else\" case"
+  verdict: "rust-rule"
+  looks_fine: >-
+    You know `day` is between 1 and 7, so a `switch` without `default` looks fine. In
+    several of the languages here that is allowed: a day you did not list leaves `kind`
+    empty, or fails later at run time.
+  rust_sees: >-
+    The compiler does not know what you know. It only sees that `day` is an `i32`, and
+    an i32 can be 0, -5 or 99.
+  why: >-
+    This is a rule, not a safety proof. Nothing unsafe happens in the other languages:
+    each picks what a missing case does (an empty string, an exception). For
+    `day = 99`, which branch runs, and what is `kind`? Rust asks you to answer now, for
+    every value, even the ones you think can't happen.
+  langs:
+    go:
+      status: "runs"
+      says: >-
+        Go runs this and prints weekend. With `day = 99` no case would match, and `kind`
+        would quietly stay an empty string.
+    kotlin:
+      status: "runs"
+      says: >-
+        Kotlin runs this and prints weekend. A `when` statement over an `Int` doesn't have
+        to cover every value (over an enum, a sealed type or a `Boolean` Kotlin does check),
+        so `day = 99` would quietly leave `kind` empty. Written as
+        `val kind = when (day) { … }`, Kotlin refuses it, as shown further down the page.
+    python:
+      status: "runs"
+      says: >-
+        Python prints weekend because 6 matches a case. With `day = 99` no case would
+        match, `kind` would never be set, and the `print` would raise a NameError.
+    typescript:
+      status: "refuses"
+      says: >-
+        TypeScript refuses this too (under `--strict`): the function promises a `string`,
+        but when no case matches it falls off the end and would return `undefined`. The
+        error does not say which case is missing.
+    java:
+      status: "refuses"
+      says: >-
+        Java refuses this too: a switch expression on an int needs a `default` branch,
+        or javac says it does not cover all possible input values.
+    csharp:
+      status: "runs"
+      says: >-
+        It prints weekend, but the compiler warns that the switch is not exhaustive
+        (CS8509). With day = 9 it would throw a SwitchExpressionException at run time.
+    c:
+      status: "runs"
+      says: >-
+        C does not check that a switch covers every value. Day 6 prints weekend, but day
+        9 would quietly print an empty line.
+    cpp:
+      status: "runs"
+      says: >-
+        A `switch` without `default` is fine in C++, so this prints `weekend`. A day
+        like 9 would leave `kind` as an empty string with no complaint.

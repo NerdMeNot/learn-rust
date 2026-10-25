@@ -1,0 +1,268 @@
+<p class="lr-layer">The toolkit</p>
+
+Later lessons say "this lives on the stack" or "this frees the heap memory". This lesson explains those words once. It also answers the question that comes before them: when you write `let b = a`, what does a Rust variable hold?
+
+Sizes come from Linux on a 64-bit ARM machine.
+
+## A variable holds the value
+
+In Java, Kotlin, Python, TypeScript and C# classes, a variable that holds an object holds a **reference**: an arrow to an object that lives somewhere else. `b = a` copies the arrow, so two names lead to one object. The quick comparison at the top of this page showed it: change `b`, and `a` changes too.
+
+In Rust a variable holds **the value itself**, as a C struct, a Go struct or a C# `struct` already does. `let b = a` makes `b` hold its own copy of the bytes:
+
+<Snippet file="holds-value.rs" />
+
+`a` and `b` are separate, 8 bytes each (two `i32`s). Changing `b.x` didn't touch `a`, because there is no arrow. (`#[derive(Clone, Copy)]` is a label that makes `Point` copy bit for bit on `let b = a`; [below](#copy-values-and-moved-values) shows what happens without it.)
+
+<Memory
+  title="let a = Point { x: 1, y: 2 };   let mut b = a;   b.x = 99;"
+  stack={[
+    { name: 'a', type: 'Point', cells: ['x 1', 'y 2'] },
+    { name: 'b', type: 'Point', cells: ['x 99', 'y 2'] },
+  ]}
+  caption="Two variables, each holding its own two numbers. There is no heap and no arrow."
+/>
+
+For some types the value is a small **header** that points at the data. A `String` variable holds a pointer, a length and a capacity, and owns the text it points to.
+
+<ForLang only="java kotlin python typescript csharp">
+<Memory
+  title="b = a, for an object"
+  stack={[
+    { name: 'a', type: 'reference', cells: ['address'], to: 'obj' },
+    { name: 'b', type: 'reference', cells: ['address'], to: 'obj' },
+  ]}
+  heap={[{ id: 'obj', label: 'one Point object', cells: ['x 99', 'y 2'] }]}
+  caption="Both names lead to the same object, so changing it through `b` changes what `a` sees. The names are drawn in a stack column as in Java; Python and JavaScript keep names in tables the runtime manages. A C# `struct` works like the Rust picture above."
+/>
+</ForLang>
+
+<ForLang only="python typescript">
+Python and JavaScript numbers and strings are immutable, so sharing them is harmless and `b = a` looks like a copy. A Rust `Vec` or struct is more like a Python list or dict: mutable, and held whole in its variable. In TypeScript, `const b = a; b.x = 99` works and changes `a` too, because `const` fixes which object `b` names, not what is inside it.
+</ForLang>
+
+<ForLang only="java kotlin csharp" title="For Java, Kotlin and C# readers: what the reference model costs">
+In Java every `Point` is an object and an array of points is an array of references. This program, run on Java 25 (Temurin, HotSpot) in this site's runner, reads how many bytes the thread has allocated:
+
+<Snippet file="object-sizes.java" />
+
+It printed `28 MB`, `4 MB` and `20 MB` (rounded, and specific to this JVM and its default settings; the extract runs it twice and flags any difference). In Rust a `Vec` of a million 8-byte `Point`s is one 8 MB block and a `Vec<i32>` is 4 MB. So the reference model costs about 28 bytes per `Point` instead of 8, and 20 per boxed `Integer` instead of 4. These objects are stored in an array, so the JIT cannot drop their allocation; it can do that only for an object that stays inside one compiled, inlined region ([HotSpot's escape analysis](https://docs.oracle.com/en/java/javase/25/vm/java-hotspot-virtual-machine-performance-enhancements.html#JSJVM-GUID-6BD8FCB5-995B-4AE9-BFAA-B2C7DE2BA5CD)).
+
+- **Primitives.** A Java `int` is held directly in a local or field, but boxed in `List<Integer>`, in generics and in Kotlin's `Int?`. A Java `int[5]` is a heap object; a Rust `[i32; 5]` sits inline. A Kotlin `@JvmInline value class` can avoid the object for one wrapped value; a `data class` cannot.
+- **The heap.** Rust's heap is a malloc-style allocator that doesn't move objects, so an address stays fixed until freed. JVM and CLR heaps bump a pointer in a thread-local buffer, which is cheap; their costs are collector work, cache misses and object headers.
+- **Sharing and cleanup.** The nearest Rust equivalent of a shared reference is `Rc` (`Arc` across threads), covered in the [Ownership lesson](/learn/ownership/#shared-ownership-rc-and-arc). `Box`, `Vec` and `String` are single-owner handles, and assigning one moves it. Rust frees at the end of the owner's scope, like `using` or try-with-resources, but for all memory.
+- **C# `struct`.** A local `struct` is a Rust value, but a `struct` is on the heap as a field of a `class`, when boxed or captured by a lambda, or inside an async state machine. `ref` and `in` parameters are close to `&mut` and `&`, `Span<T>` to a slice, `stackalloc` to a local `[T; N]`.
+- **The surprise.** A `struct` holding a `string` or `List` copies the reference, so two structs still share one object. Rust refuses: a struct holding a `String` can't be `Copy`, so assigning it moves it.
+</ForLang>
+
+Rust does have references, written `&` ([below](#references-and-box)), and `Rc` for several owners of one value. You ask for both; nothing is shared unless you do.
+
+## The stack
+
+A running program keeps most of its data in two places. The first is the **stack**.
+
+Every function call gets a **frame**: a block of memory for its parameters and local variables. When the function returns, its frame is given back. Frames are added and removed at the same end, like a stack of plates.
+
+This makes the stack cheap: no allocator has to search for room, and giving a frame back is just moving one pointer. (Destructors of locals still run.) The price is that everything in a frame has a size the compiler knows at compile time; it reserves what it needs.
+
+<Snippet file="nested-calls.rs" />
+
+`main` calls `sum_of_squares`, which calls `square` twice. Each call has its own `n` and `result`: the first `square` frame was gone before the second began.
+
+<Memory
+  title="While square(4) is running"
+  stack={[
+    { name: 'x', type: 'i32', cells: ['3'], note: "in main's frame" },
+    { name: 'y', type: 'i32', cells: ['4'], note: "in main's frame" },
+    { name: 'a', type: 'i32', cells: ['3'], note: "in sum_of_squares's frame" },
+    { name: 'b', type: 'i32', cells: ['4'], note: "in sum_of_squares's frame" },
+    { name: 'first', type: 'i32', cells: ['9'], note: "in sum_of_squares's frame" },
+    { name: 'n', type: 'i32', cells: ['4'], note: "in square's frame" },
+    { name: 'result', type: 'i32', cells: ['16'], note: "in square's frame" },
+  ]}
+  caption="Three frames, the newest last. When square returns, its frame is gone."
+/>
+
+This is the model to think in. The real machine is cleverer: the compiler may keep a variable in a CPU register (a storage slot inside the processor), remove it, or merge a small function into its caller. None of that changes what your program does.
+
+## The heap
+
+The second place is the **heap**, a large pool of memory the program asks for while it runs. You ask an **allocator** (the code that hands out heap memory) for some bytes; it finds a free spot that big and gives you a **pointer**, the address of that spot. When you are finished, the memory is given back for reuse.
+
+Two common reasons to use the heap are:
+
+- **The size isn't known at compile time:** the text a user types, or the items in a list that grows.
+- **The data must outlive the function that made it.** A frame is gone when its function returns; heap memory stays until it is given back.
+
+Heap data costs more than the stack: you follow a pointer, and Rust's allocator is a malloc-style one that has to find a free spot of the right size ([`std::alloc`](https://doc.rust-lang.org/std/alloc/index.html)). Garbage-collected runtimes allocate differently. The Rust Book's [stack and heap section](https://doc.rust-lang.org/book/ch04-01-what-is-ownership.html#the-stack-and-the-heap) has more.
+
+`String`, `Vec` and `Box` own heap memory. A `&str` is text you can read but don't own; a `String` is text you own and can grow (the [Strings lesson](/learn/strings/) has the full story). A `String` is a small fixed-size header in the variable (a pointer to the text, the length in bytes and the capacity reserved) plus the text on the heap:
+
+<Snippet file="heap-string.rs" />
+
+Both `String` variables take 24 bytes, whether the text is 5 bytes or 1,000. An array variable grows with its elements, because it keeps them inside. That is the key difference between a fixed-size value and one that owns heap memory.
+
+<Memory
+  title='let s = String::from("hello");'
+  stack={[
+    { name: 's', type: 'String', cells: ['pointer', 'length 5', 'capacity 5'], to: 'text' },
+  ]}
+  heap={[{ id: 'text', label: '5 bytes reserved', cells: ['h', 'e', 'l', 'l', 'o'] }]}
+  caption="The header is on the stack and has the same size however long the text is. The arrow is the pointer. When `s` goes out of scope, the heap bytes are given back."
+/>
+
+Who gives the heap bytes back, and when, is what [ownership](/learn/ownership/) is about. In short, the variable that owns the memory gives it back when it goes out of scope, at the end of its `{ }` block. You never write the call.
+
+## Copy values and moved values
+
+Now `let b = a` has a precise meaning: the **variable's bytes are copied** into `b`. The two cases differ in what those bytes are.
+
+For a number, the bytes are the whole value, so `b` is an independent copy and both names stay usable. Such a type is called `Copy`. `Point` is `Copy` only because of its `derive` line. Take the line away and it is moved like a `String`, as the compiler shows:
+
+<Snippet file="point-moves.fail.rs" />
+
+For a type that owns heap memory, the bytes are only the header. In Python, `b = a` on a string just works. In Rust it does not:
+
+<Snippet file="use-after-move.fail.rs" />
+
+Two copies of the header would hold the same pointer, so both would try to give the text back at the end of scope. That is a **double free**: the same memory returned twice, which corrupts the allocator's bookkeeping and is a classic source of security holes. So Rust **moves** the String: the header is copied to `b`, the heap data stays where it is, and `a` can no longer be used. This program shows both cases:
+
+<Snippet file="copy-or-move.rs" />
+
+`n` and `m` both print. For the `String`, the last line shows that the text did not move: `b`'s pointer is the address `a` had. Only the 24-byte header was copied.
+
+<Memory
+  title='let a = String::from("hello");   let b = a;'
+  stack={[
+    { name: 'a', type: 'String', cells: ['pointer', 'length 5', 'capacity 5'], to: 'text', gone: 'moved', note: 'not usable: b owns the text now' },
+    { name: 'b', type: 'String', cells: ['pointer', 'length 5', 'capacity 5'], to: 'text' },
+  ]}
+  heap={[{ id: 'text', cells: ['h', 'e', 'l', 'l', 'o'] }]}
+  caption="The header was copied and the text was not. `a`'s old bytes may still be there, but the compiler won't let you read them, and only `b` will free the text."
+/>
+
+Which types are `Copy`, and what to do instead of moving, are the subject of [Copy or reference?](/learn/copy-or-reference/) and then [Ownership](/learn/ownership/).
+
+## How big is each type?
+
+`size_of` tells you how many bytes a type takes in its variable (`::<i32>` names the type to measure). That shows which types are plain values and which are headers:
+
+<Snippet file="sizes.rs" />
+
+Read down the table:
+
+| Type | Bytes | What those bytes are |
+|---|---|---|
+| `i32`, `u64`, `f64`, `bool`, `char` | 4, 8, 8, 1, 4 | the value itself |
+| `(i32, i32)`, `[u8; 16]`, `Pair` | 8, 16, 8 | the fields or elements, side by side |
+| `&i32` | 8 | a pointer |
+| `&str` | 16 | a pointer and a length, however long the text is |
+| `String`, `Vec<i32>` | 24, 24 | pointer, length and capacity: three 8-byte numbers |
+| `Box<i32>` | 8 | a pointer to one `i32` on the heap |
+
+A `Vec<i32>` is 24 bytes whether it holds three items or three million, because the items aren't in it. Pointers are 8 bytes on this 64-bit machine.
+
+## References and Box
+
+Two more kinds of value hold an address instead of the data.
+
+- **A reference**, written `&x`, is the address of a value that lives elsewhere; taking one doesn't copy the value. It is a pointer-sized variable (8 bytes here; a reference to a `str` or a slice also carries a length).
+- **A `Box<T>`** puts one `T` on the heap and holds the pointer.
+
+<Snippet file="pointers.rs" />
+
+`ptr::eq` asks whether two references point to the same address. It is true for `r` and `x`: `r` points at `x` itself. It is false for `b` and `x`: `Box::new(x)` copied the 42 into new heap memory. (`*r` and `*b` mean "the value this points at".)
+
+<Memory
+  title="let x = 42;   let r = &x;   let b = Box::new(x);"
+  stack={[
+    { name: 'x', type: 'i32', cells: ['42'] },
+    { name: 'r', type: '&i32', cells: ['address of x'], note: 'points at x above; the diagram only draws arrows to the heap' },
+    { name: 'b', type: 'Box<i32>', cells: ['pointer'], to: 'boxed' },
+  ]}
+  heap={[{ id: 'boxed', label: 'a copy of x', cells: ['42'] }]}
+  caption="`r` is a second way to reach `x`. `b` owns a separate copy of 42 on the heap."
+/>
+
+A reference does not own what it points at, which is why handing a function a `&String` is cheap. The rules for when a reference may exist are the [borrowing lesson](/learn/borrowing/).
+
+<p class="lr-layer">Going deeper</p>
+
+## Stack overflow, for real
+
+The stack has a fixed size. For the main thread on Linux it is typically 8 MiB; the limit can be changed, and threads you spawn get a different default. If the frames need more, the program is stopped. The usual cause is recursion that goes too deep:
+
+<Snippet file="recursion.panic.rs" />
+
+`depth(1_000)` works. In a debug build (as on this page) every frame stays alive, and a hundred million frames don't fit. An optimised build may turn this recursion into a loop, so don't rely on the result. The output is not a normal panic: there is no `panicked at` line, only the two lines about the overflow, and the process aborts. A large local array lives in its frame too, so tens of millions of bytes would not fit in 8 MiB either. Use a `Vec` for large data and a loop instead of deep recursion.
+
+<ForLang only="java kotlin csharp">
+Java throws a `StackOverflowError` that you can catch. Rust and .NET abort the process (in this site's runner .NET printed `Stack overflow.` and exited with code 134). Java's `-Xss` flag and the stack size of spawned threads differ from 8 MiB.
+</ForLang>
+
+## How other languages compare
+
+| Language | A struct or object variable holds | Heap memory is freed by |
+|---|---|---|
+| Rust | the struct itself; `Box`, `Vec` and `String` hold a pointer | the owner, when it goes out of scope |
+| C, C++ | the struct itself; `malloc`, `new`, `std::vector` and `std::string` own heap memory (a short `std::string` may be stored inline) | you (`free`, `delete`) or a destructor |
+| Go | the struct itself; the compiler picks stack or heap ([escape analysis](https://go.dev/doc/faq#stack_or_heap)) | the garbage collector |
+| Java, Kotlin | a reference to an object | the garbage collector |
+| C# | a `struct`: the value. A `class`: a reference, usually to a heap object, though .NET 10 can [stack-allocate](https://devblogs.microsoft.com/dotnet/performance-improvements-in-net-10/) one that doesn't escape | the garbage collector |
+| Python, TypeScript | a reference to an object (in Python even an [int is an object](https://docs.python.org/3/reference/datamodel.html#objects-values-and-types)) | CPython: reference counting plus a cycle collector; JavaScript: a collector |
+
+In Go, Java, Python and TypeScript the same code works whichever place the runtime picks. C# lets you choose with `struct` or `class`. Rust also lets you choose, in the types, and in return the compiler knows who owns each heap allocation. So (in safe code) it never frees one twice, frees it at a point fixed by the code, and rejects a reference that would outlive its value.
+
+<ForLang only="go">
+A Go slice header is the same three words as a `Vec`'s: a pointer, a length and a capacity. In Go you needn't know whether a variable is on the stack or the heap. In Rust the type decides, and returning `&local` doesn't compile, where Go moves `local` to the heap automatically.
+</ForLang>
+
+<ForLang only="c cpp">
+This is your stack and your heap. `Box<T>` is roughly `std::unique_ptr<T>`, and you don't write `malloc`, `free`, `new` or `delete`. `let b = a` for a `String` is a move, like `std::move`, except the compiler stops you using the old name. Rust doesn't promise to free every value: `Box::leak`, `std::mem::forget` and an `Rc` cycle leak.
+</ForLang>
+
+## Padding and alignment (optional)
+
+A struct's size is not always the sum of its fields. Processors read most values fastest, or only, from addresses that are a multiple of a number that depends on the type (for a plain number, usually its size). That number is the type's **alignment**. The compiler adds unused **padding** bytes to line fields up.
+
+<Snippet file="padding.rs" />
+
+`MixedC` is `a` (1 byte), 3 bytes of padding so `n` starts at a multiple of 4, `n` (4), `b` (1) and 3 more of padding: 12. `SmallFirstC` keeps the small fields together and needs 2 bytes of padding: 8. Alignment is not size: `[u8; 16]` is 16 bytes with alignment 1.
+
+`#[repr(C)]` keeps fields in the order written, as a C compiler would. Without it, Rust may reorder fields, and the [Reference](https://doc.rust-lang.org/reference/type-layout.html#the-rust-representation) promises no particular layout, so don't rely on a size.
+
+## Where string literals live
+
+The text of a literal like `"hello"` is, in the words of the Rust Book, ["hardcoded directly into the final executable"](https://doc.rust-lang.org/book/ch04-01-what-is-ownership.html#memory-and-allocation).
+
+<Snippet file="static-data.rs" />
+
+`greeting`'s frame is gone when it returns, yet `g` works: the text was never in the frame, and `'static` means it lasts as long as the program. `g` is a `&str`, a pointer and a length (16 bytes), pointing at 5 bytes that belong to the program.
+
+Literals are fast because the text is fixed at compile time. You can't change one because `&str` gives read-only access to bytes that belong to the program. `String::from("hello")` copies them onto the heap, and the `String` owns the copy.
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Each exercise is a program with checks in `main`. Open it in the Playground, replace the `todo!()` (a placeholder that stops the program with your hint), and run it until it prints `all checks passed`. The `&Vec<i32>` in the `vec-header` signatures is a reference: the function looks at the Vec without taking it ([borrowing](/learn/borrowing/)).
+
+<Exercise name="move-or-copy" title="Copy or move?">
+`shifted` takes a `Copy` point, so the caller keeps its own. `with_len` takes a `String`, which is moved in, so it must hand the text back.
+</Exercise>
+
+<Exercise name="sizes" title="Predict the sizes">
+Predict the size in bytes of seven types on a 64-bit machine. Two are references or boxes, where the answer isn't the size of what they point at.
+</Exercise>
+
+<Exercise name="vec-header" title="The header and the heap">
+Write three functions about a `Vec<i32>`: the heap bytes its elements reserve, the bytes its header takes, and its spare room. The checks show that the header never changes size.
+</Exercise>
+
+## Read more
+
+- [The Rust Book, chapter 4.1: What Is Ownership?](https://doc.rust-lang.org/book/ch04-01-what-is-ownership.html). The section "The Stack and the Heap" is the short version of this lesson, and the rest is the subject of the next two lessons.
+- [`std::mem::size_of`](https://doc.rust-lang.org/std/mem/fn.size_of.html) and [`align_of`](https://doc.rust-lang.org/std/mem/fn.align_of.html), and the [`std::mem`](https://doc.rust-lang.org/std/mem/index.html) module.
+- [Rust by Example: Box, stack and heap](https://doc.rust-lang.org/rust-by-example/std/box.html)
+- [The Rust Reference: type layout](https://doc.rust-lang.org/reference/type-layout.html), for `repr(C)`, alignment and size in full.
+- [The Rust Book, chapter 15.1: Using `Box<T>` to Point to Data on the Heap](https://doc.rust-lang.org/book/ch15-01-box.html)

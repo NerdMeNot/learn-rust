@@ -1,0 +1,253 @@
+<p class="lr-layer">The toolkit</p>
+
+This page covers what sits between typing `cargo run` and seeing a line: the commands, the project folder, and `main`. Format strings are in [Macros, attributes, naming](/learn/macros-attributes-naming/#format-strings); arguments and environment variables are in [Arguments, Environment, Time and Processes](/learn/env-time-process/). Outputs come from Linux on 64-bit ARM with Rust and Cargo 1.99.1. Phrasebooks: [C and C++](/for/c-cpp/), [C#](/for/csharp/), [Go](/for/go/), [Java](/for/java/), [Kotlin](/for/kotlin/), [Python](/for/python/), [TypeScript](/for/typescript/). The programs that run `cargo` build a throwaway project in a temporary folder and trim the build times and that folder's name; read their output, not their code.
+
+## The commands
+
+| Command | What it does |
+|---|---|
+| `cargo new hello` | Makes a folder `hello/` with a project in it. |
+| `cargo run` | Builds if anything changed, then runs the executable. |
+| `cargo build` | Builds only. The executable goes in `target/debug/`. |
+| `cargo check` | Looks for compile errors and makes no executable. |
+| `cargo build --release`, `cargo run --release` | The optimised build, in `target/release/`. |
+| `rustc main.rs` | The compiler by itself, for one file with no project. |
+| `cargo add`, `cargo test`, `cargo fmt`, `cargo clippy` | Add a dependency; run tests; format; lint. |
+
+<Snippet file="new-run.rs" />
+
+`Cargo.toml` is the **manifest**: the package's name, version, `edition` (see [Editions](#editions)) and dependencies, none yet. `src/main.rs` is the root of the program and holds `fn main`. A **crate** is one unit of compilation. Two more paths matter:
+
+| Path | What it is |
+|---|---|
+| `Cargo.lock` | Appears after the first build or check: the exact version of every dependency used ([the Book](https://doc.rust-lang.org/book/ch01-03-hello-cargo.html)). |
+| `target/` | Everything the build makes. The `.gitignore` that `cargo new` wrote lists it. |
+
+[Your first project](/start/first-project/) walks through the same commands with Cargo's progress lines.
+
+<ForLang only="go">
+
+| You write in Go | In Rust |
+|---|---|
+| `go mod init hello`, then a `main.go` | `cargo new hello` makes the folder, `Cargo.toml` and `src/main.rs` |
+| `go run .`, `go build` | `cargo run`, `cargo build` |
+| `go.mod`: module name, `go` version, requirements | `Cargo.toml`: name, `edition`, dependencies as version ranges |
+| `go.mod` versions and `go.sum` hashes | `Cargo.lock`: the exact versions used |
+| `fmt.Fprintln(os.Stderr, ...)` | `eprintln!` (below) |
+| `os.Exit(1)`, `log.Fatal` | Return an `ExitCode` or an `Err` from `main`, or `std::process::exit(1)` (below) |
+
+`go mod init` writes a module name and a `go` version line:
+
+<Snippet file="gomod.go" />
+
+`cargo run` leaves the executable in `target/debug/`, the unoptimised `dev` build; measure with `--release` ([Debug and release](#debug-and-release-builds)).
+
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+
+| You write today | In Rust |
+|---|---|
+| `public static void main(String[] args)`; `fun main()`; `static void Main()` | `fn main()` (below) |
+| `System.err.println`; `Console.Error.WriteLine` | `eprintln!` |
+| `pom.xml` or `build.gradle.kts`; a `.csproj` | `Cargo.toml`; dependencies come from crates.io (`cargo add`) |
+| `dotnet new console`, `dotnet run`; Gradle `run` | `cargo new`, `cargo run` |
+| `System.exit(n)`; `Environment.Exit(n)` | Return an `ExitCode` from `main`, or `std::process::exit(n)` (below) |
+
+The output is a native executable: there is no virtual machine to install or start.
+
+</ForLang>
+
+<ForLang only="python typescript">
+
+| You write today | In Rust |
+|---|---|
+| `python main.py`, `node main.js` | `cargo run` compiles, then runs the executable |
+| `if __name__ == "__main__": main()` | Nothing: `fn main` is the entry point and the only code that runs |
+| `pyproject.toml`; `package.json` | `Cargo.toml` |
+| `pip install x`; `npm install x` | `cargo add x` |
+| a lock file; `package-lock.json` | `Cargo.lock` |
+| `print("x", file=sys.stderr)`, `console.error("x")` | `eprintln!("x")` |
+| `sys.exit(2)`, `process.exit(2)` | Return an `ExitCode` from `main`, or `std::process::exit(2)` (below) |
+
+</ForLang>
+
+<ForLang only="c cpp">
+
+| You write today | In Rust |
+|---|---|
+| `int main(void)`, `int main(int argc, char **argv)` | `fn main()`. Arguments come from `std::env::args()` |
+| `return 0;` | Nothing. Returning `()` means success |
+| `fprintf(stderr, ...)`; `std::cerr` | `eprintln!` |
+| `gcc -o hello main.c`, a Makefile or CMake | `cargo build` |
+| an optimised build against `gcc -O0 -g` | `--release` against the default (the nearest match, not an exact one) |
+
+</ForLang>
+
+## `fn main`
+
+Execution starts at `fn main`, which has no parameters and by default returns `()`, [unit, the value for "nothing"](/learn/statements-expressions/#-the-value-for-nothing). Command-line arguments come from [`std::env::args()`](https://doc.rust-lang.org/std/env/fn.args.html), whose first item is the program itself, as in C, so `.nth(1)` (used by the programs below) is the first real argument ([Arguments, Environment, Time and Processes](/learn/env-time-process/) runs it). With Cargo, give the program its arguments after `--`, as in `cargo run -- a b` ([`cargo run`](https://doc.rust-lang.org/cargo/commands/cargo-run.html)).
+
+<ForLang only="java">
+
+Java 25 lets a single-file program drop the class and `static`; Rust never had either, since `main` is a free function:
+
+<Snippet file="instance-main.java" />
+
+</ForLang>
+
+<ForLang only="python typescript csharp">
+
+A `println!` at the top of the file is refused. The wording is odd, but the cause is the line it points at: a file's top level holds definitions, not calls. Put the call inside `fn main`.
+
+<Snippet file="toplevel.fail.rs" />
+
+</ForLang>
+
+## Standard output and standard error
+
+A program has two output streams; a terminal shows both, and `cmd > out.txt` keeps only the first.
+
+| Macro | Stream | Newline | Use it for |
+|---|---|---|---|
+| `print!`, `println!` | standard output | no, yes | The program's result. |
+| `eprint!`, `eprintln!` | standard error | no, yes | Errors, warnings, progress. |
+| `dbg!` | standard error | yes | Debugging. Prints `[file:line:column] expression = value` and returns the value. |
+
+The program below prints on both streams, then runs itself again to catch each separately; a terminal would show them mixed.
+
+<Snippet file="streams.rs" />
+
+`dbg!(21 * 2)` printed its source location and expression, and `doubled` still got `42`. It uses the `Debug` form, the programmer-facing way to print a value (`{:?}`, in [Macros](/learn/macros-attributes-naming/#format-strings)).
+
+<ForLang only="go python typescript">
+
+`println!` does not take a list of values: its first argument is the format string, so `fmt.Println("x =", x)`, `print("x =", x)` and `console.log("x =", x)` do not carry over (the closest Go match is `fmt.Printf` with a `\n`). The error is in [Macros](/learn/macros-attributes-naming/#format-strings).
+
+</ForLang>
+
+<ForLang only="go">
+
+The built-in `println` is not `fmt.Println`: it writes to standard error. This program calls both and catches each stream:
+
+<Snippet file="println.go" />
+
+</ForLang>
+
+## `main` can return a result
+
+`main` may also return a `Result` (usually `Result<(), E>`), whose failure case `?` can return early ([Errors](/learn/errors/) covers `?`). The error is printed on standard error and the exit code is 1:
+
+<Snippet file="main-result.panic.rs" />
+
+To pick the exit code yourself, return a `std::process::ExitCode`:
+
+<Snippet file="exit-code.panic.rs" />
+
+A panic (a crash with a message) is a third way to end:
+
+<Snippet file="panic-exit.panic.rs" />
+
+| `main` ends with | Exit code | Printed on standard error |
+|---|---|---|
+| `()` | 0 | |
+| `Ok(())` | 0 | |
+| `Err(e)` | 1 | `Error: ` and the `Debug` form of `e` |
+| `ExitCode::SUCCESS` | 0 | |
+| `ExitCode::from(n)`, with `n` a `u8` (0 to 255) | `n` | |
+| a panic | 101 | the message |
+
+The rule is the [`Termination`](https://doc.rust-lang.org/std/process/trait.Termination.html) trait (a named ability a type has: [Traits](/learn/traits/), later), which `()`, `ExitCode` and `Result<T, E>` (when `T` implements it too and `E` has a `Debug` form) implement. Anything else, such as an `i32`, is the compile error in the gotcha at the top of this page.
+
+To end the program from deep inside, call `std::process::exit(n)`:
+
+<Snippet file="process-exit.panic.rs" />
+
+Its [docs](https://doc.rust-lang.org/std/process/fn.exit.html) say no destructors run (no cleanup code for values still alive) and prefer returning from `main`.
+
+<ForLang only="java">
+
+A panic is the nearest thing to an uncaught exception, but Rust handles expected failures with a returned `Result`, not a `catch` ([Errors](/learn/errors/)). Java prints a stack trace and exits with 1 where a panic prints one message and exits with 101:
+
+<Snippet file="uncaught.crash.java" />
+
+</ForLang>
+
+## Debug and release builds
+
+Cargo has two **profiles**. `cargo build` and `cargo run` use `dev`, which does not optimise and keeps debugging information (Cargo prints `[unoptimized + debuginfo]`); `--release` uses `release`, which optimises. They write to different folders, so switching does not overwrite the other build. `cargo check` leaves out the executable, which this program shows:
+
+<Snippet file="profiles.rs" />
+
+`debug_assertions` is on in `dev` and off in `release`, and `debug_assert!` uses it. [Numbers and Types](/learn/types/) describes a setting that changes what a program does (integer overflow is a panic in `dev` and wraps in `release`); the [Cargo book](https://doc.rust-lang.org/cargo/reference/profiles.html) lists them all. Use `dev` while you write, and `release` for the build you measure or ship.
+
+<p class="lr-layer">Going deeper</p>
+
+## `print!` and the buffer
+
+Rust's standard output is **line-buffered**: text waits in memory until a newline arrives. The [`Stdout` docs](https://doc.rust-lang.org/std/io/struct.Stdout.html) say so for a terminal, and the run below shows a pipe doing the same on this platform. A full line leaves at once. A partial line waits for a newline, a `flush` or a normal exit, and `abort()`, an exit that skips Rust's normal cleanup, loses it. Each child below ends with `abort()` except `normal-exit`:
+
+<Snippet file="flush.rs" />
+
+So a prompt written with `print!("name: ")` needs `std::io::stdout().flush()` before the program waits for input, or it may not appear in time. `flush` comes from the `Write` trait (`use std::io::Write;`).
+
+<ForLang only="java">
+
+Java's `System.out.print` behaves differently. In this test it survives `halt`, an exit that skips cleanup, so it needs no `flush`:
+
+<Snippet file="flush.java" />
+
+</ForLang>
+
+<ForLang only="c cpp">
+
+C's `stdout` is line-buffered on a terminal and fully buffered on a pipe, so a whole line can be lost. Rust's line got through a pipe, as `line` shows above. This program catches its own child's output through a pipe:
+
+</ForLang>
+
+<ForLang only="c">
+
+<Snippet file="buffer.c" />
+
+</ForLang>
+
+<ForLang only="cpp">
+
+<Snippet file="buffer.cpp" />
+
+</ForLang>
+
+## Editions
+
+`edition = "2024"` in `Cargo.toml` names a set of language rules. Editions let Rust change syntax without breaking old code: each package chooses its own, and `cargo new` writes the newest. `rustc main.rs` has no manifest to read, so it uses edition 2015 unless you pass `--edition`. The test below uses `async`, a keyword from edition 2018 on, as a variable name:
+
+<Snippet file="rustc.rs" />
+
+<ForLang only="go">
+
+`edition` does the job of the `go` line in `go.mod`: it fixes which language rules the package is built with.
+
+</ForLang>
+
+The [Edition Guide](https://doc.rust-lang.org/edition-guide/editions/index.html) lists what each edition changed.
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Paste each program into the `src/main.rs` of a `cargo new` project and run `cargo run` until it prints `all checks passed`. Both start a copy of themselves, so they need a real project, not a sandbox.
+
+<Exercise name="exit-status" title="An exit status">
+`run` is written and returns a `Result`. Write `finish`, which turns that result into what the process reports: on `Ok(n)` print `n` on standard output and succeed; on `Err(message)` print the message on standard error and exit with code 2. The checks start the program as a child and look at its exit code and both streams, including the failing inputs (code 2, nothing on standard output).
+</Exercise>
+
+<Exercise name="wrong-stream" title="The wrong stream">
+This program prints a warning on standard output, mixed in with its answer, so `cmd > result.txt` would capture the warning. Move it to the right stream and make the checks pass.
+</Exercise>
+
+## Read more
+
+- [The Rust Book, 1.2: Hello, World!](https://doc.rust-lang.org/book/ch01-02-hello-world.html) and [1.3: Hello, Cargo!](https://doc.rust-lang.org/book/ch01-03-hello-cargo.html), then [12.6: Redirecting Errors to Standard Error](https://doc.rust-lang.org/book/ch12-06-writing-to-stderr-instead-of-stdout.html).
+- [Rust by Example: Hello World](https://doc.rust-lang.org/rust-by-example/hello.html).
+- [`ExitCode`](https://doc.rust-lang.org/std/process/struct.ExitCode.html), [`Termination`](https://doc.rust-lang.org/std/process/trait.Termination.html), [`process::exit`](https://doc.rust-lang.org/std/process/fn.exit.html), [`eprintln!`](https://doc.rust-lang.org/std/macro.eprintln.html), [`dbg!`](https://doc.rust-lang.org/std/macro.dbg.html) and [`Write`](https://doc.rust-lang.org/std/io/trait.Write.html) (for `flush`).
+- The Cargo book: [`cargo new`](https://doc.rust-lang.org/cargo/commands/cargo-new.html), [`cargo run`](https://doc.rust-lang.org/cargo/commands/cargo-run.html) and [Profiles](https://doc.rust-lang.org/cargo/reference/profiles.html).

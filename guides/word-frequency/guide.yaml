@@ -1,0 +1,204 @@
+# Build a word counter: a first real program, in steps.
+#
+# rust/ is the finished program. Each stage the page shows is a folder of the files that
+# change (step1/, step2/, ...), laid out like the project, and overlaid on rust/ to build
+# and run that stage. fail-*/ are the stages that go wrong on purpose; ok-get/ is the
+# variant that compiles. limits/ and alloc/ are two small side programs. compare/ holds
+# the same program in Python and Go.
+name: wordcount
+sessions:
+  # The empty folder the reader starts in (like the first-project page).
+  new:
+    dir: empty
+    steps:
+      - cmd: cargo new wordcount
+        raw: true
+  step1:
+    dir: rust
+    overlay:
+      src/main.rs: step1/src/main.rs
+    steps:
+      - cmd: cargo run -- sample.txt
+      - cmd: cargo run -- missing.txt
+        expect: fail
+      - cmd: cargo run
+        expect: fail
+  step2:
+    dir: rust
+    overlay:
+      src/main.rs: step2/src/main.rs
+    steps:
+      - cmd: cargo run -- sample.txt
+  dangling:
+    dir: rust
+    overlay:
+      src/main.rs: fail-dangling/src/main.rs
+    steps:
+      - cmd: cargo build
+        expect: fail
+  limits:
+    dir: rust
+    overlay:
+      src/main.rs: limits/src/main.rs
+    steps:
+      - cmd: cargo run
+  fail-borrowed:
+    dir: rust
+    overlay:
+      src/main.rs: step3/src/main.rs
+      src/count.rs: fail-borrowed/src/count.rs
+    steps:
+      - cmd: cargo build
+        expect: fail
+  fail-local:
+    dir: rust
+    overlay:
+      src/main.rs: fail-local/src/main.rs
+      src/count.rs: fail-local/src/count.rs
+    steps:
+      - cmd: cargo build
+        expect: fail
+  step3:
+    dir: rust
+    overlay:
+      src/main.rs: step3/src/main.rs
+      src/count.rs: step3/src/count.rs
+    steps:
+      - cmd: cargo run -- sample.txt
+  fail-moved:
+    dir: rust
+    overlay:
+      src/main.rs: step3/src/main.rs
+      src/count.rs: fail-moved/src/count.rs
+    steps:
+      - cmd: cargo build
+        expect: fail
+  fail-held:
+    dir: rust
+    overlay:
+      src/main.rs: step3/src/main.rs
+      src/count.rs: fail-held/src/count.rs
+    steps:
+      - cmd: cargo build
+        expect: fail
+  ok-get:
+    dir: rust
+    overlay:
+      src/main.rs: step3/src/main.rs
+      src/count.rs: ok-get/src/count.rs
+    steps:
+      - cmd: cargo run -- sample.txt
+  alloc:
+    dir: rust
+    overlay:
+      src/main.rs: alloc/src/main.rs
+    steps:
+      - cmd: cargo run
+  unstable:
+    dir: rust
+    local_target: true
+    overlay:
+      src/main.rs: unstable/src/main.rs
+      src/count.rs: unstable/src/count.rs
+    steps:
+      - cmd: cargo build
+      - cmd: ./target/debug/wordcount sample.txt
+      - cmd: ./target/debug/wordcount sample.txt
+  step4:
+    dir: rust
+    overlay:
+      src/main.rs: step4/src/main.rs
+      src/count.rs: step4/src/count.rs
+    steps:
+      - cmd: cargo run -- sample.txt
+  step5:
+    dir: rust
+    overlay:
+      src/main.rs: step5/src/main.rs
+      src/count.rs: step5/src/count.rs
+    steps:
+      - cmd: cargo run -- sample.txt
+      - cmd: cargo run -- mixed.txt
+  # The finished program. The built binary is run directly so the exit code can be shown.
+  cli:
+    dir: rust
+    local_target: true
+    steps:
+      - cmd: cargo build
+      - cmd: ./target/debug/wordcount sample.txt --top 5
+      - cmd: printf 'one two two three three three\n' | ./target/debug/wordcount --top 2
+      - cmd: |-
+          ./target/debug/wordcount missing.txt; echo "exit code: $?"
+      - cmd: |-
+          ./target/debug/wordcount src; echo "exit code: $?"
+      - cmd: |-
+          printf 'caf\xe9 au lait\n' > latin1.txt; ./target/debug/wordcount latin1.txt; echo "exit code: $?"
+      - cmd: |-
+          ./target/debug/wordcount sample.txt --top abc; echo "exit code: $?"
+      - cmd: |-
+          ./target/debug/wordcount sample.txt --top 0; echo "exit code: $?"
+      - cmd: |-
+          ./target/debug/wordcount sample.txt --top; echo "exit code: $?"
+      - cmd: |-
+          ./target/debug/wordcount --verbose; echo "exit code: $?"
+      - cmd: |-
+          ./target/debug/wordcount sample.txt mixed.txt; echo "exit code: $?"
+      - cmd: |-
+          : > empty.txt; ./target/debug/wordcount empty.txt; echo "exit code: $?"
+      - cmd: |-
+          ./target/debug/wordcount "$(printf '\xff')"; echo "exit code: $?"
+      - cmd: |-
+          ./target/debug/wordcount sample.txt > /dev/full; echo "exit code: $?"
+  test:
+    dir: rust
+    steps:
+      - cmd: cargo test
+  compare:
+    dir: compare
+    local_target: true
+    overlay:
+      Cargo.toml: rust/Cargo.toml
+      sample.txt: rust/sample.txt
+      mixed.txt: rust/mixed.txt
+      src/main.rs: rust/src/main.rs
+      src/args.rs: rust/src/args.rs
+      src/count.rs: rust/src/count.rs
+      src/error.rs: rust/src/error.rs
+      src/input.rs: rust/src/input.rs
+      src/report.rs: rust/src/report.rs
+      src/words.rs: rust/src/words.rs
+    steps:
+      - cmd: python3 --version
+      - cmd: go version
+      - cmd: cargo build
+      - cmd: python3 wordcount.py sample.txt --top 5
+      - cmd: go run . sample.txt --top 5
+      - cmd: ./target/debug/wordcount sample.txt --top 5
+      - cmd: python3 wordcount_short.py sample.txt --top 5
+      - cmd: python3 wordcount.py sample.txt > py.txt; go run . sample.txt > go.txt; ./target/debug/wordcount sample.txt > rs.txt; python3 wordcount_short.py sample.txt > short.txt; cmp py.txt go.txt && cmp go.txt rs.txt && cmp rs.txt short.txt && echo "all four outputs are byte for byte the same"
+      - cmd: python3 wordcount.py mixed.txt > py.txt; go run . mixed.txt > go.txt; ./target/debug/wordcount mixed.txt > rs.txt; python3 wordcount_short.py mixed.txt > short.txt; cmp py.txt go.txt && cmp go.txt rs.txt && cmp rs.txt short.txt && echo "all four outputs are byte for byte the same"
+      - cmd: |-
+          echo "Python, by hand: $(grep -Evc '^[[:space:]]*(#.*)?$' wordcount.py) lines"
+          echo "Python, argparse and Counter: $(grep -Evc '^[[:space:]]*(#.*)?$' wordcount_short.py) lines"
+          echo "Go:     $(grep -Evc '^[[:space:]]*(//.*)?$' main.go) lines"
+          echo "Rust:   $(for f in src/*.rs; do sed '/#\[cfg(test)\]/,$d' $f; done | grep -Evc '^[[:space:]]*(//.*)?$') lines"
+          for f in src/*.rs; do echo "  $f: $(sed '/#\[cfg(test)\]/,$d' $f | grep -Evc '^[[:space:]]*(//.*)?$')"; done
+      - cmd: |-
+          python3 wordcount_short.py sample.txt --top abc; echo "exit code: $?"
+      - cmd: |-
+          python3 wordcount_short.py missing.txt; echo "exit code: $?"
+      - cmd: python3 -c "print('Ⅳ'.isalpha())"
+      - cmd: go run ./isletter
+      - cmd: |-
+          python3 wordcount.py missing.txt; echo "exit code: $?"
+      - cmd: |-
+          go run . missing.txt; echo "exit code: $?"
+      - cmd: |-
+          ./target/debug/wordcount missing.txt; echo "exit code: $?"
+      - cmd: printf 'caf\xe9 au lait\n' > latin1.txt
+      - cmd: |-
+          python3 wordcount.py latin1.txt; echo "exit code: $?"
+      - cmd: |-
+          go run . latin1.txt; echo "exit code: $?"
+      - cmd: |-
+          ./target/debug/wordcount latin1.txt; echo "exit code: $?"

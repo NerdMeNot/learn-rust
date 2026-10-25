@@ -1,0 +1,236 @@
+<p class="lr-layer">The toolkit</p>
+
+A Rust function states its inputs and its output in its signature. How the body ends (the tail expression: the last line, with no `;`) is in [Statements and expressions](/learn/statements-expressions/), and reading a signature piece by piece is in [Reading signatures](/learn/reading-signatures/). Outputs come from Linux on 64-bit ARM with Rust 1.99.1.
+
+## The signature is the contract
+
+Each parameter is `name: Type` and the result follows `->` ([the spelling](/learn/declarations-types/#the-pieces-in-one-table)). No `->` means the function returns `()`, the value for "nothing" ([unit](/learn/statements-expressions/#-the-value-for-nothing)), and `-> !` means it never returns ([never type](/learn/statements-expressions/#when-nothing-comes-back-the-never-type)).
+
+<Snippet file="signature.rs" />
+
+Inside a body Rust works out types for you ([Variables](/learn/variables/)); in a signature the type is required for every parameter. Leave one out and the compiler complains at the comma. Grouping, as in `a, b: i32`, leaves `a` without one:
+
+<Snippet file="grouped.fail.rs" />
+
+Leave the return type out and it is `()`, so a body that produces a number is a mismatch. The compiler's `help` line suggests the type:
+
+<Snippet file="no-return-type.fail.rs" />
+
+## Leaving early
+
+A function normally ends on its tail expression; `return` is for leaving before the end, from inside an `if` or a loop:
+
+<Snippet file="early.rs" />
+
+A function that panics or ends the program is written `-> !`, and that type fits anywhere a value is expected, which is why `half` can still promise an `i32`. The panic message names the line, and the exit status is non-zero ([Errors](/learn/errors/) covers `panic!` and its alternatives):
+
+<Snippet file="diverge.panic.rs" />
+
+## Functions inside functions
+
+A function can be written inside another function's body:
+
+<Snippet file="nested.rs" />
+
+<ForLang only="c cpp" title="Order of definition">
+
+Rust needs no forward declarations: `main` can call a function written below it. In C, a call to an undeclared function is an error in gcc 14, the runner's compiler.
+
+<Snippet file="order.rs" />
+
+<Snippet file="proto.fail.c" />
+
+</ForLang>
+
+Because a nested function is an ordinary function, it cannot see the outer function's variables. A closure can ([Closures](/learn/closures/)):
+
+<Snippet file="nested-capture.fail.rs" />
+
+<Snippet file="nested-closure.rs" />
+
+## Arguments are passed by value
+
+Every argument is handed to the parameter: copied for simple values such as numbers, moved for others. The parameter is a new variable: changing it needs `mut`, and does not change the caller's. A `let` with the same name hides it ([shadowing](/learn/declarations-types/#patterns-in-let-and-shadowing)):
+
+<Snippet file="params.rs" />
+
+A `String` is not copied for you. Passing it gives it away, and the caller cannot use it afterwards:
+
+<Snippet file="moved.fail.rs" />
+
+That is the ownership rule, taught in [Ownership](/learn/ownership/) (which values are copied is in [Copy or reference?](/learn/copy-or-reference/)). The usual fix is to pass `&name`, a borrow ([Borrowing](/learn/borrowing/)), so the caller keeps the value.
+
+## Functions are values
+
+A function's name converts to a **function pointer**, whose type is written `fn(i32) -> i32`. A closure that captures nothing converts to one too:
+
+<Snippet file="fn-pointer.rs" />
+
+A closure that uses a variable from outside does not:
+
+<Snippet file="fn-pointer-capture.fail.rs" />
+
+To accept those too, take `impl Fn(i32) -> i32` (below). Lowercase `fn(...)` is a type, capitalised `Fn` a bound: [Reading signatures](/learn/reading-signatures/) lists both.
+
+## Your habits, in Rust
+
+<ForLang only="go">
+
+| You write in Go | In Rust |
+|---|---|
+| `func add(a, b int) int` | `fn add(a: i32, b: i32) -> i32`: each parameter has its own type |
+| `func f() (int, int)`, `q, r := f()` | returns a tuple: `let (q, r) = f();` ([Tuples](/learn/tuples/)) |
+| `(int, error)`, `if err != nil` | `Result<i32, String>`; `?` passes the error up ([Errors](/learn/errors/)) |
+| named results and a bare `return` | none: return a value |
+| `q, _ := f()`, `func f(_ int)` | `let (q, _) = f();`, `fn f(_x: i32)` |
+| `nums ...int`; `sum(1, 2)`, `sum(xs...)` | `nums: &[i32]` (a [slice](/learn/vectors/#slices-a-window-onto-a-list)); `sum(&[1, 2])`, `sum(&xs)` |
+| `func (c *Counter) Inc()` | a method in an `impl` block ([Methods](/learn/methods/)) |
+| `func f(p *int)` that writes `*p`; `f(&x)` | `fn f(p: &mut i32)`; `f(&mut x)` ([Mutable borrows](/learn/mutable-borrows/)) |
+| `length(name)` copies the string, a struct is copied whole; the caller keeps its own | the value moves into the call, and the caller cannot use it afterwards |
+| `func(int) int` as a parameter, `func(n int) int { ... }` | `impl Fn(i32) -> i32`; `fn(i32) -> i32` only when nothing is captured |
+
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+
+| You write | In Rust |
+|---|---|
+| a method in a class, or a top-level `fun`; any order | a plain `fn`, also in any order; methods go in an `impl` block ([Methods](/learn/methods/)) |
+| Kotlin `fun f(x: Int) = x + 1`, C# `int F(int x) => x + 1` | `fn f(x: i32) -> i32 { x + 1 }`: braces always, and statements may come before the last expression |
+| `void`, `Unit` | no `->` (the value `()`) |
+| Java `throws`, `throw`, `try`/`catch` | the error is part of the return type: `-> Result<i32, String>` ([Errors](/learn/errors/)) |
+| Kotlin `Nothing`, `TODO()` | `-> !`, `todo!()` |
+| overloads; Kotlin and C# default and named arguments | different names; a struct or an `Option` |
+| `int... xs`, `vararg xs`, `params int[] xs` | `xs: &[i32]` (a [slice](/learn/vectors/#slices-a-window-onto-a-list)), called `f(&[1, 2, 3])` |
+| C# `out int q` or a `(int, int)` tuple; Kotlin `Pair`; Java record | a tuple `(i32, i32)` |
+| a `List` passed in and added to; the caller keeps using it | `xs: &mut Vec<i32>`; a plain `Vec<i32>` moves away like the `String` above |
+| a parameter you reassign (Java, C#) | the parameter must be `mut` |
+| Kotlin or C# local function that uses outer variables | an inner `fn` cannot (E0434); use a closure |
+| `Function<Integer, Integer>` and `Main::double`; `(Int) -> Int` and `::double`; `Func<int, int>` and `Double` | `impl Fn(i32) -> i32` or `fn(i32) -> i32`, passing `double` |
+
+</ForLang>
+
+<ForLang only="python typescript">
+
+| You write | In Rust |
+|---|---|
+| `def f(a, b=2)`, `f(1, b=3)`; `function f(a, b = 2)`; TypeScript overload signatures | no defaults, named arguments or overloads ([what Rust lacks](/learn/what-rust-lacks/#no-default-or-named-arguments-no-function-overloading)) |
+| `**kwargs`, a TypeScript options object `f({ retries: 3 })` | a struct, `f(Options { retries: 3 })`, or a `HashMap` ([Maps](/learn/maps/)) |
+| `*args`, `...rest` | `xs: &[i32]` (one element type; a [slice](/learn/vectors/#slices-a-window-onto-a-list)), called `f(&[1, 2, 3])` |
+| no `return` gives `None` or `undefined` | the body's value, or `()`: a trailing `x;` in a function that returns a value is an error |
+| `return a, b`, `return [a, b]` | a tuple |
+| a list or object passed in and changed; the caller keeps using it | `xs: &mut Vec<i32>`, and the caller writes `&mut`; a plain `Vec<i32>` moves away like the `String` above |
+| nested `def` or `function` that uses outer variables | an inner `fn` cannot (E0434); a closure can |
+| TypeScript `function` declarations are hoisted, a `const` arrow function is not. Python: a body may call a later `def`, module-level code may not | `fn` order never matters; a closure in a `let` must come first |
+
+<Snippet file="closure-before.fail.rs" />
+
+</ForLang>
+
+<ForLang only="c cpp">
+
+| You write | In Rust |
+|---|---|
+| a prototype or header before use | nothing within a file; across files `mod`, `use` and `pub` ([Reading signatures](/learn/reading-signatures/)) |
+| `void f(int *out)` | return a tuple; `&mut` is [Mutable borrows](/learn/mutable-borrows/) |
+| `const std::string&`, `const T&` | `&str`, `&T` (a borrow) |
+| `T&` | `&mut T` |
+| `std::string` by value, which copies | `String`, which moves: the caller cannot use it afterwards |
+| `std::move(x)` | nothing to write: passing a `String` already moves it |
+| `int (*f)(int)` | `f: fn(i32) -> i32` |
+| C++ `std::function<int(int)>`, a template parameter, C++20 `auto x` | `impl Fn(i32) -> i32`, `x: impl Display` |
+| C++ overloads and default arguments | different names; a struct or an `Option` |
+| `...` with `va_list`, as in `printf` | a slice `&[i32]`; `println!` takes any number because it is a [macro](/learn/macros-attributes-naming/) |
+| C++ `constexpr` function | `const fn` (below) |
+| C++ `[[noreturn]]` | `-> !` |
+
+</ForLang>
+
+<p class="lr-layer">Going deeper</p>
+
+## `impl Trait` as a parameter type
+
+`impl Fn(i32) -> i32` or `impl Display` means "any type that can do this" ([how to read it](/learn/reading-signatures/#one-program-every-piece)). The Reference calls it an anonymous type parameter: the caller picks the type, the body may use only what the trait provides. A closure that captures works here, and so does a number or a string. See [Traits](/learn/traits/) and [Generics](/learn/generics/).
+
+<Snippet file="impl-arg.rs" />
+
+## `const fn`
+
+A `const fn` can be run by the compiler while compiling, when it is called in a `const`, a `static` or an array length ([Declarations and types](/learn/declarations-types/#constants-and-array-lengths)). It can still be called at run time. A `const fn` may call only other `const fn`s (and tuple-struct constructors):
+
+<Snippet file="const-fn.rs" />
+
+<Snippet file="const-fn.fail.rs" />
+
+The C++ cousin is `constexpr`. [The Reference](https://doc.rust-lang.org/reference/const_eval.html) lists what constant evaluation allows.
+
+## Deep recursion
+
+A function can call itself. Each call takes space on the thread's stack ([Stack and heap](/learn/stack-heap/)), which is fixed in size, so a call chain that is too deep runs out:
+
+<Snippet file="recursion.panic.rs" />
+
+The depth that fails depends on the machine and the stack size, and these are debug builds: an optimised build can change the outcome for a function this simple. Rust prints a message and aborts the process. Some languages turn the same bug into an exception, and others die as Rust does:
+
+<ForLang only="go">
+
+Go ends the program with `fatal error: stack overflow`, and `recover` cannot catch it. The overflow runs in a child process here, because Go also prints hundreds of lines of trace.
+
+<Snippet file="deep.go" />
+
+</ForLang>
+
+<ForLang only="python typescript">
+
+Python counts the depth and raises a `RecursionError` at a limit it can print. Node throws a `RangeError`. Both are exceptions, not aborts.
+
+<Snippet file="deep.fail.py" />
+
+<Snippet file="deep.crash.ts" />
+
+</ForLang>
+
+<ForLang only="java kotlin">
+
+Java's `StackOverflowError` can be caught, and the program goes on (Kotlin runs on the same JVM).
+
+<Snippet file="deep.java" />
+
+</ForLang>
+
+<ForLang only="csharp">
+
+C# cannot catch it: .NET prints `Stack overflow.` and ends the process.
+
+<Snippet file="deep.crash.cs" />
+
+</ForLang>
+
+<ForLang only="c cpp">
+
+C prints no message here: the operating system kills the program with a signal (SIGSEGV).
+
+<Snippet file="deep.crash.c" />
+
+</ForLang>
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Each exercise is a small program with checks in `main`. Open it in the Playground, replace the `todo!()`, and run it until it prints `all checks passed`.
+
+<Exercise name="small-functions" title="Small pure functions">
+Write three functions. Use an early `return` in two and a plain tail expression in the other, make `gcd` call itself, and mind the semicolons (the gotcha above is the trap). Leap years (1900 and 2000) and a zero on either side of `gcd` are what people get wrong.
+</Exercise>
+
+<Exercise name="pick-and-apply" title="Functions as values">
+`by_name` returns one of three functions, chosen by a `match`. `apply_n` takes `impl Fn(i32) -> i32` and applies it repeatedly, so a closure that captures a variable works. Applying it zero times must give back the input.
+</Exercise>
+
+## Read more
+
+- [The Rust Book, chapter 3.3: Functions](https://doc.rust-lang.org/book/ch03-03-how-functions-work.html), and [chapter 20.4: Advanced Functions and Closures](https://doc.rust-lang.org/book/ch20-04-advanced-functions-and-closures.html) for function pointers.
+- [Rust by Example: Functions](https://doc.rust-lang.org/rust-by-example/fn.html).
+- [The Rust Reference: Functions](https://doc.rust-lang.org/reference/items/functions.html), [Function pointer types](https://doc.rust-lang.org/reference/types/function-pointer.html), [Impl trait type](https://doc.rust-lang.org/reference/types/impl-trait.html) and [Constant evaluation](https://doc.rust-lang.org/reference/const_eval.html).
+- [The primitive type `fn`](https://doc.rust-lang.org/std/primitive.fn.html) and [the never type](https://doc.rust-lang.org/std/primitive.never.html) in the standard library docs.

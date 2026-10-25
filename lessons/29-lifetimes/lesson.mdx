@@ -1,0 +1,294 @@
+<p class="lr-layer">The toolkit</p>
+
+## When you write a lifetime
+
+A **lifetime** is how long a reference may be used: a region of the program, not a number, and it must fit inside the time the value it points at is alive ([Borrowing](/learn/borrowing/#how-long-a-borrow-lasts) showed where a region ends). The compiler works one out for every reference. You write one, like `'a`, only when a signature or a struct has to say which value a reference borrows from.
+
+That is less often than the notation suggests. Code that keeps `String` and `Vec` in its structs writes few; parsers, tokenizers and other code that hands out pieces of its input write them every day. You will meet `'a`:
+
+- on a function with two or more reference inputs that returns a reference ([`longest`](#naming-a-lifetime-a));
+- on a struct that holds a reference, and on its methods that hand out pieces of it ([structs](#structs-that-hold-references));
+- when a bound asks for `'static`, as `thread::spawn` and `Box<dyn Trait>` do ([`'static`](#static)).
+
+<ForLang only="c cpp">
+In C++, "lifetime" usually means an object's: from construction to destruction. In Rust it belongs to a *borrow*. The `'a` in `&'a str` is how long the reference may be used, not how long the string exists.
+</ForLang>
+
+## Naming a lifetime: `'a`
+
+`'a` is a lifetime parameter: an apostrophe and a name, declared in angle brackets like the type parameter in [Generics](/learn/generics/) and written after the `&`.
+
+<Snippet file="longest.rs" />
+
+`'a` ties `a`, `b` and the result together: the result may be used only while both inputs are alive. At each call the compiler picks the stretch where both arguments are valid ([the Book](https://doc.rust-lang.org/book/ch10-03-lifetime-syntax.html) explains the choice).
+
+**`'a` does not extend a lifetime.** The gotcha above has `'a` on every reference and still fails, because `s2` is dropped before `result` is used. The annotation describes how references relate. It cannot keep `s2` alive.
+
+<ForLang only="c cpp">
+In C and C++ the contract of `longest` lives in a comment: the signature returns a pointer or reference and does not say into which argument. With the shorter string as `s1`, the gotcha programs read freed memory, and AddressSanitizer says so:
+
+<Snippet file="longest-short.crash.asan.c" />
+
+<Snippet file="longest-short.crash.asan.cpp" />
+
+Compilers catch only some shapes. The runner's g++ 14 and Apple clang 21 (run by hand, outside the runner) both compile the two programs above with `-Wall -Wextra` and no warning. Clang does warn about a `std::string_view` made from a temporary (`-Wdangling-gsl`), and it has an opt-in attribute, `[[clang::lifetimebound]]`, that marks a result as borrowing from a parameter and warns when a temporary is passed for it. `'a` is that annotation made mandatory, checked on every call, and able to say *which* parameter.
+</ForLang>
+
+| Written | Reads as |
+|---|---|
+| `&str` | a reference; the compiler works out the lifetime |
+| `&'a str`, `&'a mut Vec<i32>` | a reference valid for `'a` |
+| `fn f<'a>(x: &'a str) -> &'a str` | the result is valid as long as `x` is |
+| `struct Parser<'a>` | a parser that borrows something for `'a` |
+| `Parser<'_>` | `'_`: some lifetime, and I do not need its name |
+| `&'static str` | a reference valid for the whole run of the program |
+
+To read a signature that has `'a`, find the lifetime on the result and look for the same name on the inputs. Those are the values the caller must keep alive while it uses the result.
+
+## Leaving them out: the elision rules
+
+You wrote `fn first_word(text: &str) -> &str` in earlier lessons with no `'a`. The compiler fills the lifetimes in by three rules ([the Reference](https://doc.rust-lang.org/reference/lifetime-elision.html) states them), applied in this order to a function signature:
+
+| Rule | Example | The compiler reads |
+|---|---|---|
+| 1. Every elided input lifetime is a separate parameter | `fn tail<'a>(text: &'a str, skip: &str) -> &'a str` | `fn tail<'a, 'b>(text: &'a str, skip: &'b str) -> &'a str` |
+| 2. If the inputs have exactly one lifetime, the output gets it | `fn first_word(text: &str) -> &str` | `fn first_word<'a>(text: &'a str) -> &'a str` |
+| 3. With `&self` or `&mut self`, the output gets the lifetime of `self` | `fn label(&self, prefix: &str) -> &str` | `fn label<'a, 'b>(&'a self, prefix: &'b str) -> &'a str` |
+
+<Snippet file="elision.rs" />
+
+Each function appears twice, as you write it and as the compiler reads it, and they behave the same. `skip` and `prefix` are dropped while `result` and `label` are still in use, which compiles because rules 1 and 3 keep those inputs out of the result's lifetime.
+
+With two reference inputs and no `self`, no rule gives the output a lifetime, and you must write one. That is E0106, the error [Returning references](/learn/returning-references/#two-inputs-the-compiler-asks-which-one) walks through, with a table of which signatures compile. Its `help:` suggests the same `'a` on every reference, which is right for `longest`. It is the wrong fix when the result comes from only one input. Here the result comes from `text`, and tying it to `skip` as well makes the caller keep `skip` alive:
+
+<Snippet file="tail-shared.fail.rs" />
+
+Give each input the lifetime it needs, as `tail` did in the program above.
+
+Rule 3 has a catch of its own. It ties the result to `self` even when the body returns another parameter:
+
+<Snippet file="self-other.fail.rs" />
+
+This error has no code. The `help:` is the fix: name the parameter's lifetime and put it on the result.
+
+## Structs that hold references
+
+A struct field that is a reference needs a lifetime parameter, because the compiler cannot guess it ([Structs](/learn/structs/) showed the error). The struct then cannot outlive the text its field points into:
+
+<Snippet file="excerpt.rs" />
+
+<Memory
+  title={'let text = String::from("Call me Ishmael. Some years ago");   let excerpt = Excerpt { part };'}
+  stack={[
+    { name: 'text', type: 'String', cells: ['ptr', 'len 31', 'cap 31'], to: 'buf' },
+    { name: 'excerpt', type: "Excerpt<'a>", cells: ['ptr', 'len 15'], to: 'buf', note: "part: an address and a length. 'a is not stored" },
+  ]}
+  heap={[{ id: 'buf', label: '31 bytes, owned by text', cells: ['Call me Ishmael', '. Some years ago'] }]}
+  caption="`excerpt.part` points at the first 15 bytes of text's buffer. It owns nothing and copied nothing. The lifetime `'a` is a fact the compiler checked, not a field: `Excerpt` is 16 bytes on a 64-bit target, the size of a `&str`."
+/>
+
+Dropping the text while the struct is still in use is the same E0597 as before:
+
+<Snippet file="excerpt-outlives.fail.rs" />
+
+Methods repeat the name. `impl<'a> Parser<'a>` declares `'a` once and uses it in the type, like `impl<T> Stack<T>`. What matters is the return type of `next_word`:
+
+<Snippet file="parser.rs" />
+
+The word is `Option<&'a str>`: it borrows from the text, not from the parser. So `a` is still valid after the second call, which needs `&mut parser` again. Leave the `'a` off the result and rule 3 ties it to `&mut self` instead:
+
+<Snippet file="parser-elided.fail.rs" />
+
+Both versions have the same body. The only difference is which lifetime the signature promises. A method that hands out pieces of the borrowed data should say `'a` for them.
+
+When you do not need the name, `'_` says "some lifetime": `impl Parser<'_>`, `fn describe(parser: &Parser<'_>)`, and `Formatter<'_>` in the signatures you meet in std. It is the other lifetime that needs no declaration.
+
+<Snippet file="anonymous.rs" />
+
+Rule 2 counts lifetimes, not references. `&Parser` has two, the borrow itself and the `'a` inside the parser, so a function that takes it and returns a `&str` has no single lifetime to give the output:
+
+<Snippet file="hidden-lifetime.fail.rs" />
+
+Writing `fn rest<'a>(parser: &Parser<'a>) -> &'a str` says the piece comes from the text the parser holds.
+
+<ForLang only="go">
+A Go `Parser` holds a `string`, and `strings.Cut` hands back views into it, as a Rust `&str` is. Nothing can dangle, because the garbage collector keeps the whole text alive while any piece is reachable, even a small piece of a big text ([Returning references](/learn/returning-references/#compared-with-where-you-come-from) has the Go side). Rust has no collector, so the signature names the owner. The first two calls of `parser.rs`:
+
+<Snippet file="parser.go" />
+</ForLang>
+
+<ForLang only="java kotlin csharp python typescript">
+Your languages have this parser too, with no annotation, because in them a piece is a new object: `substring`, `Substring` and a Python slice each return a new string for a piece, so there is no link to the text to get wrong. A Rust `&str` is a view into the original bytes, so it has to say which text it views. These programs print the first two calls of `parser.rs`, and whether a second parser returns the same object:
+</ForLang>
+
+<ForLang only="java">
+<Snippet file="parser.java" />
+</ForLang>
+
+<ForLang only="kotlin">
+<Snippet file="parser.kt" />
+</ForLang>
+
+<ForLang only="csharp">
+<Snippet file="parser.cs" />
+
+C# does have a compile-time check of this kind for `Span<T>` ([Borrowing](/learn/borrowing/) shows it), and the `scoped` keyword on parameters. Rust applies the idea to every reference.
+</ForLang>
+
+<ForLang only="python">
+<Snippet file="parser.py" />
+</ForLang>
+
+<ForLang only="typescript">
+<Snippet file="parser.ts" />
+
+In TypeScript a string is a value: your code cannot tell whether a slice shares memory with the original, so there is nothing to link.
+</ForLang>
+
+## `'static`
+
+`'static` is a named lifetime you never declare: the whole run of the program. (`'_` is the only other lifetime that needs no declaration.) It appears in two ways that are easy to mix up.
+
+<Snippet file="static.rs" />
+
+- **A reference valid for the whole run**, `&'static str`. A string literal is one ([Returning references](/learn/returning-references/#string-literals-and-static-items) shows it, and the other ways to get one).
+- **A bound**, `T: 'static`: "`T` holds no borrow that could end early". An owned `String` satisfies it. It does not mean the value lives forever: `Noisy` was dropped when `consume` returned. A reference to a local does not satisfy it:
+
+<Snippet file="static-borrow.fail.rs" />
+
+A `Box<dyn Trait>` in a signature means `Box<dyn Trait + 'static>`. To store a trait object that borrows, say so:
+
+<Snippet file="box-dyn.rs" />
+
+`std::thread::spawn` puts `'static` on its closure ([docs](https://doc.rust-lang.org/std/thread/fn.spawn.html)), which is why a closure that borrows a local needs `move` ([Threads](/learn/threads/)).
+
+<ForLang only="c cpp">
+`'static` is not C's storage class. A `&'static` reference points at data that lasts the whole run, such as a literal or a `static` item.
+</ForLang>
+
+## Lifetime errors and the usual fix
+
+| Error | The compiler says | The usual fix |
+|---|---|---|
+| E0106 | missing lifetime specifier | Write the `'a` ([above](#leaving-them-out-the-elision-rules)), or return an owned value |
+| E0597 | `x` does not live long enough | Declare the owner earlier so it lives as long as the borrow, or own the data |
+| E0716 | temporary value dropped while borrowed | Give the temporary a name with `let` (example below) |
+| E0505 | cannot move out of `x` because it is borrowed | Finish with the reference first, or do not move ([Borrowing](/learn/borrowing/)) |
+| E0499 | cannot borrow `x` as mutable more than once at a time | End the first borrow earlier, or give the method's result the right `'a` ([above](#structs-that-hold-references)); see [Mutable borrows](/learn/mutable-borrows/) |
+| E0502 | cannot borrow `x` as immutable because it is also borrowed as mutable | End the first borrow earlier, or restructure ([below](#where-a-borrow-really-ends)) |
+| E0515 | cannot return reference to local variable `x` | Return an owned value ([Returning references](/learn/returning-references/)) |
+| E0373 | closure may outlive the current function, but it borrows `x` | Add `move` ([Closures](/learn/closures/)) |
+| no code | lifetime may not live long enough | The body returns more than the signature promises: [change one of them](#lifetime-bounds) |
+
+E0597 marks three places: where the reference is made, where the owner is dropped, and where the reference is used last. A fix moves one of the three. Declare the owner earlier, use the reference before the owner goes, or stop borrowing and keep a copy. The first and third:
+
+<Snippet file="excerpt-fixed.rs" />
+
+E0716 can appear with no function in sight. `String::from("temporary")` has no name, so it is dropped at the end of the statement, and `as_str()` borrowed from it:
+
+<Snippet file="temporary.fail.rs" />
+
+Bind the `String` with `let` first.
+
+## When to own instead of borrow
+
+A lifetime on a struct is a cost you pay in every type that holds it. Owning the data copies it once and removes the lifetime. The structs in the [Structs](/learn/structs/) lesson owned their fields, so they needed none.
+
+<Snippet file="own-the-data.rs" />
+
+`Line<'a>` could only be used while `raw` was alive. `OwnedLine` outlived `raw`, and could go into a `Vec`, be returned from any function, or move to another thread. (`map` builds each word and `collect` gathers them into a list; [Iterators](/learn/iterators/) covers both.) On a 64-bit target the borrowed `Word` is 16 bytes and the owned one 24, and the owned one needed a copy of every word.
+
+Borrowing is not automatically the better choice. Borrow in a struct when it is a short-lived view over data you already hold, such as a parser or an iterator over one buffer. Own when the struct is stored, returned, sent to a thread, or kept in a collection. When a lifetime error blocks you, `.to_string()` or `.clone()` at the boundary is a fine first step.
+
+<ForLang only="java kotlin csharp python typescript">
+Owning is what your languages do on every call: the substring or slice in your parser was already a copy. In Rust it is a choice, so you can pick the view when it pays.
+</ForLang>
+
+<ForLang only="c cpp">
+Returning by value is the C++ way to own. `std::shared_ptr` answers who owns the string, not whether a view into it is valid:
+
+<Snippet file="shared-view.crash.asan.cpp" />
+
+Rust's counting pointers, `Rc` and `Arc`, are in [Smart pointers](/learn/smart-pointers/#rct-several-owners); a lifetime counts nothing and is not stored (see `Excerpt` above).
+</ForLang>
+
+<p class="lr-layer">Going deeper</p>
+
+## Lifetime bounds
+
+`'b: 'a` says `'b` lasts at least as long as `'a`. `T: 'a` is the same idea for a type: all the borrows inside `T` last at least as long as `'a`. A signature is a promise the body must keep: the compiler checks callers against the signature alone, and the body against the signature. A body that returns something the signature did not promise is an error:
+
+<Snippet file="contract.fail.rs" />
+
+The `help:` names the bound: a `&'b str` may be returned as a `&'a str` only if `'b` outlives `'a`.
+
+<Snippet file="bound.rs" />
+
+`Holder<'a, T>` did not need `T: 'a` written. The compiler works it out from the field `&'a T`.
+
+## Two lifetimes in one struct
+
+One `'a` is enough for most structs. A struct with two references can give them separate lifetimes when they end at different times and a method returns only one of them:
+
+<Snippet file="two-lifetimes.rs" />
+
+`first_match` returns a piece of the text, so its type says `'t`. `query` and `search` are dropped before `found` is printed, and that is allowed because `found` does not depend on `'q`. With one lifetime for both fields the compiler must pick a stretch that fits both references, and the result is tied to the shorter one:
+
+<Snippet file="one-lifetime.fail.rs" />
+
+Start with one lifetime and split it when an error like this one shows that two inputs end at different times. It is the lesson of `tail` and `skip` again: give each reference only the links it really has.
+
+## Iterators that borrow
+
+`Iterator::next` takes `&mut self`, but its result type, `Self::Item`, cannot mention that borrow. An iterator over borrowed text therefore has to give out items that borrow from the text itself:
+
+<Snippet file="iterator-impl.rs" />
+
+Items that borrowed from the iterator are rejected:
+
+<Snippet file="lending.fail.rs" />
+
+## Where a borrow really ends
+
+The borrow checker's current design, non-lexical lifetimes (NLL), ends a borrow at the last use of the reference, not at the end of its block ([Borrowing](/learn/borrowing/#how-long-a-borrow-lasts) has the run). One exception matters once structs hold references: if the value holding the borrow has a `Drop` impl, the drop at the end of its scope counts as a use.
+
+<Snippet file="drop-ends-borrow.fail.rs" />
+
+Without the `impl Drop` the same program compiles.
+
+The checker is also not all-knowing. This function is fine at run time, but is rejected:
+
+<Snippet file="conditional-return.fail.rs" />
+
+One path returns `value`, so for the caller the borrow of `*map` must last as long as the result, and the compiler applies that to the path that did not return it. The [NLL design](https://rust-lang.github.io/rfcs/2094-nll.html) calls this "problem case #3", and the compiler used here still rejects it. The usual fix is to give the compiler a shape it accepts, here the `entry` API from [Maps](/learn/maps/):
+
+<Snippet file="conditional-return.rs" />
+
+If you cannot restructure, own the data, or return an index or key and look the value up again.
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Each exercise is a small program with checks in `main`. Run it in the Playground until it prints `all checks passed`. The starters return copies so that they compile; you change them to borrow, and the checks can tell a borrow from a copy by the address.
+
+<Exercise name="first-and-last" title="First and last piece">
+Return the first and last non-empty piece of `text` between separators `sep`. Change the signature so the pieces borrow from `text`. The compiler's `help:` for E0106 offers a `'a` on every reference. Try it, read the E0597 that `main` then reports, and fix the signature. The checks include a leading separator, no pieces, one piece, and a separator that is more than one byte.
+</Exercise>
+
+<Exercise name="section" title="Borrow a section">
+`Section` owns two `String`s. Give it a lifetime and make `parse` and `first_word` borrow from the document. `first_word` must return `&'a str`, not a `&str` tied to the section: the checks drop the section before they use the word. Title and body are the text as it is, with nothing trimmed.
+</Exercise>
+
+<Exercise name="words" title="An iterator over borrowed words">
+Finish `Words`, an iterator over the words of a text. The starter yields `String`s; change `Item` so that every word is a view into the text and still valid after the iterator is gone. The checks include runs of whitespace, a trailing space and a multi-byte space.
+</Exercise>
+
+## Read more
+
+- [The Rust Book: Validating References with Lifetimes](https://doc.rust-lang.org/book/ch10-03-lifetime-syntax.html), which also covers `'static`.
+- [Rust by Example: Lifetimes](https://doc.rust-lang.org/rust-by-example/scope/lifetime.html), with pages on [elision](https://doc.rust-lang.org/rust-by-example/scope/lifetime/elision.html), [structs](https://doc.rust-lang.org/rust-by-example/scope/lifetime/struct.html) and [`'static`](https://doc.rust-lang.org/rust-by-example/scope/lifetime/static_lifetime.html).
+- [The Reference: Lifetime elision](https://doc.rust-lang.org/reference/lifetime-elision.html) and [Trait and lifetime bounds](https://doc.rust-lang.org/reference/trait-bounds.html).
+- [The Rustonomicon: Lifetimes](https://doc.rust-lang.org/nomicon/lifetimes.html), for a deeper look at how the compiler reasons.
+- Error index: [E0106](https://doc.rust-lang.org/error_codes/E0106.html), [E0597](https://doc.rust-lang.org/error_codes/E0597.html) and [E0716](https://doc.rust-lang.org/error_codes/E0716.html), or [this site's index](/errors/).
+- [Reading signatures](/learn/reading-signatures/) for `'a` among the other symbols in a signature.

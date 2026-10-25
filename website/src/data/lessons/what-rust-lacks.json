@@ -1,0 +1,641 @@
+{
+ "id": "what-rust-lacks",
+ "title": "What Rust doesn't have",
+ "part": "syntax",
+ "intro": "Some things you reach for by habit do not exist in Rust: `x++`, `a ? b : c`, `null`, C-style `for`, default arguments, classes, exceptions, `goto`. Each one fails with a compiler message, and each has a Rust way. This page lists them, with the real error and what to write instead.",
+ "coming_from": {
+  "go": "`i++` is a statement in Go, and Rust has no `++` at all. Much else matches: Go has no ternary operator, no function overloading by type, no default arguments and no mixing of typed number types either. What you give up is `nil`, `goto`, `defer`, `for cond {}` and the `if err != nil` boilerplate: Rust has `Option`, labeled `break`, `Drop`, `while` and `?`. Watch the `break` inside a `switch`: in Rust it leaves the loop.",
+  "kotlin": "You are used to a lot of this already: `if` is an expression, there is no ternary operator, and `T?` is a checked null. What Rust takes away is `++`, `?.`, `?:` and `!!` (`Option` has `map`, `unwrap_or` and `unwrap`), default and named arguments, `open` classes with inheritance, and exceptions (`Result` and `?` replace `try`/`catch`).",
+  "python": "Python has no `x++` either, so `x += 1` is already your habit. What is new is that an `if` needs a `bool` (an empty list or a `0` is not false), a call has no keyword arguments and a definition has no default values, `//` starts a comment, `and`/`or`/`not`/`elif` are `&&`/`||`/`!`/`else if`, a name has one type, and braces replace the indentation.",
+  "typescript": "`x++`, `a ? b : c`, `null` and `undefined`, `??`, truthiness (`if (name)`), `throw` and optional parameters all have a different Rust form: `x += 1`, `if a { b } else { c }`, `Option`, `unwrap_or`, an explicit test, `Result` and `?`, and a struct. Careful: `u?.name` is valid Rust, and it is not a safe call but an early return. Rust also does not turn a number into another number type for you.",
+  "java": "`i++`, `?:`, `null`, `new`, `this`, `extends`, function overloading, `switch` that falls through, `finally` and checked or unchecked exceptions all have a different Rust form. Java widens `int` to `long` on its own; Rust makes you write the conversion. A `break` in a `switch` inside a loop leaves the `switch` in Java; in Rust it leaves the loop.",
+  "csharp": "`i++`, `?:`, `?.`, `new`, `this`, `: BaseClass`, function overloads, optional and named arguments, and `try`/`catch` have a different Rust form, and `null` becomes `Option`. C# widens `int` to `long` on its own; Rust makes you write the conversion. A `break` in a `switch` inside a loop leaves the `switch` in C#; in Rust it leaves the loop.",
+  "c": "`i++`, `?:`, `for (i = 0; i < n; i++)`, `NULL`, a `switch` that falls through, `goto`, `(double)n`, `->` and `#define` do not exist or fail in Rust, as does `if (n)` on a number. A global you assign without `unsafe` fails to compile too, and C's silent number conversions (`int n = 3.9;`) need an explicit `as`. A `break;` at the end of a ported `case` compiles and leaves the loop.",
+  "cpp": "Everything in the C list, plus classes with inheritance, function overloads, default arguments, constructors and exceptions: Rust has none of them. A `struct` holds data, an `impl` block holds methods, a trait shares behaviour (and `impl Add` is your `operator+`), a `Drop` runs where a destructor would, and a `Result` carries a failure. `auto` is `let`."
+ },
+ "notes": [
+  "Rust has no `x++` and no `a ? b : c`. Write `x += 1`, and `if a { b } else { c }`, which is an expression.",
+  "There is no `null`. A value that may be missing has the type `Option<T>`, and the compiler makes you handle `None`.",
+  "Numbers do not convert on their own: `i32` plus `i64` is an error. Write `as`, `From` or `try_from`.",
+  "No `switch` fallthrough, no exceptions for ordinary errors, no default or named arguments, no function overloading by parameter type, no classes and no `goto`. Each has a Rust form, shown on this page. A `break` in a `match` inside a loop leaves the loop."
+ ],
+ "gotcha": {
+  "title": "Writing x++",
+  "verdict": "rust-rule",
+  "looks_fine": "In Go, Java, C, C++, C#, Kotlin and JavaScript, `count++` adds one, and it reads the same in all of them.",
+  "rust_sees": "Rust has no `++` or `--` operator. `count++` is not a statement the parser knows, and the compiler stops with a message that says so and shows `count += 1`.",
+  "why": "The compiler recognises the habit and names it: \"Rust has no postfix increment operator\". The fix is `count += 1`. Python is the other language here with no `++` operator. Elsewhere `++` is part of the language: Go allows it only as a statement, and the others also allow it inside larger expressions.",
+  "langs": {
+   "go": {
+    "status": "runs",
+    "says": "Go prints 3. `count++` is a statement, not an expression, so `x := count++` is an error in Go. `++count` does not exist.",
+    "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tcount := 0\n\tfor i := 0; i < 3; i++ {\n\t\tcount++\n\t}\n\tfmt.Printf(\"count: %d\\n\", count)\n}\n",
+    "out": "count: 3\n"
+   },
+   "kotlin": {
+    "status": "runs",
+    "says": "Kotlin prints 3. `count++` and `++count` both work, and can sit inside a larger expression.",
+    "code": "fun main() {\n    var count = 0\n    for (i in 0 until 3) {\n        count++\n    }\n    println(\"count: $count\")\n}\n",
+    "out": "count: 3\n"
+   },
+   "python": {
+    "status": "refuses",
+    "says": "Python refuses with a `SyntaxError`: it has no `++` operator, so write `count += 1`. It is the one language here with no `++`. Note that `++count` and `--count` are legal in Python and do nothing: they read as `+(+count)` and `-(-count)`.",
+    "code": "count = 0\nfor _ in range(3):\n    count++\nprint(f\"count: {count}\")\n",
+    "out": "  File \"main.py\", line 3\n    count++\n           ^\nSyntaxError: invalid syntax\n"
+   },
+   "typescript": {
+    "status": "runs",
+    "says": "TypeScript prints 3. `count++` and `++count` work, as in JavaScript, and `--count` decrements. In Rust `--count` compiles and negates twice.",
+    "code": "let count = 0;\nfor (let i = 0; i < 3; i++) {\n  count++;\n}\nconsole.log(`count: ${count}`);\n",
+    "out": "count: 3\n"
+   },
+   "java": {
+    "status": "runs",
+    "says": "Java prints 3. `count++` and `++count` work, also inside expressions such as `a[i++]`.",
+    "code": "public class Main {\n    public static void main(String[] args) {\n        int count = 0;\n        for (int i = 0; i < 3; i++) {\n            count++;\n        }\n        System.out.println(\"count: \" + count);\n    }\n}\n",
+    "out": "count: 3\n"
+   },
+   "csharp": {
+    "status": "runs",
+    "says": "C# prints 3. `count++` and `++count` work, also inside expressions.",
+    "code": "var count = 0;\nfor (var i = 0; i < 3; i++)\n{\n    count++;\n}\nConsole.WriteLine($\"count: {count}\");\n",
+    "out": "count: 3\n"
+   },
+   "c": {
+    "status": "runs",
+    "says": "C prints 3. `count++` works, also inside expressions such as `a[i++]`.",
+    "code": "#include <stdio.h>\n\nint main(void) {\n    int count = 0;\n    for (int i = 0; i < 3; i++) {\n        count++;\n    }\n    printf(\"count: %d\\n\", count);\n    return 0;\n}\n",
+    "out": "count: 3\n"
+   },
+   "cpp": {
+    "status": "runs",
+    "says": "C++ prints 3. `count++` and `++count` work, and they can be overloaded for your own types.",
+    "code": "#include <iostream>\n\nint main() {\n    int count = 0;\n    for (int i = 0; i < 3; i++) {\n        count++;\n    }\n    std::cout << \"count: \" << count << \"\\n\";\n}\n",
+    "out": "count: 3\n"
+   }
+  },
+  "code": "fn main() {\n    let mut count = 0;\n    for _ in 0..3 {\n        count++;\n    }\n    println!(\"count: {count}\");\n}\n",
+  "error": "error: Rust has no postfix increment operator\n --> src/main.rs:4:14\n  |\n4 |         count++;\n  |              ^^ not a valid postfix operator\n  |\nhelp: use `+= 1` instead\n  |\n4 -         count++;\n4 +         count += 1;",
+  "fixed": {
+   "code": "fn main() {\n    let mut count = 0;\n    for _ in 0..3 {\n        count += 1;\n    }\n    println!(\"count: {count}\");\n}\n",
+   "out": "count: 3\n"
+  }
+ },
+ "order": 4,
+ "program": {
+  "rust": {
+   "code": "// What other languages write with ?:, i++, null and switch, written in Rust.\nfn size(n: i32) -> &'static str {\n    match n {\n        1 | 2 => \"small\",\n        3 => \"medium\",\n        _ => \"large\",\n    }\n}\n\nfn first_even(items: &[i32]) -> Option<i32> {\n    for &x in items {\n        if x % 2 == 0 {\n            return Some(x);\n        }\n    }\n    None\n}\n\nfn main() {\n    let mut total = 0;\n    for i in 0..4 {\n        total += i;\n    }\n    let label = if total > 5 { \"big\" } else { \"small\" };\n    println!(\"total: {total} ({label})\");\n    println!(\"size: {} {}\", size(2), size(9));\n    match first_even(&[3, 5, 8]) {\n        Some(n) => println!(\"first even: {n}\"),\n        None => println!(\"no even number\"),\n    }\n    println!(\"none: {}\", first_even(&[1, 3]).unwrap_or(-1));\n    let wide = total as i64 * 1_000_000_000;\n    println!(\"wide: {wide}\");\n}\n",
+   "out": "total: 6 (big)\nsize: small large\nfirst even: 8\nnone: -1\nwide: 6000000000\n"
+  },
+  "go": {
+   "code": "package main\n\nimport \"fmt\"\n\n// What other languages write with ?:, i++, null and switch, written in Go.\nfunc size(n int) string {\n\tswitch n {\n\tcase 1, 2:\n\t\treturn \"small\"\n\tcase 3:\n\t\treturn \"medium\"\n\tdefault:\n\t\treturn \"large\"\n\t}\n}\n\nfunc firstEven(items []int) (int, bool) {\n\tfor _, x := range items {\n\t\tif x%2 == 0 {\n\t\t\treturn x, true\n\t\t}\n\t}\n\treturn 0, false\n}\n\nfunc main() {\n\ttotal := 0\n\tfor i := 0; i < 4; i++ {\n\t\ttotal += i\n\t}\n\tlabel := \"small\"\n\tif total > 5 {\n\t\tlabel = \"big\"\n\t}\n\tfmt.Printf(\"total: %d (%s)\\n\", total, label)\n\tfmt.Printf(\"size: %s %s\\n\", size(2), size(9))\n\tif n, ok := firstEven([]int{3, 5, 8}); ok {\n\t\tfmt.Printf(\"first even: %d\\n\", n)\n\t} else {\n\t\tfmt.Println(\"no even number\")\n\t}\n\tn, ok := firstEven([]int{1, 3})\n\tif !ok {\n\t\tn = -1\n\t}\n\tfmt.Printf(\"none: %d\\n\", n)\n\twide := int64(total) * 1_000_000_000\n\tfmt.Printf(\"wide: %d\\n\", wide)\n}\n",
+   "out": "total: 6 (big)\nsize: small large\nfirst even: 8\nnone: -1\nwide: 6000000000\n"
+  },
+  "kotlin": {
+   "code": "// What other languages write with ?:, i++, null and switch, written in Kotlin.\nfun size(n: Int): String = when (n) {\n    1, 2 -> \"small\"\n    3 -> \"medium\"\n    else -> \"large\"\n}\n\nfun firstEven(items: List<Int>): Int? {\n    for (x in items) {\n        if (x % 2 == 0) return x\n    }\n    return null\n}\n\nfun main() {\n    var total = 0\n    for (i in 0 until 4) {\n        total += i\n    }\n    val label = if (total > 5) \"big\" else \"small\"\n    println(\"total: $total ($label)\")\n    println(\"size: ${size(2)} ${size(9)}\")\n    val even = firstEven(listOf(3, 5, 8))\n    if (even != null) println(\"first even: $even\") else println(\"no even number\")\n    println(\"none: ${firstEven(listOf(1, 3)) ?: -1}\")\n    val wide = total.toLong() * 1_000_000_000\n    println(\"wide: $wide\")\n}\n",
+   "out": "total: 6 (big)\nsize: small large\nfirst even: 8\nnone: -1\nwide: 6000000000\n"
+  },
+  "python": {
+   "code": "# What other languages write with ?:, i++, null and switch, written in Python.\nfrom typing import Optional\n\n\ndef size(n: int) -> str:\n    if n in (1, 2):\n        return \"small\"\n    if n == 3:\n        return \"medium\"\n    return \"large\"\n\n\ndef first_even(items: list[int]) -> Optional[int]:\n    for x in items:\n        if x % 2 == 0:\n            return x\n    return None\n\n\ntotal = 0\nfor i in range(4):\n    total += i\nlabel = \"big\" if total > 5 else \"small\"\nprint(f\"total: {total} ({label})\")\nprint(f\"size: {size(2)} {size(9)}\")\neven = first_even([3, 5, 8])\nif even is not None:\n    print(f\"first even: {even}\")\nelse:\n    print(\"no even number\")\nnone = first_even([1, 3])\nprint(f\"none: {-1 if none is None else none}\")\nwide = total * 1_000_000_000\nprint(f\"wide: {wide}\")\n",
+   "out": "total: 6 (big)\nsize: small large\nfirst even: 8\nnone: -1\nwide: 6000000000\n"
+  },
+  "typescript": {
+   "code": "// What other languages write with ?:, i++, null and switch, written in TypeScript.\nfunction size(n: number): string {\n  switch (n) {\n    case 1:\n    case 2:\n      return \"small\";\n    case 3:\n      return \"medium\";\n    default:\n      return \"large\";\n  }\n}\n\nfunction firstEven(items: number[]): number | undefined {\n  for (const x of items) {\n    if (x % 2 === 0) return x;\n  }\n  return undefined;\n}\n\nlet total = 0;\nfor (let i = 0; i < 4; i++) {\n  total += i;\n}\nconst label = total > 5 ? \"big\" : \"small\";\nconsole.log(`total: ${total} (${label})`);\nconsole.log(`size: ${size(2)} ${size(9)}`);\nconst even = firstEven([3, 5, 8]);\nif (even !== undefined) {\n  console.log(`first even: ${even}`);\n} else {\n  console.log(\"no even number\");\n}\nconsole.log(`none: ${firstEven([1, 3]) ?? -1}`);\nconst wide = total * 1_000_000_000;\nconsole.log(`wide: ${wide}`);\n",
+   "out": "total: 6 (big)\nsize: small large\nfirst even: 8\nnone: -1\nwide: 6000000000\n"
+  },
+  "java": {
+   "code": "import java.util.List;\nimport java.util.Optional;\n\npublic class Main {\n    // What other languages write with ?:, i++, null and switch, written in Java.\n    static String size(int n) {\n        return switch (n) {\n            case 1, 2 -> \"small\";\n            case 3 -> \"medium\";\n            default -> \"large\";\n        };\n    }\n\n    static Optional<Integer> firstEven(List<Integer> items) {\n        for (int x : items) {\n            if (x % 2 == 0) {\n                return Optional.of(x);\n            }\n        }\n        return Optional.empty();\n    }\n\n    public static void main(String[] args) {\n        int total = 0;\n        for (int i = 0; i < 4; i++) {\n            total += i;\n        }\n        String label = total > 5 ? \"big\" : \"small\";\n        System.out.println(\"total: \" + total + \" (\" + label + \")\");\n        System.out.println(\"size: \" + size(2) + \" \" + size(9));\n        Optional<Integer> even = firstEven(List.of(3, 5, 8));\n        if (even.isPresent()) {\n            System.out.println(\"first even: \" + even.get());\n        } else {\n            System.out.println(\"no even number\");\n        }\n        System.out.println(\"none: \" + firstEven(List.of(1, 3)).orElse(-1));\n        long wide = (long) total * 1_000_000_000;\n        System.out.println(\"wide: \" + wide);\n    }\n}\n",
+   "out": "total: 6 (big)\nsize: small large\nfirst even: 8\nnone: -1\nwide: 6000000000\n"
+  },
+  "csharp": {
+   "code": "// What other languages write with ?:, i++, null and switch, written in C#.\nstatic string Size(int n) => n switch\n{\n    1 or 2 => \"small\",\n    3 => \"medium\",\n    _ => \"large\",\n};\n\nstatic int? FirstEven(int[] items)\n{\n    foreach (var x in items)\n    {\n        if (x % 2 == 0) return x;\n    }\n    return null;\n}\n\nvar total = 0;\nfor (var i = 0; i < 4; i++)\n{\n    total += i;\n}\nvar label = total > 5 ? \"big\" : \"small\";\nConsole.WriteLine($\"total: {total} ({label})\");\nConsole.WriteLine($\"size: {Size(2)} {Size(9)}\");\nvar even = FirstEven(new[] { 3, 5, 8 });\nif (even is not null)\n{\n    Console.WriteLine($\"first even: {even}\");\n}\nelse\n{\n    Console.WriteLine(\"no even number\");\n}\nConsole.WriteLine($\"none: {FirstEven(new[] { 1, 3 }) ?? -1}\");\nlong wide = (long)total * 1_000_000_000;\nConsole.WriteLine($\"wide: {wide}\");\n",
+   "out": "total: 6 (big)\nsize: small large\nfirst even: 8\nnone: -1\nwide: 6000000000\n"
+  },
+  "c": {
+   "code": "#include <stdio.h>\n\n// What other languages write with ?:, i++, null and switch, written in C.\nconst char *size(int n) {\n    switch (n) {\n    case 1:\n    case 2:\n        return \"small\";\n    case 3:\n        return \"medium\";\n    default:\n        return \"large\";\n    }\n}\n\n// Returns a pointer to the first even number, or NULL when there is none.\nconst int *first_even(const int *items, int len) {\n    for (int i = 0; i < len; i++) {\n        if (items[i] % 2 == 0) {\n            return &items[i];\n        }\n    }\n    return NULL;\n}\n\nint main(void) {\n    int total = 0;\n    for (int i = 0; i < 4; i++) {\n        total += i;\n    }\n    const char *label = total > 5 ? \"big\" : \"small\";\n    printf(\"total: %d (%s)\\n\", total, label);\n    printf(\"size: %s %s\\n\", size(2), size(9));\n    int a[] = {3, 5, 8};\n    const int *even = first_even(a, 3);\n    if (even != NULL) {\n        printf(\"first even: %d\\n\", *even);\n    } else {\n        printf(\"no even number\\n\");\n    }\n    int b[] = {1, 3};\n    const int *none = first_even(b, 2);\n    printf(\"none: %d\\n\", none != NULL ? *none : -1);\n    long long wide = (long long)total * 1000000000LL;\n    printf(\"wide: %lld\\n\", wide);\n    return 0;\n}\n",
+   "out": "total: 6 (big)\nsize: small large\nfirst even: 8\nnone: -1\nwide: 6000000000\n"
+  },
+  "cpp": {
+   "code": "#include <iostream>\n#include <optional>\n#include <vector>\n\n// What other languages write with ?:, i++, null and switch, written in C++.\nconst char *size(int n) {\n    switch (n) {\n    case 1:\n    case 2:\n        return \"small\";\n    case 3:\n        return \"medium\";\n    default:\n        return \"large\";\n    }\n}\n\nstd::optional<int> first_even(const std::vector<int> &items) {\n    for (int x : items) {\n        if (x % 2 == 0) {\n            return x;\n        }\n    }\n    return std::nullopt;\n}\n\nint main() {\n    int total = 0;\n    for (int i = 0; i < 4; i++) {\n        total += i;\n    }\n    const char *label = total > 5 ? \"big\" : \"small\";\n    std::cout << \"total: \" << total << \" (\" << label << \")\\n\";\n    std::cout << \"size: \" << size(2) << \" \" << size(9) << \"\\n\";\n    auto even = first_even({3, 5, 8});\n    if (even) {\n        std::cout << \"first even: \" << *even << \"\\n\";\n    } else {\n        std::cout << \"no even number\\n\";\n    }\n    std::cout << \"none: \" << first_even({1, 3}).value_or(-1) << \"\\n\";\n    long long wide = static_cast<long long>(total) * 1000000000LL;\n    std::cout << \"wide: \" << wide << \"\\n\";\n}\n",
+   "out": "total: 6 (big)\nsize: small large\nfirst even: 8\nnone: -1\nwide: 6000000000\n"
+  }
+ },
+ "faq": [],
+ "snippets": {
+  "assign-cond.fail.rs": {
+   "code": "fn main() {\n    let mut items = vec![1, 2, 3].into_iter();\n    let mut item;\n    while item = items.next() {\n        println!(\"{item:?}\");\n    }\n}\n",
+   "error": "error[E0308]: mismatched types\n --> src/main.rs:4:11\n  |\n4 |     while item = items.next() {\n  |           ^^^^^^^^^^^^^^^^^^^ expected `bool`, found `()`\n  |\nhelp: you might have meant to compare for equality\n  |\n4 |     while item == items.next() {\n  |                 +\n",
+   "lang": "rust"
+  },
+  "break-match.rs": {
+   "code": "fn main() {\n    let mut n = 0;\n    for i in 0..5 {\n        match i {\n            2 => break,\n            _ => n += 1,\n        }\n    }\n    println!(\"n: {n}\");\n}\n",
+   "out": "n: 2\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "c-preproc.fail.rs": {
+   "code": "#define MAX 10\n\nfn main() {}\n",
+   "error": "error: expected one of `!` or `[`, found `define`\n --> src/main.rs:1:2\n  |\n1 | #define MAX 10\n  |  ^^^^^^ expected one of `!` or `[`",
+   "lang": "rust"
+  },
+  "c-syntax.fail.rs": {
+   "code": "struct P {\n    x: i32,\n}\n\nfn arrow(p: &P) -> i32 {\n    p->x\n}\n\nfn cast(n: i32) -> f64 {\n    (double)n\n}\n\nfn forever() {\n    for (;;) {\n        break;\n    }\n}\n\nfn always() {\n    while (1) {\n        break;\n    }\n}\n\nfn print_it() {\n    printf(\"%d\\n\", 5);\n}\n\nfn main() {}\n",
+   "error": "error: `->` is not valid syntax for field accesses and method calls\n --> src/main.rs:6:6\n  |\n6 |     p->x\n  |      ^^\n  |\n  = help: the `.` operator will automatically dereference the value, except if the value is a raw pointer\nhelp: try using `.` instead\n  |\n6 -     p->x\n6 +     p.x\n\nerror: expected one of `.`, `;`, `?`, `}`, or an operator, found `n`\n  --> src/main.rs:10:13\n   |\n10 |     (double)n\n   |             ^ expected one of `.`, `;`, `?`, `}`, or an operator\n\nerror: expected pattern, found `;`\n  --> src/main.rs:14:10\n   |\n14 |     for (;;) {\n   |          ^ expected pattern\n\nerror[E0308]: mismatched types\n  --> src/main.rs:20:11\n   |\n20 |     while (1) {\n   |           ^^^ expected `bool`, found integer\n\nerror[E0425]: cannot find function `printf` in this scope\n  --> src/main.rs:26:5\n   |\n26 |     printf(\"%d\\n\", 5);\n   |     ^^^^^^ not found in this scope\n   |\nhelp: you may have meant to use the `print` macro\n   |\n26 -     printf(\"%d\\n\", 5);\n26 +     print!(\"%d\\n\", 5);\n   |\n\nSome errors have detailed explanations: E0308, E0425.",
+   "lang": "rust"
+  },
+  "c-types.fail.rs": {
+   "code": "fn main() {\n    let d: f64 = 3;\n    let n: i32 = 3.9;\n    let digit = '7' - '0';\n    let p = NULL;\n}\n",
+   "error": "error[E0425]: cannot find value `NULL` in this scope\n --> src/main.rs:5:13\n  |\n5 |     let p = NULL;\n  |             ^^^^ not found in this scope\n\nerror[E0308]: mismatched types\n --> src/main.rs:2:18\n  |\n2 |     let d: f64 = 3;\n  |            ---   ^ expected `f64`, found integer\n  |            |\n  |            expected due to this\n  |\nhelp: use a float literal\n  |\n2 |     let d: f64 = 3.0;\n  |                   ++\n\nerror[E0308]: mismatched types\n --> src/main.rs:3:18\n  |\n3 |     let n: i32 = 3.9;\n  |            ---   ^^^ expected `i32`, found floating-point number\n  |            |\n  |            expected due to this\n\nerror[E0369]: cannot subtract `char` from `char`\n --> src/main.rs:4:21\n  |\n4 |     let digit = '7' - '0';\n  |                 --- ^ --- char\n  |                 |\n  |                 char\n\nSome errors have detailed explanations: E0308, E0369, E0425.",
+   "lang": "rust"
+  },
+  "check-indent.rs": {
+   "code": "// Indentation is not part of the grammar: this is one function, laid out badly on purpose.\n#[rustfmt::skip]\nfn main() {\nlet a = 1;\n        let b   =   a + 1;\n    if b == 2 {\n  assert_eq!(a + b, 3);\n        }\n}\n",
+   "out": "",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-rows.rs": {
+   "code": "// Backs the \"In Rust\" cells of the tables in lesson.mdx. Never shown.\nuse std::collections::HashMap;\n\nstruct Point {\n    x: i32,\n    y: i32,\n}\n\nimpl Point {\n    fn new(x: i32, y: i32) -> Point {\n        Point { x, y }\n    }\n}\n\ntrait Speak {\n    fn name(&self) -> String;\n    fn hello(&self) -> String {\n        format!(\"hi {}\", self.name())\n    }\n}\n\nstruct Dog;\n\nimpl Speak for Dog {\n    fn name(&self) -> String {\n        \"Rex\".to_string()\n    }\n}\n\nfn greet(name: &str, greeting: Option<&str>) -> String {\n    format!(\"{}, {name}!\", greeting.unwrap_or(\"Hello\"))\n}\n\nfn parse(s: &str) -> Result<i32, std::num::ParseIntError> {\n    let n = s.parse::<i32>()?;\n    Ok(n + 1)\n}\n\nfn main() {\n    // x++ and x--\n    let mut x = 5;\n    x += 1;\n    x -= 1;\n    assert_eq!(x, 5);\n\n    // the ternary operator\n    let big = if x > 3 { \"big\" } else { \"small\" };\n    assert_eq!(big, \"big\");\n\n    // counted loops\n    let mut sum = 0;\n    for i in 0..4 {\n        sum += i;\n    }\n    assert_eq!(sum, 6);\n\n    // do { } while: the body runs once even when the test is false at the start\n    let mut runs = 0;\n    loop {\n        runs += 1;\n        if runs >= 1 {\n            break;\n        }\n    }\n    assert_eq!(runs, 1);\n\n    // Option instead of null\n    let missing: Option<&str> = None;\n    assert!(missing.is_none());\n    let present = Some(3);\n    if let Some(n) = present {\n        assert_eq!(n, 3);\n    }\n\n    // numbers: explicit conversions\n    let small: i32 = 5;\n    let other: i64 = 7;\n    assert_eq!(i64::from(small) + other, 12);\n    assert_eq!(small as i64 + other, 12);\n    assert_eq!(u64::try_from(small).unwrap(), 5);\n    assert!(u64::try_from(-1i32).is_err());\n    assert_eq!(f64::from(small) * 1.5, 7.5);\n    assert_eq!(small as f64 * 1.5, 7.5);\n    assert!(i64::from(small) != other);\n    assert!(1 as f64 == 1.0);\n    // a String and a &str can be compared; two number types cannot\n    assert!(String::from(\"a\") == \"a\");\n\n    // truthiness: the explicit tests\n    let name = String::from(\"Ada\");\n    let items: Vec<i32> = Vec::new();\n    assert!(!name.is_empty());\n    assert!(items.is_empty());\n    assert!(4 != 0);\n    assert!(Some(3).is_some());\n\n    // ! is logical not on bool and bitwise not on integers\n    assert!(!true == false);\n    assert_eq!(!5i32, -6);\n    assert_eq!(!0u8, 255);\n\n    // switch with several values per case, no fallthrough\n    let size = |n: i32| match n {\n        1 | 2 => \"small\",\n        3 => \"three\",\n        _ => \"other\",\n    };\n    assert_eq!(\n        (size(1), size(2), size(3), size(9)),\n        (\"small\", \"small\", \"three\", \"other\")\n    );\n\n    // break inside a match leaves the loop\n    let mut seen = Vec::new();\n    for n in 0..6 {\n        match n {\n            3 => break,\n            _ => seen.push(n),\n        }\n    }\n    assert_eq!(seen, [0, 1, 2]);\n\n    // while let instead of while (x = next())\n    let mut stack = vec![1, 2, 3];\n    let mut popped = Vec::new();\n    while let Some(top) = stack.pop() {\n        popped.push(top);\n    }\n    assert_eq!(popped, [3, 2, 1]);\n\n    // goto: a labeled break leaves two loops\n    let mut hit = (0, 0);\n    'outer: for r in 0..3 {\n        for c in 0..3 {\n            if r * c == 2 {\n                hit = (r, c);\n                break 'outer;\n            }\n        }\n    }\n    assert_eq!(hit, (1, 2));\n\n    // a loop that gives a value with break\n    let mut n = 0;\n    let first_square_over_20 = loop {\n        n += 1;\n        if n * n > 20 {\n            break n * n;\n        }\n    };\n    assert_eq!(first_square_over_20, 25);\n\n    // exceptions: Result and ?, panic! for bugs; catch_unwind exists but is not a try/catch\n    assert_eq!(parse(\"41\"), Ok(42));\n    assert!(parse(\"x\").is_err());\n    std::panic::set_hook(Box::new(|_| {}));\n    let caught = std::panic::catch_unwind(|| {\n        let v: Vec<i32> = Vec::new();\n        v[0]\n    });\n    assert!(caught.is_err());\n\n    // default arguments: a struct with Default, or an Option parameter\n    #[derive(Default)]\n    struct Opts {\n        width: u32,\n        border: bool,\n    }\n    let o = Opts {\n        width: 3,\n        ..Default::default()\n    };\n    assert_eq!((o.width, o.border), (3, false));\n    assert_eq!(greet(\"Ada\", None), \"Hello, Ada!\");\n    assert_eq!(greet(\"Ada\", Some(\"Hi\")), \"Hi, Ada!\");\n\n    // constructors: a struct literal, or a plain function called new\n    let p = Point { x: 1, y: 2 };\n    let q = Point::new(1, 2);\n    assert_eq!((p.x, p.y), (q.x, q.y));\n\n    // inheritance: shared behaviour from a trait, with a default method\n    assert_eq!(Dog.hello(), \"hi Rex\");\n\n    // strings: no s[0]\n    let s = String::from(\"héllo\");\n    assert_eq!(s.chars().next(), Some('h'));\n    assert_eq!(s.as_bytes()[0], b'h');\n    assert_eq!(s.chars().nth(1), Some('é'));\n\n    // a[i++] as a block expression\n    let a = [10, 20, 30];\n    let mut i = 0;\n    let v = {\n        let t = a[i];\n        i += 1;\n        t\n    };\n    assert_eq!((v, i), (10, 1));\n    let w = a[{\n        i += 1;\n        i - 1\n    }];\n    assert_eq!((w, i), (20, 2));\n\n    // loops: while, loop, for over a slice, enumerate\n    let mut n = 3;\n    while n > 0 {\n        n -= 1;\n    }\n    assert_eq!(n, 0);\n    let xs = vec![5, 6];\n    let mut seen = Vec::new();\n    for v in &xs {\n        seen.push(*v);\n    }\n    for (i, v) in xs.iter().enumerate() {\n        seen.push(i as i32 * 100 + *v);\n    }\n    assert_eq!(seen, [5, 6, 5, 106]);\n\n    // a lookup that may fail\n    let mut m = HashMap::new();\n    m.insert(\"a\", 1);\n    if let Some(v) = m.get(\"a\") {\n        assert_eq!(*v, 1);\n    }\n    assert!(m.get(\"zz\").is_none());\n\n    // a switch without a subject: a match with guards\n    let tag = |x: i32| match x {\n        _ if x > 5 => \"big\",\n        _ => \"small\",\n    };\n    assert_eq!((tag(9), tag(1)), (\"big\", \"small\"));\n\n    // swapping without a temporary, and struct update\n    let (mut p, mut q) = (1, 2);\n    (p, q) = (q, p);\n    assert_eq!((p, q), (2, 1));\n    #[derive(Clone, Copy)]\n    struct Pt {\n        x: i32,\n        y: i32,\n    }\n    let base = Pt { x: 1, y: 2 };\n    let moved = Pt { x: 5, ..base };\n    assert_eq!((moved.x, moved.y), (5, 2));\n\n    // Kotlin's ?. ?: !! and `?: return`\n    fn len_of(name: &Option<String>) -> Option<usize> {\n        name.as_ref().map(|s| s.len())\n    }\n    fn first_or_minus(v: &[i32]) -> i32 {\n        let Some(f) = v.first() else { return -1 };\n        *f\n    }\n    assert_eq!(len_of(&Some(\"abc\".to_string())), Some(3));\n    assert_eq!(len_of(&None), None);\n    assert_eq!(first_or_minus(&[]), -1);\n    assert_eq!(first_or_minus(&[7]), 7);\n    let anon: Option<&str> = None;\n    assert_eq!(anon.unwrap_or(\"anon\"), \"anon\");\n    assert_eq!(Some(2).unwrap(), 2);\n\n    // Python's // ** chained comparison in is\n    assert_eq!(7 / 2, 3);\n    assert_eq!(-7 / 2, -3);\n    assert_eq!(2_i32.pow(10), 1024);\n    let x = 3;\n    assert!(1 < x && x < 5);\n    assert!([1, 2, 3].contains(&x));\n    assert!(None::<i32>.is_none());\n\n    // C: char arithmetic, casts, a pointer-like Option\n    assert_eq!('7'.to_digit(10), Some(7));\n    assert_eq!(3 as f64, 3.0);\n    let n3 = 3;\n    assert_eq!(n3 as f64, 3.0);\n    let boxed = Box::new(Pt { x: 1, y: 2 });\n    assert_eq!(boxed.x, 1);\n\n    // C++: a generic function with a bound\n    fn largest<T: PartialOrd>(a: T, b: T) -> T {\n        if a > b { a } else { b }\n    }\n    assert_eq!(largest(2, 3), 3);\n    assert_eq!(largest(\"a\", \"b\"), \"b\");\n\n    // C#: TryParse and the null-conditional chain\n    assert_eq!(\"12\".parse::<i32>().ok(), Some(12));\n    assert_eq!(\"x\".parse::<i32>().ok(), None);\n    let a5: Option<i32> = None;\n    assert_eq!(a5.unwrap_or(5), 5);\n\n    // TypeScript: an optional parameter and a closure\n    fn scale(x: f64, factor: Option<f64>) -> f64 {\n        x * factor.unwrap_or(1.0)\n    }\n    assert_eq!(scale(2.0, None), 2.0);\n    let inc = |x: f64| x + 1.0;\n    assert_eq!(inc(1.0), 2.0);\n    let d = 1.5;\n    assert_eq!(d * 2.0, 3.0);\n\n    // chars().next() is an Option<char>\n    let first: Option<char> = \"héllo\".chars().next();\n    assert_eq!(first, Some('h'));\n\n    // the rustc suggestion for `null` is a raw pointer, not an Option\n    let raw: *const i32 = std::ptr::null();\n    assert!(raw.is_null());\n\n    // a lookup that may fail is an Option\n    let mut ages = HashMap::new();\n    ages.insert(\"ada\", 36);\n    assert_eq!(ages.get(\"bob\"), None);\n}\n",
+   "out": "",
+   "lang": "rust",
+   "exit": 0
+  },
+  "cpp-add.fail.rs": {
+   "code": "struct P {\n    x: i32,\n}\n\nfn main() {\n    let a = P { x: 1 };\n    let b = P { x: 2 };\n    let c = a + b;\n}\n",
+   "error": "error[E0369]: cannot add `P` to `P`\n --> src/main.rs:8:15\n  |\n8 |     let c = a + b;\n  |             - ^ - P\n  |             |\n  |             P\n  |\nnote: an implementation of `Add` might be missing for `P`\n --> src/main.rs:1:1\n  |\n1 | struct P {\n  | ^^^^^^^^ must implement `Add`\n  ... (notes pointing into the standard library trimmed)",
+   "lang": "rust"
+  },
+  "cpp-syntax.fail.rs": {
+   "code": "fn automatic() {\n    auto x = 5;\n    println!(\"{x}\");\n}\n\nfn heap() {\n    let p = new P(1);\n    delete p;\n}\n\nfn main() {}\n",
+   "error": "error: invalid variable declaration\n --> src/main.rs:2:5\n  |\n2 |     auto x = 5;\n  |     ^^^^\n  |\nhelp: write `let` instead of `auto` to introduce a new variable\n  |\n2 -     auto x = 5;\n2 +     let x = 5;\n\nerror: expected one of `!`, `.`, `::`, `;`, `?`, `else`, `{`, or an operator, found `P`\n --> src/main.rs:7:17\n  |\n7 |     let p = new P(1);\n  |                 ^ expected one of 8 possible tokens",
+   "lang": "rust"
+  },
+  "default-param.fail.rs": {
+   "code": "fn area(width: u32, height: u32 = 1) -> u32 {\n    width * height\n}\n\nfn main() {\n    println!(\"{}\", area(3, 1));\n}\n",
+   "error": "error: parameter defaults are not supported\n --> src/main.rs:1:33\n  |\n1 | fn area(width: u32, height: u32 = 1) -> u32 {\n  |                                 ^^^",
+   "lang": "rust"
+  },
+  "defaults.rs": {
+   "code": "#[derive(Default)]\nstruct Window {\n    width: u32,\n    height: u32,\n    border: bool,\n}\n\nfn describe(w: &Window) -> String {\n    format!(\"{}x{} border={}\", w.width, w.height, w.border)\n}\n\nfn scaled(width: u32, factor: Option<u32>) -> u32 {\n    width * factor.unwrap_or(1)\n}\n\nfn main() {\n    let sized = Window {\n        width: 80,\n        height: 24,\n        ..Default::default()\n    };\n    let bordered = Window {\n        border: true,\n        ..Default::default()\n    };\n    println!(\"sized: {}\", describe(&sized));\n    println!(\"bordered: {}\", describe(&bordered));\n    println!(\"scaled: {} {}\", scaled(3, None), scaled(3, Some(4)));\n}\n",
+   "out": "sized: 80x24 border=false\nbordered: 0x0 border=true\nscaled: 3 12\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "drop.rs": {
+   "code": "struct Noisy(&'static str);\n\nimpl Drop for Noisy {\n    fn drop(&mut self) {\n        println!(\"drop {}\", self.0);\n    }\n}\n\nfn main() {\n    let _a = Noisy(\"a\");\n    let _b = Noisy(\"b\");\n    println!(\"end of main\");\n}\n",
+   "out": "end of main\ndrop b\ndrop a\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "float-const.fail.rs": {
+   "code": "fn main() {\n    let d = 1.5;\n    let doubled = d * 2;\n    println!(\"{doubled}\");\n}\n",
+   "error": "error[E0277]: cannot multiply `{float}` by `{integer}`\n --> src/main.rs:3:21\n  |\n3 |     let doubled = d * 2;\n  |                     ^ no implementation for `{float} * {integer}`\n  |\n  = help: the trait `Mul<{integer}>` is not implemented for `{float}`\n  = help: the following other types implement trait `Mul<Rhs>`:\n            `&f128` implements `Mul<f128>`\n            `&f128` implements `Mul`\n            `&f16` implements `Mul<f16>`\n            `&f16` implements `Mul`\n            `&f32` implements `Mul<f32>`\n            `&f32` implements `Mul`\n            `&f64` implements `Mul<f64>`\n            `&f64` implements `Mul`\n          and 57 others\n",
+   "lang": "rust"
+  },
+  "floor-comment.fail.rs": {
+   "code": "fn main() {\n    let q = 7 // 2;\n    println!(\"{q}\");\n}\n",
+   "error": "error: expected `;`, found `println`\n --> src/main.rs:2:14\n  |\n2 |     let q = 7 // 2;\n  |              ^ help: add `;` here\n3 |     println!(\"{q}\");\n  |     ------- unexpected token",
+   "lang": "rust"
+  },
+  "floor-silent.rs": {
+   "code": "fn floor_div(a: i32, b: i32) -> i32 {\n    let _ = b;\n    a // b\n}\n\nfn main() {\n    println!(\"floor_div(7, 2): {}\", floor_div(7, 2));\n}\n",
+   "out": "floor_div(7, 2): 7\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "global-mut.fail.rs": {
+   "code": "static mut VISITS: u32 = 0;\n\nfn main() {\n    VISITS += 1;\n}\n",
+   "error": "error[E0133]: use of mutable static is unsafe and requires unsafe block\n --> src/main.rs:4:5\n  |\n4 |     VISITS += 1;\n  |     ^^^^^^ use of mutable static\n  |\n  = note: mutable statics can be mutated by multiple threads: aliasing violations or data races will cause undefined behavior\n",
+   "lang": "rust"
+  },
+  "global.fail.rs": {
+   "code": "static VISITS: u32 = 0;\n\nfn main() {\n    VISITS += 1;\n    println!(\"{VISITS}\");\n}\n",
+   "error": "error[E0594]: cannot assign to immutable static item `VISITS`\n --> src/main.rs:4:5\n  |\n1 | static VISITS: u32 = 0;\n  | ------------------ this `static` cannot be written to\n...\n4 |     VISITS += 1;\n  |     ^^^^^^^^^^^ cannot assign\n",
+   "lang": "rust"
+  },
+  "global.rs": {
+   "code": "use std::sync::atomic::{AtomicU32, Ordering};\n\nstatic VISITS: AtomicU32 = AtomicU32::new(0);\n\nfn visit() -> u32 {\n    VISITS.fetch_add(1, Ordering::Relaxed) + 1\n}\n\nfn main() {\n    visit();\n    visit();\n    println!(\"visits: {}\", visit());\n    println!(\"loaded: {}\", VISITS.load(Ordering::Relaxed));\n}\n",
+   "out": "visits: 3\nloaded: 3\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "go-for.fail.rs": {
+   "code": "fn three_clause() {\n    for i := 0; i < 3; i++ {\n        println!(\"{i}\");\n    }\n}\n\nfn while_style(mut n: i32) {\n    for n > 0 {\n        n -= 1;\n    }\n}\n\nfn range_style(xs: Vec<i32>) {\n    for _, x := range xs {\n        println!(\"{x}\");\n    }\n}\n\nfn main() {}\n",
+   "error": "error: expected one of `@` or `|`, found `:`\n --> src/main.rs:2:11\n  |\n2 |     for i := 0; i < 3; i++ {\n  |           ^ expected one of `@` or `|`\n\nerror: missing `in` in `for` loop\n --> src/main.rs:2:10\n  |\n2 |     for i := 0; i < 3; i++ {\n  |          ^\n  |\nhelp: try adding `in` here\n  |\n2 |     for i in := 0; i < 3; i++ {\n  |           ++\n\nerror: expected expression, found `:`\n --> src/main.rs:2:11\n  |\n2 |     for i := 0; i < 3; i++ {\n  |           ^ expected expression\n  |\nhelp: maybe write a path separator here\n  |\n2 |     for i ::= 0; i < 3; i++ {\n  |            +\n\nerror: missing `in` in `for` loop\n --> src/main.rs:8:10\n  |\n8 |     for n > 0 {\n  |          ^\n  |\nhelp: try adding `in` here\n  |\n8 |     for n in > 0 {\n  |           ++\n\nerror: expected expression, found `>`\n --> src/main.rs:8:11\n  |\n8 |     for n > 0 {\n  |           ^ expected expression\n\nerror: unexpected `,` in pattern\n  --> src/main.rs:14:10\n   |\n14 |     for _, x := range xs {\n   |          ^\n   |\nhelp: try adding parentheses to match on a tuple\n   |\n14 |     for (_, x) := range xs {\n   |         +    +\nhelp: maybe write a path separator here\n   |\n14 |     for _, x ::= range xs {\n   |               +",
+   "lang": "rust"
+  },
+  "go-keywords.fail.rs": {
+   "code": "fn deferred() {\n    defer println!(\"done\");\n}\n\nfn tagless(x: i32) {\n    switch {\n        case x > 5:\n            println!(\"big\");\n    }\n}\n\nfn swap() {\n    let (mut a, mut b) = (1, 2);\n    a, b = b, a;\n}\n\nfn jump() {\n    goto done;\n}\n\nfn main() {}\n",
+   "error": "error: expected one of `!`, `.`, `::`, `;`, `?`, `{`, `}`, or an operator, found `println`\n --> src/main.rs:2:11\n  |\n2 |     defer println!(\"done\");\n  |           ^^^^^^^ expected one of 8 possible tokens\n\nerror: expected one of `,`, `:`, or `}`, found `x`\n --> src/main.rs:7:14\n  |\n6 |     switch {\n  |     ------ while parsing this struct\n7 |         case x > 5:\n  |         ---- ^ expected one of `,`, `:`, or `}`\n  |         |\n  |         while parsing this struct field\n\nerror: expected one of `!`, `.`, `::`, `;`, `?`, `{`, `}`, or an operator, found `,`\n  --> src/main.rs:14:6\n   |\n14 |     a, b = b, a;\n   |      ^ expected one of 8 possible tokens\n\nerror: expected one of `!`, `.`, `::`, `;`, `?`, `{`, `}`, or an operator, found `done`\n  --> src/main.rs:18:10\n   |\n18 |     goto done;\n   |          ^^^^ expected one of 8 possible tokens\n   |\nhelp: you might have meant to write a field access\n   |\n18 |     goto.done;\n   |         +\n\nerror[E0422]: cannot find struct, variant or union type `switch` in this scope\n --> src/main.rs:6:5\n  |\n6 |     switch {\n  |     ^^^^^^ not found in this scope\n",
+   "lang": "rust"
+  },
+  "goto-retry.rs": {
+   "code": "fn main() {\n    let mut tries = 0;\n    let result = loop {\n        tries += 1;\n        if tries < 3 {\n            continue;\n        }\n        break tries * 10;\n    };\n    println!(\"tries: {tries}, result: {result}\");\n}\n",
+   "out": "tries: 3, result: 30\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "impl-needed.fail.rs": {
+   "code": "trait Speaker {\n    fn speak(&self) -> String;\n}\n\nstruct Dog;\n\nimpl Dog {\n    fn speak(&self) -> String {\n        \"woof\".to_string()\n    }\n}\n\nfn talk<T: Speaker>(t: &T) -> String {\n    t.speak()\n}\n\nfn main() {\n    println!(\"{}\", talk(&Dog));\n}\n",
+   "error": "error[E0277]: the trait bound `Dog: Speaker` is not satisfied\n  --> src/main.rs:18:25\n   |\n18 |     println!(\"{}\", talk(&Dog));\n   |                    ---- ^^^^ unsatisfied trait bound\n   |                    |\n   |                    required by a bound introduced by this call\n   |\nhelp: the trait `Speaker` is not implemented for `Dog`\n  --> src/main.rs:5:1\n   |\n 5 | struct Dog;\n   | ^^^^^^^^^^\nhelp: this trait has no implementations, consider adding one\n  --> src/main.rs:1:1\n   |\n 1 | trait Speaker {\n   | ^^^^^^^^^^^^^\nnote: required by a bound in `talk`\n  --> src/main.rs:13:12\n   |\n13 | fn talk<T: Speaker>(t: &T) -> String {\n   |            ^^^^^^^ required by this bound in `talk`\n",
+   "lang": "rust"
+  },
+  "java-keywords.fail.rs": {
+   "code": "struct Counter {\n    n: u32,\n}\n\nimpl Counter {\n    public void bump(&mut self) {\n        self.n += 1;\n    }\n}\n\nimpl Counter {\n    static count: u32 = 0;\n}\n\nfn main() {}\n",
+   "error": "error: expected one of `!` or `::`, found `void`\n --> src/main.rs:6:12\n  |\n5 | impl Counter {\n  |              - while parsing this item list starting here\n6 |     public void bump(&mut self) {\n  |            ^^^^ expected one of `!` or `::`\n...\n9 | }\n  | - the item list ends here\n\nerror: associated `static` items are not allowed\n  --> src/main.rs:12:5\n   |\n12 |     static count: u32 = 0;\n   |     ^^^^^^^^^^^^^^^^^^^^^^",
+   "lang": "rust"
+  },
+  "kotlin-nulls.fail.rs": {
+   "code": "fn safe_call(name: Option<String>) -> usize {\n    let n = name?.len();\n    n\n}\n\nfn elvis(name: Option<String>) -> usize {\n    name?.len() ?: 0\n}\n\nfn not_null() {\n    let name: Option<String> = Some(\"a\".to_string());\n    let n = name!!.len();\n}\n\nfn main() {}\n",
+   "error": "error: Rust has no ternary operator\n --> src/main.rs:7:5\n  |\n7 |     name?.len() ?: 0\n  |     ^^^^^^^^^^^^^^^^\n  |\nhelp: use an `if-else` expression instead\n  |\n7 -     name?.len() ?: 0\n7 +     if name?.len() {} else { 0 }\n\nerror: expected one of `(`, `[`, or `{`, found `!`\n  --> src/main.rs:12:18\n   |\n12 |     let n = name!!.len();\n   |                  ^ expected one of `(`, `[`, or `{`\n\nerror[E0277]: the `?` operator can only be used in a function that returns `Result` or `Option` (or another type that implements `FromResidual`)\n --> src/main.rs:2:17\n  |\n1 | fn safe_call(name: Option<String>) -> usize {\n  | ------------------------------------------- this function should return `Result` or `Option` to accept `?`\n2 |     let n = name?.len();\n  |                 ^ cannot use the `?` operator in a function that returns `usize`\n",
+   "lang": "rust"
+  },
+  "labeled-break.rs": {
+   "code": "fn main() {\n    let grid = [[1, 2, 3], [4, 5, 6], [7, 8, 9]];\n    let mut found = None;\n    'search: for (row, cells) in grid.iter().enumerate() {\n        for (col, &cell) in cells.iter().enumerate() {\n            if cell == 5 {\n                found = Some((row, col));\n                break 'search;\n            }\n        }\n    }\n    println!(\"found: {found:?}\");\n}\n",
+   "out": "found: Some((1, 1))\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "loops.rs": {
+   "code": "fn main() {\n    // count 0, 1, 2\n    for i in 0..3 {\n        println!(\"i: {i}\");\n    }\n\n    // count down from 10 in steps of 3\n    for i in (1..=10).rev().step_by(3) {\n        println!(\"down: {i}\");\n    }\n\n    // the position and the item\n    let items = [\"a\", \"b\"];\n    for (i, item) in items.iter().enumerate() {\n        println!(\"item {i}: {item}\");\n    }\n\n    // repeat while there is a value\n    let mut stack = vec![1, 2, 3];\n    while let Some(top) = stack.pop() {\n        println!(\"popped: {top}\");\n    }\n\n    // run the body first, then test\n    let mut n = 0;\n    loop {\n        n += 1;\n        if n >= 3 {\n            break;\n        }\n    }\n    println!(\"n: {n}\");\n}\n",
+   "out": "i: 0\ni: 1\ni: 2\ndown: 10\ndown: 7\ndown: 4\ndown: 1\nitem 0: a\nitem 1: b\npopped: 3\npopped: 2\npopped: 1\nn: 3\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "missing-field.fail.rs": {
+   "code": "struct User {\n    name: String,\n    age: u32,\n}\n\nfn main() {\n    let u = User {\n        name: String::from(\"Ada\"),\n    };\n    println!(\"{}\", u.name);\n}\n",
+   "error": "error[E0063]: missing field `age` in initializer of `User`\n --> src/main.rs:7:13\n  |\n7 |     let u = User {\n  |             ^^^^ missing `age`\n",
+   "lang": "rust"
+  },
+  "mixed.fail.rs": {
+   "code": "fn main() {\n    let n = 3;\n    let scaled = n * 1.5;\n    println!(\"{scaled}\");\n}\n",
+   "error": "error[E0277]: cannot multiply `{integer}` by `{float}`\n --> src/main.rs:3:20\n  |\n3 |     let scaled = n * 1.5;\n  |                    ^ no implementation for `{integer} * {float}`\n  |\n  = help: the trait `Mul<{float}>` is not implemented for `{integer}`\n  = help: the following other types implement trait `Mul<Rhs>`:\n            `&f128` implements `Mul<f128>`\n            `&f128` implements `Mul`\n            `&f16` implements `Mul<f16>`\n            `&f16` implements `Mul`\n            `&f32` implements `Mul<f32>`\n            `&f32` implements `Mul`\n            `&f64` implements `Mul<f64>`\n            `&f64` implements `Mul`\n          and 57 others\n",
+   "lang": "rust"
+  },
+  "named-args.fail.rs": {
+   "code": "fn area(width: u32, height: u32) -> u32 {\n    width * height\n}\n\nfn main() {\n    println!(\"{}\", area(width = 3, height = 4));\n    println!(\"{}\", area(3));\n}\n",
+   "error": "error[E0425]: cannot find value `width` in this scope\n --> src/main.rs:6:25\n  |\n6 |     println!(\"{}\", area(width = 3, height = 4));\n  |                         ^^^^^ not found in this scope\n\nerror[E0425]: cannot find value `height` in this scope\n --> src/main.rs:6:36\n  |\n6 |     println!(\"{}\", area(width = 3, height = 4));\n  |                                    ^^^^^^ not found in this scope\n\nerror[E0061]: this function takes 2 arguments but 1 argument was supplied\n --> src/main.rs:7:20\n  |\n7 |     println!(\"{}\", area(3));\n  |                    ^^^^--- argument #2 of type `u32` is missing\n  |\nnote: function defined here\n --> src/main.rs:1:4\n  |\n1 | fn area(width: u32, height: u32) -> u32 {\n  |    ^^^^             -----------\nhelp: provide the argument\n  |\n7 |     println!(\"{}\", area(3, /* u32 */));\n  |                          +++++++++++\n\nSome errors have detailed explanations: E0061, E0425.",
+   "lang": "rust"
+  },
+  "negate-unsigned.fail.rs": {
+   "code": "fn main() {\n    let count = 5u32;\n    let after = --count;\n    println!(\"{after}\");\n}\n",
+   "error": "error[E0600]: cannot apply unary operator `-` to type `u32`\n --> src/main.rs:3:18\n  |\n3 |     let after = --count;\n  |                  ^^^^^^ cannot apply unary operator `-`\n  |\n  = note: unsigned values cannot be negated\n\nerror[E0600]: cannot apply unary operator `-` to type `u32`\n --> src/main.rs:3:17\n  |\n3 |     let after = --count;\n  |                 ^^^^^^^ cannot apply unary operator `-`\n  |\n  = note: unsigned values cannot be negated\n",
+   "lang": "rust"
+  },
+  "negate.rs": {
+   "code": "#![allow(double_negations)]\n\nfn main() {\n    let count = 5;\n    let after = --count;\n    println!(\"count: {count}\");\n    println!(\"--count: {after}\");\n}\n",
+   "out": "count: 5\n--count: 5\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "no-asi.fail.rs": {
+   "code": "fn main() {\n    let a = 1\n    let b = 2\n    println!(\"{}\", a + b)\n}\n",
+   "error": "error: expected `;`, found keyword `let`\n --> src/main.rs:2:14\n  |\n2 |     let a = 1\n  |              ^ help: add `;` here\n3 |     let b = 2\n  |     --- unexpected token\n\nerror: expected `;`, found `println`\n --> src/main.rs:3:14\n  |\n3 |     let b = 2\n  |              ^ help: add `;` here\n4 |     println!(\"{}\", a + b)\n  |     ------- unexpected token",
+   "lang": "rust"
+  },
+  "not.rs": {
+   "code": "fn main() {\n    println!(\"!true: {}\", !true);\n    println!(\"!5i32: {}\", !5i32);\n    println!(\"!0u8: {}\", !0u8);\n}\n",
+   "out": "!true: false\n!5i32: -6\n!0u8: 255\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "null-hint.fail.rs": {
+   "code": "use std::ptr::null;\n\nfn main() {\n    let a = null;\n    println!(\"{a}\");\n}\n",
+   "error": "error[E0277]: `fn() -> *const _ {null::<_>}` doesn't implement `std::fmt::Display`\n --> src/main.rs:5:15\n  |\n5 |     println!(\"{a}\");\n  |               ^^^ `fn() -> *const _ {null::<_>}` cannot be formatted with the default formatter\n  |\n  = help: the trait `std::fmt::Display` is not implemented for fn item `fn() -> *const _ {null::<_>}`\n  = note: in format strings you may be able to use `{:?}` (or `{:#?}` for pretty-print) instead\n",
+   "lang": "rust"
+  },
+  "null.fail.rs": {
+   "code": "fn main() {\n    let a = null;\n    let b: String = None;\n    let c: Option<i32> = 5;\n    println!(\"{a} {b} {c:?}\");\n}\n",
+   "error": "error[E0425]: cannot find value `null` in this scope\n --> src/main.rs:2:13\n  |\n2 |     let a = null;\n  |             ^^^^ not found in this scope\n  |\nhelp: consider importing this function\n  |\n1 + use std::ptr::null;\n\nerror[E0308]: mismatched types\n --> src/main.rs:3:21\n  |\n3 |     let b: String = None;\n  |            ------   ^^^^ expected `String`, found `Option<_>`\n  |            |\n  |            expected due to this\n  |\n  = note: expected struct `String`\n               found enum `Option<_>`\n\nerror[E0308]: mismatched types\n --> src/main.rs:4:26\n  |\n4 |     let c: Option<i32> = 5;\n  |            -----------   ^ expected `Option<i32>`, found integer\n  |            |\n  |            expected due to this\n  |\n  = note: expected enum `Option<i32>`\n             found type `{integer}`\nhelp: try wrapping the expression in `Some`\n  |\n4 |     let c: Option<i32> = Some(5);\n  |                          +++++ +\n\nSome errors have detailed explanations: E0308, E0425.",
+   "lang": "rust"
+  },
+  "objects.fail.rs": {
+   "code": "struct Point {\n    x: i32,\n    y: i32,\n}\n\nimpl Point {\n    fn bump(&mut self) {\n        this.x += 1;\n    }\n\n    fn x() -> i32 {\n        self.x\n    }\n}\n\nfn main() {\n    let p = Point(1, 2);\n    println!(\"{}\", p.x);\n}\n",
+   "error": "error[E0425]: cannot find value `this` in this scope\n --> src/main.rs:8:9\n  |\n8 |         this.x += 1;\n  |         ^^^^\n  |         |\n  |         not found in this scope\n  |         help: you might have meant to use `self` here instead\n\nerror[E0424]: cannot find value `self` in this scope\n  --> src/main.rs:12:9\n   |\n11 |     fn x() -> i32 {\n   |        - this function doesn't have a `self` parameter\n12 |         self.x\n   |         ^^^^ `self` value is a keyword only available in methods with a `self` parameter\n   |\n   = note: a module named `self` exists in another namespace\nhelp: add a `self` receiver parameter to make the associated `fn` a method\n   |\n11 |     fn x(&self) -> i32 {\n   |          +++++\n\nerror[E0423]: cannot find function, tuple struct or tuple variant `Point` in this scope\n  --> src/main.rs:17:13\n   |\n 1 | / struct Point {\n 2 | |     x: i32,\n 3 | |     y: i32,\n 4 | | }\n   | |_- `Point` defined here\n...\n17 |       let p = Point(1, 2);\n   |               ^^^^^^^^^^^\n   |\n   = note: a struct named `Point` exists in another namespace\nhelp: use struct literal syntax instead of calling\n   |\n17 -     let p = Point(1, 2);\n17 +     let p = Point{x: 1, y: 2};\n   |\n\nSome errors have detailed explanations: E0423, E0424, E0425.",
+   "lang": "rust"
+  },
+  "operator-add.rs": {
+   "code": "use std::ops::Add;\n\n#[derive(Debug, Clone, Copy)]\nstruct Point {\n    x: i32,\n    y: i32,\n}\n\nimpl Add for Point {\n    type Output = Point;\n\n    fn add(self, other: Point) -> Point {\n        Point {\n            x: self.x + other.x,\n            y: self.y + other.y,\n        }\n    }\n}\n\nfn main() {\n    let sum = Point { x: 1, y: 2 } + Point { x: 3, y: 4 };\n    println!(\"sum: {sum:?}\");\n}\n",
+   "out": "sum: Point { x: 4, y: 6 }\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "optional-chain.rs": {
+   "code": "struct User {\n    name: String,\n}\n\nfn name_of(user: Option<User>) -> Option<String> {\n    let name = user?.name;\n    Some(name)\n}\n\nfn main() {\n    println!(\"none: {:?}\", name_of(None));\n    let ada = User {\n        name: \"Ada\".to_string(),\n    };\n    println!(\"some: {:?}\", name_of(Some(ada)));\n}\n",
+   "out": "none: None\nsome: Some(\"Ada\")\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "overload.fail.rs": {
+   "code": "fn show(n: i32) -> String {\n    format!(\"int {n}\")\n}\n\nfn show(s: &str) -> String {\n    format!(\"text {s}\")\n}\n\nfn main() {\n    println!(\"{}\", show(1));\n    println!(\"{}\", show(\"a\"));\n}\n",
+   "error": "error[E0428]: the name `show` is defined multiple times\n --> src/main.rs:5:1\n  |\n1 | fn show(n: i32) -> String {\n  | ------------------------- previous definition of the value `show` here\n...\n5 | fn show(s: &str) -> String {\n  | ^^^^^^^^^^^^^^^^^^^^^^^^^^ `show` redefined here\n  |\n  = note: `show` must be defined only once in the value namespace of this module\n\nerror[E0308]: mismatched types\n  --> src/main.rs:11:25\n   |\n11 |     println!(\"{}\", show(\"a\"));\n   |                    ---- ^^^ expected `i32`, found `&str`\n   |                    |\n   |                    arguments to this function are incorrect\n   |\nnote: function defined here\n  --> src/main.rs:1:4\n   |\n 1 | fn show(n: i32) -> String {\n   |    ^^^^ ------\n\nSome errors have detailed explanations: E0308, E0428.",
+   "lang": "rust"
+  },
+  "parse-class.fail.rs": {
+   "code": "class Point {\n    x: i32,\n}\n\nfn main() {}\n",
+   "error": "error: expected one of `!` or `::`, found `Point`\n --> src/main.rs:1:7\n  |\n1 | class Point {\n  |       ^^^^^ expected one of `!` or `::`",
+   "lang": "rust"
+  },
+  "parse-extends.fail.rs": {
+   "code": "struct Animal {\n    name: String,\n}\n\nstruct Dog extends Animal {\n    tricks: u32,\n}\n\nfn main() {}\n",
+   "error": "error: expected `where`, `{`, `(`, or `;` after struct name, found `extends`\n --> src/main.rs:5:12\n  |\n5 | struct Dog extends Animal {\n  |            ^^^^^^^ expected `where`, `{`, `(`, or `;` after struct name",
+   "lang": "rust"
+  },
+  "parse-for.fail.rs": {
+   "code": "fn counted() {\n    for (int i = 0; i < 3; i++) {\n        println!(\"{i}\");\n    }\n}\n\nfn run_once() {\n    let mut n = 0;\n    do {\n        n += 1;\n    } while (n < 3);\n}\n\nfn main() {}\n",
+   "error": "error: expected one of `)`, `,`, `@`, `if`, or `|`, found `i`\n --> src/main.rs:2:14\n  |\n2 |     for (int i = 0; i < 3; i++) {\n  |              ^ expected one of `)`, `,`, `@`, `if`, or `|`\n  |\nhelp: there is a keyword `if` with a similar name\n  |\n2 |     for (int if = 0; i < 3; i++) {\n  |               +\n\nerror: expected one of `)`, `,`, `@`, `if`, or `|`, found `=`\n --> src/main.rs:2:16\n  |\n2 |     for (int i = 0; i < 3; i++) {\n  |                ^ expected one of `)`, `,`, `@`, `if`, or `|`\n\nerror: expected expression, found reserved keyword `do`\n --> src/main.rs:9:5\n  |\n9 |     do {\n  |     ^^ expected expression",
+   "lang": "rust"
+  },
+  "parse-new.fail.rs": {
+   "code": "struct Point {\n    x: i32,\n    y: i32,\n}\n\nfn main() {\n    let p = new Point(1, 2);\n    println!(\"{}\", p.x);\n}\n",
+   "error": "error: expected one of `!`, `.`, `::`, `;`, `?`, `else`, `{`, or an operator, found `Point`\n --> src/main.rs:7:17\n  |\n7 |     let p = new Point(1, 2);\n  |                 ^^^^^ expected one of 8 possible tokens",
+   "lang": "rust"
+  },
+  "parse-operators.fail.rs": {
+   "code": "fn increment() {\n    let mut count = 0;\n    count++;\n}\n\nfn prefix() {\n    let mut count = 0;\n    ++count;\n}\n\nfn decrement() {\n    let mut count = 10;\n    count--;\n}\n\nfn ternary(n: i32) -> &'static str {\n    n % 2 == 0 ? \"even\" : \"odd\"\n}\n\nfn main() {}\n",
+   "error": "error: Rust has no postfix increment operator\n --> src/main.rs:3:10\n  |\n3 |     count++;\n  |          ^^ not a valid postfix operator\n  |\nhelp: use `+= 1` instead\n  |\n3 -     count++;\n3 +     count += 1;\n\nerror: Rust has no prefix increment operator\n --> src/main.rs:8:5\n  |\n8 |     ++count;\n  |     ^^ not a valid prefix operator\n  |\nhelp: use `+= 1` instead\n  |\n8 -     ++count;\n8 +     count += 1;\n\nerror: Rust has no postfix decrement operator\n  --> src/main.rs:13:10\n   |\n13 |     count--;\n   |          ^^ not a valid postfix operator\n   |\nhelp: use `-= 1` instead\n   |\n13 -     count--;\n13 +     count -= 1;\n\nerror: Rust has no ternary operator\n  --> src/main.rs:17:5\n   |\n17 |     n % 2 == 0 ? \"even\" : \"odd\"\n   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n   |\nhelp: use an `if-else` expression instead\n   |\n17 -     n % 2 == 0 ? \"even\" : \"odd\"\n17 +     if n % 2 == 0 { \"even\" } else { \"odd\" }",
+   "lang": "rust"
+  },
+  "parse-result.rs": {
+   "code": "use std::num::ParseIntError;\n\nfn double(text: &str) -> Result<i32, ParseIntError> {\n    let n = text.parse::<i32>()?;\n    Ok(n * 2)\n}\n\nfn main() {\n    println!(\"double 21: {:?}\", double(\"21\"));\n    println!(\"double x: {:?}\", double(\"x\"));\n}\n",
+   "out": "double 21: Ok(42)\ndouble x: Err(ParseIntError { kind: InvalidDigit })\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "parse-throw.fail.rs": {
+   "code": "fn throws(n: i32) -> i32 {\n    if n < 0 {\n        throw \"negative\";\n    }\n    n\n}\n\nfn catches() {\n    try {\n        println!(\"work\");\n    } catch (e) {\n        println!(\"failed\");\n    }\n}\n\nfn main() {}\n",
+   "error": "error: expected one of `!`, `.`, `::`, `;`, `?`, `{`, `}`, or an operator, found `\"negative\"`\n --> src/main.rs:3:15\n  |\n3 |         throw \"negative\";\n  |               ^^^^^^^^^^ expected one of 8 possible tokens\n\nerror: keyword `catch` cannot follow a `try` block\n  --> src/main.rs:11:7\n   |\n11 |     } catch (e) {\n   |       ^^^^^\n   |\n   = help: try using `match` on the result of the `try` block instead",
+   "lang": "rust"
+  },
+  "python-retype.fail.rs": {
+   "code": "fn main() {\n    let x = 1;\n    x = \"a\";\n    println!(\"{x}\");\n}\n",
+   "error": "error[E0308]: mismatched types\n --> src/main.rs:3:9\n  |\n2 |     let x = 1;\n  |             - expected due to this value\n3 |     x = \"a\";\n  |         ^^^ expected integer, found `&str`\n",
+   "lang": "rust"
+  },
+  "python-syntax.fail.rs": {
+   "code": "fn power() -> i32 {\n    2 ** 10\n}\n\nfn between(x: i32) -> bool {\n    1 < x < 5\n}\n\nfn member(v: Vec<i32>) -> bool {\n    2 in v\n}\n\nfn identity(x: Option<i32>) -> bool {\n    x is None\n}\n\nfn flag() -> bool {\n    True\n}\n\nfn main() {}\n",
+   "error": "error: comparison operators cannot be chained\n --> src/main.rs:6:7\n  |\n6 |     1 < x < 5\n  |       ^   ^\n  |\nhelp: split the comparison into two\n  |\n6 |     1 < x && x < 5\n  |           ++++\n\nerror: expected one of `.`, `;`, `?`, `}`, or an operator, found keyword `in`\n  --> src/main.rs:10:7\n   |\n10 |     2 in v\n   |       ^^ expected one of `.`, `;`, `?`, `}`, or an operator\n\nerror: expected one of `!`, `.`, `::`, `;`, `?`, `{`, `}`, or an operator, found `is`\n  --> src/main.rs:14:7\n   |\n14 |     x is None\n   |       ^^ expected one of 8 possible tokens\n\nerror[E0425]: cannot find value `True` in this scope\n  --> src/main.rs:18:5\n   |\n18 |     True\n   |     ^^^^ not found in this scope\n   |\nhelp: you may want to use a bool value instead\n   |\n18 -     True\n18 +     true\n\nerror[E0614]: type `{integer}` cannot be dereferenced\n --> src/main.rs:2:8\n  |\n2 |     2 ** 10\n  |        ^^^^ can't be dereferenced\n\nSome errors have detailed explanations: E0425, E0614.",
+   "lang": "rust"
+  },
+  "python-words.fail.rs": {
+   "code": "fn elif(x: i32) {\n    if x > 1 {\n        println!(\"big\");\n    } elif x > 0 {\n        println!(\"small\");\n    }\n}\n\nfn both(a: bool, b: bool) -> bool {\n    a and b\n}\n\nfn invert(a: u8) -> u8 {\n    ~a\n}\n\nfn main() {}\n",
+   "error": "error: expected one of `!`, `.`, `::`, `;`, `?`, `{`, `}`, or an operator, found `x`\n --> src/main.rs:4:12\n  |\n4 |     } elif x > 0 {\n  |            ^ expected one of 8 possible tokens\n\nerror: `and` is not a logical operator\n  --> src/main.rs:10:7\n   |\n10 |     a and b\n   |       ^^^\n   |\n   = note: unlike in e.g., Python and PHP, `&&` and `||` are used for logical operators\nhelp: use `&&` to perform logical conjunction\n   |\n10 -     a and b\n10 +     a && b\n\nerror: `~` cannot be used as a unary operator\n  --> src/main.rs:14:5\n   |\n14 |     ~a\n   |     ^\n   |\nhelp: use `!` to perform bitwise not\n   |\n14 -     ~a\n14 +     !a",
+   "lang": "rust"
+  },
+  "static-mut-print.fail.rs": {
+   "code": "static mut VISITS: u32 = 0;\n\nfn main() {\n    unsafe {\n        VISITS += 1;\n        println!(\"{}\", VISITS);\n    }\n}\n",
+   "error": "error: creating a shared reference to mutable static\n --> src/main.rs:6:24\n  |\n6 |         println!(\"{}\", VISITS);\n  |                        ^^^^^^ shared reference to mutable static\n  |\n  = note: shared references to mutable statics are dangerous; it's undefined behavior if the static is mutated or if a mutable reference is created for it while the shared reference lives\n  = help: use a type that relies on \"interior mutability\" instead; to read more on this, visit <https://doc.rust-lang.org/reference/interior-mutability.html>\n  = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/static-mut-references.html>\n  = note: `#[deny(static_mut_refs)]` (part of `#[deny(rust_2024_compatibility)]`) on by default",
+   "lang": "rust"
+  },
+  "str-index.fail.rs": {
+   "code": "fn main() {\n    let word = String::from(\"hello\");\n    let first = word[0];\n    println!(\"{first}\");\n}\n",
+   "error": "error[E0277]: the type `str` cannot be indexed by `{integer}`\n --> src/main.rs:3:22\n  |\n3 |     let first = word[0];\n  |                      ^ string indices are ranges of `usize`\n  |\n  = help: the trait `SliceIndex<str>` is not implemented for `{integer}`\n  = note: you can use `.chars().nth()` or `.bytes().nth()`\n          for more information, see chapter 8 in The Book: <https://doc.rust-lang.org/book/ch08-02-strings.html#indexing-into-strings>\n  ... (notes pointing into the standard library trimmed)",
+   "lang": "rust"
+  },
+  "traits-overload.rs": {
+   "code": "trait Show {\n    fn show(&self) -> String;\n}\n\nimpl Show for i32 {\n    fn show(&self) -> String {\n        format!(\"int {self}\")\n    }\n}\n\nimpl Show for &str {\n    fn show(&self) -> String {\n        format!(\"text {self}\")\n    }\n}\n\nfn main() {\n    println!(\"{}\", 1.show());\n    println!(\"{}\", \"a\".show());\n}\n",
+   "out": "int 1\ntext a\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "truthy.fail.rs": {
+   "code": "fn main() {\n    let name = String::from(\"Ada\");\n    let items: Vec<i32> = Vec::new();\n    let found = Some(3);\n    let count = 4;\n    if name {\n        println!(\"has a name\");\n    }\n    if items {\n        println!(\"has items\");\n    }\n    if found {\n        println!(\"found\");\n    }\n    if !count {\n        println!(\"zero\");\n    }\n}\n",
+   "error": "error[E0308]: mismatched types\n --> src/main.rs:6:8\n  |\n6 |     if name {\n  |        ^^^^ expected `bool`, found `String`\n\nerror[E0308]: mismatched types\n --> src/main.rs:9:8\n  |\n9 |     if items {\n  |        ^^^^^ expected `bool`, found `Vec<i32>`\n  |\n  = note: expected type `bool`\n           found struct `Vec<i32>`\n\nerror[E0308]: mismatched types\n  --> src/main.rs:12:8\n   |\n12 |     if found {\n   |        ^^^^^ expected `bool`, found `Option<{integer}>`\n   |\n   = note: expected type `bool`\n              found enum `Option<{integer}>`\nhelp: use `Option::is_some` to test if the `Option` has a value\n   |\n12 |     if found.is_some() {\n   |             ++++++++++\n\nerror[E0308]: mismatched types\n  --> src/main.rs:15:8\n   |\n15 |     if !count {\n   |        ^^^^^^ expected `bool`, found integer\n",
+   "lang": "rust"
+  },
+  "try-block.fail.rs": {
+   "code": "fn main() {\n    try {\n        println!(\"work\");\n    }\n}\n",
+   "error": "error[E0658]: `try` expression is experimental\n --> src/main.rs:2:5\n  |\n2 | /     try {\n3 | |         println!(\"work\");\n4 | |     }\n  | |_____^\n  |\n  = note: see issue #154391 <https://github.com/rust-lang/rust/issues/154391> for more information\n\nerror[E0277]: a `try` block must return `Result` or `Option` (or another type that implements `Try`)\n --> src/main.rs:4:5\n  |\n4 |     }\n  |     ^ could not wrap the final value of the block as `()` doesn't implement `Try`\n  |\n  = help: the nightly-only, unstable trait `Try` is not implemented for `()`\n\nSome errors have detailed explanations: E0277, E0658.",
+   "lang": "rust"
+  },
+  "ts-syntax.fail.rs": {
+   "code": "fn coalesce(a: Option<i32>) -> i32 {\n    a ?? 5\n}\n\nfn strict(a: i32) -> bool {\n    a === 1\n}\n\nfn each(v: Vec<i32>) {\n    for x of v {\n        println!(\"{x}\");\n    }\n}\n\nfn main() {}\n",
+   "error": "error: expected one of `.`, `;`, `?`, `}`, or an operator, found `5`\n --> src/main.rs:2:10\n  |\n2 |     a ?? 5\n  |          ^ expected one of `.`, `;`, `?`, `}`, or an operator\n\nerror: invalid comparison operator `===`\n --> src/main.rs:6:7\n  |\n6 |     a === 1\n  |       ^^^\n  |\nhelp: `===` is not a valid comparison operator, use `==`\n  |\n6 -     a === 1\n6 +     a == 1\n\nerror: missing `in` in `for` loop\n  --> src/main.rs:10:11\n   |\n10 |     for x of v {\n   |           ^^\n   |\nhelp: try using `in` here instead\n   |\n10 -     for x of v {\n10 +     for x in v {",
+   "lang": "rust"
+  },
+  "ts-types.fail.rs": {
+   "code": "fn main() {\n    let a = 1;\n    let same = a == \"1\";\n    let nothing = undefined;\n    let v = vec![1, 2];\n    let n = v.length;\n}\n",
+   "error": "error[E0425]: cannot find value `undefined` in this scope\n --> src/main.rs:4:19\n  |\n4 |     let nothing = undefined;\n  |                   ^^^^^^^^^ not found in this scope\n\nerror[E0277]: can't compare `{integer}` with `&str`\n --> src/main.rs:3:18\n  |\n3 |     let same = a == \"1\";\n  |                  ^^ no implementation for `{integer} == &str`\n  |\n  = help: the trait `PartialEq<&str>` is not implemented for `{integer}`\n  = help: the following other types implement trait `PartialEq<Rhs>`:\n            f128\n            f16\n            f32\n            f64\n            i128\n            i16\n            i32\n            i64\n          and 8 others\n\nerror[E0609]: no field `length` on type `Vec<{integer}>`\n --> src/main.rs:6:15\n  |\n6 |     let n = v.length;\n  |               ^^^^^^ unknown field\n\nSome errors have detailed explanations: E0277, E0425, E0609.",
+   "lang": "rust"
+  },
+  "widen.fail.rs": {
+   "code": "fn main() {\n    let small: i32 = 5;\n    let big: u64 = small;\n    let other: i64 = 5;\n    println!(\"{big} {}\", small == other);\n}\n",
+   "error": "error[E0308]: mismatched types\n --> src/main.rs:3:20\n  |\n3 |     let big: u64 = small;\n  |              ---   ^^^^^ expected `u64`, found `i32`\n  |              |\n  |              expected due to this\n  |\nhelp: you can convert an `i32` to a `u64` and panic if the converted value doesn't fit\n  |\n3 |     let big: u64 = small.try_into().unwrap();\n  |                         ++++++++++++++++++++\n\nerror[E0308]: mismatched types\n --> src/main.rs:5:35\n  |\n5 |     println!(\"{big} {}\", small == other);\n  |                          -----    ^^^^^ expected `i32`, found `i64`\n  |                          |\n  |                          expected because this is `i32`\n  |\nhelp: you can convert `small` from `i32` to `i64`, matching the type of `other`\n  |\n5 |     println!(\"{big} {}\", i64::from(small) == other);\n  |                          ++++++++++     +\n",
+   "lang": "rust"
+  },
+  "break-switch.c": {
+   "code": "#include <stdio.h>\n\nint main(void) {\n    int n = 0;\n    for (int i = 0; i < 5; i++) {\n        switch (i) {\n        case 2:\n            break;\n        default:\n            n++;\n        }\n    }\n    printf(\"n: %d\\n\", n);\n    return 0;\n}\n",
+   "out": "n: 4\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "break-switch.cpp": {
+   "code": "#include <iostream>\n\nint main() {\n    int n = 0;\n    for (int i = 0; i < 5; i++) {\n        switch (i) {\n        case 2:\n            break;\n        default:\n            n++;\n        }\n    }\n    std::cout << \"n: \" << n << \"\\n\";\n}\n",
+   "out": "n: 4\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "break-switch.cs": {
+   "code": "var n = 0;\nfor (var i = 0; i < 5; i++)\n{\n    switch (i)\n    {\n        case 2:\n            break;\n        default:\n            n++;\n            break;\n    }\n}\nConsole.WriteLine($\"n: {n}\");\n",
+   "out": "n: 4\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "break-switch.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tn := 0\n\tfor i := 0; i < 5; i++ {\n\t\tswitch i {\n\t\tcase 2:\n\t\t\tbreak\n\t\tdefault:\n\t\t\tn++\n\t\t}\n\t}\n\tfmt.Printf(\"n: %d\\n\", n)\n}\n",
+   "out": "n: 4\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "break-switch.java": {
+   "code": "public class Main {\n    public static void main(String[] args) {\n        int n = 0;\n        for (int i = 0; i < 5; i++) {\n            switch (i) {\n                case 2:\n                    break;\n                default:\n                    n++;\n            }\n        }\n        System.out.println(\"n: \" + n);\n    }\n}\n",
+   "out": "n: 4\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "break-switch.ts": {
+   "code": "let n = 0;\nfor (let i = 0; i < 5; i++) {\n  switch (i) {\n    case 2:\n      break;\n    default:\n      n++;\n  }\n}\nconsole.log(`n: ${n}`);\n",
+   "out": "n: 4\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "break-when.kt": {
+   "code": "fun main() {\n    var n = 0\n    for (i in 0 until 5) {\n        when (i) {\n            2 -> break\n            else -> n++\n        }\n    }\n    println(\"n: $n\")\n}\n",
+   "out": "n: 2\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "check-c.c": {
+   "code": "#include <stdio.h>\n#include <stdlib.h>\n\n// A global that any function may change.\nint visits = 0;\n\nstatic void visit(void) { visits++; }\n\nstatic void check(int ok, const char *what) {\n    if (!ok) {\n        fprintf(stderr, \"failed: %s\\n\", what);\n        exit(1);\n    }\n}\n\nint main(void) {\n    // ++ and --, also inside expressions, and --x decrements\n    int a[] = {10, 20, 30};\n    int i = 0;\n    int first = a[i++];\n    int second = a[++i];\n    check(first == 10 && second == 30 && i == 2, \"inc\");\n    const int *p = a;\n    int via = *p++;\n    check(via == 10 && *p == 20, \"*p++\");\n    int j = 5;\n    int pre = --j;\n    check(pre == 4 && j == 4, \"--x decrements\");\n\n    // the ternary operator\n    const char *label = i > 1 ? \"big\" : \"small\";\n    check(label[0] == 'b', \"ternary\");\n\n    // do-while runs the body once even when the test is false\n    int runs = 0;\n    do {\n        runs++;\n    } while (0);\n    check(runs == 1, \"do-while\");\n\n    // for (;;) and while (1)\n    int spins = 0;\n    for (;;) {\n        spins++;\n        break;\n    }\n    while (1) {\n        spins++;\n        break;\n    }\n    check(spins == 2, \"forever\");\n\n    // NULL, and a pointer used as a condition\n    const int *np = NULL;\n    check(np == NULL && !np, \"null\");\n\n    // implicit conversions: a double to an int, an int to a long, an int to a double\n    int n = 3.9;\n    long l = i;\n    double d = 3;\n    check(n == 3 && l == 2 && d == 3.0, \"convert\");\n\n    // a cast, and character arithmetic\n    check((double)n == 3.0 && '7' - '0' == 7, \"cast\");\n\n    // a number and a string used as a condition\n    int count = 4;\n    int hit = 0;\n    if (count) {\n        hit = 1;\n    }\n    const char *s = \"ab\";\n    int chars = 0;\n    while (*s++) {\n        chars++;\n    }\n    check(hit == 1 && chars == 2, \"truthy\");\n\n    // -> on a pointer\n    struct P {\n        int x;\n    } pt = {7};\n    struct P *pp = &pt;\n    check(pp->x == 7, \"arrow\");\n\n    // switch falls through\n    int out = 0;\n    switch (1) {\n    case 1:\n        out += 1;\n    case 2:\n        out += 10;\n        break;\n    default:\n        out += 100;\n    }\n    check(out == 11, \"fallthrough\");\n\n    // goto\n    int k = 0;\nagain:\n    k++;\n    if (k < 3) {\n        goto again;\n    }\n    check(k == 3, \"goto\");\n\n    visit();\n    visit();\n    check(visits == 2, \"global\");\n\n    printf(\"c: all checks passed\\n\");\n    return 0;\n}\n",
+   "warnings": "main.c: In function ‘main’:\nmain.c:90:13: warning: this statement may fall through [-Wimplicit-fallthrough=]\n   90 |         out += 1;\n      |         ~~~~^~~~\nmain.c:91:5: note: here\n   91 |     case 2:\n      |     ^~~~",
+   "out": "c: all checks passed\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "check-cpp.cpp": {
+   "code": "#include <cstdlib>\n#include <iostream>\n#include <optional>\n#include <stdexcept>\n#include <string>\n\nint visits = 0;\n\nstatic void check(bool ok, const char *what) {\n    if (!ok) {\n        std::cerr << \"failed: \" << what << \"\\n\";\n        std::exit(1);\n    }\n}\n\nclass Animal {\npublic:\n    explicit Animal(std::string n) : name(std::move(n)) {}\n    virtual ~Animal() = default;\n    virtual std::string speak() const { return name + \" makes a sound\"; }\n    std::string name;\n};\n\nclass Dog : public Animal {\npublic:\n    explicit Dog(std::string n) : Animal(std::move(n)) {}\n    std::string speak() const override { return name + \" barks\"; }\n};\n\nstruct P {\n    int x;\n    P(int v) : x(v) {}\n    P operator+(const P &o) const { return P(x + o.x); }\n};\n\nstruct Guard {\n    std::string &log;\n    explicit Guard(std::string &l) : log(l) {}\n    ~Guard() { log += \"destroyed\"; }\n};\n\nstatic int area(int width, int height = 1) { return width * height; }\nstatic std::string show(int n) { return \"int \" + std::to_string(n); }\nstatic std::string show(const std::string &s) { return \"text \" + s; }\n\ntemplate <typename T>\nstatic T largest(T a, T b) { return a > b ? a : b; }\n\nstatic int parse(const std::string &s) { return std::stoi(s) + 1; }\n\nint main() {\n    // ++ and --, also inside expressions, and --x decrements\n    int a[] = {10, 20, 30};\n    int i = 0;\n    int first = a[i++];\n    int second = a[++i];\n    check(first == 10 && second == 30 && i == 2, \"inc\");\n    int j = 5;\n    int pre = --j;\n    check(pre == 4 && j == 4, \"--x decrements\");\n\n    // the ternary operator, and auto\n    const char *label = i > 1 ? \"big\" : \"small\";\n    auto inferred = 5;\n    check(label[0] == 'b' && inferred == 5, \"ternary\");\n\n    // for (;;), do-while\n    int spins = 0;\n    for (;;) {\n        spins++;\n        break;\n    }\n    do {\n        spins++;\n    } while (false);\n    check(spins == 2, \"loops\");\n\n    // nullptr, a pointer used as a condition, and std::optional\n    const int *p = nullptr;\n    std::optional<int> none;\n    check(p == nullptr && !p && !none.has_value(), \"null\");\n\n    // implicit conversions\n    int n = 3.9;\n    long l = i;\n    double d = 3;\n    check(n == 3 && l == 2 && d == 3.0, \"convert\");\n\n    // new and delete, a constructor and a destructor\n    P *heap = new P(1);\n    check(heap->x == 1, \"new\");\n    delete heap;\n    std::string log;\n    {\n        Guard g(log);\n        log += \"body,\";\n    }\n    check(log == \"body,destroyed\", \"destructor\");\n\n    // overloads, default arguments, operators and templates\n    check(area(3) == 3 && area(3, 4) == 12, \"default\");\n    check(show(1) == \"int 1\" && show(std::string(\"a\")) == \"text a\", \"overload\");\n    check((P(1) + P(2)).x == 3, \"operator\");\n    check(largest(2, 3) == 3, \"template\");\n\n    // inheritance and virtual functions\n    Dog dog(\"Rex\");\n    const Animal &animal = dog;\n    check(animal.speak() == \"Rex barks\", \"virtual\");\n\n    // switch falls through\n    int out = 0;\n    switch (1) {\n    case 1:\n        out += 1;\n        [[fallthrough]];\n    case 2:\n        out += 10;\n        break;\n    default:\n        out += 100;\n    }\n    check(out == 11, \"fallthrough\");\n\n    // exceptions\n    bool caught = false;\n    try {\n        parse(\"x\");\n    } catch (const std::invalid_argument &) {\n        caught = true;\n    }\n    check(caught && parse(\"41\") == 42, \"catch\");\n\n    // goto\n    int k = 0;\nagain:\n    k++;\n    if (k < 3) {\n        goto again;\n    }\n    check(k == 3, \"goto\");\n\n    visits++;\n    check(visits == 1, \"global\");\n\n    std::cout << \"cpp: all checks passed\\n\";\n    return 0;\n}\n",
+   "out": "cpp: all checks passed\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "check-cs.cs": {
+   "code": "static int Area(int width, int height = 1) => width * height;\n\nstatic int Parse(string s) => int.Parse(s) + 1;\n\nstatic void Check(bool ok, string what)\n{\n    if (!ok) throw new InvalidOperationException(what);\n}\n\n// ++ and --, also inside expressions\nvar a = new[] { 10, 20, 30 };\nvar i = 0;\nvar first = a[i++];\nvar second = a[++i];\nCheck(first == 10 && second == 30 && i == 2, \"inc\");\n\n// the ternary operator\nvar label = i > 1 ? \"big\" : \"small\";\nCheck(label == \"big\", \"ternary\");\n\n// nullable types, ?. and ??\nstring? name = null;\nstring? other = \"abc\";\nCheck(name is null && name?.Length == null && other?.Length == 3 && (name ?? \"anon\") == \"anon\", \"null\");\n\n// TryParse with out\nCheck(int.TryParse(\"12\", out var n) && n == 12 && !int.TryParse(\"x\", out _), \"tryparse\");\n\n// new and this\nvar p = new Point(1, 2);\nCheck(p.X == 1 && p.Y == 2, \"new\");\n\n// overloads and operator overloading\nCheck(Shapes.Show(1) == \"int 1\" && Shapes.Show(\"a\") == \"text a\", \"overload\");\nCheck((new Vec(1, 2) + new Vec(3, 4)).X == 4, \"operator\");\n\n// optional and named arguments\nCheck(Area(3) == 3 && Area(3, height: 4) == 12 && Area(height: 4, width: 3) == 12, \"named\");\n\n// stacked case labels share a body, and a body must not fall through\nvar o = \"\";\nswitch (2)\n{\n    case 1:\n    case 2:\n        o += \"small\";\n        break;\n    default:\n        o += \"other\";\n        break;\n}\nCheck(o == \"small\", \"switch\");\n\n// exceptions\nvar trace = \"\";\ntry\n{\n    Parse(\"x\");\n    Check(false, \"no exception\");\n}\ncatch (FormatException)\n{\n    trace += \"caught,\";\n}\nfinally\n{\n    trace += \"finally\";\n}\nCheck(trace == \"caught,finally\" && Parse(\"41\") == 42, \"catch\");\n\n// using disposes at the end of the scope\nvar log = \"\";\n{\n    using var res = new Res(s => log += s);\n    log += \"body,\";\n}\nCheck(log == \"body,disposed\", \"using\");\n\n// foreach\nvar total = 0;\nforeach (var x in new[] { 5, 6 }) total += x;\nCheck(total == 11, \"foreach\");\n\n// record with\nvar r1 = new Rec(1, 2);\nvar r2 = r1 with { X = 5 };\nCheck(r2.X == 5 && r2.Y == 2, \"with\");\n\n// inheritance\nAnimal d = new Dog(\"Rex\");\nCheck(d.Name == \"Rex\", \"inherit\");\n\n// int to long needs no cast\nlong big = i;\nCheck(big == 2L, \"widen\");\n\nConsole.WriteLine(\"csharp: all checks passed\");\n\nrecord Rec(int X, int Y);\n\nclass Res : IDisposable\n{\n    readonly Action<string> log;\n    public Res(Action<string> log) { this.log = log; }\n    public void Dispose() { log(\"disposed\"); }\n}\n\nclass Vec\n{\n    public int X, Y;\n    public Vec(int x, int y) { X = x; Y = y; }\n    public static Vec operator +(Vec a, Vec b) => new Vec(a.X + b.X, a.Y + b.Y);\n}\n\nclass Point\n{\n    public int X, Y;\n    public Point(int x, int y)\n    {\n        this.X = x;\n        this.Y = y;\n    }\n}\n\nclass Animal\n{\n    public string Name;\n    public Animal(string name) { Name = name; }\n}\n\nclass Dog : Animal\n{\n    public Dog(string name) : base(name) { }\n}\n\nstatic class Shapes\n{\n    public static string Show(int n) => \"int \" + n;\n    public static string Show(string s) => \"text \" + s;\n}\n",
+   "warnings": "Program.cs(49,9): warning CS0162: Unreachable code detected",
+   "out": "csharp: all checks passed\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "check-go.go": {
+   "code": "package main\n\nimport (\n\t\"errors\"\n\t\"fmt\"\n\t\"strconv\"\n)\n\nfunc must(ok bool, what string) {\n\tif !ok {\n\t\tpanic(what)\n\t}\n}\n\n// A package-level variable that any function may change.\nvar visits int\n\nfunc visit() { visits++ }\n\nfunc parse(s string) (int, error) {\n\tn, err := strconv.Atoi(s)\n\tif err != nil {\n\t\treturn 0, err\n\t}\n\treturn n + 1, nil\n}\n\ntype Speaker interface{ Speak() string }\n\ntype Dog struct{}\n\nfunc (Dog) Speak() string { return \"woof\" }\n\ntype Animal struct{ Name string }\n\ntype Pet struct {\n\tAnimal\n\tTricks int\n}\n\ntype User struct {\n\tName string\n\tAge  int\n}\n\nfunc main() {\n\t// i++ and i-- are statements\n\ti := 5\n\ti++\n\ti--\n\tmust(i == 5, \"inc\")\n\n\t// the three-part for, range over an integer (Go 1.22), a condition, and no condition\n\ta, b := 0, 0\n\tfor k := 0; k < 3; k++ {\n\t\ta += k\n\t}\n\tfor k := range 3 {\n\t\tb += k\n\t}\n\tmust(a == 3 && b == 3, \"for\")\n\tc := 3\n\tfor c > 0 {\n\t\tc--\n\t}\n\tloops := 0\n\tfor {\n\t\tloops++\n\t\tif loops == 2 {\n\t\t\tbreak\n\t\t}\n\t}\n\tmust(c == 0 && loops == 2, \"for forms\")\n\n\t// range over a slice with an index and a value\n\ttotal := 0\n\tfor idx, v := range []int{5, 6} {\n\t\ttotal += idx*100 + v\n\t}\n\tmust(total == 5+106, \"range\")\n\n\t// nil, and the comma-ok form\n\tvar p *int\n\tvar m map[string]int\n\tmust(p == nil && m == nil, \"nil\")\n\tages := map[string]int{\"ada\": 36}\n\tv, ok := ages[\"ada\"]\n\t_, missing := ages[\"bob\"]\n\tmust(v == 36 && ok && !missing, \"comma ok\")\n\n\t// switch: several values in one case, no fallthrough, and no subject\n\tout := \"\"\n\tswitch 2 {\n\tcase 1, 2:\n\t\tout += \"small\"\n\tcase 3:\n\t\tout += \"three\"\n\t}\n\tmust(out == \"small\", \"switch\")\n\tx := 9\n\tlabel := \"\"\n\tswitch {\n\tcase x > 5:\n\t\tlabel = \"big\"\n\tdefault:\n\t\tlabel = \"small\"\n\t}\n\tmust(label == \"big\", \"tagless switch\")\n\n\t// fallthrough has to be written out\n\tout = \"\"\n\tswitch 1 {\n\tcase 1:\n\t\tout += \"a\"\n\t\tfallthrough\n\tcase 2:\n\t\tout += \"b\"\n\t}\n\tmust(out == \"ab\", \"fallthrough\")\n\n\t// goto\n\tn := 0\nagain:\n\tn++\n\tif n < 3 {\n\t\tgoto again\n\t}\n\tmust(n == 3, \"goto\")\n\n\t// defer runs when the function returns\n\ttrace := \"\"\n\tfunc() {\n\t\tdefer func() { trace += \"deferred\" }()\n\t\ttrace += \"body,\"\n\t}()\n\tmust(trace == \"body,deferred\", \"defer\")\n\n\t// swapping with a comma assignment\n\ts, t := 1, 2\n\ts, t = t, s\n\tmust(s == 2 && t == 1, \"swap\")\n\n\t// the rest of a struct literal is zero\n\tu := User{Name: \"a\"}\n\tmust(u.Age == 0, \"zero value\")\n\n\t// embedding promotes the fields, and an interface is satisfied without a declaration\n\tpet := Pet{Animal{\"Rex\"}, 3}\n\tmust(pet.Name == \"Rex\", \"embedding\")\n\tvar sp Speaker = Dog{}\n\tmust(sp.Speak() == \"woof\", \"interface\")\n\n\t// errors are values\n\t_, err := parse(\"x\")\n\tvar numErr *strconv.NumError\n\tmust(err != nil && errors.As(err, &numErr), \"err\")\n\tpv, err := parse(\"41\")\n\tmust(err == nil && pv == 42, \"ok\")\n\n\t// a mutable package-level variable\n\tvisit()\n\tvisit()\n\tmust(visits == 2, \"global\")\n\n\t// typed numbers convert explicitly, and a constant adopts the type\n\tvar small int32 = 5\n\tvar big int64 = 7\n\tmust(int64(small)+big == 12, \"convert\")\n\td := 1.5\n\tmust(d*2 == 3.0, \"untyped constant\")\n\n\tfmt.Println(\"go: all checks passed\")\n}\n",
+   "out": "go: all checks passed\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "check-java.java": {
+   "code": "import java.util.Optional;\nimport java.util.concurrent.atomic.AtomicInteger;\n\npublic class Main {\n    static class Animal {\n        final String name;\n\n        Animal(String name) {\n            this.name = name;\n        }\n    }\n\n    static class Dog extends Animal {\n        Dog(String name) {\n            super(name);\n        }\n    }\n\n    interface Speak {\n        String speak();\n    }\n\n    static class Cat implements Speak {\n        @Override\n        public String speak() {\n            return \"meow\";\n        }\n    }\n\n    static class Point {\n        final int x;\n        final int y;\n\n        Point(int x, int y) {\n            this.x = x;\n            this.y = y;\n        }\n    }\n\n    static class Plain {\n        int x;\n        String name;\n    }\n\n    static String show(int n) {\n        return \"int \" + n;\n    }\n\n    static String show(String s) {\n        return \"text \" + s;\n    }\n\n    static int visits = 0;\n\n    static int parse(String s) {\n        return Integer.parseInt(s) + 1;\n    }\n\n    static void check(boolean ok, String what) {\n        if (!ok) {\n            throw new IllegalStateException(what);\n        }\n    }\n\n    public static void main(String[] args) throws Exception {\n        // ++ and --, also inside expressions\n        int[] a = {10, 20, 30};\n        int i = 0;\n        int first = a[i++];\n        int second = a[++i];\n        check(first == 10 && second == 30 && i == 2, \"inc\");\n        int j = 5;\n        int pre = --j;\n        check(pre == 4 && j == 4, \"--x decrements\");\n\n        // the ternary operator\n        String label = i > 1 ? \"big\" : \"small\";\n        check(label.equals(\"big\"), \"ternary\");\n\n        // null and Optional\n        String name = null;\n        check(name == null, \"null\");\n        check(Optional.empty().isEmpty(), \"optional\");\n\n        // new and this\n        Point p = new Point(1, 2);\n        check(p.x == 1 && p.y == 2, \"new\");\n\n        // fields start at zero and null\n        Plain plain = new Plain();\n        check(plain.x == 0 && plain.name == null, \"zero fields\");\n\n        // overloads\n        check(show(1).equals(\"int 1\") && show(\"a\").equals(\"text a\"), \"overload\");\n\n        // old-style switch falls through without break\n        StringBuilder out = new StringBuilder();\n        switch (1) {\n            case 1:\n                out.append(\"a\");\n            case 2:\n                out.append(\"b\");\n                break;\n            default:\n                out.append(\"c\");\n        }\n        check(out.toString().equals(\"ab\"), \"fallthrough\");\n\n        // exceptions, and finally\n        StringBuilder trace = new StringBuilder();\n        try {\n            parse(\"x\");\n            check(false, \"no exception\");\n        } catch (NumberFormatException e) {\n            trace.append(\"caught,\");\n        } finally {\n            trace.append(\"finally\");\n        }\n        check(trace.toString().equals(\"caught,finally\") && parse(\"41\") == 42, \"catch\");\n\n        // inheritance and implements\n        Animal d = new Dog(\"Rex\");\n        check(d.name.equals(\"Rex\") && new Cat().speak().equals(\"meow\"), \"inherit\");\n\n        // int to long needs no cast, and a cast has parentheses\n        long big = i;\n        long cast = (long) i;\n        check(big == 2L && cast == 2L, \"widen\");\n\n        // class-level mutable state, and an atomic counter\n        visits++;\n        AtomicInteger counter = new AtomicInteger();\n        counter.getAndAdd(1);\n        check(visits == 1 && counter.get() == 1, \"global\");\n\n        System.out.println(\"java: all checks passed\");\n    }\n}\n",
+   "out": "java: all checks passed\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "check-kt.kt": {
+   "code": "fun area(width: Int, height: Int = 1) = width * height\n\nfun hello(name: String, greeting: String = \"Hello\") = \"$greeting, $name!\"\n\nopen class Animal(val name: String)\n\nclass Dog(name: String) : Animal(name)\n\nsealed class Shape\n\nclass Circle(val r: Int) : Shape()\n\ndata class Point(val x: Int, val y: Int)\n\nvar visits = 0\n\nfun parse(s: String): Int = s.toInt() + 1\n\nfun firstOrMinus(v: List<Int>): Int {\n    val f = v.firstOrNull() ?: return -1\n    return f\n}\n\nfun main() {\n    // ++ and --, also inside expressions\n    val arr = intArrayOf(10, 20, 30)\n    var i = 0\n    val first = arr[i++]\n    val second = arr[++i]\n    check(first == 10 && second == 30 && i == 2) { \"inc\" }\n    var j = 5\n    val pre = --j\n    check(pre == 4 && j == 4) { \"--x decrements\" }\n\n    // if is an expression\n    val label = if (i > 1) \"big\" else \"small\"\n    check(label == \"big\") { \"if\" }\n\n    // safe call, Elvis, not-null assertion\n    val name: String? = null\n    val other: String? = \"abc\"\n    check(name?.length == null && other?.length == 3) { \"safe call\" }\n    check((name ?: \"anon\") == \"anon\") { \"elvis\" }\n    check(other!!.length == 3) { \"bang bang\" }\n    check(firstOrMinus(listOf()) == -1 && firstOrMinus(listOf(7)) == 7) { \"elvis return\" }\n\n    // no new keyword\n    val p = Point(1, 2)\n    check(p.x == 1) { \"no new\" }\n    check(p.copy(x = 5).y == 2) { \"copy\" }\n    check(Circle(1).r == 1) { \"sealed\" }\n\n    // default and named arguments\n    check(area(3) == 3 && area(width = 3, height = 4) == 12) { \"named\" }\n    check(hello(\"Ada\") == \"Hello, Ada!\" && hello(\"Ada\", greeting = \"Hi\") == \"Hi, Ada!\") { \"default\" }\n\n    // when: several values in one branch, no fallthrough\n    var out = \"\"\n    when (2) {\n        1, 2 -> out += \"small\"\n        3 -> out += \"three\"\n        else -> out += \"other\"\n    }\n    check(out == \"small\") { \"when\" }\n\n    // exceptions\n    try {\n        parse(\"x\")\n        check(false) { \"no exception\" }\n    } catch (e: NumberFormatException) {\n        out = \"caught\"\n    }\n    check(out == \"caught\") { \"catch\" }\n    check(parse(\"41\") == 42) { \"parse\" }\n\n    // inheritance\n    val d: Animal = Dog(\"Rex\")\n    check(d.name == \"Rex\") { \"inherit\" }\n\n    // a global that any function may change\n    visits++\n    visits++\n    check(visits == 2) { \"global\" }\n\n    // Int to Long is an explicit call\n    val big: Long = i.toLong()\n    check(big == 2L) { \"long\" }\n\n    println(\"kotlin: all checks passed\")\n}\n",
+   "warnings": "Main.kt:44:16: warning: unnecessary non-null assertion (!!) on a non-null receiver of type 'String'.\n    check(other!!.length == 3) { \"bang bang\" }\n               ^^",
+   "out": "kotlin: all checks passed\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "check-py.py": {
+   "code": "def area(width, height=1):\n    return width * height\n\n\ndef parse(s):\n    return int(s) + 1\n\n\ndef double(x):\n    return x * 2\n\n\n# there is no x++; x += 1 is the only form, and ++x / --x are legal and do nothing\nx = 5\nx += 1\nassert x == 6\ny = 5\nassert ++y == 5 and --y == 5 and y == 5\n\n# the conditional expression\nlabel = \"big\" if x > 5 else \"small\"\nassert label == \"big\"\n\n# truthiness: empty and zero values count as false\nassert not []\nassert not \"\"\nassert not 0\nassert not None\nassert [0]\n\n# keyword and default arguments\nassert area(3) == 3\nassert area(width=3, height=4) == 12\n\n# floor division, power, chained comparison, in, is\nassert 7 // 2 == 3 and -7 // 2 == -4\nassert 2**10 == 1024\nn = 3\nassert 1 < n < 5\nassert n in [1, 2, 3]\nassert None is None\nassert True and not False\n\n# an empty string is falsy, so `or` replaces it too\nassert (\"\" or \"Hello\") == \"Hello\"\n\n# and, or, not\nassert (True and not False) or False\n\n# one value can be an int or a float, and a function takes any type\nassert 1 + 2.5 == 3.5\nassert 1 == 1.0\nassert double(2) == 4 and double(\"ab\") == \"abab\"\n\n# a name can change type\nz = 1\nz = \"a\"\nassert z == \"a\"\n\n# exceptions\ntry:\n    parse(\"x\")\n    assert False, \"no exception\"\nexcept ValueError:\n    caught = True\nassert caught\nassert parse(\"41\") == 42\n\n# indexing a string gives a one-character string\nassert \"héllo\"[0] == \"h\"\nassert \"héllo\"[1] == \"é\"\n\n# the match statement does not fall through and takes several values\nout = \"\"\nmatch 2:\n    case 1 | 2:\n        out = \"small\"\n    case 3:\n        out = \"three\"\nassert out == \"small\"\n\n# a global needs the global statement to be assigned from a function\nvisits = 0\n\n\ndef visit():\n    global visits\n    visits += 1\n\n\nvisit()\nassert visits == 1\n\nprint(\"python: all checks passed\")\n",
+   "out": "python: all checks passed\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "check-ts.ts": {
+   "code": "function area(width: number, height: number = 1): number {\n  return width * height;\n}\n\nfunction parse(s: string): number {\n  const n = Number.parseInt(s, 10);\n  if (Number.isNaN(n)) {\n    throw new Error(\"not a number: \" + s);\n  }\n  return n + 1;\n}\n\nfunction check(ok: boolean, what: string): void {\n  if (!ok) {\n    throw new Error(what);\n  }\n}\n\ntype User = { name: string } | null;\n\nfunction nameOf(u: User): string | undefined {\n  return u?.name;\n}\n\n// ++ and --, also inside expressions, and --x decrements\nconst a = [10, 20, 30];\nlet i = 0;\nconst first = a[i++];\nconst second = a[++i];\ncheck(first === 10 && second === 30 && i === 2, \"inc\");\nlet j = 5;\nconst pre = --j;\ncheck(pre === 4 && j === 4, \"--x decrements\");\n\n// the ternary operator\nconst label = i > 1 ? \"big\" : \"small\";\ncheck(label === \"big\", \"ternary\");\n\n// null and undefined\nconst missing: string | null = null;\nlet notSet: number | undefined;\ncheck(missing === null && notSet === undefined, \"null\");\n\n// optional chaining and ??\ncheck(nameOf(null) === undefined && nameOf({ name: \"Ada\" }) === \"Ada\", \"optional chaining\");\nconst maybe: number | null = null;\ncheck((maybe ?? 5) === 5, \"coalesce\");\n\n// === and a == that coerces\nconst loose: any = 1;\ncheck(loose == \"1\" && loose !== \"1\", \"loose equality\");\n\n// .length on an array\ncheck(a.length === 3, \"length\");\n\n// truthiness\nconst empty: string = \"\";\nconst zero: number = 0;\nconst list: number[] = [];\nconst zeroText: string = \"0\";\ncheck(!empty && !zero && !missing && !notSet, \"falsy\");\ncheck(!!list && !!zeroText, \"truthy\");\n\n// optional parameters, an options object, and a closure\nfunction scale(x: number, factor?: number): number {\n  return x * (factor ?? 1);\n}\ncheck(scale(2) === 2 && scale(2, 3) === 6, \"optional parameter\");\ncheck(area(3) === 3 && area(3, 4) === 12, \"default\");\nfunction box({ width, height = 1 }: { width: number; height?: number }): number {\n  return width * height;\n}\ncheck(box({ width: 3, height: 4 }) === 12 && box({ width: 3 }) === 3, \"options\");\nconst inc = (x: number) => x + 1;\ncheck(inc(1) === 2, \"arrow\");\n\n// one number type\ncheck(1 + 2.5 === 3.5 && 1 === 1.0, \"number\");\n\n// exceptions\nlet caught = false;\ntry {\n  parse(\"x\");\n} catch (e) {\n  caught = true;\n}\ncheck(caught && parse(\"41\") === 42, \"catch\");\n\n// indexing a string gives a one-character string\ncheck(\"héllo\"[0] === \"h\" && \"héllo\"[1] === \"é\", \"index\");\n\n// switch falls through without break\nlet out = \"\";\nconst pick: number = 1;\nswitch (pick) {\n  case 1:\n    out += \"a\";\n  case 2:\n    out += \"b\";\n    break;\n  default:\n    out += \"c\";\n}\ncheck(out === \"ab\", \"fallthrough\");\n\n// a missing semicolon is repaired at the end of the line\nlet asi = 1\nasi += 1\ncheck(asi === 2, \"asi\");\n\n// a module-level variable that any function may change\nlet visits = 0;\nfunction visit(): void {\n  visits++;\n}\nvisit();\ncheck(visits === 1, \"global\");\n\nconsole.log(\"typescript: all checks passed\");\n",
+   "out": "typescript: all checks passed\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "cond.fail.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tn := 1\n\tif n {\n\t\tfmt.Println(\"yes\")\n\t}\n}\n",
+   "error": "# command-line-arguments\n./main.go:7:5: non-boolean condition in if statement",
+   "lang": "go"
+  },
+  "dec-prefix.fail.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tcount := 5\n\t--count\n\tfmt.Println(count)\n}\n",
+   "error": "# command-line-arguments\n./main.go:7:2: syntax error: unexpected --, expected }",
+   "lang": "go"
+  },
+  "default.fail.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc area(width int, height int = 1) int {\n\treturn width * height\n}\n\nfunc main() {\n\tfmt.Println(area(3))\n}\n",
+   "error": "# command-line-arguments\n./main.go:5:33: syntax error: unexpected = in parameter list; possibly missing comma or )",
+   "lang": "go"
+  },
+  "fallthrough.fail.cs": {
+   "code": "var o = \"\";\nswitch (1)\n{\n    case 1:\n        o += \"a\";\n    case 2:\n        o += \"b\";\n        break;\n}\nConsole.WriteLine(o);\n",
+   "error": "Program.cs(4,5): error CS0163: Control cannot fall through from one case label ('case 1:') to another\nProgram.cs(7,9): warning CS0162: Unreachable code detected",
+   "lang": "csharp"
+  },
+  "inc-prefix.fail.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tcount := 0\n\t++count\n\tfmt.Println(count)\n}\n",
+   "error": "# command-line-arguments\n./main.go:7:2: syntax error: unexpected ++, expected }",
+   "lang": "go"
+  },
+  "inc-value.fail.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tcount := 0\n\tnext := count++\n\tfmt.Println(next)\n}\n",
+   "error": "# command-line-arguments\n./main.go:7:15: syntax error: unexpected ++ at end of statement",
+   "lang": "go"
+  },
+  "inc.fail.py": {
+   "code": "count = 0\ncount++\nprint(count)\n",
+   "out": "  File \"main.py\", line 2\n    count++\n           ^\nSyntaxError: invalid syntax\n",
+   "lang": "python",
+   "exit": 1
+  },
+  "mixed-int.fail.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tvar small int32 = 5\n\tvar big int64 = 7\n\tfmt.Println(small + big)\n}\n",
+   "error": "# command-line-arguments\n./main.go:8:14: invalid operation: small + big (mismatched types int32 and int64)",
+   "lang": "go"
+  },
+  "overload.fail.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc show(n int) string    { return fmt.Sprint(\"int \", n) }\nfunc show(s string) string { return \"text \" + s }\n\nfunc main() {\n\tfmt.Println(show(1), show(\"a\"))\n}\n",
+   "error": "# command-line-arguments\n./main.go:6:6: show redeclared in this block\n\t./main.go:5:6: other declaration of show\n./main.go:9:28: cannot use \"a\" (untyped string constant) as int value in argument to show",
+   "lang": "go"
+  },
+  "ternary.fail.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tn := 7\n\tlabel := n > 5 ? \"big\" : \"small\"\n\tfmt.Println(label)\n}\n",
+   "error": "# command-line-arguments\n./main.go:7:17: invalid character U+003F '?'\n./main.go:7:19: syntax error: unexpected literal \"big\" at end of statement",
+   "lang": "go"
+  },
+  "ternary.fail.kt": {
+   "code": "fun main() {\n    val n = 7\n    val label = n > 5 ? \"big\" : \"small\"\n    println(label)\n}\n",
+   "error": "Main.kt:3:23: error: syntax error: Unexpected tokens (use ';' to separate expressions on the same line).\n    val label = n > 5 ? \"big\" : \"small\"\n                      ^^^^^^^^^^^^^^^^^",
+   "lang": "kotlin"
+  },
+  "widen.fail.kt": {
+   "code": "fun main() {\n    val small: Int = 5\n    val big: Long = small\n    println(big)\n}\n",
+   "error": "Main.kt:3:19: error: initializer type mismatch: expected 'Long', actual 'Int'.\n    val big: Long = small\n                  ^",
+   "lang": "kotlin"
+  }
+ },
+ "exercises": {
+  "average": {
+   "starter": "// The mean of `count` readings that add up to `total`.\n// Rust will not mix an i64 and a u32 in one division: convert both yourself.\n// With no readings there is no mean, so return None instead of a NaN.\nfn average(total: i64, count: u32) -> Option<f64> {\n    todo!(\"rule out count == 0, then divide as floats\")\n}\n\nfn main() {\n    assert_eq!(average(7, 2), Some(3.5));\n    assert_eq!(average(-7, 2), Some(-3.5));\n    assert_eq!(average(0, 4), Some(0.0));\n    assert_eq!(average(0, 0), None);\n    assert_eq!(average(5, 0), None);\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "// The mean of `count` readings that add up to `total`.\n// Rust will not mix an i64 and a u32 in one division: convert both yourself.\n// With no readings there is no mean, so return None instead of a NaN.\nfn average(total: i64, count: u32) -> Option<f64> {\n    if count == 0 {\n        return None;\n    }\n    Some(total as f64 / f64::from(count))\n}\n\nfn main() {\n    assert_eq!(average(7, 2), Some(3.5));\n    assert_eq!(average(-7, 2), Some(-3.5));\n    assert_eq!(average(0, 4), Some(0.0));\n    assert_eq!(average(0, 0), None);\n    assert_eq!(average(5, 0), None);\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "chain": {
+   "starter": "// user?.address?.city?.length ?? 0, in other languages, becomes a function that\n// returns an Option and uses `?`: each `?` returns None from the function when its\n// value is missing. An empty city is still a city, so its length is Some(0).\nstruct Address {\n    city: Option<String>,\n}\n\nstruct User {\n    address: Option<Address>,\n}\n\nfn city_len(user: Option<&User>) -> Option<usize> {\n    todo!(\"user?.address.as_ref()?.city.as_ref().map(...)\")\n}\n\nfn main() {\n    let home = User {\n        address: Some(Address {\n            city: Some(\"Paris\".to_string()),\n        }),\n    };\n    let nowhere = User { address: None };\n    let unnamed = User {\n        address: Some(Address { city: None }),\n    };\n    let empty = User {\n        address: Some(Address {\n            city: Some(String::new()),\n        }),\n    };\n    assert_eq!(city_len(Some(&home)), Some(5));\n    assert_eq!(city_len(None), None);\n    assert_eq!(city_len(Some(&nowhere)), None);\n    assert_eq!(city_len(Some(&unnamed)), None);\n    assert_eq!(city_len(Some(&empty)), Some(0));\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "// user?.address?.city?.length ?? 0, in other languages, becomes a function that\n// returns an Option and uses `?`: each `?` returns None from the function when its\n// value is missing. An empty city is still a city, so its length is Some(0).\nstruct Address {\n    city: Option<String>,\n}\n\nstruct User {\n    address: Option<Address>,\n}\n\nfn city_len(user: Option<&User>) -> Option<usize> {\n    let address = user?.address.as_ref()?;\n    let city = address.city.as_ref()?;\n    Some(city.len())\n}\n\nfn main() {\n    let home = User {\n        address: Some(Address {\n            city: Some(\"Paris\".to_string()),\n        }),\n    };\n    let nowhere = User { address: None };\n    let unnamed = User {\n        address: Some(Address { city: None }),\n    };\n    let empty = User {\n        address: Some(Address {\n            city: Some(String::new()),\n        }),\n    };\n    assert_eq!(city_len(Some(&home)), Some(5));\n    assert_eq!(city_len(None), None);\n    assert_eq!(city_len(Some(&nowhere)), None);\n    assert_eq!(city_len(Some(&unnamed)), None);\n    assert_eq!(city_len(Some(&empty)), Some(0));\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "classify": {
+   "starter": "// A subject-less switch (or an if / elif chain):\n//\n//   switch {\n//   case n < 0:  return \"negative\"\n//   case n == 0: return \"zero\"\n//   case n < 10: return \"small\"\n//   default:     return \"large\"\n//   }\n//\n// Write it as one match with guards: an arm can end in `if condition`.\nfn classify(n: i32) -> &'static str {\n    todo!(\"a match with guard arms: _ if n < 0 => ...\")\n}\n\nfn main() {\n    assert_eq!(classify(-5), \"negative\");\n    assert_eq!(classify(0), \"zero\");\n    assert_eq!(classify(9), \"small\");\n    assert_eq!(classify(10), \"large\");\n    assert_eq!(classify(i32::MAX), \"large\");\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "// A subject-less switch (or an if / elif chain):\n//\n//   switch {\n//   case n < 0:  return \"negative\"\n//   case n == 0: return \"zero\"\n//   case n < 10: return \"small\"\n//   default:     return \"large\"\n//   }\n//\n// Write it as one match with guards: an arm can end in `if condition`.\nfn classify(n: i32) -> &'static str {\n    match n {\n        _ if n < 0 => \"negative\",\n        0 => \"zero\",\n        _ if n < 10 => \"small\",\n        _ => \"large\",\n    }\n}\n\nfn main() {\n    assert_eq!(classify(-5), \"negative\");\n    assert_eq!(classify(0), \"zero\");\n    assert_eq!(classify(9), \"small\");\n    assert_eq!(classify(10), \"large\");\n    assert_eq!(classify(i32::MAX), \"large\");\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "fall-through": {
+   "starter": "// A C switch that falls through, and nothing else:\n//\n//   int mask = 0;\n//   switch (level) {\n//   case 3: mask |= 4;\n//   case 2: mask |= 2;\n//   case 1: mask |= 1; break;\n//   }\n//\n// Rust arms never fall through into the next one. Return the same mask.\nfn mask(level: u32) -> u32 {\n    todo!(\"one match arm per level, each giving its own total\")\n}\n\nfn main() {\n    assert_eq!(mask(3), 7);\n    assert_eq!(mask(2), 3);\n    assert_eq!(mask(1), 1);\n    assert_eq!(mask(0), 0);\n    assert_eq!(mask(4), 0);\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "// A C switch that falls through, and nothing else:\n//\n//   int mask = 0;\n//   switch (level) {\n//   case 3: mask |= 4;\n//   case 2: mask |= 2;\n//   case 1: mask |= 1; break;\n//   }\n//\n// Rust arms never fall through into the next one. Return the same mask.\nfn mask(level: u32) -> u32 {\n    match level {\n        3 => 7,\n        2 => 3,\n        1 => 1,\n        _ => 0,\n    }\n}\n\nfn main() {\n    assert_eq!(mask(3), 7);\n    assert_eq!(mask(2), 3);\n    assert_eq!(mask(1), 1);\n    assert_eq!(mask(0), 0);\n    assert_eq!(mask(4), 0);\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "floor-div": {
+   "starter": "// Python's `//` rounds toward minus infinity: -7 // 2 is -4.\n// Rust's `/` on integers cuts toward zero: -7 / 2 is -3.\n// Write floor_div for a divisor that is not zero.\nfn floor_div(a: i32, b: i32) -> i32 {\n    todo!(\"a / b, minus one if inexact and the signs differ\")\n}\n\nfn main() {\n    assert_eq!(floor_div(7, 2), 3);\n    assert_eq!(floor_div(-7, 2), -4);\n    assert_eq!(floor_div(7, -2), -4);\n    assert_eq!(floor_div(-7, -2), 3);\n    assert_eq!(floor_div(6, 3), 2);\n    assert_eq!(floor_div(-6, 3), -2);\n    assert_eq!(floor_div(0, 5), 0);\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "// Python's `//` rounds toward minus infinity: -7 // 2 is -4.\n// Rust's `/` on integers cuts toward zero: -7 / 2 is -3.\n// Write floor_div for a divisor that is not zero.\nfn floor_div(a: i32, b: i32) -> i32 {\n    let quotient = a / b;\n    if a % b != 0 && ((a < 0) != (b < 0)) {\n        quotient - 1\n    } else {\n        quotient\n    }\n}\n\nfn main() {\n    assert_eq!(floor_div(7, 2), 3);\n    assert_eq!(floor_div(-7, 2), -4);\n    assert_eq!(floor_div(7, -2), -4);\n    assert_eq!(floor_div(-7, -2), 3);\n    assert_eq!(floor_div(6, 3), 2);\n    assert_eq!(floor_div(-6, 3), -2);\n    assert_eq!(floor_div(0, 5), 0);\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "greeting": {
+   "starter": "// Other languages write greet(name, greeting = \"Hello\"). Rust has no default arguments,\n// so the caller passes an Option and the function supplies the default.\n// An empty greeting is still a greeting: only None means \"use the default\".\nfn greet(name: &str, greeting: Option<&str>) -> String {\n    todo!(\"use unwrap_or on the Option, then format! the result\")\n}\n\nfn main() {\n    assert_eq!(greet(\"Ada\", None), \"Hello, Ada!\");\n    assert_eq!(greet(\"Ada\", Some(\"Hi\")), \"Hi, Ada!\");\n    assert_eq!(greet(\"Ada\", Some(\"\")), \", Ada!\");\n    assert_eq!(greet(\"\", None), \"Hello, !\");\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "// Other languages write greet(name, greeting = \"Hello\"). Rust has no default arguments,\n// so the caller passes an Option and the function supplies the default.\n// An empty greeting is still a greeting: only None means \"use the default\".\nfn greet(name: &str, greeting: Option<&str>) -> String {\n    let greeting = greeting.unwrap_or(\"Hello\");\n    format!(\"{greeting}, {name}!\")\n}\n\nfn main() {\n    assert_eq!(greet(\"Ada\", None), \"Hello, Ada!\");\n    assert_eq!(greet(\"Ada\", Some(\"Hi\")), \"Hi, Ada!\");\n    assert_eq!(greet(\"Ada\", Some(\"\")), \", Ada!\");\n    assert_eq!(greet(\"\", None), \"Hello, !\");\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "operator-add": {
+   "starter": "use std::ops::Add;\n\n// C++: Point operator+(Point a, Point b). In Rust the operator is a trait:\n// `impl Add for Point` defines what `a + b` means.\n#[derive(Debug, Clone, Copy, PartialEq)]\nstruct Point {\n    x: i32,\n    y: i32,\n}\n\nimpl Add for Point {\n    type Output = Point;\n\n    fn add(self, other: Point) -> Point {\n        todo!(\"add the two x values and the two y values\")\n    }\n}\n\nfn main() {\n    let a = Point { x: 1, y: 2 };\n    let b = Point { x: 3, y: 4 };\n    assert_eq!(a + b, Point { x: 4, y: 6 });\n    // a and b are Copy, so they can still be used after the sum.\n    assert_eq!(a + a, Point { x: 2, y: 4 });\n    assert_eq!(b + Point { x: -3, y: -4 }, Point { x: 0, y: 0 });\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "use std::ops::Add;\n\n// C++: Point operator+(Point a, Point b). In Rust the operator is a trait:\n// `impl Add for Point` defines what `a + b` means.\n#[derive(Debug, Clone, Copy, PartialEq)]\nstruct Point {\n    x: i32,\n    y: i32,\n}\n\nimpl Add for Point {\n    type Output = Point;\n\n    fn add(self, other: Point) -> Point {\n        Point {\n            x: self.x + other.x,\n            y: self.y + other.y,\n        }\n    }\n}\n\nfn main() {\n    let a = Point { x: 1, y: 2 };\n    let b = Point { x: 3, y: 4 };\n    assert_eq!(a + b, Point { x: 4, y: 6 });\n    // a and b are Copy, so they can still be used after the sum.\n    assert_eq!(a + a, Point { x: 2, y: 4 });\n    assert_eq!(b + Point { x: -3, y: -4 }, Point { x: 0, y: 0 });\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "read-habits": {
+   "starter": "// Read this program. Replace each `todo!()` with what the marked call gives, then run\n// until the checks print `all checks passed`.\nfn tally() -> i32 {\n    let mut total = 0;\n    for i in 0..6 {\n        match i {\n            1 | 2 => total += 10,\n            3 => break,\n            _ => total += 1,\n        }\n    }\n    total\n}\n\nfn halves() -> (i32, i32) {\n    (-7 / 2, 7 / 2)\n}\n\nfn city_len(city: Option<&str>) -> Option<usize> {\n    let c = city?;\n    Some(c.len())\n}\n\n/// Hint: how many times does the loop body run, and what does `break` leave?\nfn tally_is() -> i32 {\n    todo!(\"how many times does the loop body run, and what does `break` leave?\")\n}\n\n/// Hint: the value of `halves()`: integer division with a negative number\nfn halves_are() -> (i32, i32) {\n    todo!(\"the value of `halves()`: integer division with a negative number\")\n}\n\n/// Hint: what does `city_len(None)` give? Look at what `?` does\nfn no_city_gives() -> Option<usize> {\n    todo!(\"what does `city_len(None)` give? Look at what `?` does\")\n}\n\n/// Hint: what does `city_len(Some(\"\"))` give? Is an empty string a missing value?\nfn empty_city_gives() -> Option<usize> {\n    todo!(\"what does `city_len(Some(\\\"\\\"))` give? Is an empty string a missing value?\")\n}\n\n/// Hint: what does `city_len(Some(\"Oslo\"))` give?\nfn oslo_gives() -> Option<usize> {\n    todo!(\"what does `city_len(Some(\\\"Oslo\\\"))` give?\")\n}\n\nfn check<T: PartialEq + std::fmt::Debug>(call: &str, said: T, truth: T) {\n    assert!(said == truth, \"misread `{call}`: you said {said:?}\");\n    println!(\"ok: {call} = {said:?}\");\n}\n\nfn main() {\n    check(\"tally()\", tally_is(), tally());\n    check(\"halves()\", halves_are(), halves());\n    check(\"city_len(None)\", no_city_gives(), city_len(None));\n    check(\n        \"city_len(Some(\\\"\\\"))\",\n        empty_city_gives(),\n        city_len(Some(\"\")),\n    );\n    check(\n        \"city_len(Some(\\\"Oslo\\\"))\",\n        oslo_gives(),\n        city_len(Some(\"Oslo\")),\n    );\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "// Read this program. Replace each `todo!()` with what the marked call gives, then run\n// until the checks print `all checks passed`.\nfn tally() -> i32 {\n    let mut total = 0;\n    for i in 0..6 {\n        match i {\n            1 | 2 => total += 10,\n            3 => break,\n            _ => total += 1,\n        }\n    }\n    total\n}\n\nfn halves() -> (i32, i32) {\n    (-7 / 2, 7 / 2)\n}\n\nfn city_len(city: Option<&str>) -> Option<usize> {\n    let c = city?;\n    Some(c.len())\n}\n\n/// Hint: how many times does the loop body run, and what does `break` leave?\nfn tally_is() -> i32 {\n    21\n}\n\n/// Hint: the value of `halves()`: integer division with a negative number\nfn halves_are() -> (i32, i32) {\n    (-3, 3)\n}\n\n/// Hint: what does `city_len(None)` give? Look at what `?` does\nfn no_city_gives() -> Option<usize> {\n    None\n}\n\n/// Hint: what does `city_len(Some(\"\"))` give? Is an empty string a missing value?\nfn empty_city_gives() -> Option<usize> {\n    Some(0)\n}\n\n/// Hint: what does `city_len(Some(\"Oslo\"))` give?\nfn oslo_gives() -> Option<usize> {\n    Some(4)\n}\n\nfn check<T: PartialEq + std::fmt::Debug>(call: &str, said: T, truth: T) {\n    assert!(said == truth, \"misread `{call}`: you said {said:?}\");\n    println!(\"ok: {call} = {said:?}\");\n}\n\nfn main() {\n    check(\"tally()\", tally_is(), tally());\n    check(\"halves()\", halves_are(), halves());\n    check(\"city_len(None)\", no_city_gives(), city_len(None));\n    check(\n        \"city_len(Some(\\\"\\\"))\",\n        empty_city_gives(),\n        city_len(Some(\"\")),\n    );\n    check(\n        \"city_len(Some(\\\"Oslo\\\"))\",\n        oslo_gives(),\n        city_len(Some(\"Oslo\")),\n    );\n    println!(\"all checks passed\");\n}\n",
+    "out": "ok: tally() = 21\nok: halves() = (-3, 3)\nok: city_len(None) = None\nok: city_len(Some(\"\")) = Some(0)\nok: city_len(Some(\"Oslo\")) = Some(4)\nall checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}

@@ -1,0 +1,413 @@
+{
+ "id": "structs",
+ "title": "Structs",
+ "part": "data",
+ "intro": "Structs group named fields into one type of your own.",
+ "coming_from": {
+  "go": "A Rust struct is a Go struct with `name: Type` order. You must set every field when you build one (there are no zero values), and fields are private to their module until you mark them `pub`, not when they start with a lowercase letter. There is no struct embedding: a struct that holds another one keeps it in a named field.",
+  "kotlin": "A struct is a data class where you don't write the constructor: you build it with `User { name: ..., age: ... }`. Printing, `==` and copying are opt-in through `#[derive(Debug, PartialEq, Clone)]` rather than given for free.",
+  "python": "A struct is your `@dataclass`, and `#[derive(Debug)]` is the generated `__repr__`. The set of fields is fixed, so you can't add a new attribute to a value later.",
+  "typescript": "A struct is like an `interface` plus an object literal, but every field must be given and the type is nominal. Another struct with the same fields is still not a `User`, and an optional field is written `Option<T>` ([Option](/learn/option/)), not `age?:`.",
+  "java": "A Rust `struct` is closest to a `record`: named fields, and every field must be given when you create one. Unlike a record, a field can be changed if the variable is `mut`. There's no constructor, no default values and no auto `toString` or `equals`; `#[derive(Debug, PartialEq)]` adds them.",
+  "csharp": "A `struct` with `#[derive(Debug)]` is a lot like a positional `record`, but you build it with field names, like an object initializer where every property is `required`. There is no constructor and no default value for a missing field. It is not a C# `struct` in the value-type sense: `let b = a;` moves the value, it does not copy it.",
+  "c": "Rust structs look like C structs built with designated initializers, `.name = ...` becoming `name: ...`. Leaving a field out is a compile error instead of zero, and `#[derive(Debug)]` writes the print function for you. Rust may also reorder the fields in memory; `#[repr(C)]` asks for C's layout.",
+  "cpp": "A Rust `struct` is an aggregate built with designated initializers, but every field is required, so nothing is silently zeroed. `#[derive(Debug)]` stands in for the `operator<<` you would write by hand. Rust may reorder the fields in memory; `#[repr(C)]` asks for the order you wrote."
+ },
+ "notes": [
+  "`#[derive(Debug)]` asks the compiler to write the printing code for you, so `{u:?}` can print the whole struct. You can also derive `Clone`, `PartialEq` (for `==`), `Default`, and more.",
+  "`String::from(\"ana\")` makes an owned `String` from text in your code. The Strings lesson, later, explains the two string types.",
+  "`User { age: 31, ..old }` builds a new value and takes every field you did not list from `old`. If it takes a `String` or other owned field, `old` loses it.",
+  "Fields are private outside their module unless marked `pub`. There is no capital-letter rule."
+ ],
+ "gotcha": {
+  "title": "Leaving fields out",
+  "verdict": "rust-rule",
+  "looks_fine": "In Go, fields you leave out become zero values: `Age` is 0 and `Active` is false. The code runs, and plenty of Go types are designed so that the zero value is useful.",
+  "rust_sees": "Rust has no automatic zero values. Every field must be given.",
+  "why": "Nothing here is unsafe; it is a different default. Is `age: 0` a real age, or a field you forgot? Is `port: 0` intended? Rust makes you say. When zeros really are what you want, ask for them explicitly with `Default`. (Go would use a `*int` for \"unset\"; Rust uses `Option<u32>`, [Option](/learn/option/).)",
+  "langs": {
+   "go": {
+    "status": "runs",
+    "says": "Go runs this and prints ana 0 false. Missing fields get their zero values, which Go treats as a feature, and many Go types are written so that the zero value works. Rust asks you to say it.",
+    "code": "package main\n\nimport \"fmt\"\n\ntype User struct {\n\tName   string\n\tAge    int\n\tActive bool\n}\n\nfunc main() {\n\tu := User{Name: \"ana\"}\n\tfmt.Println(u.Name, u.Age, u.Active)\n}\n",
+    "out": "ana 0 false\n"
+   },
+   "kotlin": {
+    "status": "refuses",
+    "says": "Kotlin refuses this too: leaving out `age` and `active` is a compile error unless the class gives them defaults, like `val age: Int = 0`. The closest Rust tool is `#[derive(Default)]`, which defaults the whole struct, shown in the fix.",
+    "code": "data class User(val name: String, val age: Int, val active: Boolean)\n\nfun main() {\n    val u = User(name = \"ana\")\n    println(u.name)\n}\n",
+    "error": "Main.kt:4:13: error: no value passed for parameter 'age'.\n    val u = User(name = \"ana\")\n            ^^^^\nMain.kt:4:13: error: no value passed for parameter 'active'.\n    val u = User(name = \"ana\")\n            ^^^^"
+   },
+   "python": {
+    "status": "crash",
+    "says": "A dataclass won't let you skip fields either. Python raises a TypeError when you build the object, naming the two missing fields.",
+    "code": "from dataclasses import dataclass\n\n\n@dataclass\nclass User:\n    name: str\n    age: int\n    active: bool\n\n\nu = User(name=\"ana\")\nprint(u.name)\n",
+    "out": "Traceback (most recent call last):\n  File \"main.py\", line 11, in <module>\n    u = User(name=\"ana\")\nTypeError: User.__init__() missing 2 required positional arguments: 'age' and 'active'\n"
+   },
+   "typescript": {
+    "status": "refuses",
+    "says": "TypeScript refuses this too: an object typed as `User` must have every field, so `age` and `active` are reported as missing.",
+    "code": "interface User {\n  name: string;\n  age: number;\n  active: boolean;\n}\n\nconst u: User = { name: \"ana\" };\nconsole.log(u.name);\n",
+    "error": "main.ts(7,7): error TS2739: Type '{ name: string; }' is missing the following properties from type 'User': age, active"
+   },
+   "java": {
+    "status": "runs",
+    "says": "A plain class fills missing fields with 0 and false, so this prints `ana 0 false` like Go. A record would refuse, because its constructor needs every field.",
+    "code": "public class Main {\n    static class User {\n        String name;\n        int age;\n        boolean active;\n    }\n\n    public static void main(String[] args) {\n        var u = new User();\n        u.name = \"ana\";\n        System.out.println(u.name + \" \" + u.age + \" \" + u.active);\n    }\n}\n",
+    "out": "ana 0 false\n"
+   },
+   "csharp": {
+    "status": "runs",
+    "says": "The object initializer fills only Name, and the rest get defaults, so it prints ana 0 False. Mark the properties `required` if you want the compiler to insist.",
+    "code": "var u = new User { Name = \"ana\" };\nConsole.WriteLine($\"{u.Name} {u.Age} {u.Active}\");\n\nclass User\n{\n    public string Name { get; set; } = \"\";\n    public uint Age { get; set; }\n    public bool Active { get; set; }\n}\n",
+    "out": "ana 0 False\n"
+   },
+   "c": {
+    "status": "runs",
+    "says": "C sets the fields you leave out to zero, so this prints ana 0 0. Rust makes you give every field.",
+    "code": "#include <stdbool.h>\n#include <stdio.h>\n\nstruct User {\n    const char *name;\n    unsigned age;\n    bool active;\n};\n\nint main(void) {\n    struct User u = {.name = \"ana\"};\n    printf(\"%s %u %d\\n\", u.name, u.age, u.active);\n    return 0;\n}\n",
+    "out": "ana 0 0\n"
+   },
+   "cpp": {
+    "status": "runs",
+    "says": "This compiles with a `-Wextra` warning about the missing fields, then prints `ana 0 false`. With brace initialization the left-out fields are zero, much like Go.",
+    "code": "#include <iostream>\n#include <string>\n\nstruct User {\n    std::string name;\n    unsigned age;\n    bool active;\n};\n\nint main() {\n    User u{.name = \"ana\"};\n    std::cout << u.name << \" \" << u.age << \" \" << std::boolalpha << u.active << \"\\n\";\n}\n",
+    "warnings": "main.cpp: In function ‘int main()’:\nmain.cpp:11:25: warning: missing initializer for member ‘User::age’ [-Wmissing-field-initializers]\n   11 |     User u{.name = \"ana\"};\n      |                         ^\nmain.cpp:11:25: warning: missing initializer for member ‘User::active’ [-Wmissing-field-initializers]",
+    "out": "ana 0 false\n"
+   }
+  },
+  "code": "struct User {\n    name: String,\n    age: u32,\n    active: bool,\n}\n\nfn main() {\n    let u = User {\n        name: String::from(\"ana\"),\n    };\n    println!(\"{}\", u.name);\n}\n",
+  "error": "error[E0063]: missing fields `active` and `age` in initializer of `User`\n --> src/main.rs:8:13\n  |\n8 |     let u = User {\n  |             ^^^^ missing `active` and `age`\n",
+  "error_code": "E0063",
+  "fixed": {
+   "code": "#[derive(Default)]\nstruct User {\n    name: String,\n    age: u32,\n    active: bool,\n}\n\nfn main() {\n    // struct update syntax (explained in the lesson): the rest comes from Default\n    let u = User {\n        name: String::from(\"ana\"),\n        ..Default::default()\n    };\n    println!(\"{} {} {}\", u.name, u.age, u.active);\n}\n",
+   "out": "ana 0 false\n"
+  }
+ },
+ "order": 20,
+ "program": {
+  "rust": {
+   "code": "#[derive(Debug)] // lets you print it with {:?}\nstruct User {\n    name: String,\n    age: u32,\n    active: bool,\n}\n\nfn main() {\n    let u = User {\n        name: String::from(\"ana\"),\n        age: 30,\n        active: true,\n    };\n    println!(\"{} is {}, active={}\", u.name, u.age, u.active);\n    println!(\"{u:?}\");\n}\n",
+   "out": "ana is 30, active=true\nUser { name: \"ana\", age: 30, active: true }\n"
+  },
+  "go": {
+   "code": "package main\n\nimport \"fmt\"\n\ntype User struct {\n\tName   string\n\tAge    int\n\tActive bool\n}\n\nfunc main() {\n\tu := User{Name: \"ana\", Age: 30, Active: true}\n\tfmt.Printf(\"%s is %d, active=%t\\n\", u.Name, u.Age, u.Active)\n\tfmt.Printf(\"%+v\\n\", u)\n}\n",
+   "out": "ana is 30, active=true\n{Name:ana Age:30 Active:true}\n"
+  },
+  "kotlin": {
+   "code": "data class User(\n    val name: String,\n    val age: Int,\n    val active: Boolean,\n)\n\nfun main() {\n    val u = User(name = \"ana\", age = 30, active = true)\n    println(\"${u.name} is ${u.age}, active=${u.active}\")\n    println(u)\n}\n",
+   "out": "ana is 30, active=true\nUser(name=ana, age=30, active=true)\n"
+  },
+  "python": {
+   "code": "from dataclasses import dataclass\n\n\n@dataclass  # also gives a readable repr, like #[derive(Debug)]\nclass User:\n    name: str\n    age: int\n    active: bool\n\n\nu = User(name=\"ana\", age=30, active=True)\nprint(f\"{u.name} is {u.age}, active={u.active}\")\nprint(u)\n",
+   "out": "ana is 30, active=True\nUser(name='ana', age=30, active=True)\n"
+  },
+  "typescript": {
+   "code": "interface User {\n  name: string;\n  age: number;\n  active: boolean;\n}\n\nconst u: User = {\n  name: \"ana\",\n  age: 30,\n  active: true,\n};\nconsole.log(`${u.name} is ${u.age}, active=${u.active}`);\nconsole.log(u);\n",
+   "out": "ana is 30, active=true\n{ name: 'ana', age: 30, active: true }\n"
+  },
+  "java": {
+   "code": "public class Main {\n    // a record gets a constructor, getters and toString for free\n    record User(String name, int age, boolean active) {}\n\n    public static void main(String[] args) {\n        var u = new User(\"ana\", 30, true);\n        System.out.println(u.name() + \" is \" + u.age() + \", active=\" + u.active());\n        System.out.println(u);\n    }\n}\n",
+   "out": "ana is 30, active=true\nUser[name=ana, age=30, active=true]\n"
+  },
+  "csharp": {
+   "code": "var u = new User(\"ana\", 30, true);\nConsole.WriteLine($\"{u.Name} is {u.Age}, active={u.Active}\");\nConsole.WriteLine(u);   // records print their fields for free\n\nrecord User(string Name, uint Age, bool Active);\n",
+   "out": "ana is 30, active=True\nUser { Name = ana, Age = 30, Active = True }\n"
+  },
+  "c": {
+   "code": "#include <stdbool.h>\n#include <stdio.h>\n\nstruct User {\n    const char *name;\n    unsigned age;\n    bool active;\n};\n\nint main(void) {\n    struct User u = {\n        .name = \"ana\",\n        .age = 30,\n        .active = true,\n    };\n    printf(\"%s is %u, active=%s\\n\", u.name, u.age, u.active ? \"true\" : \"false\");\n    // C has no {:?}: print each field yourself\n    printf(\"User { name: \\\"%s\\\", age: %u, active: %s }\\n\",\n           u.name, u.age, u.active ? \"true\" : \"false\");\n    return 0;\n}\n",
+   "out": "ana is 30, active=true\nUser { name: \"ana\", age: 30, active: true }\n"
+  },
+  "cpp": {
+   "code": "#include <iostream>\n#include <string>\n\nstruct User {\n    std::string name;\n    unsigned age;\n    bool active;\n};\n\n// C++ has no derive: you write the printing yourself\nstd::ostream& operator<<(std::ostream& os, const User& u) {\n    return os << \"User { name: \\\"\" << u.name << \"\\\", age: \" << u.age\n              << \", active: \" << std::boolalpha << u.active << \" }\";\n}\n\nint main() {\n    User u{.name = \"ana\", .age = 30, .active = true};\n    std::cout << u.name << \" is \" << u.age << \", active=\" << std::boolalpha << u.active << \"\\n\";\n    std::cout << u << \"\\n\";\n}\n",
+   "out": "ana is 30, active=true\nUser { name: \"ana\", age: 30, active: true }\n"
+  }
+ },
+ "faq": [],
+ "snippets": {
+  "borrow-struct.rs": {
+   "code": "struct Account {\n    owner: String,\n    balance: i64,\n}\n\nfn summary(a: &Account) -> String {\n    format!(\"{} has {}\", a.owner, a.balance)\n}\n\nfn deposit(a: &mut Account, amount: i64) {\n    a.balance += amount;\n}\n\nfn owner_name(a: &Account) -> String {\n    a.owner.clone()\n}\n\nfn main() {\n    let mut acct = Account {\n        owner: String::from(\"ana\"),\n        balance: 100,\n    };\n    println!(\"{}\", summary(&acct));\n    deposit(&mut acct, 50);\n    println!(\"{}\", summary(&acct));\n    let name = owner_name(&acct);\n    println!(\"copied name: {name}\");\n    println!(\"owner is still in acct: {}\", acct.owner);\n}\n",
+   "out": "ana has 100\nana has 150\ncopied name: ana\nowner is still in acct: ana\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "borrowed-field.fail.rs": {
+   "code": "struct Excerpt {\n    text: &str,\n}\n\nfn main() {\n    let e = Excerpt {\n        text: \"call me Ishmael\",\n    };\n    println!(\"{}\", e.text);\n}\n",
+   "error": "error[E0106]: missing lifetime specifier\n --> src/main.rs:2:11\n  |\n2 |     text: &str,\n  |           ^ expected named lifetime parameter\n  |\nhelp: consider introducing a named lifetime parameter\n  |\n1 ~ struct Excerpt<'a> {\n2 ~     text: &'a str,",
+   "lang": "rust"
+  },
+  "check-copy-string.fail.rs": {
+   "code": "#[derive(Clone, Copy)]\nstruct Player {\n    name: String,\n    score: u32,\n}\n\nfn main() {\n    let p = Player {\n        name: String::from(\"ana\"),\n        score: 1,\n    };\n    println!(\"{}\", p.score);\n}\n",
+   "error": "error[E0204]: the trait `Copy` cannot be implemented for this type\n --> src/main.rs:2:8\n  |\n1 | #[derive(Clone, Copy)]\n  |                 ---- in this derive macro expansion\n2 | struct Player {\n  |        ^^^^^^\n3 |     name: String,\n  |     ------------ this field does not implement `Copy`\n",
+   "lang": "rust"
+  },
+  "check-eq-float.fail.rs": {
+   "code": "#[derive(PartialEq, Eq)]\nstruct Reading {\n    celsius: f64,\n}\n\nfn main() {\n    let r = Reading { celsius: 1.0 };\n    println!(\"{}\", r == r);\n}\n",
+   "error": "error[E0277]: the trait bound `f64: Eq` is not satisfied\n --> src/main.rs:3:5\n  |\n1 | #[derive(PartialEq, Eq)]\n  |                     -- in this derive macro expansion\n2 | struct Reading {\n3 |     celsius: f64,\n  |     ^^^^^^^^^^^^ the trait `Eq` is not implemented for `f64`\n  |\n  = help: the following other types implement trait `Eq`:\n            i128\n            i16\n            i32\n            i64\n            i8\n            isize\n            u128\n            u16\n          and 4 others\n  ... (notes pointing into the standard library trimmed)",
+   "lang": "rust"
+  },
+  "check-private-literal.fail.rs": {
+   "code": "mod shop {\n    pub struct Item {\n        pub name: String,\n        price_cents: u32,\n    }\n}\n\nfn main() {\n    let item = shop::Item {\n        name: String::from(\"tea\"),\n        price_cents: 450,\n    };\n    println!(\"{}\", item.name);\n}\n",
+   "error": "error[E0451]: field `price_cents` of struct `Item` is private\n  --> src/main.rs:11:9\n   |\n 9 |     let item = shop::Item {\n   |                ---------- in this type\n10 |         name: String::from(\"tea\"),\n11 |         price_cents: 450,\n   |         ^^^^^^^^^^^ private field\n",
+   "lang": "rust"
+  },
+  "composition.rs": {
+   "code": "#[derive(Debug, Clone)]\nstruct User {\n    name: String,\n    tags: Vec<String>,\n}\n\n#[derive(Debug, Clone)]\nstruct Admin {\n    user: User,\n    level: u8,\n}\n\nfn main() {\n    let a = Admin {\n        user: User {\n            name: String::from(\"ana\"),\n            tags: vec![String::from(\"staff\")],\n        },\n        level: 2,\n    };\n    println!(\"field through the inner struct: {}\", a.user.name);\n    println!(\"level: {}\", a.level);\n\n    let mut b = a.clone(); // `let b = a;` would move `a`\n    b.user.name = String::from(\"bob\");\n    b.user.tags[0] = String::from(\"guest\");\n    println!(\"a: {} {:?}\", a.user.name, a.user.tags);\n    println!(\"b: {} {:?}\", b.user.name, b.user.tags);\n}\n",
+   "out": "field through the inner struct: ana\nlevel: 2\na: ana [\"staff\"]\nb: bob [\"guest\"]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "debug-print.rs": {
+   "code": "#[derive(Debug)]\nstruct Point {\n    x: i32,\n    y: i32,\n}\n\n#[derive(Debug)]\nstruct Circle {\n    center: Point,\n    radius: u32,\n    label: String,\n}\n\nfn main() {\n    let c = Circle {\n        center: Point { x: 1, y: -2 },\n        radius: 5,\n        label: String::from(\"home\"),\n    };\n    println!(\"radius {}, label {}\", c.radius, c.label);\n    println!(\"center ({}, {})\", c.center.x, c.center.y);\n    println!(\"{{:?}}  -> {c:?}\");\n    println!(\"{{:#?}} -> {c:#?}\");\n}\n",
+   "out": "radius 5, label home\ncenter (1, -2)\n{:?}  -> Circle { center: Point { x: 1, y: -2 }, radius: 5, label: \"home\" }\n{:#?} -> Circle {\n    center: Point {\n        x: 1,\n        y: -2,\n    },\n    radius: 5,\n    label: \"home\",\n}\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "define.rs": {
+   "code": "struct Book {\n    title: String,\n    pages: u32,\n    read: bool,\n}\n\nfn main() {\n    // Fields can be given in any order.\n    let mut book = Book {\n        pages: 310,\n        title: String::from(\"Dune\"),\n        read: false,\n    };\n    println!(\"title: {}\", book.title);\n    println!(\"pages: {}\", book.pages);\n    book.read = true;\n    println!(\"read: {}\", book.read);\n}\n",
+   "out": "title: Dune\npages: 310\nread: true\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "derive-hash.rs": {
+   "code": "use std::collections::HashSet;\n\n#[derive(Debug, PartialEq, Eq, Hash)]\nstruct Point {\n    x: i32,\n    y: i32,\n}\n\nfn main() {\n    let mut seen = HashSet::new();\n    seen.insert(Point { x: 1, y: 2 });\n    seen.insert(Point { x: 1, y: 2 });\n    seen.insert(Point { x: 3, y: 4 });\n    println!(\"distinct points: {}\", seen.len());\n    println!(\"has (3, 4): {}\", seen.contains(&Point { x: 3, y: 4 }));\n}\n",
+   "out": "distinct points: 2\nhas (3, 4): true\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "derive.rs": {
+   "code": "#[derive(Debug, Clone, PartialEq, Default)]\nstruct Player {\n    name: String,\n    score: u32,\n}\n\n#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]\nstruct Version {\n    major: u32,\n    minor: u32,\n}\n\n#[derive(PartialEq)]\nstruct Reading {\n    celsius: f64,\n}\n\nfn main() {\n    let a = Player {\n        name: String::from(\"ana\"),\n        score: 10,\n    };\n    let b = a.clone();\n    println!(\"a == b: {}\", a == b);\n    let c = Player {\n        score: 11,\n        ..a.clone()\n    };\n    println!(\"a == c: {}\", a == c);\n    println!(\"a != c: {}\", a != c);\n    println!(\"default: {:?}\", Player::default());\n\n    let v1 = Version { major: 1, minor: 9 };\n    let v2 = Version { major: 2, minor: 0 };\n    let v3 = Version {\n        major: 1,\n        minor: 10,\n    };\n    println!(\"1.9 < 2.0: {}\", v1 < v2);\n    println!(\"1.10 > 1.9: {}\", v3 > v1);\n    let copy = v1; // Copy: `v1` is not moved\n    println!(\"v1 == copy: {}\", v1 == copy);\n\n    let r = Reading { celsius: f64::NAN };\n    println!(\"NaN reading == itself: {}\", r == r);\n}\n",
+   "out": "a == b: true\na == c: false\na != c: true\ndefault: Player { name: \"\", score: 0 }\n1.9 < 2.0: true\n1.10 > 1.9: true\nv1 == copy: true\nNaN reading == itself: false\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "immutable-field.fail.rs": {
+   "code": "struct Book {\n    title: String,\n    read: bool,\n}\n\nfn main() {\n    let book = Book {\n        title: String::from(\"Dune\"),\n        read: false,\n    };\n    book.read = true;\n    println!(\"{} read: {}\", book.title, book.read);\n}\n",
+   "error": "error[E0594]: cannot assign to `book.read`, as `book` is not declared as mutable\n  --> src/main.rs:11:5\n   |\n11 |     book.read = true;\n   |     ^^^^^^^^^^^^^^^^ cannot assign\n   |\nhelp: consider changing this to be mutable\n   |\n 7 |     let mut book = Book {\n   |         +++\n",
+   "lang": "rust"
+  },
+  "layout.rs": {
+   "code": "use std::mem::{align_of, offset_of, size_of};\n\n// The fields are never read, only measured.\n#[allow(dead_code)]\nstruct Plain {\n    a: u8,\n    b: u32,\n    c: u8,\n}\n\n#[allow(dead_code)]\n#[repr(C)]\nstruct CLayout {\n    a: u8,\n    b: u32,\n    c: u8,\n}\n\nfn main() {\n    println!(\"u8: size {}, align {}\", size_of::<u8>(), align_of::<u8>());\n    println!(\n        \"u32: size {}, align {}\",\n        size_of::<u32>(),\n        align_of::<u32>()\n    );\n    println!(\n        \"u64: size {}, align {}\",\n        size_of::<u64>(),\n        align_of::<u64>()\n    );\n    println!(\"fields add up to {} bytes\", 1 + 4 + 1);\n\n    println!(\n        \"Plain:   size {}, align {}\",\n        size_of::<Plain>(),\n        align_of::<Plain>()\n    );\n    println!(\n        \"  offsets: a {}, b {}, c {}\",\n        offset_of!(Plain, a),\n        offset_of!(Plain, b),\n        offset_of!(Plain, c)\n    );\n\n    println!(\n        \"CLayout: size {}, align {}\",\n        size_of::<CLayout>(),\n        align_of::<CLayout>()\n    );\n    println!(\n        \"  offsets: a {}, b {}, c {}\",\n        offset_of!(CLayout, a),\n        offset_of!(CLayout, b),\n        offset_of!(CLayout, c)\n    );\n}\n",
+   "out": "u8: size 1, align 1\nu32: size 4, align 4\nu64: size 8, align 8\nfields add up to 6 bytes\nPlain:   size 8, align 4\n  offsets: a 4, b 0, c 5\nCLayout: size 12, align 4\n  offsets: a 0, b 4, c 8\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "memory.rs": {
+   "code": "use std::mem::{align_of, offset_of, size_of};\n\nstruct User {\n    name: String,\n    age: u32,\n    active: bool,\n}\n\nfn main() {\n    let u = User {\n        name: String::from(\"ana\"),\n        age: 30,\n        active: true,\n    };\n\n    println!(\n        \"User: size {}, align {}\",\n        size_of::<User>(),\n        align_of::<User>()\n    );\n    println!(\"String: size {}\", size_of::<String>());\n    println!(\n        \"offsets: name {}, age {}, active {}\",\n        offset_of!(User, name),\n        offset_of!(User, age),\n        offset_of!(User, active)\n    );\n    println!(\n        \"name: len {}, capacity {}, bytes {:?}\",\n        u.name.len(),\n        u.name.capacity(),\n        u.name.as_bytes()\n    );\n    println!(\"age: {}, active: {}\", u.age, u.active);\n}\n",
+   "out": "User: size 32, align 8\nString: size 24\noffsets: name 0, age 24, active 28\nname: len 3, capacity 3, bytes [97, 110, 97]\nage: 30, active: true\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "move-out-of-ref.fail.rs": {
+   "code": "struct Account {\n    owner: String,\n    balance: i64,\n}\n\nfn owner_name(a: &Account) -> String {\n    a.owner\n}\n\nfn main() {\n    let acct = Account {\n        owner: String::from(\"ana\"),\n        balance: 100,\n    };\n    println!(\"{} ({})\", owner_name(&acct), acct.balance);\n}\n",
+   "error": "error[E0507]: cannot move out of `a.owner` which is behind a shared reference\n --> src/main.rs:7:5\n  |\n7 |     a.owner\n  |     ^^^^^^^ move occurs because `a.owner` has type `String`, which does not implement the `Copy` trait\n  |\nhelp: consider cloning the value if the performance cost is acceptable\n  |\n7 |     a.owner.clone()\n  |            ++++++++\n",
+   "lang": "rust"
+  },
+  "move-struct.fail.rs": {
+   "code": "struct Order {\n    customer: String,\n    items: Vec<String>,\n}\n\nfn ship(order: Order) {\n    println!(\"shipping {} items to {}\", order.items.len(), order.customer);\n}\n\nfn main() {\n    let order = Order {\n        customer: String::from(\"ana\"),\n        items: vec![String::from(\"tea\")],\n    };\n    ship(order);\n    println!(\"customer: {}\", order.customer);\n}\n",
+   "error": "error[E0382]: borrow of moved value: `order`\n  --> src/main.rs:16:30\n   |\n11 |     let order = Order {\n   |         ----- move occurs because `order` has type `Order`, which does not implement the `Copy` trait\n...\n15 |     ship(order);\n   |          ----- value moved here\n16 |     println!(\"customer: {}\", order.customer);\n   |                              ^^^^^^^^^^^^^^ value borrowed here after move\n   |\nnote: consider changing this parameter type in function `ship` to borrow instead if owning the value isn't necessary\n  --> src/main.rs:6:16\n   |\n 6 | fn ship(order: Order) {\n   |    ----        ^^^^^ this parameter takes ownership of the value\n   |    |\n   |    in this function\nnote: if `Order` implemented `Clone`, you could clone the value\n  --> src/main.rs:1:1\n   |\n 1 | struct Order {\n   | ^^^^^^^^^^^^ consider implementing `Clone` for this type\n...\n15 |     ship(order);\n   |          ----- you could clone this value\n",
+   "lang": "rust"
+  },
+  "nested.rs": {
+   "code": "struct Point {\n    x: i32,\n    y: i32,\n}\n\nstruct Circle {\n    center: Point,\n    radius: u32,\n}\n\nfn main() {\n    let mut c = Circle {\n        center: Point { x: 1, y: -2 },\n        radius: 5,\n    };\n    println!(\"x: {}\", c.center.x);\n    c.center.x += 10;\n    c.radius = 8;\n    println!(\n        \"center: ({}, {}), radius: {}\",\n        c.center.x, c.center.y, c.radius\n    );\n    println!(\"size of Point: {} bytes\", size_of::<Point>());\n    println!(\"size of Circle: {} bytes\", size_of::<Circle>());\n}\n",
+   "out": "x: 1\ncenter: (11, -2), radius: 8\nsize of Point: 8 bytes\nsize of Circle: 12 bytes\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "newtype-literal.fail.rs": {
+   "code": "struct Meters(f64);\n\nfn describe(distance: Meters) -> String {\n    format!(\"{} meters\", distance.0)\n}\n\nfn main() {\n    println!(\"{}\", describe(1200.0));\n}\n",
+   "error": "error[E0308]: mismatched types\n --> src/main.rs:8:29\n  |\n8 |     println!(\"{}\", describe(1200.0));\n  |                    -------- ^^^^^^ expected `Meters`, found floating-point number\n  |                    |\n  |                    arguments to this function are incorrect\n  |\nnote: function defined here\n --> src/main.rs:3:4\n  |\n3 | fn describe(distance: Meters) -> String {\n  |    ^^^^^^^^ ----------------\nhelp: try wrapping the expression in `Meters`\n  |\n8 |     println!(\"{}\", describe(Meters(1200.0)));\n  |                             +++++++      +\n",
+   "lang": "rust"
+  },
+  "newtype.fail.rs": {
+   "code": "struct Meters(f64);\nstruct Feet(f64);\n\nfn describe(distance: Meters) -> String {\n    format!(\"{} meters\", distance.0)\n}\n\nfn main() {\n    let altitude = Feet(1200.0);\n    println!(\"{}\", describe(altitude));\n}\n",
+   "error": "error[E0308]: mismatched types\n  --> src/main.rs:10:29\n   |\n10 |     println!(\"{}\", describe(altitude));\n   |                    -------- ^^^^^^^^ expected `Meters`, found `Feet`\n   |                    |\n   |                    arguments to this function are incorrect\n   |\nnote: function defined here\n  --> src/main.rs:4:4\n   |\n 4 | fn describe(distance: Meters) -> String {\n   |    ^^^^^^^^ ----------------\n",
+   "lang": "rust"
+  },
+  "no-debug.fail.rs": {
+   "code": "struct Point {\n    x: i32,\n    y: i32,\n}\n\nfn main() {\n    let p = Point { x: 1, y: 2 };\n    println!(\"{} {}\", p.x, p.y);\n    println!(\"{p:?}\");\n}\n",
+   "error": "error[E0277]: `Point` doesn't implement `Debug`\n --> src/main.rs:9:15\n  |\n9 |     println!(\"{p:?}\");\n  |               ^^^^^ `Point` cannot be formatted using `{:?}` because it doesn't implement `Debug`\n  |\n  = help: the trait `Debug` is not implemented for `Point`\nhelp: consider annotating `Point` with `#[derive(Debug)]`\n  |\n1 + #[derive(Debug)]\n2 | struct Point {",
+   "lang": "rust"
+  },
+  "no-such-field.fail.rs": {
+   "code": "struct User {\n    name: String,\n}\n\nfn main() {\n    let mut u = User {\n        name: String::from(\"ana\"),\n    };\n    u.nickname = String::from(\"an\");\n    println!(\"{}\", u.name);\n}\n",
+   "error": "error[E0609]: no field `nickname` on type `User`\n --> src/main.rs:9:7\n  |\n9 |     u.nickname = String::from(\"an\");\n  |       ^^^^^^^^ unknown field\n  |\n  = note: available field is: `name`\n",
+   "lang": "rust"
+  },
+  "partial-move.fail.rs": {
+   "code": "struct Order {\n    customer: String,\n    items: Vec<String>,\n}\n\nfn count(order: &Order) -> usize {\n    order.items.len()\n}\n\nfn main() {\n    let order = Order {\n        customer: String::from(\"ana\"),\n        items: vec![String::from(\"tea\")],\n    };\n    let customer = order.customer;\n    println!(\"customer: {customer}\");\n    println!(\"items: {}\", count(&order));\n}\n",
+   "error": "error[E0382]: borrow of partially moved value: `order`\n  --> src/main.rs:17:33\n   |\n15 |     let customer = order.customer;\n   |                    -------------- value partially moved here\n16 |     println!(\"customer: {customer}\");\n17 |     println!(\"items: {}\", count(&order));\n   |                                 ^^^^^^ value borrowed here after partial move\n   |\n   = note: partial move occurs because `order.customer` has type `String`, which does not implement the `Copy` trait\n",
+   "lang": "rust"
+  },
+  "partial-move.rs": {
+   "code": "struct Order {\n    customer: String,\n    items: Vec<String>,\n    id: u32,\n}\n\nfn main() {\n    let order = Order {\n        customer: String::from(\"ana\"),\n        items: vec![String::from(\"tea\")],\n        id: 7,\n    };\n    let before = order.customer.as_ptr();\n\n    let customer = order.customer; // moves one field out\n    println!(\"customer: {customer}\");\n    println!(\"same heap bytes: {}\", customer.as_ptr() == before);\n\n    // The other fields are still there.\n    println!(\"id: {}\", order.id);\n    println!(\"items: {}\", order.items.len());\n}\n",
+   "out": "customer: ana\nsame heap bytes: true\nid: 7\nitems: 1\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "privacy.rs": {
+   "code": "mod shop {\n    pub struct Item {\n        pub name: String,\n        price_cents: u32,\n    }\n\n    pub fn make_item(name: &str, price_cents: u32) -> Item {\n        Item {\n            name: name.to_string(),\n            price_cents,\n        }\n    }\n\n    // Code in the same module may read and change private fields.\n    pub fn price(item: &Item) -> u32 {\n        item.price_cents\n    }\n\n    pub fn discount(item: &mut Item, cents: u32) {\n        item.price_cents -= cents;\n    }\n}\n\nfn main() {\n    let mut item = shop::make_item(\"tea\", 450);\n    println!(\"name: {}\", item.name);\n    println!(\"price: {}\", shop::price(&item));\n    shop::discount(&mut item, 100);\n    println!(\"price after discount: {}\", shop::price(&item));\n}\n",
+   "out": "name: tea\nprice: 450\nprice after discount: 350\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "private-field.fail.rs": {
+   "code": "mod shop {\n    pub struct Item {\n        pub name: String,\n        price_cents: u32,\n    }\n\n    pub fn make_item(name: &str, price_cents: u32) -> Item {\n        Item {\n            name: name.to_string(),\n            price_cents,\n        }\n    }\n}\n\nfn main() {\n    let item = shop::make_item(\"tea\", 450);\n    println!(\"name: {}\", item.name);\n    println!(\"price: {}\", item.price_cents);\n}\n",
+   "error": "error[E0616]: field `price_cents` of struct `Item` is private\n  --> src/main.rs:18:32\n   |\n18 |     println!(\"price: {}\", item.price_cents);\n   |                                ^^^^^^^^^^^ private field\n",
+   "lang": "rust"
+  },
+  "shorthand.rs": {
+   "code": "#[derive(Debug)]\nstruct Book {\n    title: String,\n    pages: u32,\n    read: bool,\n}\n\nfn new_book(title: String, pages: u32) -> Book {\n    // `title` alone means `title: title`.\n    Book {\n        title,\n        pages,\n        read: false,\n    }\n}\n\nfn main() {\n    let book = new_book(String::from(\"Dune\"), 310);\n    println!(\"book: {book:?}\");\n    println!(\n        \"{} has {} pages, read: {}\",\n        book.title, book.pages, book.read\n    );\n}\n",
+   "out": "book: Book { title: \"Dune\", pages: 310, read: false }\nDune has 310 pages, read: false\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "team-copy.rs": {
+   "code": "#[derive(Debug, Clone)]\nstruct Team {\n    name: String,\n    members: Vec<String>,\n}\n\nfn main() {\n    let a = Team {\n        name: String::from(\"red\"),\n        members: vec![String::from(\"ana\")],\n    };\n    let mut b = Team {\n        name: String::from(\"blue\"),\n        ..a.clone()\n    };\n    b.members.push(String::from(\"bob\"));\n    println!(\"a: {} {:?}\", a.name, a.members);\n    println!(\"b: {} {:?}\", b.name, b.members);\n}\n",
+   "out": "a: red [\"ana\"]\nb: blue [\"ana\", \"bob\"]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "tuple-unit.rs": {
+   "code": "struct Meters(f64);\nstruct Rgb(u8, u8, u8);\nstruct Marker;\n\nfn main() {\n    let length = Meters(3.5);\n    let red = Rgb(255, 0, 0);\n    let _marker = Marker;\n\n    println!(\"length: {}\", length.0);\n    println!(\"red: {}, {}, {}\", red.0, red.1, red.2);\n\n    let Rgb(r, g, b) = red;\n    println!(\"r={r} g={g} b={b}\");\n\n    println!(\"size of Meters: {} bytes\", size_of::<Meters>());\n    println!(\"size of f64: {} bytes\", size_of::<f64>());\n    println!(\"size of Marker: {} bytes\", size_of::<Marker>());\n}\n",
+   "out": "length: 3.5\nred: 255, 0, 0\nr=255 g=0 b=0\nsize of Meters: 8 bytes\nsize of f64: 8 bytes\nsize of Marker: 0 bytes\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "update-moves.fail.rs": {
+   "code": "#[derive(Debug)]\nstruct Config {\n    name: String,\n    retries: u32,\n    verbose: bool,\n}\n\nfn main() {\n    let base = Config {\n        name: String::from(\"base\"),\n        retries: 3,\n        verbose: false,\n    };\n\n    // `name` is not given, so `..base` moves it out of `base`.\n    let loud = Config {\n        verbose: true,\n        ..base\n    };\n    println!(\"loud: {loud:?}\");\n    println!(\"base: {base:?}\");\n}\n",
+   "error": "error[E0382]: borrow of partially moved value: `base`\n  --> src/main.rs:21:22\n   |\n16 |       let loud = Config {\n   |  ________________-\n17 | |         verbose: true,\n18 | |         ..base\n19 | |     };\n   | |_____- value partially moved here\n20 |       println!(\"loud: {loud:?}\");\n21 |       println!(\"base: {base:?}\");\n   |                        ^^^^ value borrowed here after partial move\n   |\n   = note: partial move occurs because `base.name` has type `String`, which does not implement the `Copy` trait\n",
+   "lang": "rust"
+  },
+  "update.rs": {
+   "code": "#[derive(Clone)]\nstruct Config {\n    name: String,\n    retries: u32,\n    verbose: bool,\n}\n\nfn show(label: &str, c: &Config) {\n    println!(\n        \"{label}: name={}, retries={}, verbose={}\",\n        c.name, c.retries, c.verbose\n    );\n}\n\nfn main() {\n    let base = Config {\n        name: String::from(\"base\"),\n        retries: 3,\n        verbose: false,\n    };\n\n    // `name` is given, so `..base` only supplies `retries` and `verbose`.\n    // Both are copied, so `base` stays whole.\n    let loud = Config {\n        name: String::from(\"loud\"),\n        verbose: true,\n        ..base\n    };\n    show(\"loud\", &loud);\n    show(\"base\", &base);\n\n    // `..base.clone()` supplies `name` as a copy, so `base` is never touched.\n    let renamed = Config {\n        verbose: true,\n        ..base.clone()\n    };\n    show(\"renamed\", &renamed);\n    show(\"base\", &base);\n}\n",
+   "out": "loud: name=loud, retries=3, verbose=true\nbase: name=base, retries=3, verbose=false\nrenamed: name=base, retries=3, verbose=true\nbase: name=base, retries=3, verbose=false\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "alias.py": {
+   "code": "from dataclasses import dataclass, replace\n\n\n@dataclass\nclass Team:\n    name: str\n    members: list\n\n\na = Team(\"red\", [\"ana\"])\nb = a  # two names for one object\nb.name = \"blue\"\nprint(\"a.name after b = a, b.name = 'blue':\", a.name)\n\nc = replace(a, name=\"green\")  # a new object, but a shallow copy\nc.members.append(\"bob\")\nprint(\"a.members:\", a.members)\nprint(\"same list object:\", a.members is c.members)\n",
+   "out": "a.name after b = a, b.name = 'blue': blue\na.members: ['ana', 'bob']\nsame list object: True\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "args.go": {
+   "code": "package main\n\nimport \"fmt\"\n\ntype User struct {\n\tName string\n\tAge  int\n}\n\nfunc birthdayCopy(u User) { u.Age++ }\n\nfunc birthdayPtr(u *User) { u.Age++ }\n\nfunc main() {\n\tu := User{Name: \"ana\", Age: 30}\n\tbirthdayCopy(u) // gets a copy; the caller keeps using u\n\tfmt.Println(\"after birthdayCopy:\", u.Age)\n\tbirthdayPtr(&u) // a pointer: may change u\n\tfmt.Println(\"after birthdayPtr:\", u.Age)\n}\n",
+   "out": "after birthdayCopy: 30\nafter birthdayPtr: 31\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "copy-shallow.kt": {
+   "code": "data class Team(val name: String, val members: MutableList<String>)\n\nfun main() {\n    val a = Team(\"red\", mutableListOf(\"ana\"))\n    val b = a.copy(name = \"blue\")\n    b.members.add(\"bob\")\n    println(\"a: $a\")\n    println(\"b: $b\")\n    println(\"same list object: ${a.members === b.members}\")\n}\n",
+   "out": "a: Team(name=red, members=[ana, bob])\nb: Team(name=blue, members=[ana, bob])\nsame list object: true\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "dataclass.py": {
+   "code": "from dataclasses import dataclass\n\n\n@dataclass\nclass User:\n    name: str\n    age: int\n\n\na = User(\"ana\", 30)\nb = User(\"ana\", 30)\nprint(\"a == b:\", a == b)\nprint(\"a is b:\", a is b)\n\na.nickname = \"an\"  # a new attribute on one object: allowed\nprint(\"nickname:\", a.nickname)\n\nc = User(name=1, age=\"x\")  # the annotations are not checked when it runs\nprint(\"c:\", c)\n",
+   "out": "a == b: True\na is b: False\nnickname: an\nc: User(name=1, age='x')\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "designated-order.fail.cpp": {
+   "code": "struct User {\n    const char *name;\n    unsigned age;\n};\n\nint main() {\n    User u{.age = 30, .name = \"ana\"};\n    return u.age == 30 ? 0 : 1;\n}\n",
+   "error": "main.cpp: In function ‘int main()’:\nmain.cpp:7:36: warning: missing initializer for member ‘User::name’ [-Wmissing-field-initializers]\n    7 |     User u{.age = 30, .name = \"ana\"};\n      |                                    ^\nmain.cpp:7:36: error: designator order for field ‘User::name’ does not match declaration order in ‘User’",
+   "lang": "cpp"
+  },
+  "designated.c": {
+   "code": "#include <stdio.h>\n\nstruct User {\n    const char *name;\n    unsigned age;\n    int active;\n};\n\nint main(void) {\n    // Designators in any order; `active` is left out and becomes 0.\n    struct User u = {.age = 30, .name = \"ana\"};\n    printf(\"%s %u %d\\n\", u.name, u.age, u.active);\n    return 0;\n}\n",
+   "out": "ana 30 0\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "embedded.go": {
+   "code": "package main\n\nimport \"fmt\"\n\ntype User struct {\n\tName string\n\tTags []string\n}\n\ntype Admin struct {\n\tUser\n\tLevel int\n}\n\nfunc main() {\n\ta := Admin{User: User{Name: \"ana\", Tags: []string{\"staff\"}}, Level: 2}\n\tfmt.Println(\"promoted field:\", a.Name, \"same as\", a.User.Name)\n\n\tb := a // a copy of the struct, but not of what its slice points at\n\tb.Name = \"bob\"\n\tb.Tags[0] = \"guest\"\n\tfmt.Println(\"a:\", a.Name, a.Tags)\n\tfmt.Println(\"b:\", b.Name, b.Tags)\n}\n",
+   "out": "promoted field: ana same as ana\na: ana [guest]\nb: bob [guest]\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "empty.cpp": {
+   "code": "#include <iostream>\n\nstruct Marker {};\n\nint main() {\n    std::cout << \"sizeof(Marker): \" << sizeof(Marker) << \"\\n\";\n}\n",
+   "out": "sizeof(Marker): 1\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "layout.c": {
+   "code": "#include <stddef.h>\n#include <stdint.h>\n#include <stdio.h>\n\nstruct S {\n    uint8_t a;\n    uint32_t b;\n    uint8_t c;\n};\n\nint main(void) {\n    printf(\"S: size %zu, align %zu\\n\", sizeof(struct S), _Alignof(struct S));\n    printf(\"  offsets: a %zu, b %zu, c %zu\\n\", offsetof(struct S, a),\n           offsetof(struct S, b), offsetof(struct S, c));\n    return 0;\n}\n",
+   "out": "S: size 12, align 4\n  offsets: a 0, b 4, c 8\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "layout.cpp": {
+   "code": "#include <cstddef>\n#include <cstdint>\n#include <iostream>\n\nstruct S {\n    std::uint8_t a;\n    std::uint32_t b;\n    std::uint8_t c;\n};\n\nint main() {\n    std::cout << \"S: size \" << sizeof(S) << \", align \" << alignof(S) << \"\\n\";\n    std::cout << \"  offsets: a \" << offsetof(S, a) << \", b \" << offsetof(S, b)\n              << \", c \" << offsetof(S, c) << \"\\n\";\n}\n",
+   "out": "S: size 12, align 4\n  offsets: a 0, b 4, c 8\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "layout.go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"unsafe\"\n)\n\ntype S struct {\n\tA uint8\n\tB uint32\n\tC uint8\n}\n\nfunc main() {\n\tvar s S\n\tfmt.Println(\"S: size\", unsafe.Sizeof(s), \"align\", unsafe.Alignof(s))\n\tfmt.Println(\"  offsets: A\", unsafe.Offsetof(s.A), \"B\", unsafe.Offsetof(s.B), \"C\", unsafe.Offsetof(s.C))\n}\n",
+   "out": "S: size 12 align 4\n  offsets: A 0 B 4 C 8\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "meters.fail.go": {
+   "code": "package main\n\nimport \"fmt\"\n\ntype Meters float64\ntype Feet float64\n\nfunc describe(m Meters) string { return fmt.Sprintf(\"%v meters\", float64(m)) }\n\nfunc main() {\n\taltitude := Feet(1200)\n\tfmt.Println(describe(altitude))\n}\n",
+   "error": "# command-line-arguments\n./main.go:12:23: cannot use altitude (variable of float64 type Feet) as Meters value in argument to describe",
+   "lang": "go"
+  },
+  "meters.go": {
+   "code": "package main\n\nimport \"fmt\"\n\ntype Meters float64\n\nfunc describe(m Meters) string { return fmt.Sprintf(\"%v meters\", float64(m)) }\n\nfunc main() {\n\t// An untyped constant is accepted as Meters.\n\tfmt.Println(describe(1200.0))\n}\n",
+   "out": "1200 meters\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "record-eq.java": {
+   "code": "public class Main {\n    record User(String name, int age) {}\n\n    public static void main(String[] args) {\n        var a = new User(\"ana\", 30);\n        var b = new User(\"ana\", 30);\n        System.out.println(\"a.equals(b): \" + a.equals(b));\n        System.out.println(\"a == b: \" + (a == b));\n        System.out.println(\"same hashCode: \" + (a.hashCode() == b.hashCode()));\n        System.out.println(\"toString: \" + a);\n    }\n}\n",
+   "out": "a.equals(b): true\na == b: false\nsame hashCode: true\ntoString: User[name=ana, age=30]\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "spread.ts": {
+   "code": "interface Team {\n  name: string;\n  members: string[];\n}\n\nconst a: Team = { name: \"red\", members: [\"ana\"] };\nconst b = a; // two names for one object\nb.name = \"blue\";\nconsole.log(\"a.name after b = a, b.name = 'blue':\", a.name);\n\nconst c = { ...a, name: \"green\" }; // a new object, but a shallow copy\nc.members.push(\"bob\");\nconsole.log(\"a.members:\", a.members.join(\", \"));\nconsole.log(\"same array object:\", a.members === c.members);\n",
+   "out": "a.name after b = a, b.name = 'blue': blue\na.members: ana, bob\nsame array object: true\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "structural.ts": {
+   "code": "interface Meters {\n  value: number;\n}\ninterface Feet {\n  value: number;\n}\n\nfunction describe(distance: Meters): string {\n  return `${distance.value} meters`;\n}\n\nconst altitude: Feet = { value: 1200 };\nconsole.log(describe(altitude));\n",
+   "out": "1200 meters\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "with-shallow.cs": {
+   "code": "var a = new Team(\"red\", new List<string> { \"ana\" });\nvar b = a with { Name = \"blue\" };\nb.Members.Add(\"bob\");\nConsole.WriteLine($\"a members: {string.Join(\", \", a.Members)}\");\nConsole.WriteLine($\"b members: {string.Join(\", \", b.Members)}\");\nConsole.WriteLine($\"same list object: {ReferenceEquals(a.Members, b.Members)}\");\n\nrecord Team(string Name, List<string> Members);\n",
+   "out": "a members: ana, bob\nb members: ana, bob\nsame list object: True\n",
+   "lang": "csharp",
+   "exit": 0
+  }
+ },
+ "exercises": {
+  "basket": {
+   "starter": "struct Basket {\n    owner: String,\n    items: Vec<String>,\n}\n\n/// Put `item` in the basket.\nfn add(b: &mut Basket, item: &str) {\n    todo!(\"push a String made from item\")\n}\n\n/// \"ana: empty\", \"ana: 1 item (tea)\" or \"ana: 2 items (tea, jam)\".\nfn describe(b: &Basket) -> String {\n    todo!(\"check b.items.is_empty() and b.items.len(), and use b.items.join(\\\", \\\")\")\n}\n\n/// Hand back the owner and the items. The basket is used up.\nfn checkout(b: Basket) -> (String, Vec<String>) {\n    todo!(\"move both fields out\")\n}\n\nfn main() {\n    let mut b = Basket {\n        owner: String::from(\"ana\"),\n        items: Vec::new(),\n    };\n    assert_eq!(describe(&b), \"ana: empty\");\n\n    add(&mut b, \"tea\");\n    assert_eq!(describe(&b), \"ana: 1 item (tea)\");\n\n    add(&mut b, \"jam\");\n    assert_eq!(describe(&b), \"ana: 2 items (tea, jam)\");\n\n    let (owner, items) = checkout(b);\n    assert_eq!(owner, \"ana\");\n    assert_eq!(items, [\"tea\", \"jam\"]);\n\n    // An empty basket checks out with nothing.\n    let (owner, items) = checkout(Basket {\n        owner: String::new(),\n        items: Vec::new(),\n    });\n    assert_eq!(owner, \"\");\n    assert!(items.is_empty());\n\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "struct Basket {\n    owner: String,\n    items: Vec<String>,\n}\n\n/// Put `item` in the basket.\nfn add(b: &mut Basket, item: &str) {\n    b.items.push(item.to_string());\n}\n\n/// \"ana: empty\", \"ana: 1 item (tea)\" or \"ana: 2 items (tea, jam)\".\nfn describe(b: &Basket) -> String {\n    match b.items.len() {\n        0 => format!(\"{}: empty\", b.owner),\n        1 => format!(\"{}: 1 item ({})\", b.owner, b.items[0]),\n        n => format!(\"{}: {n} items ({})\", b.owner, b.items.join(\", \")),\n    }\n}\n\n/// Hand back the owner and the items. The basket is used up.\nfn checkout(b: Basket) -> (String, Vec<String>) {\n    (b.owner, b.items)\n}\n\nfn main() {\n    let mut b = Basket {\n        owner: String::from(\"ana\"),\n        items: Vec::new(),\n    };\n    assert_eq!(describe(&b), \"ana: empty\");\n\n    add(&mut b, \"tea\");\n    assert_eq!(describe(&b), \"ana: 1 item (tea)\");\n\n    add(&mut b, \"jam\");\n    assert_eq!(describe(&b), \"ana: 2 items (tea, jam)\");\n\n    let (owner, items) = checkout(b);\n    assert_eq!(owner, \"ana\");\n    assert_eq!(items, [\"tea\", \"jam\"]);\n\n    // An empty basket checks out with nothing.\n    let (owner, items) = checkout(Basket {\n        owner: String::new(),\n        items: Vec::new(),\n    });\n    assert_eq!(owner, \"\");\n    assert!(items.is_empty());\n\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "rects": {
+   "starter": "#[derive(Debug, Clone, Copy, PartialEq)]\nstruct Point {\n    x: i32,\n    y: i32,\n}\n\n#[derive(Debug, Clone, PartialEq)]\nstruct Rect {\n    top_left: Point,\n    width: u32,\n    height: u32,\n}\n\n/// Width times height, for any rectangle, including the huge one at the end of `main`.\nfn area(r: &Rect) -> u64 {\n    todo!(\"the result is a u64: convert width and height first\")\n}\n\n/// True when `p` is inside `r`. The left and top edges count as inside; the right and\n/// bottom edges do not. A rectangle with no width or no height contains nothing.\nfn contains(r: &Rect, p: Point) -> bool {\n    todo!(\"x + width can overflow an i32: convert with i64::from(..) first (`as` can wrap)\")\n}\n\n/// Move the rectangle by `dx` and `dy`, which may be negative.\nfn shift(r: &mut Rect, dx: i32, dy: i32) {\n    todo!(\"change the fields of r.top_left\")\n}\n\nfn main() {\n    let mut r = Rect {\n        top_left: Point { x: 2, y: 3 },\n        width: 4,\n        height: 2,\n    };\n    assert_eq!(area(&r), 8);\n\n    assert!(contains(&r, Point { x: 2, y: 3 })); // top-left corner\n    assert!(contains(&r, Point { x: 5, y: 4 })); // last cell inside\n    assert!(!contains(&r, Point { x: 6, y: 4 })); // right edge is outside\n    assert!(!contains(&r, Point { x: 5, y: 5 })); // bottom edge is outside\n    assert!(!contains(&r, Point { x: 1, y: 3 }));\n\n    shift(&mut r, -5, 1);\n    assert_eq!(r.top_left, Point { x: -3, y: 4 });\n    assert!(contains(&r, Point { x: -3, y: 4 }));\n    assert!(contains(&r, Point { x: 0, y: 5 }));\n    assert!(!contains(&r, Point { x: 1, y: 5 }));\n\n    let flat = Rect {\n        top_left: Point { x: 0, y: 0 },\n        width: 5,\n        height: 0,\n    };\n    assert_eq!(area(&flat), 0);\n    assert!(!contains(&flat, Point { x: 0, y: 0 }));\n\n    let huge = Rect {\n        top_left: Point {\n            x: i32::MAX,\n            y: i32::MIN,\n        },\n        width: u32::MAX,\n        height: u32::MAX,\n    };\n    assert_eq!(area(&huge), 18_446_744_065_119_617_025);\n    assert!(contains(\n        &huge,\n        Point {\n            x: i32::MAX,\n            y: i32::MIN\n        }\n    ));\n\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "#[derive(Debug, Clone, Copy, PartialEq)]\nstruct Point {\n    x: i32,\n    y: i32,\n}\n\n#[derive(Debug, Clone, PartialEq)]\nstruct Rect {\n    top_left: Point,\n    width: u32,\n    height: u32,\n}\n\n/// Width times height, for any rectangle, including the huge one at the end of `main`.\nfn area(r: &Rect) -> u64 {\n    u64::from(r.width) * u64::from(r.height)\n}\n\n/// True when `p` is inside `r`. The left and top edges count as inside; the right and\n/// bottom edges do not. A rectangle with no width or no height contains nothing.\nfn contains(r: &Rect, p: Point) -> bool {\n    let left = i64::from(r.top_left.x);\n    let top = i64::from(r.top_left.y);\n    let right = left + i64::from(r.width);\n    let bottom = top + i64::from(r.height);\n    let (x, y) = (i64::from(p.x), i64::from(p.y));\n    left <= x && x < right && top <= y && y < bottom\n}\n\n/// Move the rectangle by `dx` and `dy`, which may be negative.\nfn shift(r: &mut Rect, dx: i32, dy: i32) {\n    r.top_left.x += dx;\n    r.top_left.y += dy;\n}\n\nfn main() {\n    let mut r = Rect {\n        top_left: Point { x: 2, y: 3 },\n        width: 4,\n        height: 2,\n    };\n    assert_eq!(area(&r), 8);\n\n    assert!(contains(&r, Point { x: 2, y: 3 })); // top-left corner\n    assert!(contains(&r, Point { x: 5, y: 4 })); // last cell inside\n    assert!(!contains(&r, Point { x: 6, y: 4 })); // right edge is outside\n    assert!(!contains(&r, Point { x: 5, y: 5 })); // bottom edge is outside\n    assert!(!contains(&r, Point { x: 1, y: 3 }));\n\n    shift(&mut r, -5, 1);\n    assert_eq!(r.top_left, Point { x: -3, y: 4 });\n    assert!(contains(&r, Point { x: -3, y: 4 }));\n    assert!(contains(&r, Point { x: 0, y: 5 }));\n    assert!(!contains(&r, Point { x: 1, y: 5 }));\n\n    let flat = Rect {\n        top_left: Point { x: 0, y: 0 },\n        width: 5,\n        height: 0,\n    };\n    assert_eq!(area(&flat), 0);\n    assert!(!contains(&flat, Point { x: 0, y: 0 }));\n\n    let huge = Rect {\n        top_left: Point {\n            x: i32::MAX,\n            y: i32::MIN,\n        },\n        width: u32::MAX,\n        height: u32::MAX,\n    };\n    assert_eq!(area(&huge), 18_446_744_065_119_617_025);\n    assert!(contains(\n        &huge,\n        Point {\n            x: i32::MAX,\n            y: i32::MIN\n        }\n    ));\n\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "settings": {
+   "starter": "#[derive(Debug, Clone, PartialEq, Default)]\nstruct Settings {\n    name: String,\n    volume: u8,\n    muted: bool,\n}\n\n/// Same settings under a new name. `s` is used up.\nfn rename(s: Settings, name: &str) -> Settings {\n    todo!(\"give `name` as a String (name.to_string()), and take the other fields with `..s`\")\n}\n\n/// A copy of `s` with the volume halved (rounding down) and `muted` set to false.\n/// `s` itself is left as it was.\nfn quieter(s: &Settings) -> Settings {\n    todo!(\"set volume and muted, and take `name` from `..s.clone()`\")\n}\n\n/// Settings with this name and every other field at its default (0 and false).\nfn fresh(name: &str) -> Settings {\n    todo!(\"give `name` as a String, and `..Default::default()` for the rest\")\n}\n\nfn main() {\n    let lounge = Settings {\n        name: String::from(\"lounge\"),\n        volume: 9,\n        muted: true,\n    };\n    let q = quieter(&lounge);\n    assert_eq!(\n        q,\n        Settings {\n            name: String::from(\"lounge\"),\n            volume: 4,\n            muted: false\n        }\n    );\n    // The original is untouched.\n    assert_eq!(lounge.volume, 9);\n    assert!(lounge.muted);\n    assert_eq!(lounge.name, \"lounge\");\n\n    let blank = fresh(\"attic\");\n    assert_eq!(blank.name, \"attic\");\n    assert_eq!(blank.volume, 0);\n    assert!(!blank.muted);\n    assert_eq!(fresh(\"\").name, \"\");\n\n    let kitchen = rename(lounge, \"kitchen\");\n    assert_eq!(kitchen.name, \"kitchen\");\n    assert_eq!(kitchen.volume, 9);\n    assert!(kitchen.muted);\n\n    // Edge cases: volume 1 halves to 0, and names can be empty.\n    let tiny = Settings {\n        name: String::new(),\n        volume: 1,\n        muted: false,\n    };\n    assert_eq!(quieter(&tiny).volume, 0);\n    assert_eq!(quieter(&tiny).name, \"\");\n    assert_eq!(rename(tiny, \"\").name, \"\");\n\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "#[derive(Debug, Clone, PartialEq, Default)]\nstruct Settings {\n    name: String,\n    volume: u8,\n    muted: bool,\n}\n\n/// Same settings under a new name. `s` is used up.\nfn rename(s: Settings, name: &str) -> Settings {\n    Settings {\n        name: name.to_string(),\n        ..s\n    }\n}\n\n/// A copy of `s` with the volume halved (rounding down) and `muted` set to false.\n/// `s` itself is left as it was.\nfn quieter(s: &Settings) -> Settings {\n    Settings {\n        volume: s.volume / 2,\n        muted: false,\n        ..s.clone()\n    }\n}\n\n/// Settings with this name and every other field at its default (0 and false).\nfn fresh(name: &str) -> Settings {\n    Settings {\n        name: name.to_string(),\n        ..Default::default()\n    }\n}\n\nfn main() {\n    let lounge = Settings {\n        name: String::from(\"lounge\"),\n        volume: 9,\n        muted: true,\n    };\n    let q = quieter(&lounge);\n    assert_eq!(\n        q,\n        Settings {\n            name: String::from(\"lounge\"),\n            volume: 4,\n            muted: false\n        }\n    );\n    // The original is untouched.\n    assert_eq!(lounge.volume, 9);\n    assert!(lounge.muted);\n    assert_eq!(lounge.name, \"lounge\");\n\n    let blank = fresh(\"attic\");\n    assert_eq!(blank.name, \"attic\");\n    assert_eq!(blank.volume, 0);\n    assert!(!blank.muted);\n    assert_eq!(fresh(\"\").name, \"\");\n\n    let kitchen = rename(lounge, \"kitchen\");\n    assert_eq!(kitchen.name, \"kitchen\");\n    assert_eq!(kitchen.volume, 9);\n    assert!(kitchen.muted);\n\n    // Edge cases: volume 1 halves to 0, and names can be empty.\n    let tiny = Settings {\n        name: String::new(),\n        volume: 1,\n        muted: false,\n    };\n    assert_eq!(quieter(&tiny).volume, 0);\n    assert_eq!(quieter(&tiny).name, \"\");\n    assert_eq!(rename(tiny, \"\").name, \"\");\n\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}

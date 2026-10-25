@@ -1,0 +1,128 @@
+---
+title: "Checkpoint: Concurrency"
+description: "Seven questions on threads, channels, atomics, Send and Sync, and futures. Every one has a single answer whatever the scheduler does."
+---
+
+import { Files, Session } from '../../../components/guide'
+
+Seven short programs on the Concurrency part: [threads](/learn/threads/), [shared state](/learn/shared-state/), [channels](/learn/channels/), [Send and Sync](/learn/send-sync/) and [async basics](/learn/async-basics/). No output here depends on timing, and the programs that do not compile stop at the compiler.
+
+How to use it: read the program, write down your answer (the output, or the error code), then open the answer. Every answer is a real run with Rust 1.99.1, edition 2024.
+
+## 1. Which step runs first?
+
+<Files guide="checkpoint-concurrency" dir="rust" files={["src/bin/q1.rs"]} />
+
+What does it print? (`block_on` is the small polling loop from the async lesson.)
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-concurrency" run="q1" />
+
+Calling an `async fn` runs none of its body, so building `a` and `b` printed nothing. A future runs when something polls it, and `block_on(b)` came first. Taught in [A future is a value that has not run](/learn/async-basics/#a-future-is-a-value-that-has-not-run).
+
+</details>
+
+## 2. Empty, or disconnected?
+
+<Files guide="checkpoint-concurrency" dir="rust" files={["src/bin/q2.rs"]} />
+
+What do the three lines print?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-concurrency" run="q2" />
+
+`drop(tx)` left `tx2` alive, so an empty queue is `Empty`: nothing now, but a sender could still send. After `tx2` is dropped too, nothing can arrive, and the answer is `Disconnected`. Taught in [When does `for msg in rx` end?](/learn/channels/#when-does-for-msg-in-rx-end).
+
+</details>
+
+## 3. What does an atomic return?
+
+<Files guide="checkpoint-concurrency" dir="rust" files={["src/bin/q3.rs"]} />
+
+What are the five lines?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-concurrency" run="q3" />
+
+`fetch_add` returns the value from before the addition. The first `compare_exchange` expected 5 but found 6, so it changed nothing and returned `Err(6)`, the value it found. The second expected 6, wrote 10 and returned the old value in `Ok`. Taught in [Atomics](/learn/shared-state/#atomics-one-value-no-lock).
+
+</details>
+
+## 4. Which error code?
+
+<Files guide="checkpoint-concurrency" dir="fails" files={["q4.rs"]} />
+
+Does it compile? If not, which error code, and which trait does `RefCell<i32>` lack?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-concurrency" run="q4" />
+
+E0277, and `RefCell<i32>` lacks `Sync`. The compiler also says that `Arc<RefCell<i32>>` is not `Send`, and the two notes are one fact: an `Arc<T>` can move to another thread only when `T` is `Send` and `Sync`. Every thread holding the `Arc` gets a `&T`, and a `RefCell` changes its borrow count through `&self` with nothing to coordinate the threads. A `Mutex` is the thread-safe version. Taught in [`Arc<RefCell<T>>` fails, `Arc<Mutex<T>>` works](/learn/send-sync/#arcrefcellt-fails-arcmutext-works).
+
+</details>
+
+## 5. Which error code?
+
+<Files guide="checkpoint-concurrency" dir="fails" files={["q5.rs"]} />
+
+The thread is joined on the next line. Does it compile? If not, which error code?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-concurrency" run="q5" />
+
+E0373. A thread may outlive the function that started it, and the compiler does not use the `join` on the next line to decide otherwise, so the closure may not borrow a local. The suggestion is `move`. `thread::scope` is the tool that does let a thread borrow. Taught in [`move`: the thread owns what it uses](/learn/threads/#move-the-thread-owns-what-it-uses).
+
+</details>
+
+## 6. Fix it: three threads, one list
+
+<Files guide="checkpoint-concurrency" dir="fails" files={["q6.rs"]} />
+
+This does not compile. Which error code? Then make it print the three numbers in order.
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-concurrency" run="q6" />
+
+E0596. An `Arc` hands out only shared references, so `push` has no `&mut Vec` to work with. Put a `Mutex` inside the `Arc`. The threads finish in any order, so one fix is to sort before printing (joining each thread before spawning the next also gives the order, but gives up running them at the same time):
+
+<Files guide="checkpoint-concurrency" dir="fixes" files={["q6.rs"]} run="q6-fixed" />
+
+Taught in [What Rust refuses](/learn/shared-state/#what-rust-refuses) and [`Mutex<T>`](/learn/shared-state/#mutext-the-data-lives-inside-the-lock).
+
+</details>
+
+## 7. Which error code?
+
+<Files guide="checkpoint-concurrency" dir="fails" files={["q7.rs"]} />
+
+Does it compile? If not, which error code?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-concurrency" run="q7" />
+
+E0382. `send` takes the value, so the thread no longer owns `report`. One thread owns a value at a time, which is why you write no lock around a channel. Taught in [Sending moves the value](/learn/channels/#sending-moves-the-value).
+
+</details>
+
+## If you missed one
+
+- Question 1: [Async basics](/learn/async-basics/).
+- Questions 2 and 7: [Channels](/learn/channels/).
+- Questions 3 and 6: [Shared state](/learn/shared-state/).
+- Question 4: [Send and Sync](/learn/send-sync/).
+- Question 5: [Threads](/learn/threads/).
+- Next: [Checkpoint: Standard library](/checkpoints/std/).

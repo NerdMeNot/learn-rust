@@ -1,0 +1,23 @@
+[package]
+name = "shop-cli"
+description = "The shop on the command line"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[features]
+# Off by default: `--db <file>` needs the file-backed catalog.
+file = ["shop-storage/file"]
+
+[dependencies]
+shop-core = { workspace = true }
+shop-storage = { workspace = true }
+shop-api = { workspace = true }
+
+[[bin]]
+name = "shop"
+path = "src/main.rs"
+
+[lints]
+workspace = true

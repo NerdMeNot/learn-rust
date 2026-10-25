@@ -1,0 +1,46 @@
+---
+// One real program from the lesson's snippets/ folder, with what it printed.
+//   <Snippet file="trim-and-split.rs" />
+//   <Snippet file="index.fail.rs" title="Indexing a String" />   (shows the compiler error)
+//   <Snippet file="slice-mid-char.panic.rs" />                    (shows the panic)
+//   <Snippet file="stale-pointer.go" />                           (any of the nine languages)
+//   <Snippet file="race.race.go" />                               (run with the Go race detector)
+//   <Snippet file="alias.asan.c" />                               (run under AddressSanitizer)
+// `mark` highlights lines (1-based), e.g. mark={[3, 4]}.
+import CodePanel from './CodePanel.astro'
+import RustError from './RustError.astro'
+import { lessonData } from './lessonData'
+import { LANG, commandFor, type Lang } from '../../lib/langs'
+
+interface Props { file: string; title?: string; mark?: number[]; hideOutput?: boolean }
+const { file, title, mark, hideOutput } = Astro.props
+const l = lessonData(Astro.locals.lessonId)
+const s = l.snippets?.[file]
+if (!s) throw new Error(`lesson "${l.id}" has no snippets/${file}`)
+const lang: Lang = s.lang ?? 'rust'
+const tokens = file.split('.').slice(1, -1)
+const fails = tokens.includes('fail') && lang !== 'python'
+const crashes = tokens.includes('crash') || tokens.includes('panic') || (tokens.includes('fail') && lang === 'python')
+// A `.panic.rs` file ends in a non-zero exit, but not every one of them is a panic: a returned
+// `Err` or an explicit `process::exit(4)` leaves the same way. The chip says which, from the real output.
+const panicked = /panicked at /.test(s.out ?? '')
+const exitCode = s.exit !== undefined && s.exit !== null && Number(s.exit) !== 0 ? Number(s.exit) : undefined
+const crashChip = lang !== 'rust' ? '! fails at runtime' : panicked || exitCode === undefined ? '! panics at runtime' : `! exits with code ${exitCode}`
+const trim = (t: string) => t.replace(/\n+$/, '')
+const cmd = lang === 'rust' ? undefined : commandFor(lang, s.mode)
+---
+<div class="lr-snippet not-content">
+  {fails ? (
+    <>
+      <CodePanel lang={lang} code={s.code} title={title} mark={mark} cmd={cmd} status={{ cls: 'bad', chip: "✗ won't compile" }} />
+      {lang === 'rust'
+        ? <RustError text={s.error} code={s.error.match(/^error\[(E\d+)\]/)?.[1]} />
+        : <div class="lr-term"><div class="lr-term-head"><span>{cmd ?? LANG[lang].cmd}</span></div><pre>{trim(s.error ?? '')}</pre></div>}
+    </>
+  ) : (
+    <CodePanel lang={lang} code={s.code} title={title} mark={mark} cmd={cmd} out={hideOutput ? undefined : s.out}
+      warnings={s.warnings} varies={s.varies}
+      status={crashes ? { cls: 'warn', chip: crashChip } : undefined}
+      playground={lang === 'rust'} />
+  )}
+</div>

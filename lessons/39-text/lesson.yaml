@@ -1,0 +1,125 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Working with Text"
+part: "std"
+intro: >-
+  Rust's text tools are methods on `str` itself: `trim`, `split`, `split_once`,
+  `replace`, `parse`, `starts_with`, `find`. Most of them hand back views into your text
+  instead of copies.
+coming_from:
+  go: >-
+    The `strings` package becomes methods on `str`: `trim` is `TrimSpace`, `split_once`
+    is `strings.Cut`, `parse` replaces `strconv`. `find` returns an `Option<usize>`
+    instead of -1, and `split` gives a lazy iterator, not a slice.
+  kotlin: >-
+    These are close to Kotlin's string methods: `trim`, `split`, `replace`,
+    `starts_with`. `find` returns `Option<usize>` instead of -1, and `split` gives a
+    lazy iterator rather than a `List`, so you can't index it.
+  python: >-
+    `strip` is `trim`, `partition` is `split_once` (which returns an `Option`), and
+    `int(s)` is `s.parse()`. `find` gives `Option<usize>` instead of -1, and `split` is
+    a lazy iterator, not a list.
+  typescript: >-
+    `trim`, `split` and `startsWith` (`starts_with`) carry over. Rust's `replace`
+    changes every match, where JS's `replace` with a string changes only the first
+    (`replaceAll` is the equal). `parse` returns a `Result` instead of `NaN`, `find`
+    returns an `Option` instead of -1, and `split` is a lazy iterator, not an array.
+  java: >-
+    `trim`, `split`, `replace` and `starts_with` correspond to Java's `strip` or `trim`,
+    `split`, `replace` and `startsWith`, but most return views into your text instead
+    of new Strings. `split` takes a plain pattern, not a regex, and returns a lazy
+    iterator, so `parts[0]` doesn't work; use `.next()` or `split_once`.
+  csharp: >-
+    `trim`, `split`, `replace` and `find` match `Trim`, `Split`, `Replace` and
+    `IndexOf`, but `trim` and `split` hand back views instead of new strings. `split`
+    returns a lazy iterator rather than an array, so take pieces with `split_once`,
+    `.next()` or `collect()`.
+  c: >-
+    Rust's `trim`, `split` and `find` do what you'd build from `isspace`, `memchr` and
+    `strstr`, as methods on `str`. `split` only borrows the text and never writes into
+    it the way `strtok` does, and `parse` returns a `Result` instead of a `strtol` end
+    pointer.
+  cpp: >-
+    These methods work on `&str` like `std::string_view` functions, and `split` is lazy
+    like `std::views::split`. Rust has `trim` and `split_once` built in, where C++20 has
+    neither. `parse` is closest to `from_chars`, which stops at the first non-digit
+    instead of failing.
+notes:
+  - >-
+    `trim`, `split`, `split_once` and friends return `&str` views into the original
+    text. Cutting allocates and copies no text. You get a new `String` only when you ask
+    for one with `.to_string()` or `.to_owned()`.
+  - >-
+    Methods that have to change the text, like `to_uppercase` and `replace`, return a
+    new `String`. You can tell from the signature: `-> String` means new memory, `->
+    &str` means a view.
+  - >-
+    `find` returns `Option<usize>`: `Some(10)` or `None`. Go's `strings.Index`, Java's
+    `indexOf` and Python's `str.find` return -1 instead; here the type makes you
+    handle the missing case.
+  - >-
+    `"30".parse()` works for any type that implements `FromStr`: numbers, bools, IP
+    addresses, your own types. The type you write on the left (`let age: u32`) picks
+    which one.
+  - >-
+    `split` is lazy: it finds the next piece only when you ask for it. That's why it
+    can't be indexed like a list. See the gotcha.
+  - >-
+    To build text in a loop, `push_str` onto one `String`. It grows in place, like a
+    string builder. `format!` makes a new `String` from a format string.
+  - >-
+    Need regular expressions? They're not in std. The usual choice is the `regex` crate,
+    maintained by the Rust project's regex team. `Regex::new` returns a `Result`.
+gotcha:
+  title: "Taking the first piece of a split with [0]"
+  verdict: "rust-rule"
+  looks_fine: >-
+    `strings.Split` gives you a `[]string`, so `parts[0]` is the first piece. Same in
+    Kotlin, Python, Java and the rest.
+  rust_sees: >-
+    `split` doesn't give you a list. It gives you an iterator that finds pieces one at a
+    time as you ask, and an iterator has no `[0]`.
+  why: >-
+    Being lazy means `split` allocates nothing until you decide what you need. If you
+    only want the first piece, `.next()` gets it without building a list at all. If you want to index around, `.collect()` into a `Vec<&str>`: that
+    allocates one small list of views, and still copies none of the text.
+  langs:
+    go:
+      status: "runs"
+      says: >-
+        Go runs this and prints ana. `strings.Split` builds a whole slice right away, so
+        `[0]` works.
+    kotlin:
+      status: "runs"
+      says: >-
+        Kotlin runs this and prints ana. `split` builds a whole `List` right away, so
+        `[0]` works.
+    python:
+      status: "runs"
+      says: >-
+        Python prints ana. `split` builds a whole list right away, so `[0]` works.
+    typescript:
+      status: "runs"
+      says: >-
+        Prints ana. `split` returns a real array, so `[0]` gives the first piece.
+    java:
+      status: "runs"
+      says: >-
+        `split` returns a plain String array, so `parts[0]` is ana. One surprise:
+        `split` takes a regex, so `split(".")` or `split("|")` won't do what you expect.
+    csharp:
+      status: "runs"
+      says: >-
+        `Split` returns a plain string array, so `parts[0]` is ana. Every call builds a
+        new array and new strings for each piece.
+    c:
+      status: "crash"
+      mode: "asan"
+      says: >-
+        C has no split, so `strtok` is the natural pick, and it writes into the text it
+        splits. Here that text is a string literal in read-only memory, so gcc says
+        nothing and AddressSanitizer reports a SEGV inside `strtok`.
+    cpp:
+      status: "refuses"
+      says: >-
+        C++ refuses this too: `std::views::split` is a lazy view like Rust's `split`, so
+        it has no `operator[]`, and g++ prints a long list of unmet constraints.

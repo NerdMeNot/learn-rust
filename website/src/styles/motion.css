@@ -1,0 +1,52 @@
+/* Motion: everything on the site moves gently, or not at all.
+
+   Page to page: the browser keeps the header and the sidebar where they are and fades only
+   the content (cross-document view transitions; browsers without them just navigate).
+   Inside a page: short fades, no slides longer than a few pixels. Anyone who asks for
+   reduced motion gets none of it. */
+
+@view-transition { navigation: auto; }
+
+/* The header and the sidebar are the same on every page, so they get their own names.
+   Only the new page's copy is drawn, in place, with no cross-fade: nothing blinks. */
+.header { view-transition-name: lr-header; }
+.sidebar-pane { view-transition-name: lr-sidebar; }
+::view-transition-group(lr-header), ::view-transition-group(lr-sidebar) { animation: none; }
+::view-transition-old(lr-header), ::view-transition-old(lr-sidebar) { display: none; }
+::view-transition-new(lr-header), ::view-transition-new(lr-sidebar) { animation: none; mix-blend-mode: normal; }
+
+/* The page itself: a short, soft cross-fade. */
+::view-transition-old(root) { animation: lr-fade-out 180ms ease-out both; }
+::view-transition-new(root) { animation: lr-page-in 360ms cubic-bezier(0.22, 0.61, 0.36, 1) 60ms both; }
+@keyframes lr-fade-out { to { opacity: 0; } }
+@keyframes lr-fade-in { from { opacity: 0; } }
+/* The new page settles in from a few pixels below, so the change reads as one breath, not a cut. */
+@keyframes lr-page-in { from { opacity: 0; transform: translateY(6px); } }
+
+/* Hover and focus: colours ease instead of snapping. */
+a, button, summary, .lr-tab, .lr-ftab, .lr-copy, .lr-lang-btn, .lr-from-btn, .theme-toggle label {
+  transition: color 140ms ease, background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease, opacity 140ms ease;
+}
+
+/* The "coming from" menu fades and settles a few pixels instead of popping. */
+.lr-from-menu {
+  transition: opacity 160ms ease, transform 160ms ease, display 160ms allow-discrete;
+}
+.lr-from-menu[hidden] { display: none; opacity: 0; transform: translateY(-4px); }
+@starting-style { .lr-from-menu:not([hidden]) { opacity: 0; transform: translateY(-4px); } }
+
+/* Switching the reader's language: the panels that appear fade in (the picker adds
+   `lr-switching` to <html> for a moment; on page load nothing animates). */
+:root.lr-switching .lr-forlang,
+:root.lr-switching .lr-others [data-pane],
+:root.lr-switching .lr-tab-missing { animation: lr-fade-in 180ms ease-out both; }
+
+/* Switching theme: colours ease for a moment (the toggle adds `lr-theming`). */
+:root.lr-theming, :root.lr-theming *, :root.lr-theming *::before, :root.lr-theming *::after {
+  transition: background-color 220ms ease, color 220ms ease, border-color 220ms ease, fill 220ms ease, stroke 220ms ease !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  @view-transition { navigation: none; }
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}

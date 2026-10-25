@@ -1,0 +1,140 @@
+# Your first project with Cargo
+#
+# This page is about Cargo's own output, so the cargo steps are `raw`.
+# rust/ is exactly what `cargo new hello` makes (plus the Cargo.lock the first build
+# writes); the `new` session runs `cargo new hello` for real in an empty folder.
+# Build times (`in 0.11s`) differ on every run and machine, so the steps that print
+# them pipe through sed and show `in [time]s`.
+name: hello
+sessions:
+  versions:
+    dir: rust
+    steps:
+      - cmd: rustc --version
+      - cmd: cargo --version
+      - cmd: cargo fmt --version
+      - cmd: cargo clippy --version
+  new:
+    # There is no guides/first-project/empty/: the session starts in an empty folder.
+    dir: empty
+    steps:
+      - cmd: cargo new hello
+        raw: true
+      - cmd: ls -A hello
+  build:
+    dir: rust
+    local_target: true    # the page runs ./target/release/hello
+    steps:
+      - cmd: "set -o pipefail; cargo run 2>&1 | sed -E 's/ in [0-9.]+s$/ in [time]s/'"
+        raw: true
+        show: "$ cargo run"
+      - cmd: "set -o pipefail; cargo check 2>&1 | sed -E 's/ in [0-9.]+s$/ in [time]s/'"
+        raw: true
+        show: "$ cargo check"
+      - cmd: "set -o pipefail; cargo build --release 2>&1 | sed -E 's/ in [0-9.]+s$/ in [time]s/'"
+        raw: true
+        show: "$ cargo build --release"
+      - cmd: ./target/release/hello
+  clippy:
+    dir: rust
+    overlay:
+      src/main.rs: clumsy/src/main.rs
+    steps:
+      - cmd: "set -o pipefail; cargo clippy 2>&1 | sed -E 's/ in [0-9.]+s$/ in [time]s/'"
+        raw: true
+        show: "$ cargo clippy"
+  # A badly laid-out file: --check lists what fmt would change (and exits 1), fmt rewrites it.
+  fmt:
+    dir: rust
+    overlay:
+      src/main.rs: messy/src/main.rs
+    steps:
+      - cmd: cargo fmt --check
+        expect: fail
+      - cmd: cargo fmt
+      - cmd: cat src/main.rs
+      - cmd: cargo fmt --check
+  # Let clippy apply its own suggestions. Cargo refuses to edit files with uncommitted
+  # changes, so a fresh `cargo new` project needs --allow-dirty (steps 0 and 1 only set up
+  # that project; the page shows steps 3 to 5).
+  fix:
+    dir: rust
+    overlay:
+      clumsy.rs: clumsy/src/main.rs
+    steps:
+      - cmd: rm -rf src Cargo.toml Cargo.lock .gitignore
+      - cmd: cargo init --name hello
+        raw: true
+      - cmd: mv clumsy.rs src/main.rs
+      - cmd: cargo clippy --fix
+        raw: true
+        expect: fail
+      - cmd: "set -o pipefail; cargo clippy --fix --allow-dirty 2>&1 | sed -E 's/ in [0-9.]+s$/ in [time]s/'"
+        raw: true
+        show: "$ cargo clippy --fix --allow-dirty"
+      - cmd: cat src/main.rs
+  # Try it #1: arguments go after `--`
+  greet:
+    dir: rust
+    overlay:
+      src/main.rs: greet/src/main.rs
+    steps:
+      - cmd: cargo run
+      - cmd: cargo run -- Ferris
+  # Try it #2: a mistake the compiler catches without running anything
+  broken:
+    dir: rust
+    overlay:
+      src/main.rs: broken/src/main.rs
+    steps:
+      - cmd: cargo check
+        expect: fail
+  # The "same jobs" table: only the tools the image has are run here.
+  langs:
+    dir: langs
+    steps:
+      - cmd: go mod init example.com/hello
+        cwd: go
+        show: "$ go mod init example.com/hello   # Go"
+      - cmd: go run .
+        cwd: go
+        show: "$ go run .   # Go"
+      - cmd: gofmt -l .
+        cwd: go
+        show: "$ gofmt -l .   # Go: lists files whose layout differs (none)"
+      - cmd: go vet ./...
+        cwd: go
+        show: "$ go vet ./...   # Go: type-checks and runs analysers"
+      - cmd: go test ./...
+        cwd: go
+        show: "$ go test ./...   # Go"
+      - cmd: node main.ts
+        cwd: ts
+        show: "$ node main.ts   # TypeScript, run directly by Node"
+      - cmd: tsc --noEmit --target es2022 --module nodenext main.ts
+        cwd: ts
+        show: "$ tsc --noEmit main.ts   # TypeScript: checks, writes no files"
+      - cmd: java Main.java
+        cwd: java
+        show: "$ java Main.java   # Java: compiles and runs one file"
+      - cmd: javac -d /tmp/jout Main.java
+        cwd: java
+        show: "$ javac Main.java   # Java: compiling is the check"
+      - cmd: kotlinc Main.kt -d /tmp/kout
+        cwd: kt
+        show: "$ kotlinc Main.kt   # Kotlin: compiling is the check"
+      - cmd: python3 -m py_compile main.py
+        cwd: py
+        show: "$ python3 -m py_compile main.py   # Python: syntax only"
+      - cmd: gcc -fsyntax-only main.c
+        cwd: c
+        show: "$ gcc -fsyntax-only main.c   # C: checks, writes no program"
+      - cmd: g++ -fsyntax-only main.cpp
+        cwd: cpp
+        show: "$ g++ -fsyntax-only main.cpp   # C++: checks, writes no program"
+      - cmd: dotnet new console -o app --no-restore
+        show: "$ dotnet new console -o app   # C#"
+      - cmd: dotnet run --project app
+        show: "$ dotnet run --project app   # C#"
+      - cmd: dotnet format app --verify-no-changes
+        show: "$ dotnet format app --verify-no-changes   # C#"

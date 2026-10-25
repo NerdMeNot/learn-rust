@@ -1,0 +1,127 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Statements and expressions"
+part: "syntax"
+intro: >-
+  In Rust the pieces that steer a program, `if`, `match`, loops and `{ }` blocks, are
+  expressions: they produce a value. The last line of a block, with no `;`, is the block's
+  value, and a function's last line is what it returns.
+coming_from:
+  go: >-
+    `if` and `switch` are statements in Go, so you declare `label := "odd"` first and assign
+    inside a branch. In Rust `if` and `match` give a value, and a function ends with its
+    result, written without `return` (`return x;` still works). `a = b = c` and `if x = 1`
+    fail in both languages, for different reasons: Go's assignment is a statement, Rust's is
+    an expression worth `()`.
+  kotlin: >-
+    You already have `if`, `when` and a lambda's last expression as values, and Rust works the
+    same way. The new parts: a Rust function body in braces also returns its last expression
+    (Kotlin needs `return`, or the `= expr` form, which Rust does not have), a bare `{ }` is a
+    block, not a lambda, and assignment is an expression worth `()` where in Kotlin it is a
+    statement. `a = b = c` fails in both.
+  python: >-
+    Python ends a statement at the newline; Rust ends it at `;`. A bare `x + 1` line in Python
+    is worked out and thrown away, and so is `x + 1;` in Rust. A line with no `;` at the end of
+    a block is the block's value. A Rust function declares its result type, so a body that
+    ends `x + 1;` instead of `x + 1` is a compile error, not a quiet `None`.
+  typescript: >-
+    `c ? a : b` becomes `if c { a } else { b }`, and a `switch` statement becomes a `match`
+    that gives a value. An arrow function with braces needs `return`; a Rust function or
+    closure in braces returns its last expression, like `x => x + 1` does without braces.
+    `a = b = c` and `if (x = 1)` compile in TypeScript; in Rust they are type errors.
+  java: >-
+    Rust has no `?:`; `if` is an expression, so it is not needed. `match` is like the Java
+    14+ `switch` expression. A method returns its last expression with no `return`. Java lets
+    assignment sit inside an expression (`a = b = c`, `if (flag = true)`); Rust does not.
+  csharp: >-
+    `?:` becomes `if c { a } else { b }`, and `n switch { ... }` becomes `match n { ... }`.
+    Rust has no `=>` expression body: a function uses braces and returns its last expression.
+    C# lets assignment sit inside an expression (`a = b = c`); Rust does not.
+  c: >-
+    Rust has no `?:` and no comma operator: `if` is an expression, and `{ f(); 2 }` is a block
+    that gives 2. `if (x = 1)` compiles in C (gcc warns only with `-Wall`); in Rust the
+    condition must be a `bool` and an assignment is worth `()`, so it is an error. A non-`void`
+    C function that runs off its end is a problem only if the caller uses the result; in Rust
+    it is a compile error.
+  cpp: >-
+    Rust has no `?:` and no comma operator: `if` is an expression, and `{ f(); 2 }` is a block
+    that gives 2 (standard C++'s closest is an immediately called lambda). `if (x = 1)`
+    compiles in C++ (gcc warns only with `-Wall`); in Rust it is an error. Running off the end
+    of a function that returns a value is undefined behaviour in C++ even if the caller ignores
+    the result; in Rust it is a compile error.
+notes:
+  - >-
+    The last expression in a block, with no `;`, is the block's value. It is called the tail
+    expression. Put a `;` after it and the value is thrown away: the block is then worth `()`,
+    Rust's "nothing" value.
+  - >-
+    `if`, `match`, `loop` and `{ }` can all sit on the right of `let` or be the last line of a
+    function. Every branch must agree on a type (a branch that leaves, like `continue`, fits
+    any type).
+  - >-
+    `return` is for leaving early. At the end of a function, write the value without `return`
+    and without `;`.
+  - >-
+    Assignment (`x = 5`) is an expression, but it is worth `()`, so `a = b = c` does not chain
+    and `if x = 1` is a type error. Conditions must be `bool` and need no parentheses.
+gotcha:
+  title: "A semicolon on the last line"
+  verdict: "rust-rule"
+  looks_fine: >-
+    Most languages you know end a statement with `;` or a newline, and a function ends with
+    `return x + 1`. A function whose last line is `x + 1;` looks finished: only the word
+    `return`, which Rust does not need, seems to be missing.
+  rust_sees: >-
+    `x + 1;` is a statement: the sum is worked out and thrown away. The block then has no final
+    expression, so its value is `()`, and the function promised an `i32`.
+  why: >-
+    One character changes what a line is. With the `;` it is a statement. Without it, it is
+    the block's value. Rust cannot guess which you meant, so it points at the `;` and says to
+    remove it. Look at the other languages' results: most refuse, Python quietly returns
+    `None`, and C and C++ compile with warnings and give an undefined result.
+  langs:
+    go:
+      status: "refuses"
+      says: >-
+        Go refuses twice: `x + 1` is "not used", and there is a "missing return". The fix is
+        `return x + 1`. Go has no last-expression rule.
+    kotlin:
+      status: "refuses"
+      says: >-
+        Kotlin refuses with "missing return statement". A block body needs `return x + 1`;
+        the other fix is the expression form `fun addOne(x: Int) = x + 1`.
+    python:
+      status: "runs"
+      says: >-
+        Python runs this and prints `None`. The body computes `x + 1` and discards it, and a
+        function with no `return` gives back `None`. Nothing complains.
+    typescript:
+      status: "refuses"
+      says: >-
+        TypeScript refuses (TS2355): a function declared to return `number` must return a
+        value. The fix is `return x + 1;`.
+    java:
+      status: "refuses"
+      says: >-
+        Java refuses: `x + 1;` is "not a statement", because Java only allows calls,
+        assignments and a few others as statements. The fix is `return x + 1;`.
+    csharp:
+      status: "refuses"
+      says: >-
+        C# refuses twice (CS0201 and CS0161): `x + 1;` cannot be a statement, and not all code
+        paths return a value. The fix is `return x + 1;`.
+    c:
+      status: "wrong"
+      says: >-
+        gcc compiles this. With the runner's `-Wall -Wextra` it warns twice (plain `gcc` says
+        nothing) and the program prints 41. `x + 1;` is legal C. The problem is the missing
+        `return`: using the result of a call that ran off its end is undefined behaviour. On
+        this runner (ARM64, no `-O`) the argument `41` is still in the register the caller reads
+        the result from. With `-O1` or higher the same program printed 0. If the caller ignores
+        the result, C runs fine.
+    cpp:
+      status: "crash"
+      says: >-
+        g++ compiles this with warnings, then the program crashes before printing. In C++,
+        reaching the end of a function that returns a value is undefined behaviour even if the
+        caller ignores the result. Here g++ put a trap instruction at the missing `return`
+        (SIGTRAP, exit status 133; with `-O2` the same program segfaults instead).

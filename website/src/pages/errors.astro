@@ -1,0 +1,102 @@
+---
+// "Reading compiler errors": how an error is laid out, then an index of every error code
+// the site shows. The message and the list of pages are generated from the extract data,
+// so a new gotcha appears here by itself. Only the plain-language notes are hand-written
+// (src/lib/error-notes.ts).
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro'
+import { getCollection } from 'astro:content'
+import RustError from '../components/lesson/RustError.astro'
+import { ERROR_NOTES } from '../lib/error-notes'
+import { inline } from '../lib/md'
+
+// All extract data, as written by `bun run extract`.
+const lessons = import.meta.glob<{ default: any }>('../data/lessons/*.json', { eager: true })
+const guides = import.meta.glob<{ default: any }>('../data/guides/*.json', { eager: true })
+const docs = await getCollection('docs')
+
+type Hit = { href: string; label: string; message: string }
+const hits = new Map<string, Hit[]>()
+function scan(text: string | undefined, href: string, label: string) {
+  for (const m of (text ?? '').matchAll(/^error\[(E\d{4})\]: (.*)$/gm)) {
+    const list = hits.get(m[1]) ?? []
+    // One entry per page, whichever part of the page shows it.
+    if (!list.some(h => h.href.split('#')[0] === href.split('#')[0])) list.push({ href, label, message: m[2] })
+    hits.set(m[1], list)
+  }
+}
+for (const [path, mod] of Object.entries(lessons)) {
+  const l = mod.default
+  const href = `/learn/${l.id}/`
+  scan(l.gotcha?.error, `${href}#gotcha`, l.title)
+  for (const s of Object.values<any>(l.snippets ?? {})) scan(s.error, href, l.title)
+  for (const q of l.faq ?? []) scan(q.bad?.error, href, l.title)
+}
+const guideRoute = (id: string) => {
+  const hit = docs.find(d => d.id.endsWith(`/${id}`) || d.id === id) ?? docs.find(d => d.id === 'std/tour' && id === 'std-tour')
+  return hit ? `/${hit.id}/` : undefined
+}
+for (const [path, mod] of Object.entries(guides)) {
+  if (path.endsWith('.runs.json')) continue
+  const g = mod.default
+  const href = guideRoute(g.id)
+  if (!href) continue
+  const title = docs.find(d => `/${d.id}/` === href)?.data.title ?? g.id
+  for (const steps of Object.values<any[]>(g.sessions ?? {})) for (const s of steps) scan(s.out, href, title)
+  scan(g.gotcha?.error, href, title)
+}
+const codes = [...hits.keys()].sort()
+const headings = [
+  { depth: 2, slug: 'how-an-error-is-laid-out', text: 'How an error is laid out' },
+  { depth: 2, slug: 'what-to-do-first', text: 'What to do first' },
+  { depth: 2, slug: 'index', text: `Every error code on this site (${codes.length})` },
+]
+const anat = lessons['../data/lessons/vectors.json'].default.gotcha
+---
+<StarlightPage frontmatter={{ title: 'Reading compiler errors', description: 'How to read a Rust compiler error, and an index of every error code this site shows, with what it means and where to see it.', tableOfContents: { minHeadingLevel: 2, maxHeadingLevel: 2 } }} headings={headings}>
+  <p class="lr-intro">Rust's errors look long, but they follow a fixed layout and they are unusually helpful. Learning to read them is the fastest way to get better at Rust. This page shows the layout, then lists every error code that appears on this site.</p>
+
+  <h2 id="how-an-error-is-laid-out">How an error is laid out</h2>
+  <p>This is a real error, from <a href="/learn/vectors/">Vectors and Slices</a>.</p>
+  <div class="lr-anatomy not-content">
+    <RustError text={anat.error} code={anat.error_code} />
+    <ol>
+      <li>The <span class="lr-k" style="color:var(--lr-term-err)">error[{anat.error_code}]</span> line names the rule that was broken. Look up the code with <code>rustc --explain {anat.error_code}</code>, or find it in the index below.</li>
+      <li><span class="lr-k" style="color:var(--lr-term-dim)">--&gt;</span> gives the file, line and column.</li>
+      <li>The <span class="lr-k" style="color:var(--lr-term-hint)">-</span> marks are the other parts of the story: here, where the borrow started and where it is used later.</li>
+      <li>The <span class="lr-k" style="color:var(--lr-term-mark)">^</span> marks where the compiler gave up. Read the marked lines in order, top to bottom.</li>
+      <li><span class="lr-k" style="color:var(--lr-term-hint)">help:</span> is a suggestion. It is often right. When it suggests <code>.clone()</code>, check first: there is usually a fix that copies nothing.</li>
+    </ol>
+  </div>
+
+  <h2 id="what-to-do-first">What to do first</h2>
+  <ol>
+    <li><strong>Read the first error only.</strong> Later errors are often caused by the first one. Fix it and build again.</li>
+    <li><strong>Read the message, then the marked lines, then <code>help:</code>.</strong> The message says what rule was broken; the marks show where; the help often shows a fix.</li>
+    <li><strong>Check the types.</strong> Many errors come down to "this is a <code>&amp;String</code>, not a <code>String</code>". Your editor can show the type of any variable (rust-analyzer's inlay hints).</li>
+    <li><strong>Run <code>rustc --explain E0502</code></strong> (with your code) for a longer explanation with examples, or open <code>https://doc.rust-lang.org/error_codes/E0502.html</code>.</li>
+    <li><strong>If the fix suggested is <code>.clone()</code>,</strong> ask whether you can borrow instead. Cloning is fine, but it should be a choice.</li>
+  </ol>
+
+  <h2 id="index">Every error code on this site ({codes.length})</h2>
+  <p>Each entry shows a real message from a real run on this site, a plain explanation, and every page where you can see it happen.</p>
+  <div class="lr-errlist not-content">
+    {codes.map(code => {
+      const list = hits.get(code)!
+      const note = ERROR_NOTES[code]
+      return (
+        <section class="lr-errcard" id={code}>
+          <h3><a href={`#${code}`}>{code}</a> <span>{list[0].message}</span></h3>
+          {note ? (
+            <>
+              <p><strong>What it means.</strong> <Fragment set:html={inline(note.means)} /></p>
+              <p><strong>What people usually do.</strong> <Fragment set:html={inline(note.usually)} /></p>
+            </>
+          ) : (
+            <p><em>This code has no plain-language note yet: add one to <code>website/src/lib/error-notes.ts</code>.</em></p>
+          )}
+          <p class="lr-errlinks"><strong>See it:</strong> {list.map((h, i) => (<>{i > 0 && ', '}<a href={h.href}>{h.label}</a></>))} · <a href={`https://doc.rust-lang.org/error_codes/${code}.html`} target="_blank" rel="noopener">Official explanation ↗</a></p>
+        </section>
+      )
+    })}
+  </div>
+</StarlightPage>

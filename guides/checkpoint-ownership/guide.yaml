@@ -1,0 +1,59 @@
+# Checkpoint: Ownership
+name: checkpoint-ownership
+sessions:
+  q1:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin q1
+        expect: fail
+  q2:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin q2
+  q3:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin q3
+  q4:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin q4
+        expect: fail
+  q5:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin q5
+        expect: fail
+  q6:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin q6
+        expect: fail
+  q7:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin q7
+        expect: fail
+  q8:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin q8
+  q6-fixed:
+    dir: rust
+    overlay:
+      src/bin/q6.rs: fixes/q6.rs
+    steps:
+      - cmd: cargo run --bin q6
+  q7-fixed:
+    dir: rust
+    overlay:
+      src/bin/q7.rs: fixes/q7.rs
+    steps:
+      - cmd: cargo run --bin q7
+  q8-whole:
+    dir: rust
+    overlay:
+      src/bin/q8.rs: fixes/q8-whole.rs
+    steps:
+      - cmd: cargo run --bin q8
+        expect: fail

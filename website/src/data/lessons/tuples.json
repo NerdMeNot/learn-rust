@@ -1,0 +1,315 @@
+{
+ "id": "tuples",
+ "title": "Multiple Return Values",
+ "part": "basics",
+ "intro": "To return several values, a Rust function returns one tuple, and the caller unpacks it.",
+ "coming_from": {
+  "go": "Go returns several values, but Rust returns one tuple, `(i32, i32)`, and unpacks it with `let (lo, hi) = ...`. Because it's one value, you can also keep it whole in a variable and read `pair.0` and `pair.1`, which Go refuses. A Go `(value, err)` pair is written as a `Result` in Rust, not as a tuple.",
+  "kotlin": "A tuple is like `Pair` or `Triple`, with as many slots as you write, and it is destructured the same way. The fields are `.0` and `.1` rather than `first` and `second`.",
+  "python": "Tuples work much like Python's: `(lo, hi)` to build, `let (lo, hi) = ...` to unpack, `_` to skip. The type of each slot is fixed, and you read a slot with `t.0`, not `t[0]`. A Rust tuple in a `mut` variable can change in place; a Python tuple cannot.",
+  "typescript": "`(i32, i32)` is your `[number, number]` tuple type. A Rust tuple isn't an array, though: you read `t.0` and `t.1`, you can't loop over it, and you skip a slot with `_` instead of leaving it empty.",
+  "java": "Java has no built-in tuple type, so you'd write a small `record`; Rust's `(i32, i32)` is that record without a name or a declaration. You unpack it with `let (lo, hi) = ...`, and `_` skips a value you don't need.",
+  "csharp": "`(i32, i32)` is your value tuple `(int, int)`, and `let (lo, hi) = ...` is deconstruction with `_` as the discard. The difference is that Rust tuple fields have no names: you use `.0` and `.1`, or reach for a struct.",
+  "c": "C has no tuples, so you return a small struct or write through pointers; Rust's `(i32, i32)` is like an anonymous struct you never have to declare, but its layout is not promised, so it is not a C struct. `let (lo, hi) = ...` unpacks it, and `_` ignores a field.",
+  "cpp": "`(i32, i32)` is `std::pair<int, int>` (or `std::tuple`), and `let (lo, hi) = ...` is a structured binding. `_` skips a slot without naming it, and `(a, b) = f();` assigns into existing variables, as `std::tie` does."
+ },
+ "notes": [
+  "`&[i32]` is a slice: a borrowed view of some numbers. It accepts a Vec, an array, or part of one. More in the Vectors and Borrowing lessons.",
+  "Tuples can hold mixed types: `let t: (i32, &str) = (1, \"a\");` then `t.0`, `t.1`.",
+  "Swapping needs no temporary variable: `(a, b) = (b, a);`.",
+  "Don't reach for a tuple to return a value plus an error, as in `(value, err)`. Rust uses `Result` for that (see Errors)."
+ ],
+ "gotcha": {
+  "title": "Indexing a tuple like a list",
+  "verdict": "rust-rule",
+  "looks_fine": "Where a tuple or a fixed-size group is indexed with brackets, `t[0]` is the natural way to read its first slot, and the habit comes along.",
+  "rust_sees": "A tuple's slots are fields, numbered from zero, and you reach them with a dot and a literal number: `t.0`. Square brackets are not defined for a tuple.",
+  "why": "Each slot can have its own type. A bracket index whose number is only known when the program runs would have to produce a different type for each number, and the compiler has to know the type of every expression before the program runs. `t.0` names the slot in the source, so its type is known. The compiler's `help:` shows the dot form.",
+  "langs": {
+   "go": {
+    "status": "none",
+    "says": "Go has no tuple type. A function returns several values, and you name each one at the call, so there is nothing to index."
+   },
+   "kotlin": {
+    "status": "refuses",
+    "says": "Kotlin refuses too: a `Pair` has no `get` operator, so `t[0]` is an error. You write `t.first`, or destructure with `val (a, b) = t`.",
+    "code": "fun main() {\n    val t = Pair(3, 4)\n    println(t[0])\n}\n",
+    "error": "Main.kt:3:14: error: no 'get' operator method providing array access.\n    println(t[0])\n             ^^^"
+   },
+   "python": {
+    "status": "runs",
+    "says": "Python indexes a tuple with brackets, and the index can be a variable. It runs and prints 3.",
+    "code": "t = (3, 4)\nprint(t[0])\n",
+    "out": "3\n"
+   },
+   "typescript": {
+    "status": "runs",
+    "says": "A TypeScript tuple is an array with a fixed length and a type per slot, so `t[0]` is fine and prints 3.",
+    "code": "const t: [number, number] = [3, 4];\nconsole.log(t[0]);\n",
+    "out": "3\n"
+   },
+   "java": {
+    "status": "none",
+    "says": "Java has no built-in tuple type. A `record` has accessor methods such as `r.lo()`, and nothing to index."
+   },
+   "csharp": {
+    "status": "refuses",
+    "says": "C# refuses too (CS0021): a value tuple cannot be indexed. You write `t.Item1`, or a name you gave the slot.",
+    "code": "(int, int) t = (3, 4);\nConsole.WriteLine(t[0]);\n",
+    "error": "Program.cs(2,19): error CS0021: Cannot apply indexing with [] to an expression of type '(int, int)'"
+   },
+   "c": {
+    "status": "none",
+    "says": "C has no tuple type. A `struct` has members you reach with a dot, and an array is indexed with brackets."
+   },
+   "cpp": {
+    "status": "refuses",
+    "says": "C++ refuses too: `std::tuple` has no `operator[]`. You write `std::get<0>(t)`, and the index has to be known at compile time (Rust is stricter: a literal).",
+    "code": "#include <iostream>\n#include <tuple>\n\nint main() {\n    std::tuple<int, int> t{3, 4};\n    std::cout << t[0] << \"\\n\";\n}\n",
+    "error": "main.cpp: In function ‘int main()’:\nmain.cpp:6:19: error: no match for ‘operator[]’ (operand types are ‘std::tuple<int, int>’ and ‘int’)\n    6 |     std::cout << t[0] << \"\\n\";\n      |                   ^"
+   }
+  },
+  "code": "fn main() {\n    let t = (3, 4);\n    println!(\"{}\", t[0]);\n}\n",
+  "error": "error[E0608]: cannot index into a value of type `({integer}, {integer})`\n --> src/main.rs:3:21\n  |\n3 |     println!(\"{}\", t[0]);\n  |                     ^^^ help: to access tuple element `0`, use: `.0`\n  |\n  = help: tuples are indexed with a dot and a literal index: `tuple.0`, `tuple.1`, etc.\n",
+  "error_code": "E0608",
+  "fixed": {
+   "code": "fn main() {\n    let t = (3, 4);\n    println!(\"{}\", t.0);\n}\n",
+   "out": "3\n"
+  }
+ },
+ "order": 14,
+ "program": {
+  "rust": {
+   "code": "fn min_max(xs: &[i32]) -> (i32, i32) {\n    let mut lo = xs[0];\n    let mut hi = xs[0];\n    for &x in xs {\n        // each item is &i32; the &x pattern takes the number out\n        if x < lo {\n            lo = x;\n        }\n        if x > hi {\n            hi = x;\n        }\n    }\n    (lo, hi)\n}\n\nfn main() {\n    let (lo, hi) = min_max(&[4, 9, 1, 7]);\n    println!(\"{lo} {hi}\");\n\n    let (_, only_hi) = min_max(&[3, 5]); // _ ignores a value\n    println!(\"{only_hi}\");\n}\n",
+   "out": "1 9\n5\n"
+  },
+  "go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc minMax(xs []int) (int, int) {\n\tlo, hi := xs[0], xs[0]\n\tfor _, x := range xs {\n\t\tif x < lo {\n\t\t\tlo = x\n\t\t}\n\t\tif x > hi {\n\t\t\thi = x\n\t\t}\n\t}\n\treturn lo, hi\n}\n\nfunc main() {\n\tlo, hi := minMax([]int{4, 9, 1, 7})\n\tfmt.Println(lo, hi)\n\n\t_, onlyHi := minMax([]int{3, 5})\n\tfmt.Println(onlyHi)\n}\n",
+   "out": "1 9\n5\n"
+  },
+  "kotlin": {
+   "code": "fun minMax(xs: List<Int>): Pair<Int, Int> {\n    var lo = xs[0]\n    var hi = xs[0]\n    for (x in xs) {\n        if (x < lo) lo = x\n        if (x > hi) hi = x\n    }\n    return Pair(lo, hi)\n}\n\nfun main() {\n    val (lo, hi) = minMax(listOf(4, 9, 1, 7))\n    println(\"$lo $hi\")\n\n    val (_, onlyHi) = minMax(listOf(3, 5))\n    println(onlyHi)\n}\n",
+   "out": "1 9\n5\n"
+  },
+  "python": {
+   "code": "def min_max(xs: list[int]) -> tuple[int, int]:\n    lo = hi = xs[0]\n    for x in xs:\n        if x < lo:\n            lo = x\n        if x > hi:\n            hi = x\n    return lo, hi\n\n\nlo, hi = min_max([4, 9, 1, 7])\nprint(f\"{lo} {hi}\")\n\n_, only_hi = min_max([3, 5])  # _ ignores a value\nprint(only_hi)\n",
+   "out": "1 9\n5\n"
+  },
+  "typescript": {
+   "code": "// a tuple type: an array with a fixed length and a type per slot\nfunction minMax(xs: readonly number[]): [number, number] {\n  let lo = xs[0];\n  let hi = xs[0];\n  for (const x of xs) {\n    if (x < lo) lo = x;\n    if (x > hi) hi = x;\n  }\n  return [lo, hi];\n}\n\nconst [lo, hi] = minMax([4, 9, 1, 7]);\nconsole.log(`${lo} ${hi}`);\n\nconst [, onlyHi] = minMax([3, 5]); // leave a slot empty to skip it\nconsole.log(onlyHi);\n",
+   "out": "1 9\n5\n"
+  },
+  "java": {
+   "code": "import java.util.List;\n\npublic class Main {\n    // Java has no built-in tuple, so a tiny record holds the two values\n    record MinMax(int lo, int hi) {}\n\n    static MinMax minMax(List<Integer> xs) {\n        int lo = xs.get(0);\n        int hi = xs.get(0);\n        for (int x : xs) {\n            if (x < lo) lo = x;\n            if (x > hi) hi = x;\n        }\n        return new MinMax(lo, hi);\n    }\n\n    public static void main(String[] args) {\n        var r = minMax(List.of(4, 9, 1, 7));\n        System.out.println(r.lo() + \" \" + r.hi());\n\n        int onlyHi = minMax(List.of(3, 5)).hi();\n        System.out.println(onlyHi);\n    }\n}\n",
+   "out": "1 9\n5\n"
+  },
+  "csharp": {
+   "code": "var (lo, hi) = MinMax([4, 9, 1, 7]);\nConsole.WriteLine($\"{lo} {hi}\");\n\nvar (_, onlyHi) = MinMax([3, 5]);   // _ ignores a value\nConsole.WriteLine(onlyHi);\n\nstatic (int Lo, int Hi) MinMax(int[] xs)\n{\n    int lo = xs[0], hi = xs[0];\n    foreach (var x in xs)\n    {\n        if (x < lo) lo = x;\n        if (x > hi) hi = x;\n    }\n    return (lo, hi);\n}\n",
+   "out": "1 9\n5\n"
+  },
+  "c": {
+   "code": "#include <stdio.h>\n\n// C has no tuples: return a small struct instead\nstruct MinMax {\n    int lo;\n    int hi;\n};\n\nstruct MinMax min_max(const int *xs, size_t len) {\n    struct MinMax r = {xs[0], xs[0]};\n    for (size_t i = 0; i < len; i++) {\n        if (xs[i] < r.lo) r.lo = xs[i];\n        if (xs[i] > r.hi) r.hi = xs[i];\n    }\n    return r;\n}\n\nint main(void) {\n    int a[] = {4, 9, 1, 7};\n    struct MinMax r = min_max(a, 4);\n    printf(\"%d %d\\n\", r.lo, r.hi);\n\n    int b[] = {3, 5};\n    printf(\"%d\\n\", min_max(b, 2).hi);   // only use the field you need\n    return 0;\n}\n",
+   "out": "1 9\n5\n"
+  },
+  "cpp": {
+   "code": "#include <iostream>\n#include <tuple>\n#include <utility>\n#include <vector>\n\nstd::pair<int, int> min_max(const std::vector<int>& xs) {\n    int lo = xs[0];\n    int hi = xs[0];\n    for (int x : xs) {\n        if (x < lo) lo = x;\n        if (x > hi) hi = x;\n    }\n    return {lo, hi};\n}\n\nint main() {\n    auto [lo, hi] = min_max({4, 9, 1, 7});   // structured binding\n    std::cout << lo << \" \" << hi << \"\\n\";\n\n    int only_hi;\n    std::tie(std::ignore, only_hi) = min_max({3, 5});   // std::ignore skips a value\n    std::cout << only_hi << \"\\n\";\n}\n",
+   "out": "1 9\n5\n"
+  }
+ },
+ "faq": [],
+ "snippets": {
+  "arity.fail.rs": {
+   "code": "fn main() {\n    let (a, b, c) = (1, 2);\n    println!(\"{a} {b} {c}\");\n}\n",
+   "error": "error[E0308]: mismatched types\n --> src/main.rs:2:9\n  |\n2 |     let (a, b, c) = (1, 2);\n  |         ^^^^^^^^^   ------ this expression has type `({integer}, {integer})`\n  |         |\n  |         expected a tuple with 2 elements, found one with 3 elements\n  |\n  = note: expected tuple `({integer}, {integer})`\n             found tuple `(_, _, _)`\n",
+   "lang": "rust"
+  },
+  "basics.rs": {
+   "code": "use std::mem::size_of;\n\nfn main() {\n    let point = (3, 4);\n    println!(\"point.0: {}, point.1: {}\", point.0, point.1);\n\n    // Each slot has its own type.\n    let record: (i32, &str, bool) = (7, \"seven\", true);\n    println!(\"record: {record:?}\");\n    println!(\"record.1: {}\", record.1);\n\n    // Tuples nest, and each .N goes one level in.\n    let nested = ((1, 2), \"x\");\n    println!(\"nested.0.1: {}\", nested.0.1);\n\n    // A tuple changes in place only if the variable is `mut`.\n    let mut counter = (0, \"hits\");\n    counter.0 += 10;\n    println!(\"counter: {counter:?}\");\n\n    // size_of::<T>() is the size of T in bytes.\n    println!(\"size_of::<(i32, i32)>(): {}\", size_of::<(i32, i32)>());\n    println!(\"size_of::<(u8, u32)>():  {}\", size_of::<(u8, u32)>());\n}\n",
+   "out": "point.0: 3, point.1: 4\nrecord: (7, \"seven\", true)\nrecord.1: seven\nnested.0.1: 2\ncounter: (10, \"hits\")\nsize_of::<(i32, i32)>(): 8\nsize_of::<(u8, u32)>():  8\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-rows.rs": {
+   "code": "// Backs the \"what you write today\" tables: each Rust cell is compiled and run here.\nuse std::collections::HashMap;\n\nfn pair() -> (i32, i32) {\n    (3, 4)\n}\n\nfn triple() -> (i32, &'static str, bool) {\n    (1, \"two\", true)\n}\n\nfn parse_both(a: &str, b: &str) -> Result<(i32, i32), std::num::ParseIntError> {\n    Ok((a.parse()?, b.parse()?))\n}\n\nfn main() {\n    // Go: a, b := f()  /  _, b := f()  /  a, b = b, a\n    let (a, b) = pair();\n    assert_eq!((a, b), (3, 4));\n    let (_, b2) = pair();\n    assert_eq!(b2, 4);\n    let (mut x, mut y) = (1, 2);\n    (x, y) = (y, x);\n    assert_eq!((x, y), (2, 1));\n\n    // Go: fmt.Println(f()) prints both; Rust prints the tuple as one value.\n    assert_eq!(format!(\"{:?}\", pair()), \"(3, 4)\");\n    // C++: std::tie(std::ignore, b) = f();\n    let b3;\n    (_, b3) = pair();\n    assert_eq!(b3, 4);\n    // Python / TS: a, b, c = b, c, a\n    let (mut p1, mut p2, mut p3) = (1, 2, 3);\n    (p1, p2, p3) = (p2, p3, p1);\n    assert_eq!((p1, p2, p3), (2, 3, 1));\n    // Early return needs the parentheses.\n    fn early(flag: bool) -> (i32, i32) {\n        if flag {\n            return (1, 2);\n        }\n        (3, 4)\n    }\n    assert_eq!(early(true), (1, 2));\n\n    // Go: (value, err) -> Result<(A, B), E>; (v, ok) -> Option<(A, B)>\n    let found: Option<(&str, &str)> = \"k=v\".split_once('=');\n    assert_eq!(found, Some((\"k\", \"v\")));\n    assert_eq!(parse_both(\"3\", \"4\"), Ok((3, 4)));\n    assert!(parse_both(\"3\", \"x\").is_err());\n\n    // A tuple is a map key when its parts are.\n    let mut grid: HashMap<(i32, i32), &str> = HashMap::new();\n    grid.insert((2, -1), \"flag\");\n    assert_eq!(grid.get(&(2, -1)), Some(&\"flag\"));\n    assert_eq!(grid.get(&(9, 9)), None);\n\n    // Go: v, ok := m[k]  ->  Option\n    let mut m = HashMap::new();\n    m.insert(\"a\", 1);\n    assert_eq!(m.get(\"a\"), Some(&1));\n    assert_eq!(m.get(\"z\"), None);\n    if let Some(v) = m.get(\"a\") {\n        assert_eq!(*v, 1);\n    }\n\n    // Kotlin: Pair / Triple / `to`\n    let p = (3, 4);\n    assert_eq!((p.0, p.1), (3, 4));\n    let t = triple();\n    assert_eq!(t.2, true);\n    let kv = (\"k\", 1);\n    assert_eq!(kv, (\"k\", 1));\n\n    // Python: first, *rest = t has no tuple equivalent; the slice pattern does.\n    let list = [1, 2, 3, 4];\n    let [first, rest @ ..] = list;\n    assert_eq!(first, 1);\n    assert_eq!(rest, [2, 3, 4]);\n\n    // Python: divmod(a, b) agrees with div_euclid / rem_euclid when b > 0.\n    for a in -20i32..=20 {\n        for b in 1i32..=7 {\n            let (q, r) = (a.div_euclid(b), a.rem_euclid(b));\n            assert_eq!(q * b + r, a);\n            assert!((0..b).contains(&r));\n            assert_eq!(q, (a as f64 / b as f64).floor() as i32);\n        }\n    }\n    // ...and not when b < 0: Python's divmod(17, -5) is (-4, -3).\n    assert_eq!((17i32.div_euclid(-5), 17i32.rem_euclid(-5)), (-3, 2));\n    // Rust's `/` and `%` truncate toward zero, like C and Go.\n    assert_eq!((-17 / 5, -17 % 5), (-3, -2));\n\n    // Python / C++: tuples compare slot by slot.\n    assert!((1, 10) > (1, 9));\n    // One-slot tuple needs the comma.\n    let one: (i32,) = (5,);\n    assert_eq!(one.0, 5);\n\n    // C: out pointers are `&mut` parameters; returning a tuple is the usual way.\n    fn two(out_a: &mut i32, out_b: &mut i32) {\n        *out_a = 1;\n        *out_b = 2;\n    }\n    let (mut oa, mut ob) = (0, 0);\n    two(&mut oa, &mut ob);\n    assert_eq!((oa, ob), (1, 2));\n\n    // Tuple elements can be arrays and nested tuples.\n    let n = ((1, 2), [3, 4]);\n    assert_eq!(n.0.1 + n.1[0], 5);\n\n    // Tuple vs array: an array takes any index and loops; a tuple takes a literal slot.\n    let arr = [10, 20, 30];\n    let i = arr.len() - 1;\n    assert_eq!(arr[i], 30);\n    let mut total = 0;\n    for x in arr {\n        total += x;\n    }\n    assert_eq!(total, 60);\n\n    println!(\"all rows hold\");\n}\n",
+   "out": "all rows hold\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "compare.rs": {
+   "code": "fn main() {\n    println!(\"(1, 9) < (2, 0): {}\", (1, 9) < (2, 0));\n    println!(\"(2, 1) < (2, 3): {}\", (2, 1) < (2, 3));\n    println!(\"(2, 3) < (2, 3): {}\", (2, 3) < (2, 3));\n    println!(\"(1, 2) == (1, 2): {}\", (1, 2) == (1, 2));\n    println!(\"(\\\"b\\\", 1) > (\\\"a\\\", 9): {}\", (\"b\", 1) > (\"a\", 9));\n\n    // Because they compare, a list of tuples sorts: by the first slot, then the second.\n    let mut results = [(2, \"bo\"), (1, \"zed\"), (2, \"ana\")];\n    results.sort();\n    println!(\"sorted: {results:?}\");\n}\n",
+   "out": "(1, 9) < (2, 0): true\n(2, 1) < (2, 3): true\n(2, 3) < (2, 3): false\n(1, 2) == (1, 2): true\n(\"b\", 1) > (\"a\", 9): true\nsorted: [(1, \"zed\"), (2, \"ana\"), (2, \"bo\")]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "early-return.fail.rs": {
+   "code": "fn pair(early: bool) -> (i32, i32) {\n    if early {\n        return 1, 2;\n    }\n    (3, 4)\n}\n\nfn main() {\n    println!(\"{:?}\", pair(true));\n}\n",
+   "error": "error: expected one of `.`, `;`, `?`, `}`, or an operator, found `,`\n --> src/main.rs:3:17\n  |\n3 |         return 1, 2;\n  |                 ^ expected one of `.`, `;`, `?`, `}`, or an operator",
+   "lang": "rust"
+  },
+  "ffi.fail.rs": {
+   "code": "// Turned into an error here to show the message; by default it is a warning.\n#![deny(improper_ctypes_definitions)]\n\npub extern \"C\" fn pair() -> (i32, i32) {\n    (3, 4)\n}\n\nfn main() {\n    println!(\"{:?}\", pair());\n}\n",
+   "error": "error: `extern` fn uses type `(i32, i32)`, which is not FFI-safe\n --> src/main.rs:4:29\n  |\n4 | pub extern \"C\" fn pair() -> (i32, i32) {\n  |                             ^^^^^^^^^^ not FFI-safe\n  |\n  = help: consider using a struct instead\n  = note: tuples have unspecified layout\nnote: the lint level is defined here\n --> src/main.rs:2:9\n  |\n2 | #![deny(improper_ctypes_definitions)]\n  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+   "lang": "rust"
+  },
+  "one-tuple.fail.rs": {
+   "code": "fn main() {\n    let t: (i32,) = (5);\n    println!(\"{}\", t.0);\n}\n",
+   "error": "error[E0308]: mismatched types\n --> src/main.rs:2:21\n  |\n2 |     let t: (i32,) = (5);\n  |            ------   ^^^ expected `(i32,)`, found integer\n  |            |\n  |            expected due to this\n  |\n  = note: expected tuple `(i32,)`\n              found type `{integer}`\nhelp: use a trailing comma to create a tuple with one element\n  |\n2 |     let t: (i32,) = (5,);\n  |                       +\n",
+   "lang": "rust"
+  },
+  "out-param.rs": {
+   "code": "// Possible: write the results through `&mut` parameters, as C does.\nfn divmod_into(a: i32, b: i32, q: &mut i32, r: &mut i32) {\n    *q = a / b;\n    *r = a % b;\n}\n\n// Usual: return a tuple.\nfn divmod(a: i32, b: i32) -> (i32, i32) {\n    (a / b, a % b)\n}\n\nfn main() {\n    // Rust makes you give q and r a value before the call.\n    let (mut q, mut r) = (0, 0);\n    divmod_into(17, 5, &mut q, &mut r);\n    println!(\"out parameters: q: {q}, r: {r}\");\n\n    let (q, r) = divmod(17, 5);\n    println!(\"returned tuple: q: {q}, r: {r}\");\n}\n",
+   "out": "out parameters: q: 3, r: 2\nreturned tuple: q: 3, r: 2\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "patterns.rs": {
+   "code": "// A pattern can sit in a parameter list.\nfn manhattan((x1, y1): (i32, i32), (x2, y2): (i32, i32)) -> i32 {\n    (x1 - x2).abs() + (y1 - y2).abs()\n}\n\nfn main() {\n    println!(\"manhattan: {}\", manhattan((1, 2), (4, -2)));\n\n    // Nested tuples unpack in one step.\n    let ((a, b), label) = ((1, 2), \"pair\");\n    println!(\"a: {a}, b: {b}, label: {label}\");\n\n    // `..` skips everything else.\n    let four = (10, 20, 30, 40);\n    let (first, ..) = four;\n    let (.., last) = four;\n    println!(\"first: {first}, last: {last}\");\n\n    // A `for` loop takes a pattern too.\n    for (name, score) in [(\"ana\", 3), (\"bo\", 5)] {\n        println!(\"{name}: {score}\");\n    }\n}\n",
+   "out": "manhattan: 7\na: 1, b: 2, label: pair\nfirst: 10, last: 40\nana: 3\nbo: 5\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "returning.rs": {
+   "code": "fn divmod(a: i32, b: i32) -> (i32, i32) {\n    (a / b, a % b)\n}\n\nfn main() {\n    // Unpack into two names.\n    let (q, r) = divmod(17, 5);\n    println!(\"q: {q}, r: {r}\");\n\n    // Or keep the pair whole and read its slots.\n    let pair = divmod(17, 5);\n    println!(\"pair: {pair:?}, pair.0: {}\", pair.0);\n\n    // `_` ignores a slot.\n    let (_, rem) = divmod(40, 7);\n    println!(\"rem: {rem}\");\n}\n",
+   "out": "q: 3, r: 2\npair: (3, 2), pair.0: 3\nrem: 5\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "spread.fail.rs": {
+   "code": "fn add(a: i32, b: i32) -> i32 {\n    a + b\n}\n\nfn pair() -> (i32, i32) {\n    (3, 4)\n}\n\nfn main() {\n    println!(\"{}\", add(pair()));\n}\n",
+   "error": "error[E0061]: this function takes 2 arguments but 1 argument was supplied\n  --> src/main.rs:10:20\n   |\n10 |     println!(\"{}\", add(pair()));\n   |                    ^^^-------- argument #2 of type `i32` is missing\n   |\nnote: expected `i32`, found `(i32, i32)`\n  --> src/main.rs:10:24\n   |\n10 |     println!(\"{}\", add(pair()));\n   |                        ^^^^^^\n   = note: expected type `i32`\n             found tuple `(i32, i32)`\nnote: function defined here\n  --> src/main.rs:1:4\n   |\n 1 | fn add(a: i32, b: i32) -> i32 {\n   |    ^^^ ------  ------\nhelp: provide the argument\n   |\n10 -     println!(\"{}\", add(pair()));\n10 +     println!(\"{}\", add(/* i32 */, /* i32 */));",
+   "lang": "rust"
+  },
+  "std-tuples.rs": {
+   "code": "fn main() {\n    // split_at: two slices from one.\n    let (left, right) = [1, 2, 3, 4].split_at(1);\n    println!(\"split_at(1): {left:?} and {right:?}\");\n\n    // overflowing_add: the wrapped sum, and whether it overflowed.\n    let (sum, overflowed) = 250u8.overflowing_add(10);\n    println!(\"250u8.overflowing_add(10): sum: {sum}, overflowed: {overflowed}\");\n\n    // Both are plain tuples: keep one whole if you like.\n    let result = 250u8.overflowing_add(10);\n    println!(\"result.0: {}, result.1: {}\", result.0, result.1);\n}\n",
+   "out": "split_at(1): [1] and [2, 3, 4]\n250u8.overflowing_add(10): sum: 4, overflowed: true\nresult.0: 4, result.1: true\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "swap.rs": {
+   "code": "fn main() {\n    let mut a = 1;\n    let mut b = 2;\n    (a, b) = (b, a);\n    println!(\"after swap: a: {a}, b: {b}\");\n\n    // Every new value is computed from the old ones, so rotating three works the same way.\n    let (mut x, mut y, mut z) = (1, 2, 3);\n    (x, y, z) = (y, z, x);\n    println!(\"rotated: x: {x}, y: {y}, z: {z}\");\n}\n",
+   "out": "after swap: a: 2, b: 1\nrotated: x: 2, y: 3, z: 1\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "tuple-index.fail.rs": {
+   "code": "fn main() {\n    let t = (3, 4);\n    println!(\"first: {}\", t[0]);\n}\n",
+   "error": "error[E0608]: cannot index into a value of type `({integer}, {integer})`\n --> src/main.rs:3:28\n  |\n3 |     println!(\"first: {}\", t[0]);\n  |                            ^^^ help: to access tuple element `0`, use: `.0`\n  |\n  = help: tuples are indexed with a dot and a literal index: `tuple.0`, `tuple.1`, etc.\n",
+   "lang": "rust"
+  },
+  "tuple-limit.fail.rs": {
+   "code": "fn main() {\n    let thirteen = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13);\n    println!(\"thirteen.12: {}\", thirteen.12);\n    println!(\"thirteen: {thirteen:?}\");\n}\n",
+   "error": "error[E0277]: `({integer}, {integer}, {integer}, {integer}, {integer}, {integer}, {integer}, {integer}, {integer}, {integer}, {integer}, {integer}, {integer})` doesn't implement `Debug`\n --> src/main.rs:4:25\n  |\n4 |     println!(\"thirteen: {thirteen:?}\");\n  |                         ^^^^^^^^^^^^ `({integer}, {integer}, {integer}, {integer}, {integer}, {integer}, {integer}, {integer}, {integer}, {integer}, {integer}, {integer}, {integer})` cannot be formatted using `{:?}` because it doesn't implement `Debug`\n  |\n  = help: the trait `Debug` is not implemented for `({integer}, {integer}, {integer}, {integer}, {integer}, {integer}, {integer}, {integer}, {integer}, {integer}, {integer}, {integer}, {integer})`\n  = help: the following other types implement trait `Debug`:\n            (T₁, T₂, …, Tₙ) up to tuples of arity 12\n          and 5 others\n",
+   "lang": "rust"
+  },
+  "tuple-limit.rs": {
+   "code": "fn main() {\n    let twelve = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12);\n    println!(\"twelve: {twelve:?}\");\n\n    // A 13-slot tuple is a fine type: you can build it, read a slot and copy it...\n    let thirteen = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13);\n    let copy = thirteen;\n    println!(\"thirteen.12: {}, copy.12: {}\", thirteen.12, copy.12);\n    // ...but `{:?}` on it is refused (see below).\n}\n",
+   "out": "twelve: (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)\nthirteen.12: 13, copy.12: 13\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "tuple-loop.fail.rs": {
+   "code": "fn main() {\n    let t = (3, 4, 5);\n    for x in t {\n        println!(\"{x}\");\n    }\n}\n",
+   "error": "error[E0277]: `({integer}, {integer}, {integer})` is not an iterator\n --> src/main.rs:3:14\n  |\n3 |     for x in t {\n  |              ^ `({integer}, {integer}, {integer})` is not an iterator\n  |\n  = help: the trait `Iterator` is not implemented for `({integer}, {integer}, {integer})`\n  = note: required for `({integer}, {integer}, {integer})` to implement `IntoIterator`\n",
+   "lang": "rust"
+  },
+  "tuple-rest.fail.rs": {
+   "code": "fn main() {\n    let t = (1, 2, 3, 4);\n    let (first, rest @ ..) = t;\n    println!(\"{first} {rest:?}\");\n}\n",
+   "error": "error: `rest @` is not allowed in a tuple\n --> src/main.rs:3:17\n  |\n3 |     let (first, rest @ ..) = t;\n  |                 ^^^^^^^^^ this is only allowed in slice patterns\n  |\n  = help: remove this and bind each tuple field independently\nhelp: if you don't need to use the contents of rest, discard the tuple's remaining fields\n  |\n3 -     let (first, rest @ ..) = t;\n3 +     let (first, ..) = t;\n\nerror: `..` patterns are not allowed here\n --> src/main.rs:3:24\n  |\n3 |     let (first, rest @ ..) = t;\n  |                        ^^\n  |\n  = note: only allowed in tuple, tuple struct, and slice patterns\n\nerror[E0308]: mismatched types\n --> src/main.rs:3:9\n  |\n3 |     let (first, rest @ ..) = t;\n  |         ^^^^^^^^^^^^^^^^^^   - this expression has type `({integer}, {integer}, {integer}, {integer})`\n  |         |\n  |         expected a tuple with 4 elements, found one with 2 elements\n  |\n  = note: expected tuple `({integer}, {integer}, {integer}, {integer})`\n             found tuple `(_, _)`\n",
+   "lang": "rust"
+  },
+  "unit.rs": {
+   "code": "use std::mem::size_of;\n\nfn log(msg: &str) {\n    println!(\"log: {msg}\");\n}\n\nfn check(ok: bool) -> Result<(), String> {\n    if ok {\n        Ok(())\n    } else {\n        Err(\"not ok\".to_string())\n    }\n}\n\nfn main() {\n    // A function with no `->` returns the empty tuple.\n    let nothing = log(\"hello\");\n    println!(\"nothing: {nothing:?}\");\n    println!(\"size_of::<()>(): {}\", size_of::<()>());\n\n    // `Result<(), E>`: \"it worked, there is nothing to return\".\n    println!(\"check(true): {:?}\", check(true));\n    println!(\"check(false): {:?}\", check(false));\n\n    // A one-slot tuple needs the comma.\n    let one = (5,);\n    println!(\"one: {one:?}, one.0: {}\", one.0);\n}\n",
+   "out": "log: hello\nnothing: ()\nsize_of::<()>(): 0\ncheck(true): Ok(())\ncheck(false): Err(\"not ok\")\none: (5,), one.0: 5\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "vs-struct.rs": {
+   "code": "// With a tuple, nothing says which slot is which.\nfn aspect(size: (u32, u32)) -> u32 {\n    size.0 / size.1\n}\n\n// A struct names them (the Structs lesson covers this).\nstruct Size {\n    width: u32,\n    height: u32,\n}\n\nfn aspect_named(size: Size) -> u32 {\n    size.width / size.height\n}\n\nfn main() {\n    // Width first, height second? The compiler cannot tell this is swapped.\n    println!(\"aspect((16, 9)): {}\", aspect((16, 9)));\n    println!(\"aspect((9, 16)): {}\", aspect((9, 16)));\n\n    let size = Size {\n        width: 16,\n        height: 9,\n    };\n    println!(\"aspect_named: {}\", aspect_named(size));\n}\n",
+   "out": "aspect((16, 9)): 1\naspect((9, 16)): 0\naspect_named: 1\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "arity.fail.py": {
+   "code": "a, b, c = (1, 2)\nprint(a, b, c)\n",
+   "out": "Traceback (most recent call last):\n  File \"main.py\", line 1, in <module>\n    a, b, c = (1, 2)\n    ^^^^^^^\nValueError: not enough values to unpack (expected 3, got 2)\n",
+   "lang": "python",
+   "exit": 1
+  },
+  "compare.ts": {
+   "code": "// A TypeScript tuple is an array, and < on arrays compares them as text.\nconst a: [number, number] = [1, 10];\nconst b: [number, number] = [1, 9];\nconsole.log(\"[1, 10] < [1, 9]:\", a < b);\n",
+   "out": "[1, 10] < [1, 9]: true\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "keep-whole.fail.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc pair() (int, int) { return 3, 4 }\n\nfunc main() {\n\tr := pair()\n\tfmt.Println(r)\n}\n",
+   "error": "# command-line-arguments\n./main.go:8:7: assignment mismatch: 1 variable but pair returns 2 values",
+   "lang": "go"
+  },
+  "out-param.c": {
+   "code": "#include <stdio.h>\n\n// Two results, both written through pointers.\nvoid divmod(int a, int b, int *q, int *r) {\n    *q = a / b;\n    *r = a % b;\n}\n\nint main(void) {\n    int q, r;\n    divmod(17, 5, &q, &r);\n    printf(\"q: %d, r: %d\\n\", q, r);\n    return 0;\n}\n",
+   "out": "q: 3, r: 2\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "pair.kt": {
+   "code": "data class Size(val width: Int, val height: Int)\n\nfun main() {\n    val p = Pair(3, 4)\n    println(\"p.first: ${p.first}, p.second: ${p.second}\")\n    val (a, b) = p\n    println(\"a: $a, b: $b\")\n    val t = Triple(1, \"two\", true)\n    println(\"t.third: ${t.third}\")\n    println(\"1 to 2: ${1 to 2}\")\n    val (w, h) = Size(16, 9)\n    println(\"data class: w: $w, h: $h\")\n    println(\"equal: ${Pair(3, 4) == p}, class: ${p.javaClass.name}\")\n    var x = 1\n    var y = 2\n    x = y.also { y = x }\n    println(\"swap: $x $y\")\n}\n",
+   "out": "p.first: 3, p.second: 4\na: 3, b: 4\nt.third: true\n1 to 2: (1, 2)\ndata class: w: 16, h: 9\nequal: true, class: kotlin.Pair\nswap: 2 1\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "record-pattern.java": {
+   "code": "public class Main {\n    record MinMax(int lo, int hi) {}\n\n    static MinMax minMax(int a, int b) {\n        return new MinMax(Math.min(a, b), Math.max(a, b));\n    }\n\n    public static void main(String[] args) {\n        MinMax r = minMax(9, 4);\n        // A record pattern unpacks in instanceof and switch, not in a plain declaration.\n        if (r instanceof MinMax(int lo, int hi)) {\n            System.out.println(\"lo: \" + lo + \", hi: \" + hi);\n        }\n        System.out.println(\"equals: \" + r.equals(new MinMax(4, 9)));\n        System.out.println(\"class: \" + r.getClass().getName());\n        int a = 1;\n        int b = 2;\n        int tmp = a;\n        a = b;\n        b = tmp;\n        System.out.println(\"swap: \" + a + \" \" + b);\n    }\n}\n",
+   "out": "lo: 4, hi: 9\nequals: true\nclass: Main$MinMax\nswap: 2 1\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "spread.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc add(a, b int) int { return a + b }\n\nfunc pair() (int, int) { return 3, 4 }\n\nfunc main() {\n\t// A call that returns exactly the parameters can be passed straight in.\n\tfmt.Println(\"add(pair()):\", add(pair()))\n}\n",
+   "out": "add(pair()): 7\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "tuples.cpp": {
+   "code": "#include <iostream>\n#include <tuple>\n\nstd::tuple<int, int> divmod(int a, int b) { return {a / b, a % b}; }\n\nint main() {\n    auto t = divmod(17, 5);\n    std::cout << \"get<0>: \" << std::get<0>(t) << \", get<1>: \" << std::get<1>(t) << \"\\n\";\n\n    auto [q, r] = t;\n    std::cout << \"binding: \" << q << \" \" << r << \"\\n\";\n\n    int a = 1, b = 2;\n    std::tie(a, b) = std::make_tuple(b, a);\n    std::cout << \"tie swap: \" << a << \" \" << b << \"\\n\";\n\n    std::cout << \"tuple(1, 9) < tuple(2, 0): \" << (std::make_tuple(1, 9) < std::make_tuple(2, 0)) << \"\\n\";\n}\n",
+   "out": "get<0>: 3, get<1>: 2\nbinding: 3 2\ntie swap: 2 1\ntuple(1, 9) < tuple(2, 0): 1\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "tuples.cs": {
+   "code": "(int Lo, int Hi) MinMax(int a, int b) => (Math.Min(a, b), Math.Max(a, b));\n\nvar r = MinMax(9, 4);\nConsole.WriteLine($\"names: {r.Lo} {r.Hi}, positions: {r.Item1} {r.Item2}\");\nConsole.WriteLine($\"equal: {r == (4, 9)}, struct: {r.GetType().IsValueType}\");\n\nvar (lo, hi) = r;\nConsole.WriteLine($\"deconstructed: {lo} {hi}\");\n\n(lo, hi) = (hi, lo);\nConsole.WriteLine($\"swap: {lo} {hi}\");\n\n// The usual way .NET returns a second value.\nif (int.TryParse(\"42\", out var n))\n{\n    Console.WriteLine($\"TryParse: {n}\");\n}\n",
+   "out": "names: 4 9, positions: 4 9\nequal: True, struct: True\ndeconstructed: 4 9\nswap: 9 4\nTryParse: 42\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "unpack.py": {
+   "code": "t = (1, 2, 3, 4)\nfirst, *rest = t\nprint(\"first:\", first, \"rest:\", rest, type(rest).__name__)\n\nprint(\"(1, 10) < (1, 9):\", (1, 10) < (1, 9))\n\ntry:\n    t[0] = 9\nexcept TypeError as e:\n    print(\"t[0] = 9:\", e)\n",
+   "out": "first: 1 rest: [2, 3, 4] list\n(1, 10) < (1, 9): False\nt[0] = 9: 'tuple' object does not support item assignment\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "unpack.ts": {
+   "code": "const t: [number, number, number, number] = [1, 2, 3, 4];\nconst [first, ...rest] = t;\nconsole.log(\"first:\", first, \"rest:\", rest);\n",
+   "out": "first: 1 rest: [ 2, 3, 4 ]\n",
+   "lang": "typescript",
+   "exit": 0
+  }
+ },
+ "exercises": {
+  "bounding-box": {
+   "starter": "/// The smallest rectangle that holds every point, as (bottom_left, top_right).\n/// `points` is never empty.\nfn bounding_box(points: &[(i32, i32)]) -> ((i32, i32), (i32, i32)) {\n    todo!(\"start both corners at points[0]; `for &(x, y) in points` unpacks each point\")\n}\n\nfn main() {\n    assert_eq!(bounding_box(&[(1, 2)]), ((1, 2), (1, 2)));\n    assert_eq!(bounding_box(&[(4, 4), (4, 4)]), ((4, 4), (4, 4)));\n    // Points on a line.\n    assert_eq!(bounding_box(&[(0, 5), (3, 5)]), ((0, 5), (3, 5)));\n    // The smallest x and the smallest y come from different points.\n    assert_eq!(\n        bounding_box(&[(3, -1), (-2, 5), (0, 0)]),\n        ((-2, -1), (3, 5))\n    );\n\n    // The caller unpacks a tuple of tuples in one step.\n    let ((x0, y0), (x1, y1)) = bounding_box(&[(0, 0), (6, 4)]);\n    assert_eq!((x1 - x0) * (y1 - y0), 24);\n\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "/// The smallest rectangle that holds every point, as (bottom_left, top_right).\n/// `points` is never empty.\nfn bounding_box(points: &[(i32, i32)]) -> ((i32, i32), (i32, i32)) {\n    let (mut x0, mut y0) = points[0];\n    let (mut x1, mut y1) = points[0];\n    for &(x, y) in points {\n        if x < x0 {\n            x0 = x;\n        }\n        if y < y0 {\n            y0 = y;\n        }\n        if x > x1 {\n            x1 = x;\n        }\n        if y > y1 {\n            y1 = y;\n        }\n    }\n    ((x0, y0), (x1, y1))\n}\n\nfn main() {\n    assert_eq!(bounding_box(&[(1, 2)]), ((1, 2), (1, 2)));\n    assert_eq!(bounding_box(&[(4, 4), (4, 4)]), ((4, 4), (4, 4)));\n    // Points on a line.\n    assert_eq!(bounding_box(&[(0, 5), (3, 5)]), ((0, 5), (3, 5)));\n    // The smallest x and the smallest y come from different points.\n    assert_eq!(\n        bounding_box(&[(3, -1), (-2, 5), (0, 0)]),\n        ((-2, -1), (3, 5))\n    );\n\n    // The caller unpacks a tuple of tuples in one step.\n    let ((x0, y0), (x1, y1)) = bounding_box(&[(0, 0), (6, 4)]);\n    assert_eq!((x1 - x0) * (y1 - y0), 24);\n\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "fib-pair": {
+   "starter": "/// Returns (F(n), F(n + 1)), where F(0) = 0 and F(1) = 1.\nfn fib_pair(n: u32) -> (u64, u64) {\n    todo!(\"start from (0, 1); update both numbers at once, n times\")\n}\n\nfn main() {\n    assert_eq!(fib_pair(0), (0, 1));\n    assert_eq!(fib_pair(1), (1, 1));\n    assert_eq!(fib_pair(10), (55, 89));\n    // F(93) is the largest Fibonacci number that fits in a u64.\n    assert_eq!(fib_pair(92), (7540113804746346429, 12200160415121876738));\n\n    // The caller unpacks the pair.\n    let (this, next) = fib_pair(20);\n    assert_eq!(next - this, 4181);\n\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "/// Returns (F(n), F(n + 1)), where F(0) = 0 and F(1) = 1.\nfn fib_pair(n: u32) -> (u64, u64) {\n    let (mut a, mut b) = (0, 1);\n    for _ in 0..n {\n        (a, b) = (b, a + b);\n    }\n    (a, b)\n}\n\nfn main() {\n    assert_eq!(fib_pair(0), (0, 1));\n    assert_eq!(fib_pair(1), (1, 1));\n    assert_eq!(fib_pair(10), (55, 89));\n    // F(93) is the largest Fibonacci number that fits in a u64.\n    assert_eq!(fib_pair(92), (7540113804746346429, 12200160415121876738));\n\n    // The caller unpacks the pair.\n    let (this, next) = fib_pair(20);\n    assert_eq!(next - this, 4181);\n\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}

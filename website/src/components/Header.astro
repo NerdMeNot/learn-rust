@@ -1,0 +1,48 @@
+---
+// The site's own header, not Starlight's, in the manner of the decoy, assay and catena
+// sites: the way home, the way to search, and the few controls that matter. No text links
+// (every one is in the sidebar a few inches below, and they cost the width a phone needs).
+//
+// Phone widths: the mark and wordmark, search (already just its icon there), and the
+// "coming from" chip. The theme control lives in the phone menu (ThemeSelect.astro).
+import Search from 'virtual:starlight/components/Search'
+// The two marks are inlined (about 4 KB each) rather than loaded as images: an <img> is
+// decoded again on every page change and the mark blinks; inline SVG is part of the page.
+import logoLight from '../assets/logo-light.svg?raw'
+import logoDark from '../assets/logo-dark.svg?raw'
+import ThemeToggle from './ThemeToggle.astro'
+import LanguagePicker from './LanguagePicker.astro'
+import GitHubLink from './GitHubLink.astro'
+---
+<div class="lr-header">
+  <a class="lr-brand" href="/" aria-label="Learn Rust, home">
+    <span class="lr-mark lr-mark-light" aria-hidden="true" set:html={logoLight} />
+    <span class="lr-mark lr-mark-dark" aria-hidden="true" set:html={logoDark} />
+    <span class="lr-wordmark">Learn <b>Rust</b></span>
+  </a>
+  <div class="lr-search"><Search {...Astro.props} /></div>
+  <div class="lr-controls">
+    <LanguagePicker />
+    <div class="lr-theme-desktop"><ThemeToggle group="lr-theme-header" /></div>
+    <GitHubLink />
+  </div>
+</div>
+<style>
+  .lr-header { display: flex; align-items: center; gap: 1rem; width: 100%; }
+  .lr-brand { display: flex; align-items: center; gap: 0.55rem; flex: none; text-decoration: none; color: var(--lr-ink); }
+  .lr-mark { display: block; width: 1.9rem; height: 1.9rem; flex: none; }
+  .lr-mark :global(svg) { display: block; width: 100%; height: 100%; }
+  :global(:root[data-theme='light']) .lr-mark-dark, :global(:root:not([data-theme='light'])) .lr-mark-light { display: none; }
+  .lr-wordmark { font: 600 1.4rem/1 'Fredoka', var(--lr-display); letter-spacing: 0.005em; white-space: nowrap; }
+  .lr-wordmark b { font-weight: 600; color: var(--sl-color-accent); }
+    /* `min-width: 0` so search gives way instead of pushing the controls off. */
+  .lr-search { flex: 1; min-width: 0; max-width: 22rem; }
+  .lr-controls { display: flex; align-items: center; gap: 0.6rem; margin-inline-start: auto; }
+  @media (max-width: 49.99rem) {
+    .lr-theme-desktop { display: none; }
+    .lr-header { gap: 0.5rem; }
+    .lr-wordmark { font-size: 1.2rem; }
+    .lr-mark { width: 1.7rem; height: 1.7rem; }
+  }
+  @media (max-width: 24rem) { .lr-wordmark { display: none; } }
+</style>

@@ -1,0 +1,241 @@
+{
+ "id": "hello-world",
+ "title": "Hello World",
+ "part": "basics",
+ "intro": "Our first program prints a line. Put this in src/main.rs and run cargo run.",
+ "coming_from": {
+  "go": "`fn main` in `src/main.rs` is your `func main` in `package main`, and `println!` is closest to `fmt.Printf` with the `\\n` added: the first argument is a format string, so `fmt.Println(\"x =\", x)` becomes `println!(\"x = {x}\")`. `cargo run` is `go run`, and `Cargo.toml` is where `go.mod`'s name and requirements go. The `!` means a macro, which lets the compiler check the format string while it builds.",
+  "kotlin": "`fn main` and `println!` read just like Kotlin's `fun main` and `println`. The `!` marks a macro, and `cargo run` builds a native executable: there is no JVM and no jar to run it.",
+  "python": "`println!` is your `print`, but its first argument is a format string, not a list of values: `print(\"x =\", x)` becomes `println!(\"x = {x}\")`. Code can't sit at the top level of the file: everything starts from `fn main`, with no `if __name__ == \"__main__\"`. `cargo run` compiles the program first, then runs it.",
+  "typescript": "`println!` is your `console.log`, but its first argument is a format string, not a list of values: `console.log(\"x =\", x)` becomes `println!(\"x = {x}\")`. The `!` marks a macro. There is no `node` or `tsc` step: `cargo run` compiles a native executable and runs that, and `Cargo.toml` plays the part of `package.json`.",
+  "java": "`fn main()` is your `public static void main(String[] args)`. Java 25 lets a single-file program drop the class and `static`, and Rust never had either: `main` is a free function and Rust has no classes. `println!` is a macro, not a method, so the compiler checks the format string and its arguments before the program runs.",
+  "csharp": "`fn main()` is your `static void Main`, written out: Rust has no top-level statements, so every statement must be inside a function. `println!` is `Console.WriteLine`, and the `!` marks a macro that checks the `{}` placeholders against the arguments at build time.",
+  "c": "`fn main()` is `int main(void)` and `println!` is `printf` with the `\\n` added for you. A wrong or missing argument for a `{}` is a compile error, where a wrong `printf` argument is undefined behaviour, and there is no `return 0` to write.",
+  "cpp": "`println!` plays the role of `std::cout << ... << \"\\n\"`, with `{}` placeholders like C++20 `std::format`. Like `std::format`, a bad format string or a missing argument fails to compile. `main` has no `return 0` and no `int`."
+ },
+ "notes": [
+  "`fn main()` is where the program starts. It takes no parameters and, by default, returns nothing. Nothing outside a function runs: a `println!` at the top of the file is an error.",
+  "`println!` writes a line to standard output; `eprintln!` writes to standard error. The `!` marks a macro: [Macros, attributes, naming](/learn/macros-attributes-naming/) has the format-string syntax.",
+  "`cargo new hello` makes a project, `cargo run` builds and runs it, and `cargo check` only looks for errors, which is faster. The executable lands in `target/debug/`."
+ ],
+ "gotcha": {
+  "title": "Giving main a return value",
+  "verdict": "rust-rule",
+  "looks_fine": "In C and C++, `main` returns an `int` and the program ends with `return 0`. C# lets `Main` return an `int` too.",
+  "rust_sees": "`main` may return `()`, a `Result`, or an `ExitCode`. An `i32` is none of those, so the compiler says `main` has an invalid return type and suggests `()` or a `Result`.",
+  "why": "Rust's `main` can return anything that implements the `Termination` trait, and that trait decides the exit code. `()` means success, so most programs return nothing. To pick a code, return `std::process::ExitCode`; to fail with a message, return a `Result` (the lesson shows both). A bare number is not accepted, so the code cannot come from a stray value.",
+  "langs": {
+   "go": {
+    "status": "refuses",
+    "says": "Go refuses: \"func main must have no arguments and no return values\". To set an exit code, call `os.Exit(n)`.",
+    "code": "package main\n\nimport \"fmt\"\n\nfunc main() int {\n\tfmt.Println(\"hello world\")\n\treturn 0\n}\n",
+    "error": "# command-line-arguments\n./main.go:5:6: func main must have no arguments and no return values"
+   },
+   "kotlin": {
+    "status": "crash",
+    "says": "Kotlin compiles `fun main(): Int`, but built with `kotlinc -include-runtime` the jar has no entry point and `java -jar` fails with \"no main manifest attribute\". Kotlin's `main` returns nothing; call `exitProcess(n)` to choose a code.",
+    "code": "fun main(): Int {\n    println(\"hello world\")\n    return 0\n}\n",
+    "out": "no main manifest attribute, in main.jar\n"
+   },
+   "python": {
+    "status": "none",
+    "says": "Python has no `main` to return from: the file runs from the top. The exit code comes from `sys.exit(n)`."
+   },
+   "typescript": {
+    "status": "none",
+    "says": "TypeScript has no `main` either. Set `process.exitCode = n`, or call `process.exit(n)`."
+   },
+   "java": {
+    "status": "crash",
+    "says": "`public static int main` compiles, then the JVM reports \"Main method not found in class Main\" and exits with 1. Java's `main` must return `void`; call `System.exit(n)`.",
+    "code": "public class Main {\n    public static int main(String[] args) {\n        System.out.println(\"hello world\");\n        return 0;\n    }\n}\n",
+    "out": "Error: Main method not found in class Main, please define the main method as:\n   public static void main(String[] args)\nor a JavaFX application class must extend javafx.application.Application\n"
+   },
+   "csharp": {
+    "status": "runs",
+    "says": "C# accepts this: a top-level `return 0;` (or an `int` return from `Main`) sets the exit code. Rust gets the same result with `ExitCode`.",
+    "code": "Console.WriteLine(\"hello world\");\nreturn 0;\n",
+    "out": "hello world\n"
+   },
+   "c": {
+    "status": "runs",
+    "says": "This is plain C: `main` returns an `int`, and 0 means success. In Rust the equivalent is `ExitCode`, and returning `()` already means 0.",
+    "code": "#include <stdio.h>\n\nint main(void) {\n    printf(\"hello world\\n\");\n    return 0;\n}\n",
+    "out": "hello world\n"
+   },
+   "cpp": {
+    "status": "runs",
+    "says": "This is plain C++: `main` returns an `int`, and `return 0` may be left out because the compiler adds it. Rust's equivalent is `ExitCode`.",
+    "code": "#include <iostream>\n\nint main() {\n    std::cout << \"hello world\\n\";\n    return 0;\n}\n",
+    "out": "hello world\n"
+   }
+  },
+  "code": "fn main() -> i32 {\n    println!(\"hello world\");\n    0\n}\n",
+  "error": "error[E0277]: `main` has invalid return type `i32`\n --> src/main.rs:1:14\n  |\n1 | fn main() -> i32 {\n  |              ^^^ `main` can only return types that implement `Termination`\n  |\n  = help: consider using `()`, or a `Result`\n",
+  "error_code": "E0277",
+  "fixed": {
+   "code": "fn main() {\n    println!(\"hello world\");\n}\n",
+   "out": "hello world\n"
+  }
+ },
+ "order": 7,
+ "program": {
+  "rust": {
+   "code": "fn main() {\n    println!(\"hello world\");\n}\n",
+   "out": "hello world\n"
+  },
+  "go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfmt.Println(\"hello world\")\n}\n",
+   "out": "hello world\n"
+  },
+  "kotlin": {
+   "code": "fun main() {\n    println(\"hello world\")\n}\n",
+   "out": "hello world\n"
+  },
+  "python": {
+   "code": "print(\"hello world\")\n",
+   "out": "hello world\n"
+  },
+  "typescript": {
+   "code": "console.log(\"hello world\");\n",
+   "out": "hello world\n"
+  },
+  "java": {
+   "code": "public class Main {\n    public static void main(String[] args) {\n        System.out.println(\"hello world\");\n    }\n}\n",
+   "out": "hello world\n"
+  },
+  "csharp": {
+   "code": "Console.WriteLine(\"hello world\");\n",
+   "out": "hello world\n"
+  },
+  "c": {
+   "code": "#include <stdio.h>\n\nint main(void) {\n    printf(\"hello world\\n\");\n    return 0;\n}\n",
+   "out": "hello world\n"
+  },
+  "cpp": {
+   "code": "#include <iostream>\n\nint main() {\n    std::cout << \"hello world\\n\";\n}\n",
+   "out": "hello world\n"
+  }
+ },
+ "faq": [],
+ "snippets": {
+  "exit-code.panic.rs": {
+   "code": "use std::process::ExitCode;\n\nfn main() -> ExitCode {\n    println!(\"checking...\");\n    ExitCode::from(3)\n}\n",
+   "out": "checking...\n",
+   "lang": "rust",
+   "exit": 3
+  },
+  "flush.rs": {
+   "code": "use std::io::Write;\nuse std::process::Command;\n\n// The program under test prints, then ends: with `abort()`, which skips normal cleanup,\n// except in the `normal-exit` mode, which simply returns.\nfn child(mode: &str) {\n    match mode {\n        \"line\" => println!(\"a line, with a newline\"),\n        \"partial\" => print!(\"a partial line\"),\n        \"normal-exit\" => return print!(\"a partial line, normal exit\"),\n        _ => {\n            print!(\"a partial line, flushed\");\n            std::io::stdout().flush().unwrap();\n        }\n    }\n    std::process::abort();\n}\n\nfn main() {\n    if let Some(mode) = std::env::args().nth(1) {\n        return child(&mode);\n    }\n    for mode in [\"line\", \"partial\", \"flushed\", \"normal-exit\"] {\n        let out = Command::new(std::env::current_exe().unwrap())\n            .arg(mode)\n            .output()\n            .unwrap();\n        println!(\n            \"{mode}: stdout is {:?}\",\n            String::from_utf8_lossy(&out.stdout)\n        );\n    }\n}\n",
+   "out": "line: stdout is \"a line, with a newline\\n\"\npartial: stdout is \"\"\nflushed: stdout is \"a partial line, flushed\"\nnormal-exit: stdout is \"a partial line, normal exit\"\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "main-result.panic.rs": {
+   "code": "use std::fs;\n\nfn main() -> Result<(), std::io::Error> {\n    println!(\"reading config\");\n    let text = fs::read_to_string(\"settings.toml\")?;\n    println!(\"{} bytes\", text.len());\n    Ok(())\n}\n",
+   "out": "reading config\nError: Os { code: 2, kind: NotFound, message: \"No such file or directory\" }\n",
+   "lang": "rust",
+   "exit": 1
+  },
+  "new-run.rs": {
+   "code": "use std::fs;\nuse std::path::Path;\nuse std::process::Command;\n\n// Runs `cargo <args>` in `dir` and prints what a terminal would show. Two things are\n// trimmed: the build time (\"in 0.06s\") and the folder the project lives in.\nfn cargo(dir: &Path, args: &[&str]) {\n    println!(\"$ cargo {}\", args.join(\" \"));\n    let out = Command::new(\"cargo\")\n        .args(args)\n        .current_dir(dir)\n        .output()\n        .unwrap();\n    let text =\n        String::from_utf8_lossy(&out.stderr).into_owned() + &String::from_utf8_lossy(&out.stdout);\n    for line in text.lines() {\n        let line = line.replace(dir.parent().unwrap().to_str().unwrap(), \"~/projects\");\n        match line.find(\" target(s) in \") {\n            Some(i) => println!(\"{} target(s)\", &line[..i]),\n            None => println!(\"{line}\"),\n        }\n    }\n}\n\n// The visible entries of a folder, folders marked with a slash.\nfn ls(dir: &Path) -> String {\n    let mut names: Vec<String> = fs::read_dir(dir)\n        .unwrap()\n        .map(|e| e.unwrap())\n        .filter(|e| !e.file_name().to_string_lossy().starts_with('.'))\n        .map(|e| {\n            let slash = if e.path().is_dir() { \"/\" } else { \"\" };\n            format!(\"{}{slash}\", e.file_name().to_string_lossy())\n        })\n        .collect();\n    names.sort();\n    names.join(\"  \")\n}\n\nfn main() {\n    let root = std::env::temp_dir().join(\"hw-new-run\");\n    let _ = fs::remove_dir_all(&root);\n    fs::create_dir_all(&root).unwrap();\n\n    cargo(&root, &[\"new\", \"hello\"]);\n    let dir = root.join(\"hello\");\n    println!(\"ls hello: {}\", ls(&dir));\n    println!(\n        \"--- Cargo.toml ---\\n{}\",\n        fs::read_to_string(dir.join(\"Cargo.toml\")).unwrap()\n    );\n    println!(\n        \"--- .gitignore ---\\n{}\",\n        fs::read_to_string(dir.join(\".gitignore\")).unwrap()\n    );\n    println!(\n        \"--- src/main.rs ---\\n{}\",\n        fs::read_to_string(dir.join(\"src/main.rs\")).unwrap()\n    );\n\n    cargo(&dir, &[\"run\"]);\n    println!(\"ls hello: {}\", ls(&dir));\n    println!(\"ls hello/target: {}\", ls(&dir.join(\"target\")));\n    println!(\"ls hello/target/debug: {}\", ls(&dir.join(\"target/debug\")));\n}\n",
+   "out": "$ cargo new hello\n    Creating binary (application) `hello` package\nnote: see more `Cargo.toml` keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html\nls hello: Cargo.toml  src/\n--- Cargo.toml ---\n[package]\nname = \"hello\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\n\n--- .gitignore ---\n/target\n\n--- src/main.rs ---\nfn main() {\n    println!(\"Hello, world!\");\n}\n\n$ cargo run\n   Compiling hello v0.1.0 (~/projects/hello)\n    Finished `dev` profile [unoptimized + debuginfo] target(s)\n     Running `target/debug/hello`\nHello, world!\nls hello: Cargo.lock  Cargo.toml  src/  target/\nls hello/target: CACHEDIR.TAG  debug/\nls hello/target/debug: build/  deps/  examples/  hello  hello.d  incremental/\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "panic-exit.panic.rs": {
+   "code": "fn main() {\n    let items: Vec<i32> = Vec::new();\n    println!(\"first: {}\", items[0]);\n}\n",
+   "out": "\nthread 'main' (1) panicked at src/main.rs:3:32:\nindex out of bounds: the len is 0 but the index is 0\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+   "lang": "rust",
+   "exit": 101
+  },
+  "process-exit.panic.rs": {
+   "code": "fn leave() {\n    println!(\"leaving from a nested call\");\n    std::process::exit(4);\n}\n\nfn main() {\n    leave();\n    println!(\"not printed\");\n}\n",
+   "out": "leaving from a nested call\n",
+   "lang": "rust",
+   "exit": 4
+  },
+  "profiles.rs": {
+   "code": "use std::fs;\nuse std::path::Path;\nuse std::process::Command;\n\n// Runs `cargo <args>` in `dir` and prints what a terminal would show. Two things are\n// trimmed: the build time (\"in 0.06s\") and the folder the project lives in.\nfn cargo(dir: &Path, args: &[&str]) {\n    println!(\"$ cargo {}\", args.join(\" \"));\n    let out = Command::new(\"cargo\")\n        .args(args)\n        .current_dir(dir)\n        .output()\n        .unwrap();\n    let text =\n        String::from_utf8_lossy(&out.stderr).into_owned() + &String::from_utf8_lossy(&out.stdout);\n    for line in text.lines() {\n        let line = line.replace(dir.parent().unwrap().to_str().unwrap(), \"~/projects\");\n        match line.find(\" target(s) in \") {\n            Some(i) => println!(\"{} target(s)\", &line[..i]),\n            None => println!(\"{line}\"),\n        }\n    }\n}\n\n// The visible entries of a folder, folders marked with a slash.\nfn ls(dir: &Path) -> String {\n    let mut names: Vec<String> = fs::read_dir(dir)\n        .unwrap()\n        .map(|e| e.unwrap())\n        .filter(|e| !e.file_name().to_string_lossy().starts_with('.'))\n        .map(|e| {\n            let slash = if e.path().is_dir() { \"/\" } else { \"\" };\n            format!(\"{}{slash}\", e.file_name().to_string_lossy())\n        })\n        .collect();\n    names.sort();\n    names.join(\"  \")\n}\n\nfn main() {\n    let root = std::env::temp_dir().join(\"hw-profiles\");\n    let _ = fs::remove_dir_all(&root);\n    fs::create_dir_all(&root).unwrap();\n    cargo(&root, &[\"new\", \"hello\", \"-q\"]);\n    let dir = root.join(\"hello\");\n    fs::write(\n        dir.join(\"src/main.rs\"),\n        \"fn main() {\\n    println!(\\\"debug_assertions: {}\\\", cfg!(debug_assertions));\\n}\\n\",\n    )\n    .unwrap();\n\n    cargo(&dir, &[\"check\"]);\n    println!(\"project after check: {}\", ls(&dir));\n    println!(\n        \"target/debug after check: {}\",\n        ls(&dir.join(\"target/debug\"))\n    );\n    cargo(&dir, &[\"run\"]);\n    cargo(&dir, &[\"run\", \"--release\"]);\n    println!(\"target: {}\", ls(&dir.join(\"target\")));\n    println!(\"target/release: {}\", ls(&dir.join(\"target/release\")));\n}\n",
+   "out": "$ cargo new hello -q\n$ cargo check\n    Checking hello v0.1.0 (~/projects/hello)\n    Finished `dev` profile [unoptimized + debuginfo] target(s)\nproject after check: Cargo.lock  Cargo.toml  src/  target/\ntarget/debug after check: build/  deps/  examples/  incremental/\n$ cargo run\n   Compiling hello v0.1.0 (~/projects/hello)\n    Finished `dev` profile [unoptimized + debuginfo] target(s)\n     Running `target/debug/hello`\ndebug_assertions: true\n$ cargo run --release\n   Compiling hello v0.1.0 (~/projects/hello)\n    Finished `release` profile [optimized] target(s)\n     Running `target/release/hello`\ndebug_assertions: false\ntarget: CACHEDIR.TAG  debug/  release/\ntarget/release: build/  deps/  examples/  hello  hello.d  incremental/\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "rustc.rs": {
+   "code": "use std::fs;\nuse std::process::Command;\n\n// Runs a command in `dir` and prints its exit code and the first lines it said.\nfn run(dir: &std::path::Path, program: &str, args: &[&str]) {\n    let out = Command::new(program)\n        .args(args)\n        .current_dir(dir)\n        .output()\n        .unwrap();\n    println!(\n        \"$ {program} {}  (exit code {:?})\",\n        args.join(\" \"),\n        out.status.code()\n    );\n    let text =\n        String::from_utf8_lossy(&out.stdout).into_owned() + &String::from_utf8_lossy(&out.stderr);\n    for line in text.lines().take(2) {\n        println!(\"{line}\");\n    }\n}\n\nfn main() {\n    let dir = std::env::temp_dir().join(\"hw-rustc\");\n    let _ = fs::remove_dir_all(&dir);\n    fs::create_dir_all(&dir).unwrap();\n    fs::write(\n        dir.join(\"main.rs\"),\n        \"fn main() {\\n    let async = 5;\\n    println!(\\\"async: {async}\\\");\\n}\\n\",\n    )\n    .unwrap();\n\n    // No Cargo.toml here, so nothing tells rustc which edition to use.\n    run(&dir, \"rustc\", &[\"main.rs\"]);\n    run(&dir, \"./main\", &[]);\n    run(&dir, \"rustc\", &[\"--edition\", \"2024\", \"main.rs\"]);\n}\n",
+   "out": "$ rustc main.rs  (exit code Some(0))\n$ ./main   (exit code Some(0))\nasync: 5\n$ rustc --edition 2024 main.rs  (exit code Some(1))\nerror: expected identifier, found keyword `async`\n --> main.rs:2:9\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "streams.rs": {
+   "code": "use std::process::Command;\n\n// The program under test: it prints on both streams.\nfn child() {\n    print!(\"loading... \");\n    println!(\"done\");\n    eprintln!(\"warning: cache is cold\");\n    let doubled = dbg!(21 * 2);\n    println!(\"doubled: {doubled}\");\n}\n\n// This same program runs itself with the argument `child` and keeps the two streams\n// apart, which a terminal does not: it shows them mixed.\nfn main() {\n    if std::env::args().nth(1).as_deref() == Some(\"child\") {\n        return child();\n    }\n    let out = Command::new(std::env::current_exe().unwrap())\n        .arg(\"child\")\n        .output()\n        .unwrap();\n    println!(\"exit code: {:?}\", out.status.code());\n    println!(\"--- stdout ---\\n{}\", String::from_utf8_lossy(&out.stdout));\n    println!(\"--- stderr ---\\n{}\", String::from_utf8_lossy(&out.stderr));\n}\n",
+   "out": "exit code: Some(0)\n--- stdout ---\nloading... done\ndoubled: 42\n\n--- stderr ---\nwarning: cache is cold\n[src/main.rs:8:19] 21 * 2 = 42\n\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "toplevel.fail.rs": {
+   "code": "println!(\"hello world\");\n\nfn main() {}\n",
+   "error": "error: macro expansion ignores `{` and any tokens following\n ::: src/main.rs:1:1\n  |\n1 | println!(\"hello world\");\n  | ----------------------- caused by the macro expansion here\n  |\n  = note: the usage of `println!` is likely invalid in item context\n  ... (notes pointing into the standard library trimmed)",
+   "lang": "rust"
+  },
+  "buffer.c": {
+   "code": "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n\n/* The program under test prints a line, then dies without a clean exit. */\nint main(int argc, char **argv) {\n    if (argc > 1 && strcmp(argv[1], \"child\") == 0) {\n        printf(\"a line, with a newline\\n\");\n        abort();\n    }\n    FILE *p = popen(\"./main child 2>/dev/null\", \"r\");\n    char buf[100] = \"\";\n    size_t n = fread(buf, 1, sizeof buf - 1, p);\n    buf[n] = '\\0';\n    pclose(p);\n    printf(\"stdout is a pipe: read %zu bytes: \\\"%s\\\"\\n\", n, buf);\n    return 0;\n}\n",
+   "out": "stdout is a pipe: read 0 bytes: \"\"\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "buffer.cpp": {
+   "code": "#include <cstdio>\n#include <cstdlib>\n#include <cstring>\n#include <iostream>\n\n// The program under test prints a line, then dies without a clean exit.\nint main(int argc, char **argv) {\n    if (argc > 1 && std::strcmp(argv[1], \"child\") == 0) {\n        std::cout << \"a line, with a newline\\n\";\n        std::abort();\n    }\n    FILE *p = popen(\"./main child 2>/dev/null\", \"r\");\n    char buf[100] = \"\";\n    size_t n = fread(buf, 1, sizeof buf - 1, p);\n    buf[n] = '\\0';\n    pclose(p);\n    std::cout << \"stdout is a pipe: read \" << n << \" bytes: \\\"\" << buf << \"\\\"\\n\";\n    return 0;\n}\n",
+   "out": "stdout is a pipe: read 0 bytes: \"\"\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "flush.java": {
+   "code": "import java.util.List;\n\npublic class Main {\n    public static void main(String[] args) throws Exception {\n        if (args.length > 0) {\n            System.out.print(\"a partial line\");\n            Runtime.getRuntime().halt(3); // an exit that skips normal cleanup\n        }\n        String java = ProcessHandle.current().info().command().orElseThrow();\n        String classpath = System.getProperty(\"java.class.path\");\n        Process child = new ProcessBuilder(List.of(java, \"-cp\", classpath, \"Main\", \"child\")).start();\n        String out = new String(child.getInputStream().readAllBytes());\n        child.waitFor();\n        System.out.println(\"stdout is a pipe: \" + out.length() + \" characters: \\\"\" + out + \"\\\"\");\n    }\n}\n",
+   "out": "stdout is a pipe: 14 characters: \"a partial line\"\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "gomod.go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"os\"\n\t\"os/exec\"\n\t\"path/filepath\"\n)\n\nfunc main() {\n\tdir, err := os.MkdirTemp(\"\", \"hello\")\n\tif err != nil {\n\t\tpanic(err)\n\t}\n\tcmd := exec.Command(\"go\", \"mod\", \"init\", \"hello\")\n\tcmd.Dir = dir\n\tif err := cmd.Run(); err != nil {\n\t\tpanic(err)\n\t}\n\ttext, err := os.ReadFile(filepath.Join(dir, \"go.mod\"))\n\tif err != nil {\n\t\tpanic(err)\n\t}\n\tfmt.Print(\"go.mod:\\n\", string(text))\n}\n",
+   "out": "go.mod:\nmodule hello\n\ngo 1.27.3\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "instance-main.java": {
+   "code": "void main() {\n    System.out.println(\"no class, no static\");\n}\n",
+   "out": "no class, no static\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "println.go": {
+   "code": "package main\n\nimport (\n\t\"bytes\"\n\t\"fmt\"\n\t\"os\"\n\t\"os/exec\"\n)\n\nfunc main() {\n\tif len(os.Args) > 1 {\n\t\tfmt.Println(\"x =\", 42)\n\t\tprintln(\"from println\")\n\t\treturn\n\t}\n\tvar stdout, stderr bytes.Buffer\n\tcmd := exec.Command(os.Args[0], \"child\")\n\tcmd.Stdout = &stdout\n\tcmd.Stderr = &stderr\n\tif err := cmd.Run(); err != nil {\n\t\tpanic(err)\n\t}\n\tfmt.Printf(\"stdout: %q\\nstderr: %q\\n\", stdout.String(), stderr.String())\n}\n",
+   "out": "stdout: \"x = 42\\n\"\nstderr: \"from println\\n\"\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "uncaught.crash.java": {
+   "code": "public class Main {\n    public static void main(String[] args) {\n        System.out.println(\"working\");\n        throw new IllegalStateException(\"config missing\");\n    }\n}\n",
+   "out": "working\nException in thread \"main\" java.lang.IllegalStateException: config missing\n\tat Main.main(Main.java:4)\n",
+   "lang": "java",
+   "exit": 1
+  }
+ },
+ "exercises": {
+  "exit-status": {
+   "starter": "use std::process::{Command, ExitCode};\n\n/// The work, already written: halves a number given as text.\nfn run(arg: Option<String>) -> Result<u32, String> {\n    match arg {\n        None => Err(String::from(\"missing number\")),\n        Some(text) => match text.parse::<u32>() {\n            Ok(n) => Ok(n / 2),\n            Err(_) => Err(format!(\"not a number: {text}\")),\n        },\n    }\n}\n\n/// Turns the outcome into what the process reports. `Ok(n)`: print `n` on standard\n/// output and succeed. `Err(message)`: print the message on standard error and exit with\n/// code 2, a usage error. (Returning the `Err` from `main` would give 1.)\nfn finish(outcome: Result<u32, String>) -> ExitCode {\n    todo!(\"match on the Result; ExitCode::SUCCESS and ExitCode::from(2) are the two codes\")\n}\n\n/// Runs this program again as `child <extra>` and returns its exit code, stdout, stderr.\nfn child(extra: &[&str]) -> (Option<i32>, String, String) {\n    let out = Command::new(std::env::current_exe().unwrap())\n        .arg(\"child\")\n        .args(extra)\n        .output()\n        .unwrap();\n    (\n        out.status.code(),\n        String::from_utf8_lossy(&out.stdout).into_owned(),\n        String::from_utf8_lossy(&out.stderr).into_owned(),\n    )\n}\n\nfn main() -> ExitCode {\n    let mut args = std::env::args().skip(1);\n    if args.next().as_deref() == Some(\"child\") {\n        return finish(run(args.next()));\n    }\n    assert_eq!(child(&[\"84\"]), (Some(0), \"42\\n\".into(), String::new()));\n    // The failing cases: code 2, and the message on standard error only.\n    assert_eq!(\n        child(&[\"abc\"]),\n        (Some(2), String::new(), \"not a number: abc\\n\".into())\n    );\n    assert_eq!(\n        child(&[]),\n        (Some(2), String::new(), \"missing number\\n\".into())\n    );\n\n    println!(\"all checks passed\");\n    ExitCode::SUCCESS\n}\n",
+   "solution": {
+    "code": "use std::process::{Command, ExitCode};\n\n/// The work, already written: halves a number given as text.\nfn run(arg: Option<String>) -> Result<u32, String> {\n    match arg {\n        None => Err(String::from(\"missing number\")),\n        Some(text) => match text.parse::<u32>() {\n            Ok(n) => Ok(n / 2),\n            Err(_) => Err(format!(\"not a number: {text}\")),\n        },\n    }\n}\n\n/// Turns the outcome into what the process reports. `Ok(n)`: print `n` on standard\n/// output and succeed. `Err(message)`: print the message on standard error and exit with\n/// code 2, a usage error. (Returning the `Err` from `main` would give 1.)\nfn finish(outcome: Result<u32, String>) -> ExitCode {\n    match outcome {\n        Ok(n) => {\n            println!(\"{n}\");\n            ExitCode::SUCCESS\n        }\n        Err(message) => {\n            eprintln!(\"{message}\");\n            ExitCode::from(2)\n        }\n    }\n}\n\n/// Runs this program again as `child <extra>` and returns its exit code, stdout, stderr.\nfn child(extra: &[&str]) -> (Option<i32>, String, String) {\n    let out = Command::new(std::env::current_exe().unwrap())\n        .arg(\"child\")\n        .args(extra)\n        .output()\n        .unwrap();\n    (\n        out.status.code(),\n        String::from_utf8_lossy(&out.stdout).into_owned(),\n        String::from_utf8_lossy(&out.stderr).into_owned(),\n    )\n}\n\nfn main() -> ExitCode {\n    let mut args = std::env::args().skip(1);\n    if args.next().as_deref() == Some(\"child\") {\n        return finish(run(args.next()));\n    }\n    assert_eq!(child(&[\"84\"]), (Some(0), \"42\\n\".into(), String::new()));\n    // The failing cases: code 2, and the message on standard error only.\n    assert_eq!(\n        child(&[\"abc\"]),\n        (Some(2), String::new(), \"not a number: abc\\n\".into())\n    );\n    assert_eq!(\n        child(&[]),\n        (Some(2), String::new(), \"missing number\\n\".into())\n    );\n\n    println!(\"all checks passed\");\n    ExitCode::SUCCESS\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "wrong-stream": {
+   "starter": "use std::process::Command;\n\n/// The program under test. Its answer belongs on standard output; its warning is a\n/// message about the run, not part of the answer, so it belongs on standard error.\nfn child() {\n    println!(\"warning: no config file, using defaults\");\n    let answer = 6 * 7;\n    println!(\"result: {answer}\");\n}\n\n// Runs `child` as a separate process so that the two streams can be told apart.\nfn main() {\n    if std::env::args().nth(1).as_deref() == Some(\"child\") {\n        return child();\n    }\n    let out = Command::new(std::env::current_exe().unwrap())\n        .arg(\"child\")\n        .output()\n        .unwrap();\n    assert_eq!(String::from_utf8_lossy(&out.stdout), \"result: 42\\n\");\n    assert_eq!(\n        String::from_utf8_lossy(&out.stderr),\n        \"warning: no config file, using defaults\\n\"\n    );\n\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "use std::process::Command;\n\n/// The program under test. Its answer belongs on standard output; its warning is a\n/// message about the run, not part of the answer, so it belongs on standard error.\nfn child() {\n    eprintln!(\"warning: no config file, using defaults\");\n    let answer = 6 * 7;\n    println!(\"result: {answer}\");\n}\n\n// Runs `child` as a separate process so that the two streams can be told apart.\nfn main() {\n    if std::env::args().nth(1).as_deref() == Some(\"child\") {\n        return child();\n    }\n    let out = Command::new(std::env::current_exe().unwrap())\n        .arg(\"child\")\n        .output()\n        .unwrap();\n    assert_eq!(String::from_utf8_lossy(&out.stdout), \"result: 42\\n\");\n    assert_eq!(\n        String::from_utf8_lossy(&out.stderr),\n        \"warning: no config file, using defaults\\n\"\n    );\n\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}

@@ -1,0 +1,132 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Printing and Formatting"
+part: "std"
+intro: >-
+  `println!`, `format!` and `write!` share one mini-language inside the `{}`: width,
+  alignment, precision, hex. Two traits decide how a value prints. `Display` (`{}`) is
+  for people, and you write it yourself. `Debug` (`{:?}`) is for developers, and
+  `#[derive(Debug)]` writes it for you.
+coming_from:
+  go: >-
+    `{}` uses `Display`, close to your `String()` method, and `{:?}` uses `Debug`, which
+    is what `%+v` prints for a struct with no `String()`. Go has one hook (`%v`, `%+v` and
+    `%s` all call `String()`); Rust has two traits, and `{:?}` never uses your `Display`.
+    Go prints any struct by default, but Rust only prints types that implement one of
+    these traits.
+  kotlin: >-
+    `Display` is your `toString()` override, and `#[derive(Debug)]` is like the
+    `toString` a data class writes for you. A Rust struct has neither until you add one,
+    and width and precision go inside `{}` (`{n:>6}`) instead of `"%6d".format(n)`.
+  python: >-
+    The mini-language is close to Python's: `{n:>6}`, `{n:06}`, `{n:#x}`, with differences
+    the page lists. `Display` is `__str__` and `Debug` is `__repr__`, but Rust has no
+    default for either, and `{:.2}` means two decimal places, like Python's `.2f`, not
+    two significant digits.
+  typescript: >-
+    `format!` is a template literal, and `{n:>6}` does what `padStart(6)` does.
+    `Display` is your `toString()`, and `{:?}` is like `console.log(obj)`, but only for
+    types with `#[derive(Debug)]`.
+  java: >-
+    `impl Display` is your `toString()`, and `#[derive(Debug)]` is like the `toString` a
+    `record` writes for you. The format string is checked at compile time, where
+    `String.format` checks it at run time.
+  csharp: >-
+    `impl Display` is overriding `ToString()`. `#[derive(Debug)]` is close to the
+    `ToString` a `record` gives you, but only for `{:?}`: `Display` has no default.
+    `{n:>6}` is `{n,6}`. C# checks the arguments of `$"..."` at compile time but not the
+    letter after the colon (`$"{n:Q}"` fails at run time); Rust checks both.
+  c: >-
+    `{:>6}`, `{:.2}` and `{:#x}` cover what `%6d`, `%.2f` and `%#x` do, but the argument
+    type comes from the value, so a letter that disagrees with the argument is a
+    compile error. `impl Display` is your
+    `money_str` function, and `derive(Debug)` writes the field-by-field print for you.
+  cpp: >-
+    The `{}` mini-language is almost the same as C++20 `std::format`, and `impl Display`
+    is a `std::formatter` specialization. The difference is `#[derive(Debug)]`: Rust
+    writes a developer print for your struct, where C++ makes you write `operator<<` by
+    hand.
+notes:
+  - >-
+    Inside `{}`: `>6` right-aligns in 6 columns, `<6` left, `^6` centers, `06` pads with
+    zeros, `.2` is decimal places, `x`/`b`/`e` are hex, binary and scientific, and `#`
+    adds the `0x`/`0b` prefix.
+  - >-
+    You can name variables right in the braces: `{n:>6}`, `{price}`. Expressions like
+    `{a + b}` aren't allowed; pass them as arguments instead.
+  - >-
+    Implementing `Display` decides how your type prints with `{}`, much like
+    `toString()` or `__str__` in other languages. You also get `.to_string()` for free
+    once `Display` exists. A width such as `{:>8}` reaches your `fmt` as data, and it is
+    ignored unless your code uses it (`f.pad`).
+  - >-
+    `write!(f, ...)` inside `fmt` writes into the `Formatter`, which wraps the real
+    destination. `Display` takes a `Formatter` instead of returning a `String`, so the text
+    can go into stdout, a `String` or a buffer you own.
+  - >-
+    `{:?}` works on anything that implements `Debug`, and nearly every std type does:
+    Vec, HashMap, Option, Result, tuples. Add `#[derive(Debug)]` to your own types and
+    you're done.
+  - >-
+    `eprintln!` works like `println!` but prints to stderr. `print!` and `eprint!` don't
+    add a newline.
+  - >-
+    The format string is checked at compile time. A wrong letter, a missing argument or
+    a typo like `{nmae}` is a compile error. Go builds the mistake and writes it into the output,
+    and C's `printf` has undefined behaviour; C++20 `std::format` checks at compile time too.
+gotcha:
+  title: "Printing your own struct with {}"
+  verdict: "rust-rule"
+  looks_fine: >-
+    `fmt.Println(p)` prints `{1 2}`. Every value in Go has a default print form, and so
+    does a Kotlin data class.
+  rust_sees: >-
+    `{}` uses the `Display` trait, and Rust never writes `Display` for you. It can't
+    guess whether a point should look like `(1, 2)`, `1,2` or `x=1 y=2`.
+  why: >-
+    Display is the version your users see, so Rust makes you write it. For a quick look
+    while debugging, `#[derive(Debug)]` plus `{:?}` gives you `Point { x: 1, y: 2 }`
+    with one line of code. For real output, implement `Display`, as in the fix.
+  langs:
+    go:
+      status: "runs"
+      says: >-
+        Go runs this and prints {1 2}. Every struct has a default format, so you never
+        have to write one.
+    kotlin:
+      status: "runs"
+      says: >-
+        Kotlin runs this and prints Point(x=1, y=2), because a data class writes
+        `toString` for you. A plain class would print something like `Point@1b6d3586`.
+    python:
+      status: "runs"
+      says: >-
+        Python prints Point(x=1, y=2), because `@dataclass` writes a `__repr__` for you.
+        A plain class without one prints something like `<__main__.Point object at
+        0x7f...>`.
+    typescript:
+      status: "runs"
+      says: >-
+        Prints Point { x: 1, y: 2 }. `console.log` shows any object's fields. Putting it
+        in a template literal instead, `${p}`, would print [object Object].
+    java:
+      status: "runs"
+      says: >-
+        A record writes `toString` for you, so this prints Point[x=1, y=2]. A plain
+        class would print something like Point@1b6d3586 unless you override `toString`.
+    csharp:
+      status: "runs"
+      says: >-
+        A record writes `ToString` for you, so this prints Point { X = 1, Y = 2 }. A
+        plain class would only print its type name, Point, unless you override
+        `ToString`.
+    c:
+      status: "wrong"
+      says: >-
+        gcc with `-Wall` (the runner's flag) warns that `%d` wants an int, not a `struct
+        Point`, but builds it anyway; with no flags it says nothing. It printed `1` here,
+        just the bits of `x`; passing the wrong type to printf is undefined behaviour.
+    cpp:
+      status: "refuses"
+      says: >-
+        C++ refuses this too: `std::format` needs a `std::formatter` for `Point`, and
+        g++ says it "must be specialized for each type being formatted".

@@ -1,0 +1,480 @@
+<p class="lr-layer">The toolkit</p>
+
+A **map** stores values under keys, so you can find a value by its key instead of by position. Rust's everyday map is `HashMap<K, V>`: `K` is the type of the keys and `V` the type of the values. It lives in `std::collections`, so you import it with `use std::collections::HashMap;`. A hash map turns each key into a number (its **hash**) and uses that number to decide where to store the pair, so a lookup does not have to scan every pair. Outputs on this page come from Linux on 64-bit ARM with Rust 1.99.1.
+
+## Creating, reading, changing
+
+<Snippet file="basics.rs" />
+
+| You want | Write | You get back | Example on `{"a": 1}` |
+|---|---|---|---|
+| Add or replace | `m.insert(k, v)` | `Option<V>`: the old value, if there was one | `insert("b", 2)` is `None`, `insert("a", 5)` is `Some(1)` |
+| Read | `m.get(&k)` | `Option<&V>` | `get("a")` is `Some(&1)`, `get("z")` is `None` |
+| Change in place | `m.get_mut(&k)` | `Option<&mut V>` | `get_mut("z")` is `None` |
+| Is it there? | `m.contains_key(&k)` | `bool` | `true` for `"a"`, `false` for `"z"` |
+| Take out | `m.remove(&k)` | `Option<V>`: the removed value | `Some(1)`, then `None` |
+| Read, or panic | `m[&k]` | the value | `m["a"]` is `1` |
+| Size | `m.len()`, `m.is_empty()` | `usize`, `bool` | |
+
+`HashMap::from([(k, v), …])` builds a map from an array of pairs, and `collect()` can build one from any iterator of pairs ([Iterators](/learn/iterators/)).
+
+The methods take the key by reference because they only need to look at it. A map with `String` keys can be searched with a `&str`: `stock.get("apple")` needs no `String` to be built first. `get` gives you a reference into the map. `.copied()` turns it into a plain number (for a `String` value, use `.cloned()` or keep the reference). The [Option lesson](/learn/option/) covers the rest of what you can do with the result.
+
+`m[&k]` is the short form of "get, and stop the program if it is missing":
+
+<Snippet file="index-panics.panic.rs" />
+
+Use it where a missing key would be a bug, the way you would use `unwrap`. For anything else use `get`.
+
+There is no `m[k] = v`. The `[]` read goes through a trait called `Index`; writing would need `IndexMut`, and `HashMap` does not have it, as the error says. Writing is `insert` or `entry`.
+
+<Snippet file="no-index-assign.fail.rs" />
+
+## The map owns its keys and values
+
+`insert` takes the key and the value **by value**, so both move into the map, as in the [ownership lesson](/learn/ownership/):
+
+<Snippet file="moved-key.fail.rs" />
+
+Insert `name.clone()` if you still need `name`. Values move in the same way, and `remove` moves them back out to you.
+
+The key type decides who owns the text. `HashMap<String, V>` owns its keys. `HashMap<&str, V>` stores references into text owned elsewhere:
+
+<Snippet file="key-kinds.rs" />
+
+Borrowed keys avoid copying the text, but the text must outlive the map. Here it does not:
+
+<Snippet file="outlives.fail.rs" />
+
+A good default: `String` keys for a map that is stored in a struct or returned from a function, `&str` keys for a short-lived tally over text you already hold. [Borrowing](/learn/borrowing/) explains the rule behind E0597.
+
+## Looping
+
+`for (key, value) in &map` visits every pair, giving a reference to each. `&mut map` makes the values changeable. The keys stay read-only, because changing a key would change its hash and the map could no longer find it (the docs call that a logic error). `keys()`, `values()` and `values_mut()` give just one side. They return **iterators**, a way of handing out items one at a time ([Iterators](/learn/iterators/)). `collect()` gathers an iterator's items into whatever collection you ask for; here it is a `Vec`, which `iterate.rs` then sorts.
+
+<Snippet file="iterate.rs" />
+
+You cannot add or remove pairs while a loop is walking the map, because the loop holds a reference into it:
+
+<Snippet file="insert-while-looping.fail.rs" />
+
+To remove pairs while walking, use `retain` (below). To add them, collect what you want to add first and insert after the loop.
+
+### The order is not yours to rely on
+
+The docs say a `HashMap` visits its pairs in "arbitrary order". This program builds four maps with exactly the same pairs, one after another in one run:
+
+<Snippet file="order.rs" />
+
+Each map loops in one order, here the same one every time you ask, but a second map with the same pairs can differ, and so can the next run. The docs do not promise either. They say the default hashing is chosen to resist HashDoS attacks (someone who picks your keys so that they all collide and slow the map down) and that it is **randomly seeded**; the seed is why. If the order matters, sort the keys, as `iterate.rs` did, or use a `BTreeMap` (below).
+
+## The `entry` API: look up once, then decide
+
+A very common job for a map is counting: "if the key is there, add one, otherwise start at one". With `get` and `insert` that is two lookups and an `if`. `map.entry(key)` looks the key up once and gives back an `Entry`: that key's slot, either occupied or vacant. A method on the `Entry` says what to do. The first three hand back a `&mut V`, a mutable reference to the value in the slot, which you change with `*` (`*count += 1` changes the number, not the reference). `and_modify` hands the entry back, so you can chain another method after it:
+
+| Method | Key missing | Key present |
+|---|---|---|
+| `or_insert(v)` | stores `v` | leaves the value alone |
+| `or_insert_with(f)` | calls `f`, stores the result | does not call `f` |
+| `or_default()` | stores the type's default (`0`, an empty `Vec`) | leaves the value alone |
+| `and_modify(f)` | does nothing | calls `f` on the value |
+
+The `|| { … }` and `|n| …` are **closures**: small functions written inline, without a name. Here they only mean "run this code, but only when needed". The [Closures lesson](/learn/closures/) covers them.
+
+<Snippet file="entry.rs" />
+
+The second `or_insert_with` printed nothing, because `"pear"` was already there. `or_insert(v)` is different: `v` is worked out before the call even when the key exists (the [Option lesson](/learn/option/) shows the same thing for `unwrap_or`), so use `or_insert_with` when building the value is costly.
+
+`entry` takes the key **by value**. With `String` keys you build the `String` before the lookup, even when the key turns out to be there. If that matters in a hot loop, try `get_mut` first and `entry` only when it returns `None`.
+
+Counting votes is `or_insert(0)` and add one. The loop variable `name` is a `&str` pointing at text in the program, so the keys are not `String`s:
+
+<Snippet file="tally.rs" />
+
+As in `iterate.rs`, `collect()` gathers the pairs into a `Vec` so they can be sorted.
+
+Grouping is `or_default()` on a map whose values are `Vec`s, then `push`. The [Vectors lesson](/learn/vectors/) covers `Vec`.
+
+<Snippet file="grouping.rs" />
+
+Write the map's type, as `grouping.rs` does. `or_default` needs it to know what "default" means, and without it the compiler cannot tell:
+
+<Snippet file="default-needs-type.fail.rs" />
+
+### Why not `get`, then `insert`?
+
+Because a reference into the map blocks every change to the map:
+
+<Snippet file="hold-and-insert.fail.rs" />
+
+That is E0502, the rule from [mutable borrows](/learn/mutable-borrows/): `apples` is a reference into the map's storage, and `insert` may have to grow that storage and move every pair to a new place. Copy the number out first (`.copied()`) and the borrow ends. The program below prints each time the capacity changes while pairs are inserted, and shows `with_capacity`, which reserves room up front:
+
+<Snippet file="capacity.rs" />
+
+The docs say a map can hold "at least" its capacity, so the exact numbers above are not something to rely on. `entry` avoids the problem because the lookup and the change happen in one step.
+
+## Keys need `Hash` and `Eq`
+
+To be a key, a type must be hashable (`Hash`) and comparable for equality (`Eq`), and two equal keys must give the same hash. These are **traits**: named sets of abilities a type can have. The [Traits lesson](/learn/traits/) explains them. Strings, integers, `char` and `bool` have them already. For your own struct or enum, add `#[derive(Hash, PartialEq, Eq)]`, which the [Structs lesson](/learn/structs/) introduced (`PartialEq` gives `==`, and `Eq` adds the promise that it is a full equality).
+
+Floats do not have them:
+
+<Snippet file="float-key.fail.rs" />
+
+Notice the error is on `insert`, not on `HashMap::new()`: you can name the type, but you cannot call `insert` on it. `Eq` signals that every value is equal to itself, and `NaN` breaks that:
+
+<Snippet file="nan.rs" />
+
+`NaN` ("not a number") is a float that is not equal to anything, itself included, so a map that used `==` could never find it again. If you need decimals as keys, store an integer (cents instead of dollars) or a string.
+
+Tuples, `Vec`s and `Option`s are keys when their parts are, and keys are compared by value:
+
+<Snippet file="key-types.rs" />
+
+A `Vec` can be a key because the map owns it and only lends it out as `&K`, so ordinary code cannot change it while it is inside.
+
+A map uses the key type's own `Hash` and `Eq`; there is no separate equality or comparator argument. For another idea of "equal" (say, ignoring case), wrap the key in your own struct and implement `Hash` and `Eq` for that. The map's third type parameter is the hasher, the algorithm that mixes the key's fields into a number (see "Going deeper").
+
+## `BTreeMap`: a map that stays sorted
+
+`BTreeMap<K, V>` has the same methods, but keeps its keys in order. Its keys need `Ord`, the ability to be put in order, in place of `Hash`. Like `HashMap`, it uses the key type's own ordering; to reverse it, wrap the key in [`std::cmp::Reverse`](https://doc.rust-lang.org/std/cmp/struct.Reverse.html) or your own struct.
+
+<Snippet file="btree.rs" />
+
+| | `HashMap` | `BTreeMap` |
+|---|---|---|
+| Key needs | `Hash` and `Eq` | `Ord` |
+| Loop order | arbitrary | sorted by key |
+| First, last, ranges | no | yes |
+| Cost of a lookup (std docs) | O(1), expected | O(log n) |
+| The docs suggest it for | "a map, with no extra functionality", a cache | a map sorted by key, ranges, the smallest or largest key |
+
+"Expected" is the docs' word: hashing is probabilistic, so a `HashMap` can in theory be much slower than O(1), though the docs call that very unlikely. The docs give no timings, and this page does not either. If speed matters, measure on your own data.
+
+**Which to pick?** If you need sorted output once, at the end, collect and sort (as `iterate.rs` does). Use a `BTreeMap` when you read in order again and again, when you need the smallest, largest or a range, or when you want the same output on every run (tests, logs). A `BTreeMap` loops in key order every time.
+
+A **set** keeps keys without values, for "have I seen this?" and for removing duplicates. `HashSet<T>` is, in the docs' words, "implemented as a `HashMap` where the value is `()`", and `BTreeSet<T>` is the sorted one. `insert` returns whether the value was new:
+
+<Snippet file="sets.rs" />
+
+## Housekeeping
+
+<Snippet file="housekeeping.rs" />
+
+`extend` inserts many pairs at once. `retain` keeps the pairs for which the closure says `true`. `drain` hands out every pair and leaves the map empty (and still holding its memory).
+
+## Your maps in Rust
+
+Pick your language in "Coming from" at the top of the page to see how the calls you already know map to Rust. Programs in other languages ran in the same Linux/ARM64 runner; where an order is a detail of one implementation, the text says so.
+
+<ForLang only="go">
+
+| You write in Go | In Rust |
+|---|---|
+| `m := map[string]int{}` | `let mut m = HashMap::new();` |
+| `map[string]int{"a": 1}` | `HashMap::from([("a", 1)])` |
+| `make(map[string]int, n)` | `HashMap::with_capacity(n)` |
+| `m[k] = v` | `m.insert(k, v)` |
+| `v := m[k]` (0 if missing) | `m.get(&k).copied().unwrap_or(0)`, or `m[&k]` to panic |
+| `v, ok := m[k]` | `if let Some(v) = m.get(&k) { … }` |
+| `_, ok := m[k]` | `m.contains_key(&k)` |
+| `delete(m, k)` | `m.remove(&k)`, which returns the old value |
+| `for k := range m { if bad(k) { delete(m, k) } }` | `m.retain(\|k, _\| !bad(k))` |
+| `m[k]++` | `*m.entry(k).or_insert(0) += 1` |
+| `m[k] = append(m[k], x)` | `m.entry(k).or_default().push(x)` (the map's type must be written) |
+| `map[string]struct{}` | `HashSet<String>` |
+| `for k, v := range m` | `for (k, v) in &m` |
+| `slices.Sorted(maps.Keys(m))` | collect and sort the keys, or use a `BTreeMap` |
+| `sync.Map`, or a map with a `sync.Mutex` | `Mutex<HashMap<K, V>>` ([Shared state](/learn/shared-state/)) |
+
+A Go struct whose fields are comparable is a key as is; a Rust struct needs the `derive` shown above. `std::collections` has no concurrent map like `sync.Map`; people use a lock, or a crate such as [`dashmap`](https://docs.rs/dashmap).
+
+Go's spec says the order of a range over a map "is not specified and is not guaranteed to be the same from one iteration to the next". Here is one map ranged over three times in one run:
+
+<Snippet file="order.go" />
+
+Each loop starts at a different point of the same cycle. Rust's order is unspecified too, but it works differently: a map is seeded when it is built, so it loops in one order while you hold it, and a second map with the same pairs may differ (`order.rs`).
+
+Go has another trap: a `nil` map reads as empty but panics on a write. Rust has no nil map. `HashMap::new()` is a usable empty map, and the docs say it "will not allocate until it is first inserted into".
+
+<Snippet file="nil-map.crash.go" />
+
+A map element is not addressable in Go, so you cannot update a field of a struct value in place. In Rust `get_mut` or `entry` gives you a mutable reference to the value:
+
+<Snippet file="unaddressable.fail.go" />
+
+Go lets a `float64` be a key. Because `NaN != NaN`, the second insert below adds a new entry, and the lookup finds nothing:
+
+<Snippet file="nan-key.go" />
+
+Rust refuses float keys for this reason (above). Finally, a Go map is not safe to write from two goroutines without a lock; the runtime notices some of those writes and stops the program:
+
+<Snippet file="concurrent.crash.go" />
+
+The same mistake in Rust does not build. This one uses scoped threads from the [Threads lesson](/learn/threads/), and the error is the mutable-borrow rule again. To share a map on purpose you put it behind a lock.
+
+<Snippet file="share-across-threads.fail.rs" />
+
+</ForLang>
+
+<ForLang only="java">
+
+| You write in Java | In Rust |
+|---|---|
+| `new HashMap<>()` | `HashMap::new()` |
+| `new HashMap<>(n)` | `HashMap::with_capacity(n)` |
+| `m.put(k, v)` | `m.insert(k, v)`; both return the old value, as `Option<V>` in Rust |
+| `m.get(k)` (null if missing) | `m.get(&k)`, an `Option<&V>` |
+| `m.getOrDefault(k, 0)` | `m.get(&k).copied().unwrap_or(0)` |
+| `m.containsKey(k)` | `m.contains_key(&k)` |
+| `m.putIfAbsent(k, v)` | `m.entry(k).or_insert(v)` |
+| `m.merge(k, 1, Integer::sum)` | `*m.entry(k).or_insert(0) += 1` |
+| `m.merge(k, v, f)` in general | `m.entry(k).and_modify(\|old\| *old = f(*old, v)).or_insert(v)` |
+| `m.computeIfAbsent(k, x -> build(x))` | `m.entry(k).or_insert_with(\|\| build(&k))` (Rust passes no key to the closure) |
+| `m.computeIfAbsent(k, x -> new ArrayList<>()).add(v)` | `m.entry(k).or_default().push(v)` |
+| `m.computeIfPresent(k, f)` | `m.entry(k).and_modify(f)` |
+| `m.putAll(other)` | `m.extend(other)` |
+| `m.entrySet().removeIf(e -> …)` | `m.retain(\|k, v\| …)` |
+| `for (var e : m.entrySet())` | `for (k, v) in &m` |
+| `m.remove(k)` | `m.remove(&k)` |
+| `LinkedHashMap` | not in `std::collections`; the [`indexmap`](https://docs.rs/indexmap) crate is an insertion-ordered map |
+| `TreeMap` | `BTreeMap` |
+| `treeMap.floorKey(k)`, `ceilingKey(k)`, `subMap(a, b)` | `range(..=k).next_back()`, `range(k..).next()`, `range(a..b)` (see `btree.rs`) |
+| `new TreeMap<>(comparator)` | no comparator argument: wrap the key in a struct with your `Ord`, or use `Reverse` |
+| `ConcurrentHashMap` | `Mutex<HashMap<K, V>>` or `RwLock<…>`, or the [`dashmap`](https://docs.rs/dashmap) crate |
+
+The `equals`/`hashCode` contract you know is the `Eq`/`Hash` contract: equal keys must have equal hashes. `#[derive(Hash, PartialEq, Eq)]` writes both together, so you cannot override one and forget the other. The docs for Java's `HashMap` say it "makes no guarantees as to the order of the map". Here are the three kinds side by side, plus the `null` key:
+
+<Snippet file="orders.java" />
+
+Run it again and you get the same `HashMap` order, because `String.hashCode` is fixed. That is the real contrast: code that quietly depends on Java's order keeps passing, where Rust's default order changes between runs and breaks such code at once.
+
+Rust has no `null`, so a "no key" key is an `Option<&str>` key (`None` is a key in `key-types.rs`). Floats work as Java keys, because `Double.equals` made its own choices:
+
+<Snippet file="nan-key.java" />
+
+Rust does not choose for you, so `f64` is not a key. To get Java's behaviour, key on the float's bits:
+
+<Snippet file="bits-key.rs" />
+
+Adding or removing keys while looping over a map usually throws `ConcurrentModificationException` in Java, and the docs call that check "best-effort", so some cases slip through. In Rust the loop in `insert-while-looping.fail.rs` above does not compile.
+
+<Snippet file="modify-while-iterating.crash.java" />
+
+</ForLang>
+
+<ForLang only="kotlin">
+
+| You write in Kotlin | In Rust |
+|---|---|
+| `mutableMapOf<K, V>()` | `HashMap::new()` (but see the order below) |
+| `m[k] = v` | `m.insert(k, v)` |
+| `m[k]` (an `Int?`) | `m.get(&k)`, an `Option<&V>` |
+| `m[k] ?: 0` | `m.get(&k).copied().unwrap_or(0)` |
+| `k in m` | `m.contains_key(&k)` |
+| `m[k] = (m[k] ?: 0) + 1` | `*m.entry(k).or_insert(0) += 1` |
+| `m.getOrPut(k) { mutableListOf() }.add(v)` | `m.entry(k).or_default().push(v)` |
+| `m.remove(k)` | `m.remove(&k)` |
+| `m.toSortedMap()` | `BTreeMap` |
+
+`mutableMapOf` is not a plain hash map. It keeps insertion order, and on the JVM it is a `LinkedHashMap`:
+
+<Snippet file="order.kt" />
+
+`hashMapOf` is the one that matches Rust's `HashMap`, apart from the order: Rust's changes from run to run. There is no insertion-ordered map in `std::collections`; the [`indexmap`](https://docs.rs/indexmap) crate is one.
+
+</ForLang>
+
+<ForLang only="csharp">
+
+| You write in C# | In Rust |
+|---|---|
+| `new Dictionary<K, V>()` | `HashMap::new()` |
+| `d[k] = v` | `m.insert(k, v)` |
+| `d.TryGetValue(k, out var v)` | `m.get(&k)`, an `Option<&V>` |
+| `d[k]` (throws if missing) | `m[&k]` (panics if missing, and read-only) |
+| `d.GetValueOrDefault(k)` | `m.get(&k).copied().unwrap_or_default()` |
+| `d.ContainsKey(k)` | `m.contains_key(&k)` |
+| `d[k] = d.GetValueOrDefault(k) + 1` | `*m.entry(k).or_insert(0) += 1` |
+| `TryGetValue`, create the list if missing, then `Add` | `m.entry(k).or_default().push(v)` |
+| `d.Remove(k)` | `m.remove(&k)` |
+| `SortedDictionary<K, V>` | `BTreeMap<K, V>` |
+
+The docs say the order a `Dictionary` enumerates in "is undefined". After a removal, this run's order is not insertion order:
+
+<Snippet file="dictionary.cs" />
+
+A null key is an exception in C#; in Rust `Option<K>` can be a key, so "no key" is just `None`.
+
+</ForLang>
+
+<ForLang only="python">
+
+| You write in Python | In Rust |
+|---|---|
+| `d = {}` | `let mut m = HashMap::new();` |
+| `d[k] = v` | `m.insert(k, v)` |
+| `d.get(k)` | `m.get(&k)`, an `Option<&V>` |
+| `d[k]` (KeyError) | `m[&k]` (panics) |
+| `d.get(k, 0)` | `m.get(&k).copied().unwrap_or(0)` |
+| `k in d` | `m.contains_key(&k)` |
+| `d.pop(k, None)` | `m.remove(&k)` |
+| `d.setdefault(k, []).append(x)`, `defaultdict(list)` | `m.entry(k).or_default().push(x)`; write the map's type, which plays the role of `defaultdict(list)` |
+| `Counter(words)` | a loop with `*m.entry(w).or_insert(0) += 1` |
+| `d.update(other)` | `m.extend(other)` |
+| `for k, v in d.items()` | `for (k, v) in &m` |
+| `sorted(d)` | sort the keys, or use a `BTreeMap` |
+| `__hash__` and `__eq__` | `Hash` and `Eq` |
+
+Python keeps insertion order, and has since 3.7 (the docs: "Dictionary order is guaranteed to be insertion order"). Rust's `HashMap` does not:
+
+<Snippet file="order.py" />
+
+You may know the other side of this already: a Python `set` of strings has no insertion order and changes order between runs, because string hashes are seeded randomly per process. A Rust `HashMap` behaves like that set:
+
+<Snippet file="set-order.py" />
+
+The three Python tools for filling a dict in a loop are all the `entry` API in Rust:
+
+<Snippet file="defaults.py" />
+
+Python needs hashable keys, and draws the line at mutable things: a list is not one, and the `TypeError` comes at run time. Rust asks for `Hash` and `Eq` at compile time, but draws the line elsewhere: a `Vec` is a fine key (above) and an `f64` is not. Python accepts a float key, NaN included:
+
+<Snippet file="float-key.py" />
+
+A list key fails:
+
+<Snippet file="unhashable.fail.py" />
+
+</ForLang>
+
+<ForLang only="typescript">
+
+| You write in TypeScript | In Rust |
+|---|---|
+| `new Map<K, V>()` | `HashMap::new()` |
+| `m.set(k, v)` | `m.insert(k, v)` |
+| `m.get(k)` (`V \| undefined`) | `m.get(&k)`, an `Option<&V>` |
+| `m.get(k) ?? 0` | `m.get(&k).copied().unwrap_or(0)` |
+| `m.has(k)` | `m.contains_key(&k)` |
+| `m.delete(k)` | `m.remove(&k)` |
+| `m.set(k, (m.get(k) ?? 0) + 1)` | `*m.entry(k).or_insert(0) += 1` |
+| `for (const [k, v] of m)` | `for (k, v) in &m` |
+| `m.size` | `m.len()` |
+
+A `Map` keeps insertion order, and a plain object does not always, because keys that look like array indexes come first. `Map` compares object keys by identity, where a Rust struct key is compared by value:
+
+<Snippet file="map-vs-object.ts" />
+
+Rust has no map literal; `HashMap::from([(k, v), …])` is the closest.
+
+</ForLang>
+
+<ForLang only="c">
+
+C's standard library has no map. POSIX (its optional XSI part) adds `hsearch`, one global table of a fixed size, with string keys and `void *` values. Most C programs use a library ([uthash](https://troydhanson.github.io/uthash/) and GLib's [`GHashTable`](https://docs.gtk.org/glib/struct.HashTable.html) are two well-known ones) or write a table by hand, as the program at the top of the page does.
+
+<Snippet file="hsearch.c" />
+
+| You write in C | In Rust |
+|---|---|
+| a table struct and a `get` that returns `NULL` | `HashMap<K, V>` and `get`, which returns `Option` |
+| `if (!get(...)) insert(...); *get(...) += 1;` | `*m.entry(k).or_insert(0) += 1` |
+| a key that must outlive the table | `&str` keys (the borrow checker checks) or `String` keys |
+| a sorted array and `bsearch` | `BTreeMap` |
+
+</ForLang>
+
+<ForLang only="cpp">
+
+| You write in C++ | In Rust |
+|---|---|
+| `std::unordered_map<K, V>` | `HashMap<K, V>` |
+| `m.reserve(n)` | `HashMap::with_capacity(n)` (counts elements, not buckets) |
+| `m[k] = v` | `m.insert(k, v)` |
+| `m.insert({k, v})` (does nothing if `k` is there) | `m.entry(k).or_insert(v)`; Rust's `insert` overwrites |
+| `m[k]` to read (inserts a default if missing) | `m.get(&k)`; `m[&k]` only reads |
+| `m.at(k)` (throws `std::out_of_range`) | `m[&k]` (panics) |
+| `m.contains(k)` (C++20) | `m.contains_key(&k)` |
+| `m[k]++` | `*m.entry(k).or_insert(0) += 1` |
+| `m.try_emplace(k, v)` | `m.entry(k).or_insert(v)`, or `or_insert_with` when building `v` is costly |
+| `m.insert_or_assign(k, v)` | `m.insert(k, v)` |
+| `m.erase(k)` | `m.remove(&k)` |
+| erase in a loop: `it = m.erase(it)` | `m.retain(\|k, v\| …)` |
+| `std::map<K, V>` | `BTreeMap<K, V>` |
+| `std::map<K, V, Compare>`, `KeyEqual` | none: the key type's `Ord` and `Eq` (wrap the key for another order) |
+| `std::hash<K>` | the key's `Hash` (what to feed in) plus the map's hasher (how to mix it) |
+| `unordered_map<string_view, V>` | `HashMap<&str, V>` |
+
+`operator[]` reads and inserts in one call; in Rust those are two separate calls, `get` and `entry`. This program reads a missing key with `[]`, then with `at`, and prints both containers in iteration order (libstdc++'s order for the unordered one):
+
+<Snippet file="subscript-inserts.cpp" />
+
+Run it again and the order is the same on the same build; Rust's default is not. A Rust `panic` is not an exception you catch in ordinary code (the [Errors lesson](/learn/errors/) covers what to use instead).
+
+Moving a key matches `m.emplace(std::move(name), 30)`, except that Rust turns any later use of `name` into the error shown above. `entry(k)` takes the key by value, where `try_emplace` copies or moves it only if it inserts.
+
+In C++, an insert that rehashes invalidates all iterators ([cppreference](https://en.cppreference.com/w/cpp/container/unordered_map/insert)), and Rust's `insert-while-looping.fail.rs` above is that bug found at compile time. References behave differently:
+
+<Snippet file="rehash-keeps-refs.cpp" />
+
+An `unordered_map` keeps each element where it is, so a reference survives growth. Rust's `HashMap` makes no such promise, so the borrow checker assumes the pairs can move, and it applies the same rule to every map, `BTreeMap` included.
+
+</ForLang>
+
+<p class="lr-layer">Going deeper</p>
+
+## What `insert` does to a key
+
+`ages.insert(name, 30)` moves the `String` into the map. The `String` value itself (24 bytes here) goes into the map's storage, and the text on the heap is not copied. This program checks it:
+
+<Snippet file="memory.rs" />
+
+<Memory
+  title={'let name = String::from("ana");   ages.insert(name, 30);'}
+  stack={[
+    { name: 'name', type: 'String', cells: ['ptr', 'len 3', 'cap 3'], gone: 'moved', note: 'its text now belongs to the map' },
+    { name: 'ages', type: 'HashMap<String, u32>', cells: ['hasher seed', 'table ptr, …'], to: 'table' },
+  ]}
+  heap={[
+    { id: 'table', label: "the map's storage (shown with one pair; a real table has more, mostly empty, slots)", cells: ['key: ptr, len 3, cap 3', 'value: 30'], links: [{ cell: 0, to: 'text' }] },
+    { id: 'text', label: '3 bytes of UTF-8', cells: ['a', 'n', 'a'] },
+  ]}
+  caption="A simplified picture. What the program above proves is that the key's text is at the same heap address as the original `name`'s text (it prints `true`), and that the hasher is 16 of the map's 48 bytes. How the standard library arranges the rest is private and can change."
+/>
+
+One stored pair is 32 bytes on this machine, but sizes are not promises.
+
+## Where the randomness comes from
+
+`HashMap` has a third type parameter, the **hasher**: the code that turns a key into a number. Rust splits what C++ keeps in one `std::hash`: the key's `Hash` says which fields to feed in, and the map's hasher says how to mix them. The default hasher is `RandomState`. Its docs say a particular `RandomState` "will create the same instances of `Hasher`", but two different ones "are unlikely to produce the same result for the same values". This program hashes with two of them:
+
+<Snippet file="hasher.rs" />
+
+Different seeds give different hashes, so the pairs land in different places and loop in a different order. The docs say the default algorithm is currently SipHash 1-3 "though this is subject to change", and that other hashers beat it for small keys such as integers but "will typically not protect against attacks such as HashDoS". You can swap the hasher in when you have measured a need, with [`HashMap::with_hasher`](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.with_hasher) and the [`BuildHasher`](https://doc.rust-lang.org/std/hash/trait.BuildHasher.html) trait. Most programs never do.
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Each exercise is a function with checks in `main`. Open it in the Playground, replace the `todo!()`, and run it until it prints `all checks passed`. A plain `for` loop is fine for all of them.
+
+<Exercise name="word-frequency" title="Word frequency">
+Count how many times each word appears in a text, ignoring case. `"The"` and `"the"` are one word, an empty text gives an empty map, and non-English letters must be lowercased too. Use `entry`.
+</Exercise>
+
+<Exercise name="group-by-initial" title="Group by first letter">
+Group a list of names by their first character, keeping the order inside each group. An empty name has no first character, so it must be skipped, and a name like `"élan"` must group under `'é'`, not under a byte.
+</Exercise>
+
+<Exercise name="invert" title="Invert a map">
+Turn a map of name to score into a `BTreeMap` of score to names, so the scores come out in increasing order. Two names can share a score, and a plain `insert` would silently drop one of them, so each score maps to a sorted list.
+</Exercise>
+
+## Read more
+
+- [`HashMap`](https://doc.rust-lang.org/std/collections/struct.HashMap.html), [`Entry`](https://doc.rust-lang.org/std/collections/hash_map/enum.Entry.html) and [`BTreeMap`](https://doc.rust-lang.org/std/collections/struct.BTreeMap.html) in the standard library docs. `HashMap` has the sections on hashing and on the `Eq` and `Hash` rule.
+- The [collections lesson](/learn/collections/) covers sets, sorted maps, queues and heaps.
+- [`HashSet`](https://doc.rust-lang.org/std/collections/struct.HashSet.html) and the [`std::collections`](https://doc.rust-lang.org/std/collections/index.html) overview: when to use which collection, and the cost table.
+- [The Rust Book: Storing Keys with Associated Values in Hash Maps](https://doc.rust-lang.org/book/ch08-03-hash-maps.html).
+- [Rust by Example: HashMap](https://doc.rust-lang.org/rust-by-example/std/hash.html).

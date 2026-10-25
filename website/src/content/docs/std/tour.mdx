@@ -1,0 +1,271 @@
+---
+title: "A tour of the standard library"
+description: "Rust's standard library, std, is smaller than Go's or Python's, on purpose. It has the building blocks every program needs: collections, files, text, threads, processes, time. Everything else comes from crates. This page shows what's in the box, what isn't, and how to read the docs without getting lost."
+---
+
+import { Files, GuideGotcha, Remember } from '../../../components/guide'
+import ForLang from '../../../components/lesson/ForLang.astro'
+
+Rust's standard library, `std`, is smaller than Go's or Python's, on purpose. It has the building blocks every program needs: collections, files, text, threads, processes, time. Everything else comes from crates. This page shows what's in the box, what isn't, and how to read the docs without getting lost.
+
+<Remember>As a rule of thumb: if it touches the operating system or nearly every program needs it, it's in `std`. If it might need to change, it's a crate.</Remember>
+
+## What's in the box
+
+These are the modules and types you'll actually use. Each row says what you reach for, what it is for, and which lesson teaches it. Under the table, the closest thing in your language: names only, I did not run those programs. I did check that each name that ships with a language exists, by compiling or importing it in the image behind this site (Go 1.27, Python 3.13, Node 24, Java 25, Kotlin 2.4, .NET 10, GCC 14).
+
+| You want to | Reach for | What it is for | Lesson |
+| --- | --- | --- | --- |
+| A list | `Vec` | an ordered list that grows | [Vectors](/learn/vectors/) |
+| Look up by key | `HashMap`, `BTreeMap` | a value found by key; `BTreeMap` keeps the keys sorted | [Maps](/learn/maps/) |
+| Sets, queues, heaps | `HashSet`, `VecDeque`, `BinaryHeap` | "have I seen it?", a queue with two ends, the biggest item next | [Collections](/learn/collections/) |
+| Files | `fs::read_to_string`, `File`, `BufReader` | read or write a whole file in one call, or line by line | [Files and I/O](/learn/files-io/) |
+| File paths | `Path`, `PathBuf` | join and take apart paths, which are not always valid text | [Paths](/learn/files-io/#paths) |
+| Text | `str` and `String` methods: `split`, `trim`, `parse` | cut text apart, search it, turn it into numbers | [Working with text](/learn/text/) |
+| Printing | `format!`, `write!`, `Display` | build text from values; make your own types printable | [Printing and formatting](/learn/formatting/) |
+| Arguments, environment | `env::args`, `env::var` | the command line as raw strings (flag parsing is a crate), and environment variables | [Arguments](/learn/env-time-process/#arguments) |
+| Other programs | `process::Command`, `ExitCode` | start a program, capture its output, read how it ended | [Running other programs](/learn/env-time-process/#running-other-programs) |
+| Time | `Instant`, `SystemTime`, `Duration` | measure elapsed time, read the wall clock, hold an amount of time | [Time](/learn/env-time-process/#time) |
+| Threads, locks, channels | `thread::spawn`, `Arc`, `Mutex`, `mpsc::channel` | run work in parallel, share data safely, pass messages | [Threads](/learn/threads/), [Shared state](/learn/shared-state/), [Channels](/learn/channels/) |
+| Sockets | `net::TcpListener`, `TcpStream`, `UdpSocket` | raw TCP and UDP | no lesson here: [`std::net`](https://doc.rust-lang.org/std/net/index.html) |
+| Loops over anything | `Iterator` | `map`, `filter`, `sum` on every collection | [Iterators](/learn/iterators/) |
+| Maybe a value, maybe an error | `Option`, `Result`, `?` | say "nothing" or "failed" in the type | [Option](/learn/option/), [Errors](/learn/errors/) |
+| Owning on the heap, sharing | `Box`, `Rc`, `RefCell` | one heap owner, shared ownership, checking borrows at run time | [Box, Rc and RefCell](/learn/smart-pointers/) |
+
+Rust's `std` has no calendar dates or time zones (see the next section). Two lessons go beyond the rows: [Strings](/learn/strings/) is what `String` and `&str` are, and [Macros, attributes and naming](/learn/macros-attributes-naming/#format-strings) owns the `{}` format-string syntax.
+
+<ForLang only="go">
+
+| Rust | Go |
+| --- | --- |
+| `Vec`, `HashMap`, sets, queues, heaps | slices, `map`, `container/list`, `container/heap`, `container/ring` |
+| Files, paths | `os.ReadFile`, `os.Open`, `bufio.Scanner`, `path/filepath` |
+| Text, printing | `strings`, `strconv`, `unicode`, `fmt` |
+| Arguments, other programs, time | `os.Args`, `os.Getenv`, `flag`, `os/exec`, `time` |
+| Threads, locks, channels, sockets | goroutines, `sync`, channels, `net` |
+| Loops, options and errors | `range`, `iter`, `slices`, `maps`; `v, ok :=`, `v, err :=` |
+| `Box`, `Rc` | pointers, with garbage collection |
+
+</ForLang>
+
+<ForLang only="python typescript">
+
+| Rust | Python | TypeScript (Node) |
+| --- | --- | --- |
+| `Vec`, `HashMap`, sets, queues, heaps | `list`, `dict`, `set`, `collections.deque`, `heapq` | `Array`, `Map`, `Set` (no queue or heap built in) |
+| Files, paths | `open`, `pathlib` | `node:fs`, `node:fs/promises`, `node:path` |
+| Text, printing | `str` methods, `int()`, f-strings, `format()` | string methods, `Number()`, template literals, `util.format` |
+| Arguments, other programs, time | `sys.argv`, `os.environ`, `argparse`, `subprocess`, `time`, `datetime` | `process.argv`, `process.env`, `util.parseArgs`, `node:child_process`, `performance.now()`, `Date` |
+| Threads, locks, channels, sockets | `threading`, `queue`, `asyncio`, `socket` | `node:worker_threads`, `Promise`, `node:net` |
+| Loops, options and errors | iterators and generators; `None`; exceptions | iterators and generators; `undefined`; exceptions |
+| `Box`, `Rc` | every object is already a reference; `weakref` | every object is already a reference |
+
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+
+| Rust | Java | Kotlin | C# |
+| --- | --- | --- | --- |
+| `Vec`, `HashMap`, sets, queues, heaps | `ArrayList`, `HashMap`, `TreeMap`, `HashSet`, `ArrayDeque`, `PriorityQueue` | `mutableListOf`, `sortedMapOf`, `ArrayDeque`, the JDK's `PriorityQueue` | `List<T>`, `Dictionary`, `SortedDictionary`, `HashSet<T>`, `Queue<T>`, `PriorityQueue<T, P>` |
+| Files, paths | `Files`, `Path`, `BufferedReader` | `File.readText`, `useLines` | `File.ReadAllText`, `StreamReader`, `Path` |
+| Text, printing | `String` methods, `Integer.parseInt`, `String.format` | `split`, `toInt()`, string templates | `string` methods, `int.Parse`, `$"..."` |
+| Arguments, other programs, time | `System.getenv`, `ProcessBuilder`, `Instant`, `Duration` | `System.getenv`, `ProcessBuilder`, `TimeSource.Monotonic`, `kotlin.time.Duration` | `Environment.GetEnvironmentVariable`, `Process.Start`, `Stopwatch`, `DateTime`, `TimeSpan` |
+| Threads, locks, channels, sockets | `Thread`, `ExecutorService`, `Socket` | `Thread`; coroutines are a library | `Thread`, `Task`, `Channel<T>`, `Socket` |
+| Loops, options and errors | `Stream`, `Optional`, exceptions | `Sequence`, `T?`, `Result` | LINQ, `T?`, exceptions |
+| `Box`, `Rc` | every object is already a reference | the same | the same |
+
+</ForLang>
+
+<ForLang only="c cpp">
+
+| Rust | C | C++ |
+| --- | --- | --- |
+| `Vec`, `HashMap`, sets, queues, heaps | arrays and `malloc`; ISO C has no map or queue | `vector`, `map`, `unordered_map`, `set`, `deque`, `priority_queue` |
+| Files, paths | `fopen`, `fgets`, `fread`; POSIX `basename` | `ifstream`, `std::filesystem::path` |
+| Text, printing | `<string.h>`, `strtol`, `strtok`, `printf` | `std::string`, `string_view`, `stoi`, `std::format` |
+| Arguments, other programs, time | `argv`, `getenv`, `system`, `popen`, `time`, POSIX `clock_gettime` | `argv`, `getenv`, `std::system`, `<chrono>` |
+| Threads, locks, channels, sockets | POSIX `pthread_create`, C11 `<threads.h>`, POSIX `socket` | `std::thread`, `std::mutex`, `std::async`; no sockets in the standard |
+| Loops, options and errors | plain loops; `NULL`, return codes, `errno` | ranges; `std::optional`, `std::expected` (C++23), exceptions |
+| `Box`, `Rc` | raw pointers | `unique_ptr`, `shared_ptr` |
+
+</ForLang>
+
+## What's not in the box (and where it lives)
+
+Go ships JSON, HTTP and regular expressions in its standard library, and so do several other languages. Rust ships none of them. A name without "(library)" or "(POSIX)" below ships with the language or its runtime, and I checked that it exists, as above. For the libraries I only checked that the name exists (on npm, PyPI, Maven Central, NuGet or the project's home page; [The crates everyone uses](/build/crates-map/#what-i-ran-and-what-i-only-checked) says how). I ran none of them.
+
+<ForLang only="go">
+
+| You want | Rust | Go |
+| --- | --- | --- |
+| JSON | crate: [serde_json](/build/serde/) | `encoding/json` |
+| HTTP server | crate: [axum](/build/axum/) | `net/http` |
+| HTTP client | crate: [reqwest](https://docs.rs/reqwest) | `net/http` |
+| Async runtime | crate: [tokio](/build/tokio/) | goroutines, run by Go's runtime |
+| Random numbers | crate: [rand](https://docs.rs/rand) | `math/rand/v2` |
+| Regular expressions | crate: [regex](https://docs.rs/regex) | `regexp` |
+| Dates, time zones | crate: [jiff](https://docs.rs/jiff) or [chrono](https://docs.rs/chrono) | `time` |
+| Command-line flags | crate: [clap](/build/clap/) | `flag` |
+| Logging | crate: [tracing](/build/tracing/) or [log](https://docs.rs/log) | `log`, `log/slog` |
+
+</ForLang>
+
+<ForLang only="python typescript">
+
+| You want | Rust | Python | TypeScript (Node) |
+| --- | --- | --- | --- |
+| JSON | crate: [serde_json](/build/serde/) | `json` | `JSON` |
+| HTTP server | crate: [axum](/build/axum/) | `http.server` (basic) | `node:http` |
+| HTTP client | crate: [reqwest](https://docs.rs/reqwest) | `urllib.request` | `fetch` |
+| Async runtime | crate: [tokio](/build/tokio/) | `asyncio` | promises and the event loop |
+| Random numbers | crate: [rand](https://docs.rs/rand) | `random` | `Math.random` |
+| Regular expressions | crate: [regex](https://docs.rs/regex) | `re` | `RegExp` |
+| Dates, time zones | crate: [jiff](https://docs.rs/jiff) or [chrono](https://docs.rs/chrono) | `datetime`, `zoneinfo` | `Date`, `Intl.DateTimeFormat` |
+| Command-line flags | crate: [clap](/build/clap/) | `argparse` | `util.parseArgs` |
+| Logging | crate: [tracing](/build/tracing/) or [log](https://docs.rs/log) | `logging` | `console` |
+
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+
+| You want | Rust | Java | Kotlin | C# |
+| --- | --- | --- | --- | --- |
+| JSON | crate: [serde_json](/build/serde/) | Jackson (library) | kotlinx.serialization (library) | `System.Text.Json` |
+| HTTP server | crate: [axum](/build/axum/) | `com.sun.net.httpserver` (basic) | the same JDK class, or Ktor (library) | `HttpListener`, ASP.NET Core |
+| HTTP client | crate: [reqwest](https://docs.rs/reqwest) | `java.net.http` | the same JDK package, or Ktor client (library) | `HttpClient` |
+| Async runtime | crate: [tokio](/build/tokio/) | virtual threads, `CompletableFuture` | kotlinx.coroutines (library) | `async` and `Task` |
+| Random numbers | crate: [rand](https://docs.rs/rand) | `java.util.Random` | `kotlin.random.Random` | `System.Random` |
+| Regular expressions | crate: [regex](https://docs.rs/regex) | `java.util.regex` | `Regex` | `Regex` |
+| Dates, time zones | crate: [jiff](https://docs.rs/jiff) or [chrono](https://docs.rs/chrono) | `java.time` | `java.time` from the JDK | `DateTime`, `TimeZoneInfo` |
+| Command-line flags | crate: [clap](/build/clap/) | picocli (library) | Clikt (library) | System.CommandLine (library) |
+| Logging | crate: [tracing](/build/tracing/) or [log](https://docs.rs/log) | `java.util.logging` | the JDK's `java.util.logging` | Microsoft.Extensions.Logging (library) |
+
+</ForLang>
+
+<ForLang only="c cpp">
+
+| You want | Rust | C | C++ |
+| --- | --- | --- | --- |
+| JSON | crate: [serde_json](/build/serde/) | cJSON, json-c (libraries) | nlohmann/json (library) |
+| HTTP server | crate: [axum](/build/axum/) | libmicrohttpd (library) | Boost.Beast (library) |
+| HTTP client | crate: [reqwest](https://docs.rs/reqwest) | libcurl (library) | libcurl (library) |
+| Async runtime | crate: [tokio](/build/tokio/) | libuv (library) | coroutines are in the language; the scheduler comes from a library such as Asio |
+| Random numbers | crate: [rand](https://docs.rs/rand) | `rand` (basic) | `<random>` |
+| Regular expressions | crate: [regex](https://docs.rs/regex) | `regcomp` (POSIX) | `<regex>` |
+| Dates, time zones | crate: [jiff](https://docs.rs/jiff) or [chrono](https://docs.rs/chrono) | `<time.h>` (basic) | `<chrono>` (C++20 adds time zones) |
+| Command-line flags | crate: [clap](/build/clap/) | `getopt` (POSIX) | CLI11 (library) |
+| Logging | crate: [tracing](/build/tracing/) or [log](https://docs.rs/log) | `syslog` (POSIX) | spdlog (library) |
+
+</ForLang>
+
+Every crate on the Rust side is one `cargo add` away. See [Using other people's code](/start/using-crates/), and [The crates everyone uses](/build/crates-map/) for the full list. Rust's own `std` does have a `random` module, but the 1.99.1 docs mark it nightly-only, so `rand` it is.
+
+### Why is it so small?
+
+Other languages made different bets. Anything stabilised in Rust's `std` has to keep working: the project's [2014 post on how Rust ships](https://blog.rust-lang.org/2014/10/30/Stability/) describes stable APIs as "a commitment to avoid breaking code that uses those features or APIs". That is fine for `Vec`, and costly for things that are still changing.
+
+The `rand` crate has had four incompatible series in a row (0.7, 0.8, 0.9 and 0.10; in `0.x` versions Cargo treats each minor number as a breaking change). Async runtimes compete on different trade-offs. HTTP went from 1.1 to 2 to 3. Kept in crates, each can ship a better version without breaking anyone, and you choose when to upgrade.
+
+The cost is that you pick crates yourself. [The crates everyone uses](/build/crates-map/) lists the usual choice for each job, with the caveat that "usual" is a judgement. `regex` is a good example of the line: it is maintained by [the Rust project's regex team](https://github.com/rust-lang/regex) (a subteam of libs, per [rust-lang/team](https://github.com/rust-lang/team/blob/main/teams/regex.toml)), but it is a separate crate, not part of `std`.
+
+## What you get without importing anything
+
+Every Rust file starts with a short list of names already imported, called the **prelude**. That's why `Vec`, `String`, `Option`, `Some`, `None`, `Result`, `Ok`, `Err` and `Box` just work, along with traits like `Clone`, `Iterator` and `ToString`. Everything else needs a `use` line, including `HashMap`. The [prelude docs](https://doc.rust-lang.org/std/prelude/index.html) say it is "kept as small as possible".
+
+That catches people out: `Vec` is right there, but its sibling `HashMap` isn't. See the gotcha at the bottom.
+
+## Reading a function signature
+
+The docs at [doc.rust-lang.org/std](https://doc.rust-lang.org/std/) are the reference, and the signatures look dense at first. Once you can read them, a signature tells you a lot, including things that other languages' docs say only in prose. If the `rust-docs` component is installed (the default rustup profile includes it), `rustup doc --std` opens an offline copy.
+
+Here are three real signatures from `std` (as the 1.99.1 docs show them), and what each piece means:
+
+<Files guide="std-tour" dir="std-docs" files={["from the std docs"]} />
+
+| When you see | It means |
+| --- | --- |
+| `&self` | Only reads the value. You can call it any number of times, and others can read at the same time. |
+| `&mut self` | Changes the value. Nobody else can look while it runs. |
+| `self` | Takes the value. You can't use it afterwards (unless it's `Copy`). |
+| `-> Option<T>` | Might give back nothing. You must handle `None`. |
+| `-> Result<T, E>` or `io::Result<T>` | Might fail. Use `?`, `match` or `unwrap_or`. |
+| `-> &str` from `&self` | A view into the input, not a copy. It can't outlive the input. |
+| `-> String`, `-> Vec<T>` | New memory you own. |
+| `<P: AsRef<Path>>` or `impl AsRef<Path>` | Accepts any type that can be looked at as a path: `&str`, `String`, `PathBuf`. |
+| `where K: Borrow<Q>` | A map with `String` keys can be searched with a plain `&str`. No temporary String needed. |
+| `Q: ... + ?Sized` | Also works for types like `str` whose size isn't known. Safe to ignore while reading. |
+
+The closest thing in your language, for the first seven rows:
+
+<ForLang only="go">
+
+`&self` is a method that only reads; `&mut self` is a pointer-receiver method that writes; `self` has no equivalent: Go copies a value receiver, and the caller keeps its own copy. `Option` and `Result` are `v, ok :=` and `v, err :=`. A `&str` view is a substring sharing memory, and `String` is a fresh allocation.
+
+</ForLang>
+
+<ForLang only="python typescript">
+
+There is no marker for a method that only reads, or one that takes the value away: a method of a mutable object can change it. `Option` is `None` or `undefined` (a type checker can make you handle it; the runtime does not), and `Result` is an exception.
+
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+
+None of the three marks a method as "only reads" the way `&self` does (C# has `readonly` members, on structs only), and none has a `self` that takes the value away. `Option` is `Optional<T>` (Java) or a nullable `T?` (Kotlin, C#), and `Result` is an exception (Kotlin also has a `Result` type).
+
+</ForLang>
+
+<ForLang only="c cpp">
+
+`&self` and `&mut self` are a `const` and a non-`const` method in C++, or `const T *` and `T *` in C. `self` is passing by value or `std::move`. `Option` is `std::optional` and `Result` is a return code, or `std::expected` in C++23. A `&str` view is `std::string_view`, or a pointer into the input.
+
+</ForLang>
+
+Here are the three in action: one function taking three kinds of path, a borrowed `trim`, and a `String`-keyed map searched with `&str`.
+
+<Files guide="std-tour" dir="rust" files={["src/main.rs"]} run="run" />
+
+## Traits do half the work
+
+On a type's docs page, scroll past its own methods to **Trait Implementations**. That's where many of the useful methods are hiding. `File` has very few methods of its own. Reading and writing come from `impl Read for File` and `impl Write for File`.
+
+The catch: a trait's methods only work after you import the trait. The [Files and I/O](/learn/files-io/) gotcha is exactly this. These are the traits you'll meet constantly:
+
+| Trait | What it gives you | Need a `use`? |
+| --- | --- | --- |
+| `Display`, `Debug` | `{}` and `{:?}` printing, and `.to_string()` | only to implement them (`use std::fmt`) |
+| `Iterator` | `map`, `filter`, `sum`, `collect` and dozens more | no, it's in the prelude |
+| `Read`, `Write`, `BufRead` | `read_to_string`, `write_all`, `writeln!`, `lines()` | yes: `use std::io::{Read, Write, BufRead}` |
+| `FromStr` | `"42".parse::<u32>()` | no for `parse`; yes for `i32::from_str("42")` (`use std::str::FromStr`) |
+| `From`, `Into` | conversions, and how `?` converts one error type into another | no |
+| `Default` | `Type::default()`, an "empty" value | no |
+| `Clone`, `Copy` | `.clone()`, and copy-instead-of-move for small types | no |
+| `PartialEq`, `Eq`, `Ord` | `==`, sorting | no, usually derived |
+| `Hash` | using a type as a `HashMap` key | `#[derive(Hash)]` needs no import; writing `T: Hash` as a bound does (`use std::hash::Hash`) |
+
+:::tip[We've got you]
+You don't have to memorise any of this. When a method is missing because its trait isn't imported, the compiler error names the exact `use` line to add, and rust-analyzer can add it for you. The tables are here so the error makes sense when you see it.
+:::
+
+## Three layers: core, alloc, std
+
+`std` is actually built from two smaller libraries. `core` is everything that needs no memory allocation and no operating system: `Option`, `Result`, iterators, numbers. `alloc` adds heap types: `Box`, `Vec`, `String`. `std` adds the operating system: files, threads, networking, `Instant` and `SystemTime`. `HashMap` is in `std` too.
+
+You'll only notice this when you write for a microcontroller or a kernel, where you say `#![no_std]` and keep just `core` (and maybe `alloc`). The same `Option` and iterators work there.
+
+## The lessons in this track
+
+- [Files and I/O](/learn/files-io/): whole files, line by line, paths, and errors you can inspect.
+- [Collections](/learn/collections/): `HashSet`, `BTreeMap`, `VecDeque` and `BinaryHeap`, and when to use which.
+- [Working with text](/learn/text/): splitting, trimming and parsing, and why case and Unicode comparisons are harder than they look.
+- [Arguments, environment, time and processes](/learn/env-time-process/): talking to the world outside your program.
+- [Printing and formatting](/learn/formatting/): what is behind the `{}`: `Display` versus `Debug`, the `Formatter`, and why width is your job. The format-string syntax itself is in [Macros, attributes and naming](/learn/macros-attributes-naming/#format-strings).
+
+## Read more
+
+- [The `std` docs](https://doc.rust-lang.org/std/) and the [list of all items](https://doc.rust-lang.org/std/all.html), for checking whether `std` has something before you look for a crate.
+- [`std::prelude`](https://doc.rust-lang.org/std/prelude/index.html): what is imported for you.
+- [Rust by Example: std library types](https://doc.rust-lang.org/rust-by-example/std.html).
+- [The Rust Book, chapter 7.4](https://doc.rust-lang.org/book/ch07-04-bringing-paths-into-scope-with-the-use-keyword.html): the `use` keyword.
+
+<GuideGotcha guide="std-tour" />

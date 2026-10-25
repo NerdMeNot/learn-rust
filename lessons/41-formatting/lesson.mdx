@@ -1,0 +1,285 @@
+<p class="lr-layer">The toolkit</p>
+
+[Macros, attributes and naming](/learn/macros-attributes-naming/#format-strings) owns the format-string syntax: `{}`, `{:?}`, `{0}`, `{name}`, width, precision and `{{`. This page covers what is behind it: which trait each letter calls, how to write those traits for your own types, and where the text goes. Outputs come from Linux on 64-bit ARM with Rust 1.99.1, a debug build.
+
+## One trait for each letter
+
+Every `{...}` calls a method of a trait on the value, and the letter after the colon picks the trait. A type prints that way only if it implements the trait.
+
+| You write | Trait | Meant for |
+|---|---|---|
+| `{}` | `Display` | people |
+| `{:?}` `{:#?}` | `Debug` | programmers; `#` spreads it over lines |
+| `{:x}` `{:X}` | `LowerHex` `UpperHex` | hexadecimal |
+| `{:o}` `{:b}` | `Octal` `Binary` | base 8, base 2 |
+| `{:e}` `{:E}` | `LowerExp` `UpperExp` | scientific notation |
+| `{:p}` | `Pointer` | an address |
+
+<Snippet file="traits.rs" />
+
+The program prints only whether the `{:p}` text starts with `0x`, because the address is different on every run. `{:x?}` is `Debug` with integers in hex. An integer has every trait in the table except `Pointer`, which is for references and pointers. The letters are a closed set: `{:K}` is an unknown format trait, and `{:p}` on an integer is E0277:
+
+<Snippet file="unknown-letter.fail.rs" />
+
+## Writing `Display`
+
+`impl Display` is one method, `fmt`, which gets a `&mut Formatter` (named `f`): the destination for the text, plus the **spec**, everything after the colon (`>8`, `.2`, `#x`). It also gives you `to_string()`, through a blanket impl ([Common traits](/learn/common-traits/#the-rules-between-traits)); the [`ToString` docs](https://doc.rust-lang.org/std/string/trait.ToString.html) say to implement `Display`, not `ToString`. What you can do with the `Formatter`:
+
+| Call | What it does |
+|---|---|
+| `f.write_str("text")` | writes the text exactly as given |
+| `write!(f, "{}-{}", a, b)` | formats, then writes; returns `fmt::Result`, so end with it or add `?` |
+| `f.pad("text")` | writes text after applying width, fill, alignment and precision |
+| `Display::fmt(&self.0, f)` | lets another value print itself, with the caller's spec |
+| `f.width()` `f.precision()` `f.fill()` `f.align()` `f.alternate()` `f.sign_plus()` `f.sign_aware_zero_pad()` | read the spec |
+| `f.debug_struct("Name")`, `debug_tuple`, `debug_list`, `debug_map`, `debug_set` | builders for `Debug` |
+
+Each trait in the first table has its own `fmt`. This `LowerHex` reads the `#` flag:
+
+<Snippet file="custom-hex.rs" />
+
+To see the spec your code receives, print it:
+
+<Snippet file="spec-dump.rs" />
+
+`{:*^+#012.3}` is fill `*`, centered, a sign, `#`, a `0` flag, width 12, precision 3. Nothing applies any of it: it is data, and each `fmt` decides what it means.
+
+## Width is your job
+
+[Common traits](/learn/common-traits/#printing-debug-and-display) showed the surprise; this is the cause. Padding is not applied to the text your `fmt` writes. `write!(f, "#{}", self.0)` starts a new format with an empty spec, so the caller's `{:>8}` is in `f` and nothing reads it. Three types, three behaviours:
+
+<Snippet file="width-ignored.rs" />
+
+`Plain` ignores the width. `Padded` uses `f.pad`, which applies width, fill and alignment, and also **precision**: `{:.2}` cuts the text to two characters, which is why `#12345` became `#1`. `Forward` hands the spec to its `f64`, so `8.2` and `+.1` work for free. Use `pad` for text-like output and forwarding for a wrapper around a number. To pad several pieces as a whole, build the `String` first and then call `pad`.
+
+`Debug` has the same rule. The [std::fmt docs](https://doc.rust-lang.org/std/fmt/index.html) say "alignment might not be implemented by some types. In particular, it is not generally implemented for the Debug trait", and suggest formatting first, then padding the result:
+
+<Snippet file="debug-pad.rs" />
+
+The derived `Debug` for `Some(1)` passes the spec to the `1` inside, so `{:5?}` pads the number and not the whole value.
+
+## A list: pass the spec on
+
+A `Vec` has no `Display`, because there is no single obvious way to print a list:
+
+<Snippet file="vec-display.fail.rs" />
+
+For a quick look, `{:?}` works, and `Debug` on a slice already passes the spec to every item. For text in your own shape, join strings:
+
+<Snippet file="list-everyday.rs" />
+
+Those are the everyday answers. A `Display` wrapper is for a list inside a larger `format!` that takes the caller's spec. You cannot impl it for `Vec` (neither `Display` nor `Vec` is yours: [the orphan rule](/learn/traits/#why-the-orphan-rule-exists)), so wrap a slice. The loop forwards the spec to every item with `item.fmt(f)`, and `?` hands a failed write back:
+
+<Snippet file="list.rs" />
+
+`{:.1}` and `{:>4}` reached every item, because each `f64` or `i32` received the spec. `write!(f, "{}", item)` would have lost both.
+
+## `Debug`: derive it, or build it
+
+`#[derive(Debug)]` is the default choice, and the std docs say "generally speaking, you should just derive a `Debug` implementation". Write it by hand when a field should not appear. The builders print the right shape and make `{:#?}` work for free:
+
+<Snippet file="debug-manual.rs" />
+
+`finish_non_exhaustive()` ends with `..` so a reader knows a field was left out. `{:?}` on text shows its escapes, which makes invisible differences visible:
+
+<Snippet file="debug-escapes.rs" />
+
+Tab, newline, control characters, the zero-width space `U+200B` and the combining accent after the `e` are escaped, and so is `"` in a string (a `'` only in a `char`), while `é`, `日本` and the emoji print as themselves. A float with no fraction prints as `1.0` in `Debug` and `1` in `Display`; `1e21` is `1e21` in `Debug` and all its digits in `Display`. [A later section](#debug-is-not-a-file-format) says why not to depend on the exact form.
+
+## Numbers
+
+The spec letters (`{:08.3}`, `{:+}`, `{:#x}`) are in [the earlier lesson](/learn/macros-attributes-naming/#format-strings). A precision cuts text and an integer ignores it (`{:.3}` of `"Hello"` is `Hel`, of `7` it is `7`). Zeros go after the sign (`{:08.3}` of `-3.14159` is `-003.142`), and a `bool` pads like text. `{:x}` of a negative integer shows the bits of its type (`-1i8` is `ff`, `-255i32` is `ffffff01`), and `{:e}` of `1234.5` is `1.2345e3`. `check-table.rs` asserts each of these. Floats have the odd cases:
+
+<Snippet file="floats.rs" />
+
+`0.30000000000000004` is what `0.1 + 0.2` produces in `f64`, not a formatting fault: `{}` prints enough digits to parse back to the same value (the third line checks it). `NaN` and the infinities print as words, and `-0.0` and `{:.0}` of `-0.5` keep their sign. For rounding, the std docs say "Rust uses round half-to-even": `0.5` and `2.5` give `0` and `2`, `1.5` and `3.5` give `2` and `4`, and the exact ties `0.125` and `0.375` give `0.12` and `0.38`. `2.675` gives `2.67` because it is not a tie: the nearest `f64` is a little below it (the last line prints 20 digits). Languages differ here: Java, Kotlin and JavaScript's `toFixed` round `0.5, 1.5, 2.5` to `1 2 3`, while Go, Python, C, C++ and C# print `0 2 2` like Rust (each language's tab below has its run).
+
+## Width and precision from variables
+
+[The earlier lesson](/learn/macros-attributes-naming/#format-strings) showed `{:>w$}` and `{:.p$}`. There are three more forms: `1$` takes the width from argument 1, `.*` takes the precision from the next argument before the value, and a named argument (`width = 4`) works too. The common use is a column as wide as its widest entry:
+
+<Snippet file="params.rs" />
+
+Only a plain name can be captured, not `{a + b}` or `{p.x}`; compute it first. A `.*` uses two arguments, which shifts the count for the `{}` after it.
+
+## Where the text goes
+
+| Macro | Destination |
+|---|---|
+| `print!` `println!` | standard output. Panics if the write fails (the [docs](https://doc.rust-lang.org/std/macro.print.html)) |
+| `eprint!` `eprintln!` | standard error |
+| `format!` | a new `String` |
+| `write!` `writeln!` | anything with a `write_fmt` method: a `String`, a `Vec<u8>`, a file, a locked stdout. Returns a `Result` |
+| `dbg!` | standard error, with file, line and expression; returns the value |
+| `panic!` `assert!` `todo!` | the message is a format string too |
+
+<Snippet file="destinations.rs" />
+
+A `String` and a byte destination need different traits, and both are called `Write`: `std::fmt::Write` writes text, `std::io::Write` writes bytes. Import the one you need, or both with `as _`, which brings in the methods without taking the name. Forget it and you get this:
+
+<Snippet file="write-no-import.fail.rs" />
+
+The runner shows both streams together. Buffering and `flush` are in [Files and I/O](/learn/files-io/). `dbg!` takes ownership of its argument, hence `dbg!(&name)`. The std docs say it "works exactly the same in release builds" and that its exact output "should not be relied upon": a quick look, not logging.
+
+<Snippet file="dbg.rs" />
+
+## `format_args!`, and what `format!` costs
+
+`format!` builds a `String`, which keeps its text on the heap, so a non-empty `format!` allocates. `write!` into a buffer with room does not, and `format_args!` builds only a description of the text (a `fmt::Arguments`), which `println!` and `write!` are made from. This counts calls to the allocator, which are not time:
+
+<Snippet file="allocations.rs" />
+
+`format!` allocated once for a short text and six times for `{n:>200}`, where the padding made the `String` grow again (this run's count, not a promise). `write!` allocated once into `String::new()` and never into a `String` with room. The last line passes a `format_args!` to a function that writes it to `io::sink()`: 0, so a function can take `fmt::Arguments` and pass it on with no `String` built. (Creating one alone could not fail the count, so the program measures the passing.) A logging wrapper forwards its arguments the same way ([the earlier lesson](/learn/macros-attributes-naming/#format-strings) left that for here):
+
+<Snippet file="format-args.rs" />
+
+## Translating from what you know
+
+<ForLang only="go">
+Go has one hook, `String()`, and `%v`, `%+v` and `%s` all call it when it exists (nested fields too). Rust has two traits that never fall back to each other, and `{:?}` never uses your `Display`:
+
+<Snippet file="string-hook.go" />
+
+<Snippet file="two-traits.rs" />
+
+| In Go | In Rust |
+|---|---|
+| `%v`, `%s` of a type with `String()` | `{}` with `impl Display` |
+| `%v`, `%+v` of a type with no `String()` | `{:?}` after `#[derive(Debug)]` |
+| `%#v` (Go syntax) | no equal; `{:#?}` is the same fields over lines |
+| `%q` | `{:?}` on a string or char |
+| `%x %08b %6.2f` | `{:x} {:08b} {:6.2}` |
+
+`%e` of 1234.5 prints `1.234500e+03` and `%x` of -255 prints `-ff`; Rust prints `1.2345e3` and, for an `i32`, `ffffff01`. Go's width applies to the text `String()` returns, so a Stringer pads with no work; Rust pads only if the impl calls `pad` or forwards the spec. A wrong verb or a missing argument builds in Go and is written into the output (`%!d(string=text)`, `%!d(MISSING)`); `go vet` flags both when run (the page's runner only builds).
+
+<Snippet file="width-stringer.go" />
+
+Rust's `Formatter` struct matches Go's [`fmt.State`](https://pkg.go.dev/fmt#State) (`Width()`, `Precision()`, `Flag()`); Go's [`fmt.Formatter`](https://pkg.go.dev/fmt#Formatter) is the interface a type implements, one `Format(f State, verb rune)` for all verbs where Rust has one trait per letter.
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+| In Java, Kotlin, C# | In Rust |
+|---|---|
+| `String.format("%8s", x)`, `"$x".padStart(8)`, `$"{x,8}"` | `{:>8}` |
+| `String.format("%,.2f", n)` | no thousands separator in `std` |
+| [`java.util.Formattable`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Formattable.html), `IFormattable` (C#) | the `Formatter` methods |
+
+They pad the text `toString` returns, so the width works on a type that defines only `toString`; the Rust impl has to opt in with `pad`. Java's `%,.2f` follows a `Locale`: `US` gave `1,234,567.50` and `GERMANY` `1.234.567,50`.
+
+<Snippet file="width-locale.java" />
+
+<Snippet file="width.kt" />
+
+`Formattable` is Java's opt-in: `formatTo` receives the width, precision and a left-justify flag, the facts the Rust `Formatter` gives as `width()`, `precision()` and `align()`. A plain `%s` leaves them at -1:
+
+<Snippet file="formattable.java" />
+
+C#'s `IFormattable` hands the string `"F1"` in `{t:F1}` to the type's own `ToString`, and `,12` pads the result. Since the spec is a string, a type can invent a letter such as `K`. Rust parses the spec itself and only the letters in the first table exist (`{:K}` above); a custom view is a wrapper that implements `Display`:
+
+<Snippet file="iformattable.cs" />
+
+<Snippet file="width.cs" />
+
+`N2` uses the current culture's separators; the .NET used here has no culture data, so these are the invariant ones (a culture-dependent result is not run). C# checks the arguments of an interpolated `$"..."` at compile time but not the letter after the colon, and `string.Format` neither. Rust checks the letter too:
+
+<Snippet file="format-letters.cs" />
+</ForLang>
+
+<ForLang only="python typescript">
+| In your language | In Rust |
+|---|---|
+| `__repr__`, `console.log(obj)` | `{:?}` after `#[derive(Debug)]` |
+| `pprint.pprint(x)`, `JSON.stringify(x, null, 2)` | `{:#?}` (always over lines; JSON is not Debug) |
+| `__format__(self, spec)` (Python) | `fmt` with a `Formatter` |
+| `f"{x=}"` (Python) | `dbg!(&x)` |
+
+`f"{obj:>8}"` raises `TypeError` unless the class defines `__format__`; `!s` converts first. Rust compiles `{:>8}` on any `Display` type and ignores the width unless `fmt` uses it. The mini-language is close to Python's, with differences that bite: `{:e}` of 1234.5 is `1.234500e+03` in Python and `1.2345e3` in Rust; `{:x}` of -255 is `-ff` in Python and `ffffff01` for an `i32` in Rust; a `bool` pads like a number in Python (`    1`) and like text in Rust; `{:.3}` of an integer is a `ValueError` in Python, and ignored in Rust. A Rust `Vec` has no `Display`, where Python's `str(list)` uses `repr` for the items, so `{:?}` is what you write. `toLocaleString("de-DE")` printed `1.234.567,5`.
+
+`__format__` receives the spec as a string and can invent letters. Rust's `Formatter` gets it parsed (`width()`, `precision()`, `alternate()`), so there is no way to add a letter; a custom mode is a wrapper type.
+
+<Snippet file="format-spec.py" />
+
+<Snippet file="format-js.ts" />
+</ForLang>
+
+<ForLang only="c cpp">
+C's `printf` trusts you to match each `%` letter to the argument. [Macros, attributes and naming](/learn/macros-attributes-naming/#format-strings) ran a mismatch: GCC 14 warns under `-Wall` (the runner's flag), and plain `gcc` gives no warning. That trap is C's. C++20 `std::format` checks the string, argument count and types at compile time, like Rust: g++ 14 rejected `std::format("{:d}", "text")`, `std::format("{} {}", 1)` and `{:>8}` on a `formatter` whose `parse` takes no spec (`check-format-errors.fail.cpp`). The last is stricter than Rust, where `fmt` receives a spec and may ignore it (`Plain`). `%e` and `%f` differ from Rust's `{:e}` and `{}`:
+
+<Snippet file="round.c" />
+
+`std::setw(8)` has a similar trap: it applies to the next insertion only. This `operator<<` inserts `'#'` and then the number, so the padding went to the `'#'` and the field came out ten columns wide. `std::format` with a `formatter` that reuses `std::formatter<std::string>` behaves like `f.pad`:
+
+<Snippet file="setw.cpp" />
+
+| In C, C++ | In Rust |
+|---|---|
+| `%d %s %x` | `{} {} {:x}` (the type decides) |
+| `%f` (prints `1.500000`) | `{:.6}`; `{}` prints `1.5` |
+| `operator<<`, `std::formatter`, `std::setw` | `impl Display`, width after the colon |
+| `snprintf(buf, n, ...)` | `write!` into a `Cursor` |
+| `std::format`, `asprintf` | `format!` |
+| `std::format_to(out, ...)`, `std::vformat` | `write!` into a `String`, `format_args!` |
+
+`std::io::Cursor` wraps a byte buffer so `write!` can fill it. The match is not exact: `snprintf` truncates and returns the length it wanted, while `write!` into a full `Cursor` fills what it can and returns `Err`.
+
+<Snippet file="snprintf.c" />
+
+<Snippet file="cursor.rs" />
+
+The capacity 15 of `std::format("n = {}", 42)` is the size of libstdc++'s small-string buffer, inside the string object, so a short result needs no heap (the run prints the capacity, not an allocation count). A Rust `String` always keeps its text on the heap.
+
+<Snippet file="format-to.cpp" />
+
+`std::format` ignores the locale unless you write `{:L}`. With a hand-built locale that swaps `,` and `.` (this image has no German one), the lines are `{}` and `{:L}` in the default locale, then `{:L}` and `{}` in that one:
+
+<Snippet file="width-locale.cpp" />
+</ForLang>
+
+<p class="lr-layer">Going deeper</p>
+
+## What the macro hands to your code
+
+The format string is checked at compile time, but the text is made at run time. The macro builds a `fmt::Arguments`, which the [docs](https://doc.rust-lang.org/std/fmt/struct.Arguments.html) call a "precompiled version of a format string and its arguments", and at run time each value's trait method is called with its spec in a `Formatter`. So a trait that a type lacks is a compile error, and a spec that a trait ignores is not.
+
+For a one-off view of a value you do not need a new type: `fmt::from_fn` (stable since Rust 1.93) turns a closure into a value that implements `Display` and `Debug`:
+
+<Snippet file="from-fn.rs" />
+
+## When `fmt` returns an error
+
+`fmt::Result` lets a destination whose write fails cancel the formatting. The [`fmt::Error` docs](https://doc.rust-lang.org/std/fmt/struct.Error.html) say an impl "should not return this Error unless they received it from their Formatter". Return one anyway and `write!` into a `String` hands it back, while `to_string()` panics, because for a `String` the only possible failure is a bug in your `Display`:
+
+<Snippet file="fmt-error.panic.rs" />
+
+## Debug is not a file format
+
+The std docs for [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html) say: "Derived Debug formats are not stable, and so may change with future Rust versions. Additionally, Debug implementations of types provided by the standard library (std, core, alloc, etc.) are not stable". So parsing `{:?}` output, or saving it for comparison, can break on a compiler upgrade. When the text is a format that another program reads, use a library such as serde ([Serde](/build/serde/)), and use `Display` for text that you promise to keep.
+
+## No locale
+
+Some languages change formatting by the machine's language settings: C's `printf` follows `setlocale` ([man page](https://man7.org/linux/man-pages/man3/setlocale.3.html)), C# follows [`CultureInfo.CurrentCulture`](https://learn.microsoft.com/en-us/dotnet/api/system.globalization.cultureinfo.currentculture), and Java's `String.format` uses a `Locale`. The C and C# behaviour is from their docs, not run (this image has no German locale or culture data), so there a `1.5` may print as `1,5`. Rust's formatting does not. The [docs](https://doc.rust-lang.org/std/fmt/index.html#localization) say the format functions "do not have any concept of locale and will produce the same results on all systems regardless of user configuration". There is no thousands separator and no way to choose a decimal comma. People use crates for that, [`num-format`](https://crates.io/crates/num-format) for grouping and [ICU4X](https://crates.io/crates/icu) for full locale data; this page has not run either.
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Each exercise has checks in `main`: replace the `todo!()` and run until it prints `all checks passed`. The starters compile and fail when run.
+
+<Exercise name="tag" title="A tag that pads">
+`Tag(42)` must print as `#42`, and `{:>8}`, `{:<6}` and `{:*^7}` must work on it. Text longer than the width is not cut. Writing it with `write!` compiles and fails the checks. (`f.pad` also cuts to a precision, and building a `String` per print allocates; both are fine here.)
+</Exercise>
+
+<Exercise name="joined" title="Join with your separator, keep the spec">
+`{:?}` and `.join(", ")` are the everyday answers. `Joined` is for a list inside a larger `format!`: `Display` items (no quotes), a separator you choose, and a width or precision after the colon that reaches every item (`{:.1}` of `[1.0, 2.26]` is `1.0, 2.3`). Empty and one-item slices must work, and so must items that pad themselves. Joining the items' `to_string()` results compiles and fails.
+</Exercise>
+
+<Exercise name="session" title="A Debug that hides a secret">
+`Session` derives `Debug`, and its `token` is a `Secret`. Write `Debug` for `Secret` so it prints `<redacted>` wherever it appears (`{:?}`, `{:#?}`, inside a `Vec` or an `Option`), without revealing even the length. A new field of that type is covered by its type; `finish_non_exhaustive` has to be remembered per struct.
+</Exercise>
+
+## Read more
+
+- The standard library: [`std::fmt`](https://doc.rust-lang.org/std/fmt/index.html) (the full grammar), [`Formatter`](https://doc.rust-lang.org/std/fmt/struct.Formatter.html), [`Display`](https://doc.rust-lang.org/std/fmt/trait.Display.html), [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html), [`dbg!`](https://doc.rust-lang.org/std/macro.dbg.html).
+- Rust by Example: [Formatted print](https://doc.rust-lang.org/rust-by-example/hello/print.html) and [Display](https://doc.rust-lang.org/rust-by-example/hello/print/print_display.html).
+- The Rust Book: [Adding Useful Functionality with Derived Traits](https://doc.rust-lang.org/book/ch05-02-example-structs.html#adding-useful-functionality-with-derived-traits).
+- Errors: [E0277](https://doc.rust-lang.org/error_codes/E0277.html), [E0599](https://doc.rust-lang.org/error_codes/E0599.html), or [this site's index](/errors/).

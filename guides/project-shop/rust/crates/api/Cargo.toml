@@ -1,0 +1,16 @@
+[package]
+name = "shop-api"
+description = "The shop's request handler: text in, status and body out"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+shop-core = { workspace = true }
+
+[dev-dependencies]
+shop-storage = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,118 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Modules and Visibility"
+part: "abstractions"
+intro: >-
+  A module is a named group of items, with its own private part. Everything inside is
+  hidden from the outside until you mark it `pub`, and a `use` line gives a long path a
+  short name.
+coming_from:
+  go: >-
+    A Go package is both the unit of privacy and the unit of compilation. Rust splits the
+    two: a module (`mod`) is the privacy unit, a crate the compilation unit. You declare a
+    module with `mod` instead of putting files in a folder, and visibility is `pub`
+    instead of a capital letter.
+  kotlin: >-
+    Kotlin declarations are public unless you say `private` or `internal`; Rust is the
+    other way round, private unless `pub`. A Rust module is not a class: `private`
+    is about the module: two types in one module can read each other's private fields.
+    Kotlin's `internal` (the module) is `pub(crate)`, and a Rust crate is what Kotlin
+    calls a module.
+  python: >-
+    A Rust module is declared with `mod`, not found by file name, and without `pub` the
+    compiler refuses the access, where Python's `_name` is only a request. A file does
+    not join the program by being imported: its parent has to say `mod`. Your
+    "package" is closer to a Rust crate.
+  typescript: >-
+    `pub` is `export`, and an item without it cannot be named from outside. A file is
+    not a module until its parent declares it with `mod`. `use` is `import` for names
+    only: it does not load or run a file.
+  java: >-
+    A Rust module is a namespace like a package, but it is also the privacy boundary,
+    and `pub` is closest to `public`. The default is the opposite: Java's no-modifier
+    default is package-wide, Rust's is private to the module and its children. What Java
+    calls a module (`module-info.java`) is a Rust crate.
+  csharp: >-
+    A Rust module is like a namespace, `use` is `using`, and the default is private, like
+    a C# member. The unit of privacy is the module rather than the class. A crate is
+    like an assembly, and `pub(crate)` is the nearest thing to `internal`.
+  c: >-
+    There are no headers: `mod` names a file inside a tree and does not paste text, and
+    a crate is the translation unit. Items are private by default like `static`
+    functions, and `pub` is what you would put in the header.
+  cpp: >-
+    A module is a namespace that also controls access: private items are hidden from the
+    outside, with no `class` needed. `use` is `using`, and there are no headers or
+    include guards, because `mod` names a node in a tree instead of pasting text.
+notes:
+  - >-
+    `shop::total(3)` is a path: the module name, `::`, then the item. `discount_percent`
+    has no `pub`, so only code inside `shop` can call it, even though `main` is in the
+    same file.
+  - >-
+    A module can be written inline, as here, or live in its own file: `mod shop;` loads
+    `shop.rs`. The step-by-step guide to files is linked below.
+  - >-
+    `pub` is per item. Nothing is public because it is in a module, and a struct's
+    fields are private unless each one is marked `pub`.
+  - >-
+    `use shop::total;` would let `main` write `total(3)`. It only gives a name a
+    shortcut; it never loads a file.
+gotcha:
+  title: "Private is the default"
+  verdict: "rust-rule"
+  looks_fine: >-
+    Most languages you know let any code that can see a function call it: a Python
+    module function, an unmarked top-level declaration in Kotlin or TypeScript, a C or
+    C++ function in the same file. Here `main` and `shop` are in the same file, so
+    calling the helper looks fine.
+  rust_sees: >-
+    `discount_percent` has no `pub`, so it belongs to `shop` alone. Its callers are the
+    code inside `shop`; `main` is outside.
+  why: >-
+    Everything private by default means each `pub` is a decision to promise something to
+    the outside. Whatever you leave private can be renamed or deleted without breaking
+    anyone.
+  langs:
+    go:
+      status: "runs"
+      says: >-
+        Go runs this and prints discount: 20%. The unit of privacy is the package, and
+        this file is one package, so a lowercase name is visible to all of it. Another
+        package would be refused (shown on this page).
+    kotlin:
+      status: "refuses"
+      says: >-
+        Kotlin refuses this too: `discountPercent` is private in `Shop`. Kotlin is
+        public by default, so here the `private` was written on purpose.
+    python:
+      status: "runs"
+      says: >-
+        Python prints discount: 20%. `_discount_percent` is private only by convention;
+        nothing stops the call.
+    typescript:
+      status: "refuses"
+      says: >-
+        TypeScript refuses this: a function in a `namespace` that is not `export`ed
+        cannot be named from outside it.
+    java:
+      status: "runs"
+      says: >-
+        Java runs this and prints discount: 20%. `private` means private to the
+        top-level class, and `Shop` is nested inside `Main`, so `Main` can reach it. A
+        separate top-level class would be refused.
+    csharp:
+      status: "refuses"
+      says: >-
+        C# refuses this too (CS0122): a member with no modifier is private, so the
+        call from outside `Shop` is inaccessible.
+    c:
+      status: "runs"
+      says: >-
+        C prints discount: 20%. `static` hides a function from other files, but this
+        call is in the same file.
+    cpp:
+      status: "runs"
+      says: >-
+        C++ prints discount: 20%. An unnamed namespace hides names from other files,
+        but this call is in the same file, and namespaces have no access control of
+        their own.

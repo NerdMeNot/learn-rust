@@ -1,0 +1,83 @@
+---
+title: "Logging with tracing"
+description: "tracing is a Rust framework for logging and diagnostics. Like Go's slog, structlog or Serilog, it records structured fields, not just text. It adds spans, which tag every log line inside a piece of work, such as one request."
+---
+
+import { Files, GuideGotcha, Remember, Session, Tree } from '../../../components/guide'
+
+tracing is a Rust framework for logging and diagnostics, developed in the [tokio-rs](https://github.com/tokio-rs/tracing) organisation on GitHub. Like Go's `log/slog`, Python's structlog or C#'s Serilog, it records structured fields, not just text. It adds spans, which tag every log line inside a piece of work, such as one request.
+
+<Remember>Log with `info!(field = value, "message")`. Wrap a piece of work in a span to tag everything inside it.</Remember>
+
+<Tree guide="tracing" dir="rust" name="logging" title="Project layout" notes={{"src/main.rs":"the program on this page","Cargo.lock":"created by Cargo","Cargo.toml":"dependencies go here"}} />
+
+<Files guide="tracing" dir="rust" files={["Cargo.toml"]} />
+
+<div class="lr-compare">
+<Files guide="tracing" dir="rust" files={["src/main.rs"]} run="run" />
+<Files guide="tracing" dir="go" files={["main.go"]} run="go" lang="go" />
+</div>
+
+- **Two crates:** `tracing` is what your code and libraries call; `tracing-subscriber` decides where the output goes. The [tracing docs](https://docs.rs/tracing/0.1.44/tracing/) say libraries should link only to `tracing` and leave the subscriber to the executable, and that a library should not install one itself, because that conflicts with the executable's. So only your `main` sets one up.
+- **Fields** are `name = value` before the message. Use `?value` to record a value with its `Debug` format and `%value` for its `Display` format ([Printing and Formatting](/learn/formatting/) covers both traits). Numbers, booleans and strings need neither (`id` and `title` below).
+- **Spans** are like `logger.With(...)` in slog, since both attach fields to the lines logged through them (a span tags the lines logged while it is entered). A span also knows when the work starts and ends. Those moments are not logged unless you ask the subscriber to (see below), and a span entered with `enter()` exits when its guard is dropped.
+
+By default the formatter puts a timestamp at the start of every line and writes to stdout. This page's program calls `without_time()` so that its output is the same on every run (and `with_target(false)` to leave out the module path). Here is the default, with the timestamp swapped for a fixed word by `sed` (the command also has `-q` to hide Cargo's own lines and `2>/dev/null`, which shows the log lines are on stdout):
+
+<Files guide="tracing" dir="snippet-stamps" files={["src/main.rs"]} run="stamps" />
+
+## Fields, spans and `#[instrument]`
+
+This program logs plain fields, `?` and `%` fields, two spans inside each other, and a function with `#[tracing::instrument]`, which makes a span named after the function, with its arguments as fields (the [docs](https://docs.rs/tracing/0.1.44/tracing/attr.instrument.html) say types that do not implement `Value` are recorded using `fmt::Debug`). `with_span_events` adds a line each time a span is entered and exited:
+
+<Files guide="tracing" dir="snippet-spans" files={["src/main.rs"]} run="spans" />
+
+The inner span exits first: guards are dropped in the reverse of the order they were made ([Ownership](/learn/ownership/#scopes-drop-order-and-let-_) covers drop order). Every line inside both spans carries both sets of fields, outer first.
+
+In async code, do not hold the guard from `span.enter()` across an `.await`. The docs for [`Span`](https://docs.rs/tracing/0.1.44/tracing/struct.Span.html#in-asynchronous-code) say it gives an incorrect trace, because another task can then run while your span is still entered. They point to `Span::in_scope` for a synchronous section and the `Instrument` trait for a future, and the [`instrument`](https://docs.rs/tracing/0.1.44/tracing/attr.instrument.html) docs say `async fn`s can carry the attribute. No async example was run for this page; [Async with Tokio](/build/tokio/) covers the runtime.
+
+## Choosing levels at runtime
+
+The `RUST_LOG` variable picks which levels are shown, if you ask for it. Turn on tracing-subscriber's `env-filter` feature (`cargo add tracing-subscriber --features env-filter`; see [Finding and using crates](/start/using-crates/#features-updates-and-removing)) and pass an `EnvFilter` to the builder:
+
+<Files guide="tracing" dir="snippet-env" files={["Cargo.toml", "src/main.rs"]} />
+
+<Session guide="tracing" run="env" />
+
+Two details came from running it. The feature alone is not enough: the builder in the first program does not read `RUST_LOG` (with the feature on, `RUST_LOG=debug` still hid a `debug!` line), hence `with_env_filter`. And an `EnvFilter` made with `from_default_env` from an unset `RUST_LOG` shows only errors (the [docs](https://docs.rs/tracing-subscriber/0.3.23/tracing_subscriber/filter/struct.EnvFilter.html) say a default directive enabling the ERROR level is added; with the feature on, `fmt::init()` printed an ERROR event and no info, warn or debug line when I ran it). `try_from_default_env`, which this program uses, returns an error when the variable is unset instead, so the program falls back to `info`. The [directive syntax](https://docs.rs/tracing-subscriber/0.3.23/tracing_subscriber/filter/struct.EnvFilter.html#directives) can also filter by module.
+
+## The same job in your language
+
+The table lists libraries and where they come from, checked against each project's own page. It is not a ranking.
+
+| Language | Common choices | Part of the language's own libraries? |
+| --- | --- | --- |
+| Go | [`log/slog`](https://pkg.go.dev/log/slog) | Yes. `log/slog` records a message, a level and key-value attributes; it is the Go program above. |
+| Python | [`logging`](https://docs.python.org/3/library/logging.html), [structlog](https://www.structlog.org/) | `logging` is in the standard library; structlog is a separate package. |
+| TypeScript | [pino](https://github.com/pinojs/pino), [winston](https://github.com/winstonjs/winston) | They are npm packages. Node has `console` built in. |
+| Java | [SLF4J](https://www.slf4j.org/) with [Logback](https://logback.qos.ch/) | Both are separate libraries. The JDK has its own [`System.Logger`](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/System.Logger.html). |
+| Kotlin | [kotlin-logging](https://github.com/oshai/kotlin-logging) | A library. Its README says the JVM artifact depends on `slf4j-api`. |
+| C# | `ILogger` ([.NET logging](https://learn.microsoft.com/en-us/dotnet/core/extensions/logging)), [Serilog](https://serilog.net/) | Not the base library: the Microsoft Learn page has you add the `Microsoft.Extensions.Logging` package, which has `ILogger`. Serilog is a separate library. |
+| C | [`syslog`](https://man7.org/linux/man-pages/man3/syslog.3.html) | A POSIX function that sends a message to the system logger. |
+| C++ | [spdlog](https://github.com/gabime/spdlog) | A third-party library. |
+
+Only the Go row was run as a logging program; the gotcha below runs a different example, ending a scope, in the other languages.
+
+## Try it yourself
+
+Nothing checks these for you. Each one was run in the image behind this page, and the output shown is what it printed.
+
+1. **Change the level.** Run the `env` program above with no variable, then as `RUST_LOG=debug cargo run` and as `RUST_LOG=warn cargo run`. With `debug` the `cache miss` line appears first; with `warn` only the `slow response` line is left.
+2. **Read the exits.** In the `spans` output above, find the `exit` lines for `outer` and `inner`. `inner` exits first, then `outer`.
+3. **Break the span.** In the first program, change `let _guard` to `let _`. It compiles, and the `request{...}` tags vanish from the last two lines. The gotcha below is the same mistake with a lock, where rustc refuses it:
+
+   <Files guide="tracing" dir="snippet-underscore" files={["src/main.rs"]} run="underscore" />
+
+## Read more
+
+- The [`tracing` crate docs](https://docs.rs/tracing/0.1.44/tracing/): spans, events, and what libraries and executables should each do.
+- [`tracing_subscriber::fmt`](https://docs.rs/tracing-subscriber/0.3.23/tracing_subscriber/fmt/) and its [`SubscriberBuilder`](https://docs.rs/tracing-subscriber/0.3.23/tracing_subscriber/fmt/struct.SubscriberBuilder.html), where `without_time` and `with_span_events` live; [`EnvFilter`](https://docs.rs/tracing-subscriber/0.3.23/tracing_subscriber/filter/struct.EnvFilter.html) for `RUST_LOG`.
+- The Tokio tutorial's [Getting started with Tracing](https://tokio.rs/tokio/topics/tracing).
+- The rustc lint [`let_underscore_lock`](https://doc.rust-lang.org/rustc/lints/listing/deny-by-default.html#let-underscore-lock), and [Ownership](/learn/ownership/#scopes-drop-order-and-let-_) and [`Drop`](/learn/common-traits/#drop-the-trait-behind-scope-exit) in this course.
+
+<GuideGotcha guide="tracing" />

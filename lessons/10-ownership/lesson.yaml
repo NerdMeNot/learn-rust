@@ -1,0 +1,111 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Ownership and Moves"
+part: "ownership"
+intro: >-
+  This is the big one. Every value in Rust has exactly one owner. When the owner goes
+  away, the value is freed. Assigning a value to another variable moves it: the new
+  variable becomes the owner, and the old one can't be used.
+coming_from:
+  go: >-
+    In Go, `b := a` makes two slices share one array. In Rust, `let b = a;` moves the
+    `Vec` to `b` and `a` can't be used any more, so if you want two you write
+    `a.clone()`.
+  kotlin: >-
+    In Kotlin, `val b = a` gives two names for one list. In Rust it moves the list to
+    `b`, `a` is no longer usable, and the list is freed when `b` goes out of scope
+    instead of by a garbage collector.
+  python: >-
+    In Python, `b = a` gives two names for one list. In Rust it moves the list, `a`
+    can't be used again, and `a.clone()` is how you get a real second copy.
+  typescript: >-
+    In TypeScript, `const b = a` makes two references to one array. In Rust it moves the
+    array to `b`, `a` can't be used any more, and the memory is freed when `b` goes out
+    of scope, with no garbage collector.
+  java: >-
+    Java lets two variables share one object, and the garbage collector frees it later.
+    In Rust `let b = a;` moves the `Vec` to `b`, and `a` can't be used again; the value
+    is freed when `b` goes out of scope, with no GC.
+  csharp: >-
+    In C#, `var b = a;` gives two references to one `List`. In Rust it moves the value,
+    so `a` is no longer usable, and the memory is freed the moment its single owner goes
+    out of scope instead of by a garbage collector.
+  c: >-
+    Ownership is your "who calls `free`" rule, written into the types. After `let b =
+    a;` the compiler forbids touching `a`, so a double free or a use after free can't
+    compile.
+  cpp: >-
+    `let b = a;` is `auto b = std::move(a);`, not `auto b = a;`: nothing is copied. And
+    the compiler checks the move: using `a` afterwards is a compile error, not a read of
+    a moved-from object. No destructor runs on the moved-from `a` either.
+notes:
+  - >-
+    A move does not copy the list. It copies the 24-byte header (pointer, length,
+    capacity) and marks the old name as unusable. Moving a huge Vec is just as cheap as
+    moving a tiny one.
+  - >-
+    Some types are copied instead of moved: numbers, bool, char, shared references `&T`,
+    and tuples and arrays of those. They're called `Copy`. A plain copy of their bytes
+    gives a complete, independent value, and there is nothing to free.
+  - >-
+    Why bother? Rust has no garbage collector. "Exactly one owner" is how it knows when
+    to free memory, and that it frees it exactly once.
+gotcha:
+  title: "Using a variable after assigning it to another"
+  verdict: "fine-elsewhere"
+  looks_fine: >-
+    In Go, `b := a` and then printing both is perfectly fine. They share one array.
+  rust_sees: >-
+    After `let b = a`, `b` owns the list. `a` is a name with nothing behind it.
+  why: >-
+    Rust has no garbage collector, so it frees the list when its owner goes away. That
+    only works if there is exactly one owner. With two, C would free the list twice (see
+    the C version), and a garbage-collected language gives you two names for one list,
+    so a change through `b` shows up in `a`. Rust's rule is one owner, and assignment
+    hands it over. If you only want to look at the list through a second name, borrow it
+    with `&`. That is the next lesson. The compiler's `help:` suggests `a.clone()`,
+    which makes a second list; borrowing costs nothing.
+  langs:
+    go:
+      status: "runs"
+      says: >-
+        Go runs this and prints [1 2 3] twice. `a` and `b` share one array, so a change
+        through `b` would show up in `a` too.
+    kotlin:
+      status: "runs"
+      says: >-
+        Kotlin runs this and prints [1, 2, 3] twice. `a` and `b` are the same list, so a
+        change through `b` would show up in `a` too.
+    python:
+      status: "runs"
+      says: >-
+        Python prints the list twice. `b = a` doesn't copy or move anything: both names
+        point to the same list, so a change through `b` would show up in `a` too.
+    typescript:
+      status: "runs"
+      says: >-
+        Prints the array twice. `a` and `b` are two names for the same array, so a
+        change through `b` would show up in `a` too.
+    java:
+      status: "runs"
+      says: >-
+        Both names point at the same list, so it prints twice. A change through `b`
+        would show up in `a` too, as the lesson program shows.
+    csharp:
+      status: "runs"
+      says: >-
+        Both lines print [1, 2, 3] because a and b are the same list. A change made
+        through b would show up in a too.
+    c:
+      status: "crash"
+      mode: "asan"
+      says: >-
+        C copies the pointer, so `a` and `b` share one buffer and both get freed. gcc
+        builds it without a warning, and AddressSanitizer reports the double free.
+    cpp:
+      status: "runs"
+      says: >-
+        `auto b = a;` copies the whole vector, so it prints [1, 2, 3] twice. That's
+        correct, but it allocates a second buffer. `auto b = std::move(a);` is what
+        Rust's `let b = a;` does. It leaves `a` empty, but nothing stops you from reading
+        `a` afterwards. clang-tidy's `bugprone-use-after-move` check catches many of
+        those reads, but a lint isn't a guarantee.

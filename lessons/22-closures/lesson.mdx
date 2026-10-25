@@ -1,0 +1,393 @@
+<p class="lr-layer">The toolkit</p>
+
+Outputs come from Linux on 64-bit ARM, Rust 1.99.1, edition 2024.
+
+A closure is a function written inline as `|parameters| body`, with no name, that can use the variables around it ([the syntax](/learn/declarations-types/) is covered earlier). It is a value: store it, pass it, return it, put it in a struct. Types are usually inferred from the first use.
+
+## What a closure captures
+
+Using a variable from outside is called **capturing** it. Rust picks the least it can get away with, from what the body does:
+
+<Snippet file="capture-modes.rs" />
+
+| The body... | The closure holds | Implements | Meanwhile the code outside can... |
+|---|---|---|---|
+| only reads `factor` | a shared reference, `&factor` | `Fn`, `FnMut`, `FnOnce` | read it, not change it |
+| changes `count` | a mutable reference, `&mut count` | `FnMut`, `FnOnce` | not touch it at all |
+| moves `name` out (`drop(name)` takes a value and ends it) | the value itself | `FnOnce` | not use it: it was moved in |
+
+These are the ordinary rules of [borrowing](/learn/borrowing/), [mutable borrows](/learn/mutable-borrows/) and [ownership](/learn/ownership/). The closure is a value that holds the references, so the borrow lasts as long as the closure is *used*. Calling `inc` changes what it holds, so the variable that holds it must be `mut`. (`Implements` is [explained below](#fn-fnmut-and-fnonce).) Each row has its error:
+
+<Snippet file="sees-later.fail.rs" />
+
+<Snippet file="mut-conflict.fail.rs" />
+
+<Snippet file="use-after-capture.fail.rs" />
+
+Reading `count` after the last call to `inc`, as the first program does, is fine.
+
+## move: take ownership
+
+`move` before the bars makes the closure take **every** variable it uses by value, whatever the body does. A number is copied, so the closure gets its own:
+
+<Snippet file="move-copy.rs" />
+
+<Memory
+  title="let mut inc = move || { count += 1; count };   (after two calls)"
+  stack={[
+    { name: 'count', type: 'i32', cells: ['0'], note: 'the outer variable: never changed' },
+    { name: 'inc', type: 'closure', cells: ['count: 2'], note: 'its own copy, made when the closure was created' },
+  ]}
+  caption="A closure that holds a copy does not see later changes to the original, and the original does not see the closure's."
+/>
+
+A `String` is moved in, so the outside loses it. `move` does not make a closure run once: this one only reads its `String`.
+
+<Snippet file="move-string.rs" />
+
+<Snippet file="move-use.fail.rs" />
+
+A garbage-collected language keeps a captured variable alive as long as any closure uses it. Rust has no collector and frees a function's locals when it returns, so a closure that outlives its function must own what it uses. That is what `move` is for. A thread started with `thread::spawn` may outlive the function that started it, so it cannot borrow that function's locals ([Threads](/learn/threads/)):
+
+<Snippet file="spawn-no-move.fail.rs" />
+
+<Snippet file="spawn-move.rs" />
+
+The same error appears when a function returns a closure ([below](#returning-closures)); both times the `help` line suggests `move`.
+
+## Fn, FnMut and FnOnce
+
+The compiler gives every closure some of three **traits** (a trait is a named ability; [traits](/learn/traits/) comes later), as the table's third column shows. `Fn` can be called many times, even through a shared reference; `FnMut` many times from a `mut` variable; `FnOnce` once. Which a closure gets depends on what its body does with what it captured, not on `move`.
+
+You write the traits on the function that receives the closure, as the kind it accepts (`impl Fn()` means "any closure of that kind"; [below](#passing-a-closure-to-a-function) has the details):
+
+<Snippet file="fn-kinds.rs" />
+
+The other directions fail. A closure that gives something away can run once:
+
+<Snippet file="fnonce-twice.fail.rs" />
+
+A function that asks for `Fn` rejects closures that change or give away what they captured:
+
+<Snippet file="mutate-as-fn.fail.rs" />
+
+<Snippet file="consume-as-fn.fail.rs" />
+
+## Passing a closure to a function
+
+<Snippet file="passing.rs" />
+
+- `impl Fn(i32) -> i32` in a parameter means "any type that implements this". `F: Fn(i32) -> i32` with `where` says the same by naming a type parameter `F` limited to such closures, ([reading signatures](/learn/reading-signatures/), [generics](/learn/generics/#bounds-what-t-may-do)).
+- `&dyn Fn(i32) -> i32` is one compiled function that takes any closure of that shape through a pointer ([trait objects](/learn/trait-objects/)).
+- `fn(i32) -> i32` is a plain function pointer. It accepts named functions and closures that capture nothing, and refuses the rest:
+
+<Snippet file="ptr-capture.fail.rs" />
+
+Ask for the most permissive trait that does the job: `FnOnce` accepts every closure in the table above, `FnMut` all but those that give captures away, `Fn` only those that just read. Ask for `FnOnce` if you call it once, `FnMut` if you call it several times (and declare the parameter `mut f`), and `Fn` if you must call it through a shared reference, such as `&self`.
+
+A closure passed by value moves into the function; one that owns a `String` is not `Copy`:
+
+<Snippet file="pass-twice.fail.rs" />
+
+Lend it instead. A reference to an `Fn` closure is itself an `Fn`:
+
+<Snippet file="pass-by-ref.rs" />
+
+## Returning closures
+
+A closure's type has no name you can write, so a function returns it as `impl Fn(...)`, "some one type that implements this".
+
+<Snippet file="returning.rs" />
+
+The closure must own what it uses, because the function's locals are gone when it returns. Without `move`:
+
+<Snippet file="return-no-move.fail.rs" />
+
+Each call to `make_counter` makes a closure with its own `count`. `impl Fn` names one type and every closure expression has its own, so two closures written separately cannot come out of one `if` (unless neither captures anything, below):
+
+<Snippet file="two-closures.fail.rs" />
+
+The fix is `Box<dyn Fn(...)>`, as `pick` does. `Box<T>` is an owned pointer to a value on the heap ([Smart pointers](/learn/smart-pointers/)). `dyn Fn(i32, i32) -> i32` means "some closure with this signature, found at run time" ([trait objects](/learn/trait-objects/)). One type then holds any closure of that shape, which a `Vec` of different closures also needs. A stored boxed closure must own what it uses, written `'static` ([lifetimes](/learn/lifetimes/)); the `registry` exercise meets it.
+
+Closures that capture nothing are the exception. Each coerces to a `fn` pointer, so they can share a type:
+
+<Snippet file="no-captures-coerce.rs" />
+
+## Closures in structs, and callbacks
+
+A struct holds a closure through a type parameter (`F` below: a placeholder the compiler fills in with the closure's type; [generics](/learn/generics/)) when it has one, or through `Box<dyn FnMut>` (or `Box<dyn Fn>`) when it has several of different types:
+
+<Snippet file="in-structs.rs" />
+
+A closure in a field is called with parentheses around the field, `(self.on_click)(...)`. Without them Rust looks for a method:
+
+<Snippet file="field-call.fail.rs" />
+
+`Box<dyn FnOnce() -> String>` holds a job that runs once (`thread::spawn` takes an `FnOnce` too). Looping over the `Vec` by value gives each job away as it is run:
+
+<Snippet file="once-queue.rs" />
+
+In a loop, each pass has its own `i`, which ends with the pass, so the closure must own a copy:
+
+<Snippet file="loop-closures.rs" />
+
+<Snippet file="loop-no-move.fail.rs" />
+
+## What a closure cannot do
+
+**Its parameter types are fixed by the first use.** A closure is not generic like a function:
+
+<Snippet file="infer-once.fail.rs" />
+
+**It cannot call itself by name.** The name `factorial` does not exist until the `let` is finished, and the closure has no name of its own. Write a recursive helper as a nested `fn`, which can see its own name and captures nothing:
+
+<Snippet file="recursion.fail.rs" />
+
+<Snippet file="recursion-fn.rs" />
+
+## Closures in the standard library
+
+Closures are how you hand a rule to a method: `sort_by_key` takes one that works out a key, `sort_by` one that compares two items, `retain` one that says whether to keep an item. [Iterator](/learn/iterators/) adapters such as `map` and `filter` take closures the same way.
+
+<Snippet file="sort-and-filter.rs" />
+
+`sort_by_key` has a trap: the key may not borrow from the item.
+
+<Snippet file="sort-key-borrow.fail.rs" />
+
+Use `sort_by(|a, b| a.name.cmp(&b.name))`, as above, or return a copy such as `p.name.clone()`.
+
+A closure also delays work. `unwrap_or(x)` computes `x` before the call, whether or not it is used. `unwrap_or_else(f)` runs `f` only for `None` (`ok_or_else` and `or_insert_with` follow the same pattern):
+
+<Snippet file="lazy-default.rs" />
+
+## Which form to write
+
+| You are... | Write |
+|---|---|
+| handing a rule to a method you call right now (`sort_by_key`, `retain`, `map`) | a plain closure; no `move` |
+| a `thread::spawn` thread, a returned closure, or one kept after the function ends | `move \|args\| ...` |
+| a function that takes a callback | the trait that matches how you call it (above) |
+| one closure in a struct; several different ones | a type parameter limited to `Fn(..)`; `Box<dyn Fn(..)>` in a `Vec` |
+
+When the compiler complains about a closure, the message points at the capture (`x` is borrowed here, value moved into closure here) and usually offers `move` or `FnMut`. Read which variable it names first: `move` on a closure that should share a counter gives it a private copy.
+
+## Your closures in Rust
+
+<ForLang only="go">
+
+| In Go | In Rust |
+|---|---|
+| `func(x int) int { return x * f }` | `\|x\| x * f` |
+| a parameter `f func(int) int` | `f: impl Fn(i32) -> i32`; `FnMut` if the callback keeps state |
+| `go func() { ... }()` | closest: `thread::spawn(move \|\| { ... })`, an operating-system thread |
+| `sort.Slice(v, func(i, j int) bool {...})` | `v.sort_by(\|a, b\| ...)`: it gets the two items, not indexes, and returns an `Ordering` |
+
+A Go closure captures the **variable**, so it sees later changes:
+
+<Snippet file="sees-later.go" />
+
+Rust's default borrow refuses that change while the closure is alive (the first error above), and a `move` closure over a number keeps a snapshot:
+
+<Snippet file="snapshot.rs" />
+
+A Go closure can also outlive its function, because the garbage collector keeps the variable it captured alive:
+
+<Snippet file="make-counter.go" />
+
+Rust has no collector, so the same function needs `move` and `impl FnMut() -> u32` ([returning closures](#returning-closures)). A `go func() { count++ }()` is a data race in Go and a compile error in Rust ([Threads](/learn/threads/)).
+
+Go's loop variable changed in Go 1.22. The `go` line in the module's `go.mod` decides which behaviour you get (a file run without a `go.mod` uses the compiler's own version, so it gets the new one). This program builds the same code in two modules:
+
+<Snippet file="loopvar-gomod.go" />
+
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+
+| In Java, Kotlin or C# | In Rust |
+|---|---|
+| Java `Function<Integer, Integer>`, `IntUnaryOperator`, `Runnable`, `Supplier<T>`; C# `Func<int, int>`, `Action` | no interface per shape: `Fn(i32) -> i32`, `Fn()`, and `FnMut` or `FnOnce` where needed. The closure has its own unnamed type; `Fn(..)` says what it can do |
+| Kotlin `(Int) -> Int` | `impl Fn(i32) -> i32` |
+| Kotlin `list.map { it * 2 }` | `list.iter().map(\|x\| x * 2)`: no trailing lambda, no `it` |
+
+In these languages a lambda keeps what it captured alive (the garbage collector sees to it), so a lambda returned from a method just works. Rust has no collector, so `move` is how a returned closure comes to own what it uses.
+
+<ForLang only="java">
+
+Java copies a captured local's value (the lambda may run after the method has returned), so the local must be final or effectively final: any reassignment is rejected, inside the lambda or after it. Rust lets a closure change a captured local, and makes the outside wait (the first error above):
+
+<Snippet file="effectively-final.fail.java" />
+
+</ForLang>
+
+<ForLang only="kotlin">
+
+A Kotlin lambda shares the variable and can change it ([Kotlin docs](https://kotlinlang.org/docs/lambdas.html#closures)). Rust allows the same through `&mut`, with the checks above.
+
+<Snippet file="capture-var.kt" />
+
+`return` differs. In a lambda passed to an inline function like `forEach`, Kotlin's `return` leaves the enclosing function. In Rust it leaves the closure only:
+
+<Snippet file="non-local-return.kt" />
+
+<Snippet file="return-in-closure.rs" />
+
+</ForLang>
+
+<ForLang only="csharp">
+
+C# lambdas capture variables, and a `for` loop has one variable for all passes, where `foreach` has one per pass:
+
+<Snippet file="loop-capture.cs" />
+
+Rust has no shared loop counter to trip over: the closure borrows (and the compiler checks the borrow ends in time) or owns a copy.
+
+</ForLang>
+
+</ForLang>
+
+<ForLang only="python typescript">
+
+| In Python or TypeScript | In Rust |
+|---|---|
+| `lambda x: x + n` (one expression) | `\|x\| x + n`, or `\|x\| { ... }` with statements |
+| `def make_adder(n): return lambda x: x + n` | `fn make_adder(n: i32) -> impl Fn(i32) -> i32 { move \|x\| x + n }` |
+| `(x: number) => x + n` | `\|x\| x + n` |
+| `def inc(): global count; count += 1` (`nonlocal` in a nested function) | `let mut inc = \|\| count += 1;`: no `global`/`nonlocal` declaration, but the closure variable is `mut` |
+| `sorted(people, key=lambda p: p.age)` | `people.sort_by_key(\|p\| p.age)`; a key that borrows fails ([below](#closures-in-the-standard-library)) |
+
+Python makes you say `global` or `nonlocal` to change a captured variable; Rust makes you say `mut`. Both languages capture the **variable**, so a closure sees later changes, and keep it alive as long as the closure lives; Rust has no garbage collector, so a closure that outlives its function must own what it uses (`move`). Python loops are the one real surprise:
+
+<ForLang only="python">
+
+<Snippet file="late-binding.py" />
+
+The loop closures all read the one `i`, which is 2 at the end. The default argument `i=i` evaluates `i` when the lambda is made, which is what a `move` closure does with a number in Rust. A closure has no default or keyword arguments in Rust.
+
+</ForLang>
+
+<ForLang only="typescript">
+
+<Snippet file="loop-var.ts" />
+
+A `var` loop has one variable for all passes (the older form); a `let` loop has one per pass, as in Rust.
+
+</ForLang>
+
+In Rust, changing `x` while a borrowing closure is alive is the first error above. `move` copies a number (the `i=i` trick) but moves anything else: the closure owns a `String` and the outside can no longer use it.
+
+</ForLang>
+
+<ForLang only="c cpp">
+
+<ForLang only="c">
+
+C has no closures. The usual stand-in is a function pointer plus a `void *` that carries the data, with a cast inside. A Rust closure does the same job as that pair, packaged and type-checked:
+
+<Snippet file="context.c" />
+
+A plain `fn` pointer in Rust accepts only closures that capture nothing (the error above).
+
+</ForLang>
+
+<ForLang only="cpp">
+
+A lambda's capture list is written out. Rust has none: the body decides, and `move` is the nearest thing to `[=]`.
+
+| In C++ | In Rust |
+|---|---|
+| `[=]` | `move` (every variable the body uses, by value) |
+| `[&]`, `[&x]` | the default: each variable by the least the body needs |
+| `[x]`, `[x = std::move(s)]` | a `move` closure (a value that is not `Copy` is moved, not copied) |
+| `[x]() mutable { ... }` | a `move` closure that changes its copy, held in a `let mut` variable |
+| `[x, &y]` | no spelling: `move` is all or nothing. Make the reference first, then `move` both |
+| `std::function<int(int)>` | `Box<dyn FnMut(i32) -> i32>` (`Fn` if it never changes state) |
+| a template parameter `F` | `impl Fn(i32) -> i32` |
+| `[](auto x) { ... }` | no generic closures: write a generic `fn` |
+
+<Snippet file="capture-list.cpp" />
+
+`std::function` can hold a `mutable` lambda, so the match is `FnMut`, not `Fn`. For `[x, &y]`, bind the reference and move it in:
+
+<Snippet file="mixed-capture.rs" />
+
+A lambda that captures by reference and outlives the variable compiles. Compiled with `-fsanitize=address`, the call is reported:
+
+<Snippet file="dangling.crash.asan.cpp" />
+
+Rust refuses the same function (E0373, the `make_adder` error above).
+
+</ForLang>
+
+</ForLang>
+
+<p class="lr-layer">Going deeper</p>
+
+## A closure is a struct
+
+The compiler turns a closure into a value that holds its captures. Sizes show what it holds:
+
+<Snippet file="closure-size.rs" />
+
+A closure that captures nothing takes no space. One that holds a reference is the size of a reference, and one that owns a `String` is the size of a `String`. (The layout of closures is not promised; these are what this compiler prints.)
+
+<Memory
+  title="three closures, three kinds of capture"
+  stack={[
+    { name: 'factor', type: 'i32', cells: ['3'] },
+    { name: 'reads_factor', type: 'closure', cells: ['&factor'], toVar: 'factor', note: '8 bytes: a shared reference' },
+    { name: 'count', type: 'i32', cells: ['0'] },
+    { name: 'bumps_count', type: 'closure', cells: ['&mut count'], toVar: 'count', note: '8 bytes: a mutable reference' },
+    { name: 'name', type: 'String', cells: ['ptr', 'len 6', 'cap 6'], gone: 'moved' },
+    { name: 'owns_name', type: 'closure (move)', cells: ['ptr', 'len 6', 'cap 6'], to: 'buf', note: '24 bytes: the String itself' },
+  ]}
+  heap={[{ id: 'buf', label: '"ferris"', cells: ['f', 'e', 'r', 'r', 'i', 's'] }]}
+  caption="The closure is on the stack, like any struct. Only the String's own text is on the heap. (The order of a String's fields is a convenient choice.)"
+/>
+
+Every closure expression has its own type, even two identical ones, which is why separately written closures need `Box<dyn Fn>` to share a `Vec`.
+
+## Captures are exact
+
+A closure captures the part of a variable it names. `p.name` borrows the field `name`, and the other fields stay free. This applies from the 2021 edition on (the runner builds edition 2024); in the 2018 edition `p.score += 5` below is an error (E0506). The [Edition Guide](https://doc.rust-lang.org/edition-guide/rust-2021/disjoint-capture-in-closures.html) describes the change.
+
+<Snippet file="disjoint.rs" />
+
+Calling a method on the variable names all of it, because the method takes `&self`:
+
+<Snippet file="disjoint-method.fail.rs" />
+
+## Generic, dyn, or fn pointer
+
+An `impl Fn` or `F: Fn` parameter is filled in with the closure's own type, so the compiler knows which code each call runs ([generics](/learn/generics/)). A `dyn Fn` value is a pointer to the closure plus a pointer to a table of its methods, and a call goes through the table, so the compiler cannot always see which code runs (an optimised build sometimes can). The sizes show the two pointers; a `fn` pointer is one:
+
+<Snippet file="dyn-sizes.rs" />
+
+Reach for `dyn` when you store closures of different types together or choose one at run time; otherwise prefer `impl Fn`. No timings are claimed here: measure your own case.
+
+<p class="lr-layer">Practice</p>
+
+<Exercise name="compose" title="Closures that return closures">
+Write `make_adder`, `make_counter` and `compose`. Each returns a closure that outlives the function, so each needs `move`: forgetting it is the error you are meant to meet. The checks interleave two counters (a `static` total fails) and compose in both orders.
+</Exercise>
+
+<Exercise name="callbacks" title="Fn, FnMut or FnOnce?">
+Three functions call a closure: once, several times, and through `&self`. The starter declares every parameter `FnOnce`, so it compiles. Write the bodies and pick the most permissive trait that works for each.
+</Exercise>
+
+<Exercise name="closest" title="A closure that uses a local">
+Write `closest`: `retain` the words that are not banned, then `sort_by_key` by how far each length is from `target`, ties alphabetical. Both closures use a local variable, as most closures you write will. The key may not borrow from the item.
+</Exercise>
+
+<Exercise name="registry" title="A registry of callbacks">
+Store closures of different types in one `Vec<Box<dyn Fn>>`, then call those registered under a name, in order. The checks include an unknown name and names that share a prefix with a registered one: only an exact name matches.
+</Exercise>
+
+## Read more
+
+- The Rust Book: [Closures](https://doc.rust-lang.org/book/ch13-01-closures.html), including how the compiler picks `Fn`, `FnMut` and `FnOnce`.
+- Rust by Example: [Closures](https://doc.rust-lang.org/rust-by-example/fn/closures.html).
+- std docs: [`Option::unwrap_or_else`](https://doc.rust-lang.org/std/option/enum.Option.html#method.unwrap_or_else), [`slice::sort_by_key`](https://doc.rust-lang.org/std/primitive.slice.html#method.sort_by_key), [`Fn`](https://doc.rust-lang.org/std/ops/trait.Fn.html), [`FnMut`](https://doc.rust-lang.org/std/ops/trait.FnMut.html), [`FnOnce`](https://doc.rust-lang.org/std/ops/trait.FnOnce.html) and [function pointers](https://doc.rust-lang.org/std/primitive.fn.html).
+- The Rust Reference: [closure types](https://doc.rust-lang.org/reference/types/closure.html), the exact capture rules.
+- Go: [Fixing For Loops in Go 1.22](https://go.dev/blog/loopvar-preview). Python: the FAQ entry on [lambdas defined in a loop](https://docs.python.org/3/faq/programming.html#why-do-lambdas-defined-in-a-loop-with-different-values-all-return-the-same-result). C++: [lambda expressions](https://en.cppreference.com/w/cpp/language/lambda). C#: [lambda expressions](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/operators/lambda-expressions).

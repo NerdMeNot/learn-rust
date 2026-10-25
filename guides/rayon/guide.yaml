@@ -1,0 +1,220 @@
+# Data parallelism with Rayon
+name: parallel-sums
+sessions:
+  run:
+    dir: rust
+    steps:
+      - cmd: cargo run
+  go:
+    dir: go
+    steps:
+      - cmd: go run .
+  join:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-join/src/main.rs
+    steps:
+      - cmd: cargo run
+  shared:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-shared/src/main.rs
+    steps:
+      - cmd: cargo run
+  pool:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-pool/src/main.rs
+    steps:
+      - cmd: cargo run
+      - cmd: RAYON_NUM_THREADS=2 cargo run
+  builder:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-builder/src/main.rs
+    steps:
+      - cmd: cargo run
+  panic:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-panic/src/main.rs
+    steps:
+      - cmd: cargo run
+  grouping:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-grouping/src/main.rs
+    steps:
+      - cmd: cargo run
+        varies: true
+  # One timing run. The page labels it; the text asserts only what it printed.
+  timing:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-timing/src/main.rs
+    steps:
+      - cmd: cargo run --release
+        show: "$ cargo run --release   # one run on this VM, 8 cores (colima), varies"
+        varies: true
+  # The gotcha: an Rc captured by a parallel closure.
+  rc-in-par-iter:
+    dir: rust
+    overlay:
+      src/main.rs: gotcha/main.rs
+    steps:
+      - cmd: cargo build
+        expect: fail
+  sum-instead:
+    dir: rust
+    overlay:
+      src/main.rs: gotcha/fixed.rs
+    steps:
+      - cmd: cargo run
+  go-race:
+    dir: gotcha-langs
+    steps:
+      - cmd: go run race.go
+        varies: true
+  java-race:
+    dir: gotcha-langs
+    steps:
+      - cmd: javac Race.java && java Race
+        show: "$ java Race"
+        varies: true
+  kotlin-race:
+    dir: gotcha-langs
+    steps:
+      - cmd: kotlinc race.kt -include-runtime -d race.jar 2>/dev/null && java -jar race.jar
+        show: "$ java -jar race.jar"
+        varies: true
+  csharp-race:
+    dir: gotcha-langs
+    steps:
+      - cmd: bash cs.sh race.cs | grep total
+        show: "$ dotnet run"
+        varies: true
+  c-race:
+    dir: gotcha-langs
+    steps:
+      - cmd: gcc -fopenmp race.c -o race_c && ./race_c
+        show: "$ ./race_c"
+        varies: true
+  cpp-race:
+    dir: gotcha-langs
+    steps:
+      - cmd: g++ -fopenmp race.cpp -o race_cpp && ./race_cpp
+        show: "$ ./race_cpp"
+        varies: true
+  # Backs the Go text: the race detector reports this program.
+  go-race-detector:
+    dir: gotcha-langs
+    steps:
+      - cmd: 'go run -race race.go 2>&1 | grep -c "WARNING: DATA RACE"'
+  python-race:
+    dir: gotcha-langs
+    steps:
+      - cmd: python3 race.py
+        varies: true
+  # Backs the Python text: how often the same loop lost updates at three sizes (5 runs each).
+  python-sizes:
+    dir: gotcha-langs
+    steps:
+      - cmd: 'for n in 1000000 2000000 8000000; do echo -n "$n numbers: "; for i in 1 2 3 4 5; do python3 race_n.py $n; done; echo; done'
+        show: "$ for n in 1000000 2000000 8000000; do ...; done   # race.py with N from the command line, 5 runs each"
+        varies: true
+  ts-race:
+    dir: gotcha-langs
+    steps:
+      - cmd: node race.ts
+  # The same sum of squares, the way each language does parallel work (the page's table).
+  langs:
+    dir: languages
+    steps:
+      - cmd: go run sum.go
+        show: "$ go run sum.go   # Go, goroutines and a WaitGroup"
+      - cmd: javac Sum.java && java Sum
+        show: "$ java Sum   # Java, parallel stream"
+      - cmd: kotlinc sum.kt -include-runtime -d sum.jar 2>/dev/null && java -jar sum.jar
+        show: "$ java -jar sum.jar   # Kotlin, the same Java stream"
+      - cmd: bash cs.sh sum.cs | tail -1
+        show: "$ dotnet run   # C#, PLINQ"
+      - cmd: python3 sum.py
+        show: "$ python3 sum.py   # Python, ProcessPoolExecutor"
+      - cmd: node sum.ts
+        show: "$ node sum.ts   # TypeScript, worker_threads"
+      - cmd: gcc -fopenmp sum.c -o sum_c && ./sum_c
+        show: "$ ./sum_c   # C, OpenMP"
+      - cmd: g++ -fopenmp sum.cpp -o sum_cpp && ./sum_cpp
+        show: "$ ./sum_cpp   # C++, OpenMP"
+      - cmd: g++ -std=c++17 par.cpp -o par_cpp && ./par_cpp
+        show: "$ ./par_cpp   # C++17, std::execution::par"
+gotcha:
+  kind: compile
+  title: Sharing a counter between parallel closures
+  verdict: broken-elsewhere
+  looks_fine: >-
+    Adding every number into one shared variable from several workers is a short,
+    natural way to total a list.
+  rust_sees: >-
+    `for_each` calls your closure from several threads at once, so the closure has to be
+    `Sync` and `Send`. This one borrows an `Rc<RefCell<u64>>`, and the error says `Sync` is
+    not implemented for it: `Rc` counts its owners without atomics, and `RefCell` checks
+    borrows without any locking.
+  why: >-
+    The compiler is refusing a data race before it can happen. This is the check from
+    [Send and Sync](/learn/send-sync/) applied to rayon's closures. The fix is usually to
+    stop sharing: let each piece return a value and let rayon combine them (`sum`,
+    `reduce`). If you do need shared state, use an atomic or an `Arc<Mutex<T>>`
+    ([Shared State](/learn/shared-state/)).
+  code: { file: gotcha/main.rs, name: src/main.rs }
+  session: rc-in-par-iter
+  fixed: { file: gotcha/fixed.rs, name: src/main.rs, session: sum-instead }
+  langs:
+    go:
+      status: race
+      says: >-
+        Go compiles and runs this. One goroutine per CPU (eight on this VM) adds into one `int` with no lock, and `total += i` is a read, an add and a write, so updates get lost. The run printed a total below the expected one, and `go run -race` reports a data race in this program.
+      file: gotcha-langs/race.go
+      session: go-race
+    java:
+      status: race
+      says: >-
+        Java compiles and runs this. A parallel stream calls the lambda on several threads, and `total[0] += n` is a read, an add and a write, so updates get lost. The run printed a total below the expected one.
+      file: gotcha-langs/Race.java
+      session: java-race
+    kotlin:
+      status: race
+      says: >-
+        This uses the same Java stream as the Java version and fails the same way (`kotlinx.coroutines` was not run). The run printed a total below the expected one.
+      file: gotcha-langs/race.kt
+      session: kotlin-race
+    csharp:
+      status: race
+      says: >-
+        C# compiles and runs this. `Parallel.For` runs the body on several threads and `total += n` is not atomic (`Interlocked.Add` exists for this). The run printed a total below the expected one.
+      file: gotcha-langs/race.cs
+      session: csharp-race
+    c:
+      status: race
+      says: >-
+        gcc compiles this with `-fopenmp`. Every thread updates `total`. Two sources apply, and they say different things. The OpenMP 5.2 memory model ([section 1.4.1](https://www.openmp.org/spec-html/5.2/openmpsu9.html)) says "If a data race occurs then the result of the program is unspecified". The C11 standard (section 5.1.2.4), for threads as the C standard defines them, says a data race is undefined behavior. Either way nothing promises the result. The run printed a total below the expected one. A `reduction(+ : total)` clause is the fix, as in the table below.
+      file: gotcha-langs/race.c
+      session: c-race
+    cpp:
+      status: race
+      says: >-
+        g++ compiles this with `-fopenmp`. Every thread updates `total`. Two sources apply, and they say different things. The OpenMP 5.2 memory model ([section 1.4.1](https://www.openmp.org/spec-html/5.2/openmpsu9.html)) says "If a data race occurs then the result of the program is unspecified". The C++ standard ([intro.races](https://eel.is/c++draft/intro.races)) says a data race is undefined behavior, for the threads it defines. Either way nothing promises the result. The run printed a total below the expected one.
+      file: gotcha-langs/race.cpp
+      session: cpp-race
+    python:
+      status: race
+      says: >-
+        Python runs this. The global interpreter lock keeps the interpreter's own data consistent, but `total = total + term(i)` is still a read, a call and a write, so updates get lost. Whether it loses updates depends on how long each thread runs before the interpreter switches threads, so it depends on the size: the session under the gotcha runs this loop five times at each of three sizes. This tab uses 8,000,000 numbers, and its run printed a total below the expected one. Not guaranteed either way ([Shared State](/learn/shared-state/) has the details).
+      file: gotcha-langs/race.py
+      session: python-race
+    typescript:
+      status: wrong
+      says: >-
+        Node runs this, and there is no race and no sum either. Each worker thread gets its own copy of `total`, so the main thread printed 0. Workers can share memory by sharing a `SharedArrayBuffer` or by transferring an `ArrayBuffer`, as the [Node docs](https://nodejs.org/docs/latest-v24.x/api/worker_threads.html) say. A plain variable like `total` is not shared.
+      file: gotcha-langs/race.ts
+      session: ts-race

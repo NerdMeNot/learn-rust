@@ -1,0 +1,128 @@
+---
+title: "Project: a money library"
+description: "Build a small library crate step by step: newtypes, errors with thiserror, tests, rustdoc with doc-tests, and a public API that can grow without breaking the code that uses it."
+---
+
+import { Files, Remember, Session, Tree } from '../../../components/guide'
+
+A library is code other people compile against, so the questions change. A program is finished when it does its job. A library also has to keep doing it for callers who upgrade. This page builds a small one, `tinymoney`, in five steps, and the last step changes it on purpose to see which changes break a caller. Every output below is a real run in the course image.
+
+<Remember>Give each meaning its own type, keep fields private, and mark what may grow `#[non_exhaustive]`. Then tests, doc-tests and a semver check tell you whether a change is safe for the people who use it.</Remember>
+
+<Tree guide="project-money" dir="rust" name="tinymoney" title="Project layout" notes={{"Cargo.toml":"the library package, and the workspace that holds the caller","src/lib.rs":"crate docs and the public names","src/amount.rs":"a newtype","src/currency.rs":"a #[non_exhaustive] enum","src/error.rs":"the error type","src/money.rs":"the main type and its unit tests","src/rounding.rs":"an exhaustive enum, on purpose","tests/api.rs":"tests that use only the public API","consumer/src/main.rs":"a second package that uses the library like any other crate","Cargo.lock":"committed"}} />
+
+<Files guide="project-money" dir="rust" files={["Cargo.toml","consumer/Cargo.toml"]} />
+
+`consumer` is a path dependency on the library: it stands in for the code of someone who uses `tinymoney`, so a change that breaks it is a change that would break them. [Project structure](/further/project-structure/) explains workspaces. `thiserror = "2.0.21"` means that version or a newer compatible one; the lock file, below, fixes which.
+
+## Step 1: types that cannot be mixed up
+
+Here money is kept as whole minor units, and a bare integer would not say which unit it counts. `Amount` is a **newtype** ([Idioms](/learn/idioms/#newtype-a-type-for-each-meaning)): a struct around one `i64` of minor units (cents, yen) whose field is private. The Rust API Guidelines list this as [C-NEWTYPE](https://rust-lang.github.io/api-guidelines/type-safety.html#newtypes-provide-static-distinctions-c-newtype) and, for the private field, [C-STRUCT-PRIVATE](https://rust-lang.github.io/api-guidelines/future-proofing.html#structs-have-private-fields-c-struct-private). Outside the crate, the way to make an `Amount` from an integer is `Amount::from_minor`, so the unit is written at the call site.
+
+<Files guide="project-money" dir="rust" files={["src/lib.rs","src/amount.rs","src/currency.rs"]} />
+
+`lib.rs` keeps the modules private and re-exports the names callers need ([Modules](/learn/modules/#re-exports)); it already names the modules of steps 2 and 3, because the project is shown whole and built up in the telling. `Currency` knows its decimal places: Wikipedia's copy of the [ISO 4217 list](https://en.wikipedia.org/wiki/ISO_4217) shows 2 for US dollars and euros and 0 for yen (the standard itself was not opened), so `Jpy` has no fraction. A caller who skips the constructor is stopped by the compiler:
+
+<Session guide="project-money" run="newtype" />
+
+## Step 2: errors a caller can match on
+
+The library returns its own enum, so callers can react to each failure; an application would wrap it in `anyhow` ([Errors in real apps](/build/app-errors/), [Errors](/learn/errors/#your-own-error-type)). `thiserror` writes the `Display` text from each `#[error("...")]` and the `std::error::Error` impl. Its docs add that it "deliberately does not appear in your public API", so changing to or from a hand-written impl "is not a breaking change" ([docs](https://docs.rs/thiserror/2.0.21/thiserror/)).
+
+<Files guide="project-money" dir="rust" files={["src/error.rs"]} />
+
+## Step 3: `Money`, and tests at three levels
+
+`Money` pairs an `Amount` with a `Currency`, both private. `parse` reads `"19.99"` into minor units and refuses `"19.999"` with `TooManyDecimals` instead of rounding it. `percent` multiplies in `i128`, so the product cannot overflow before the division, and asks a `Rounding` what to do with the remainder. Adding two currencies is an `Err`, not a wrong total.
+
+<Files guide="project-money" dir="rust" files={["src/money.rs","tests/api.rs"]} />
+
+Three kinds of test run under `cargo test` ([Testing](/build/testing/) covers the basics). Unit tests sit in `mod tests` next to the code and can reach private items. Each file in `tests/` is a separate crate that sees only what the library exports, as `consumer` does. Doc-tests are the examples in the comments, which rustdoc compiles and runs. The `--test-threads=1` keeps the order of the lines fixed, and the sed command drops the paths and replaces the timings. The three groups are the 7 unit tests, the 6 in `tests/api.rs` and the 7 doc-tests:
+
+<Session guide="project-money" run="test" />
+
+The `consumer` package uses the same API from outside:
+
+<Files guide="project-money" dir="rust" files={["consumer/src/main.rs"]} run="run" />
+
+## Step 4: documentation that is tested
+
+`//!` documents the crate and `///` the item below it. An example that uses `?` ends with a hidden `# Ok::<(), Error>(())` line so it can ([API Guidelines](https://rust-lang.github.io/api-guidelines/documentation.html), [rustdoc book](https://doc.rust-lang.org/rustdoc/write-documentation/documentation-tests.html#hiding-portions-of-the-example)); the guidelines also ask for an `# Errors` section on functions that return `Result` (C-FAILURE), which `parse`, `checked_add` and `percent` have. `parse` accepts `i64::MIN` and reports `Overflow` one step past either end of the `i64` range, which a unit test checks. `#![deny(missing_docs)]` turns a missing comment on a public item into a build error (task 1 below). `cargo doc` writes the HTML, and rustdoc itself adds a note to the page of a `#[non_exhaustive]` enum:
+
+<Session guide="project-money" run="doc" />
+
+The doc-tests ran in step 3: seven of them, one for each example. An example that goes stale fails `cargo test`, which is more than a comment can do ([Project structure](/further/project-structure/#documentation-doc-tests-and-names) has the rest of the doc syntax).
+
+## Step 5: a public API that can change
+
+Three enums are public. `Currency` and `Error` are `#[non_exhaustive]`; `Rounding` is not, and that is on purpose, to compare. In another crate, the attribute makes a `match` on the enum need a `_` arm ([Reference](https://doc.rust-lang.org/reference/attributes/type_system.html#the-non_exhaustive-attribute)). `consumer` has one. A copy of its `symbol` function without it:
+
+<Session guide="project-money" run="no-wildcard" />
+
+The compiler asks for a `_` arm because the library's author reserved the right to add variants. Now three changes to the library, each tried against the unchanged `consumer`. First, a version 0.1.1 would add a currency and a method. `diff` shows the change; the caller builds and prints what it did before, and the library's own tests still pass:
+
+<Session guide="project-money" run="semver-add" />
+
+A new variant on `Rounding`, which has no attribute, is a different story:
+
+<Session guide="project-money" run="semver-enum" />
+
+And renaming a public method breaks every caller of it:
+
+<Session guide="project-money" run="semver-rename" />
+
+| Change to the library | The caller | Run here | The Cargo reference ([SemVer](https://doc.rust-lang.org/cargo/reference/semver.html)) |
+| --- | --- | --- | --- |
+| New variant on a `#[non_exhaustive]` enum | still builds | yes | [breaking only if the enum is not marked](https://doc.rust-lang.org/cargo/reference/semver.html#enum-variant-new) |
+| New public method | still builds | yes | [minor](https://doc.rust-lang.org/cargo/reference/semver.html#item-new) |
+| New variant on an exhaustive enum | E0004 | yes | [major](https://doc.rust-lang.org/cargo/reference/semver.html#enum-variant-new) |
+| Renamed public method | E0599 | yes | [major](https://doc.rust-lang.org/cargo/reference/semver.html#item-remove) |
+| `#[non_exhaustive]` added to an existing enum | E0004 | yes (task 3) | [major](https://doc.rust-lang.org/cargo/reference/semver.html#attr-adding-non-exhaustive) |
+
+Version numbers say which of these happened. For 1.0.0 and later a breaking change needs a new major number; the reference adds that releases starting with 0.y.z "can treat changes in “y” as a major release", because Cargo treats only a change in the left-most non-zero component as incompatible. This crate is at 0.1.0.
+
+Checking by hand does not scale, so there are tools. `cargo-semver-checks` compares the library's rustdoc data with a baseline and names the rule a change breaks. This session installs a pinned version (needs network), keeps a copy of 0.1.0 as the baseline and tries the same three changes. The tool prints timings, replaced here, and exited with status 100 in the two failing runs:
+
+<Session guide="project-money" run="semver-checks" />
+
+It agrees with the three compiler runs: the first change passes and the other two are reported as needing a new major version. Both copies are named 0.1.0 here, so the tool had no version change to go by and assumed a minor one (`no change; assume minor`, on the `Checking` line). The tool runs its own lints, which the output counts (202 checks, 58 skipped in each run). No change that it would miss was tried here, and it cannot know how your callers use the API beyond what the API declares. Treat it as a second pair of eyes ([repository](https://github.com/obi1kenobi/cargo-semver-checks)).
+
+## Dependencies and the lock file
+
+A program usually commits `Cargo.lock` so every build gets the same versions. For a library the Cargo FAQ says the lock file "does not affect the consumers of your package, only `Cargo.toml` does that" ([FAQ](https://doc.rust-lang.org/cargo/faq.html#why-have-cargolock-in-version-control)): the people who use `tinymoney` resolve their own versions from the `thiserror = "2.0.21"` line. This project commits it anyway so the sessions on this page build against the same `thiserror` every time ([more](/further/project-structure/#cargolock-and-looking-at-dependencies)). With `--locked`, Cargo exits with an error instead of changing the lock file ([cargo build](https://doc.rust-lang.org/cargo/commands/cargo-build.html#manifest-options)); here the exit status is 0. `rust-version = "1.85"` states the oldest compiler the package claims to support; no session on this page uses 1.85, so that claim is not tested here ([how to test it](/further/project-structure/#lints-formatting-and-the-minimum-rust-version)).
+
+<Session guide="project-money" run="locked" />
+
+## Try it yourself
+
+Each task is a run in the project; the session under it was run in the image.
+
+1. Delete the line `/// No money at all.` above `Amount::ZERO` and run `cargo build`. The `missing_docs` lint, set to `deny` in `lib.rs`, stops the build and names the constant.
+
+<Session guide="project-money" run="try-docs" />
+
+2. In the first example in `src/lib.rs`, change `"USD 24.99"` to `"USD 25.00"` and run `cargo test --doc`. The unit and integration tests still pass, and the doc-test is the one that fails, with both strings in the report.
+
+<Session guide="project-money" run="try-doctest" />
+
+3. Put `#[non_exhaustive]` above `Rounding`. Nothing in the library changes, but `consumer` no longer builds, because adding the attribute to an existing enum takes away what callers could rely on. The reference lists that as a major change and advises marking an enum when you first introduce it.
+
+<Session guide="project-money" run="try-nonexhaustive" />
+
+## What to try next
+
+These were not run on this page.
+
+- Add a `serde` feature that derives `Serialize` and `Deserialize` for `Money`, and for `Amount` and `Currency` inside it ([Serde](/build/serde/), [features](/further/project-structure/#features)). Check that the build without the feature still works.
+- Write `Money::split(self, parts: u32)` that shares an amount so that the parts add up to the original and differ by at most one minor unit, and prove it with a property test (the idea in [Testing, more](/further/testing-more/) needs no crate). Decide what `parts == 0` returns.
+- Add `Currency::Gbp` for real, bump the version to 0.2.0 and run `cargo semver-checks` against 0.1.0 as the baseline.
+- Run `cargo publish --dry-run` to see what Cargo would upload (needs network, and may warn about missing `repository` or `readme` fields).
+
+## Read more
+
+- [Cargo book: SemVer compatibility](https://doc.rust-lang.org/cargo/reference/semver.html), the list of changes sorted by major and minor
+- [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/): [type safety](https://rust-lang.github.io/api-guidelines/type-safety.html), [documentation](https://rust-lang.github.io/api-guidelines/documentation.html), [future proofing](https://rust-lang.github.io/api-guidelines/future-proofing.html)
+- [rustdoc book: documentation tests](https://doc.rust-lang.org/rustdoc/write-documentation/documentation-tests.html)
+- In this course: [Idioms and design patterns](/learn/idioms/), [Modules](/learn/modules/), [Errors](/learn/errors/), [Errors in real apps](/build/app-errors/), [Project structure](/further/project-structure/)
+
+<p class="lr-fine">Versions on this page: Rust 1.99.1, thiserror 2.0.21 as pinned in <code>Cargo.lock</code>, cargo-semver-checks 0.51.0.</p>

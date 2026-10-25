@@ -1,0 +1,75 @@
+---
+// One page per lesson.
+//
+// Layer 1 (the quick comparison) is rendered from src/data/lessons/<id>.json, which
+// `bun run extract` writes from lessons/NN-<id>/lesson.yaml and the programs beside it.
+// Layers 2 and 3 (the toolkit, going deeper, practice) come from lessons/NN-<id>/lesson.mdx
+// when the lesson has one; its <Snippet>/<Exercise> components read the same data.
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro'
+import { Aside } from '@astrojs/starlight/components'
+import CodePanel from '../../components/lesson/CodePanel.astro'
+import Compare from '../../components/lesson/Compare.astro'
+import Gotcha from '../../components/lesson/Gotcha.astro'
+import Faq from '../../components/lesson/Faq.astro'
+import Snippet from '../../components/lesson/Snippet.astro'
+import Exercise from '../../components/lesson/Exercise.astro'
+import Memory from '../../components/lesson/Memory.astro'
+import ForLang from '../../components/lesson/ForLang.astro'
+import { LANG, OTHERS, PARTS } from '../../lib/langs'
+import { inline, plain } from '../../lib/md'
+import index from '../../data/lessons.json'
+
+export function getStaticPaths() {
+  return index.map(l => ({ params: { id: l.id } }))
+}
+
+const files = import.meta.glob<{ default: any }>('../../data/lessons/*.json', { eager: true })
+const pages = import.meta.glob<any>('../../../../lessons/*/lesson.mdx', { eager: true })
+const l = files[`../../data/lessons/${Astro.params.id}.json`].default
+const meta = index.find(x => x.id === l.id)!
+const mdx = pages[`../../../../lessons/${meta.dir}/lesson.mdx`]
+Astro.locals.lessonId = l.id
+
+const part = PARTS.find(p => p.id === l.part)!
+const inPart = index.filter(x => x.part === l.part)
+
+const headings = [
+  { depth: 2, slug: 'whats-different', text: "What's different" },
+  ...(l.faq?.length ? [{ depth: 2, slug: 'questions', text: 'Questions people ask' }] : []),
+  ...(l.gotcha ? [{ depth: 2, slug: 'gotcha', text: `Gotcha: ${plain(l.gotcha.title)}` }] : []),
+  ...(mdx ? mdx.getHeadings().filter((h: { depth: number }) => h.depth <= 3) : []),
+]
+const where = l.part === 'std' ? `Standard library · ${inPart.findIndex(x => x.id === l.id) + 1} of ${inPart.length}` : `${part.label} · Lesson ${l.order}`
+---
+<StarlightPage frontmatter={{ title: l.title, description: plain(l.intro), tableOfContents: mdx ? { minHeadingLevel: 2, maxHeadingLevel: 2 } : false }} headings={headings}>
+  <div class:list={['lr-lesson', mdx && 'lr-lesson-long']}>
+  <p class="lr-where">{where}</p>
+  <p class="lr-intro" set:html={inline(l.intro)} />
+  {OTHERS.filter(k => l.coming_from?.[k]).map(k => (
+    <p class="lr-bridge not-content" data-for={k} style={`--c:${LANG[k].color}`}>
+      <span class="lr-lbl">Coming from {LANG[k].name}</span>
+      <span set:html={inline(l.coming_from[k])} />
+    </p>
+  ))}
+
+  {mdx && <p class="lr-layer">The quick comparison</p>}
+  <div class="lr-compare">
+    <CodePanel lang="rust" code={l.program.rust.code} out={l.program.rust.out} varies={l.program.rust.varies} playground />
+    <Compare sides={Object.fromEntries(OTHERS.map(k => [k, l.program[k]]))} />
+  </div>
+
+  <h2 id="whats-different">What's different</h2>
+  <ul>
+    {l.notes.map((n: string) => <li set:html={inline(n)} />)}
+  </ul>
+
+  {l.faq?.length > 0 && <Faq items={l.faq} />}
+  {l.gotcha && <Gotcha g={l.gotcha} />}
+
+  {mdx && (
+    <div class="lr-lesson-body">
+      <mdx.default components={{ Snippet, Exercise, Memory, Aside, ForLang }} />
+    </div>
+  )}
+  </div>
+</StarlightPage>

@@ -1,0 +1,333 @@
+---
+title: "Rust for TypeScript developers"
+description: "Ten habits from TypeScript that Rust reads differently, each run in both languages, plus a table of equivalents, the toolchain map and a reading path."
+---
+
+import { Files, Remember, Session, Tree } from '../../../components/guide'
+
+You already write types after the name, generics with bounds, arrow functions, destructuring and `async`/`await`. This page is about the habits that carry over *wrongly*. Each one below is a TypeScript snippet that ran, then what Rust does with the same idea: a program that ran, or the real compiler error.
+
+<Remember>TypeScript types describe your code and are erased before it runs. Rust also tracks who owns each value and who is borrowing it, and much of what follows comes from that.</Remember>
+
+The TypeScript programs here pass `tsc` with `strict` on (the two shown failing on purpose excepted) and run on Node 24. Node runs a `.ts` file by replacing the types with whitespace, and its docs say [no type checking is performed](https://nodejs.org/docs/latest-v24.x/api/typescript.html), so the commands below are `node h01.ts` and `tsc` is a separate step. This session is that step for every file in the folder:
+
+<Session guide="for-typescript" run="check" />
+
+The Rust programs are one cargo project. Each habit is a file in `src/bin/`, and `cargo run --bin h01` builds and runs just that one.
+
+<Tree guide="for-typescript" dir="rust" name="ts-habits" notes={{"src/bin/":"h01.rs ... h10.rs: the ten habits","src/bin/idioms.rs":"the table further down","Cargo.toml":"no dependencies"}} />
+
+## What carries over
+
+- **Types after names and bounded generics.** `function largest<T extends number | string>(list: T[]): T` becomes `fn largest<T: PartialOrd>(list: &[T]) -> &T`. The bound names an ability, not a list of types, so it is not the same set of types as the union ([Reading signatures](/learn/reading-signatures/), [Generics](/learn/generics/)).
+- **Discriminated unions are enums.** A union of `{ kind: ... }` objects and the `switch` that narrows it is an `enum` and a `match`, with the tag kept for you ([Enums](/learn/enums/)).
+- **Arrow functions are closures.** `(x) => x * factor` is `|x| x * factor`, and `map`/`filter` chains read the same ([Closures](/learn/closures/), [Iterators](/learn/iterators/)).
+- **Destructuring is patterns.** `const { x, y } = p` is `let Point { x, y } = p;`, and patterns also work in `match` ([Patterns](/learn/patterns/)).
+- **A strict compiler as a design tool.** You already fix errors before running. Rust does more of that, so the error messages are worth reading.
+
+## Ten habits to unlearn
+
+### 1. `const` fixes the name; `let` fixes the value
+
+Your habit: declare with `const` and still change what is inside.
+
+<Files guide="for-typescript" dir="ts" files={["h01.ts"]} run="ts01" lang="typescript" />
+
+Rust: a plain `let` stops changes inside the value too. What TypeScript calls `let` is `let mut`.
+
+<Files guide="for-typescript" dir="rust" files={["src/bin/h01.rs"]} />
+
+<Session guide="for-typescript" run="rs01" />
+
+Why: whether a value can change is part of how you bind it, so you can see from the declaration whether a later line may change it ([Variables](/learn/variables/#mut-belongs-to-the-name-not-the-value)).
+
+### 2. `const b = a` shares the array; `let b = a` moves it
+
+Your habit: assign an object and treat both names as the same thing.
+
+<Files guide="for-typescript" dir="ts" files={["h02.ts"]} run="ts02" lang="typescript" />
+
+Rust: the vector has one owner, and `let mut b = a` makes `b` the owner. `a` is unusable afterwards, and the compiler's help suggests a clone.
+
+<Files guide="for-typescript" dir="rust" files={["src/bin/h02.rs"]} />
+
+<Session guide="for-typescript" run="rs02" />
+
+Why: with one owner, the memory can be freed when that owner goes out of scope, with no garbage collector. [Ownership](/learn/ownership/#moves) draws it, and [Copy or reference](/learn/copy-or-reference/) compares it with what you are used to.
+
+### 3. `readonly` is one name's promise; `&` is everyone's
+
+Your habit: use `readonly` for safety.
+
+<Files guide="for-typescript" dir="ts" files={["h03.ts"]} run="ts03" lang="typescript" />
+
+`view` is `readonly`, but another name pushed to the same array and `view` saw it. Rust:
+
+<Files guide="for-typescript" dir="rust" files={["src/bin/h03.rs"]} />
+
+<Session guide="for-typescript" run="rs03" />
+
+Why: while a `&` reference exists, nobody changes the value through another name, except types built for it such as `Cell` and `RefCell` ([Smart pointers](/learn/smart-pointers/)). `&mut` is the one-writer side of the same rule ([Borrowing](/learn/borrowing/#many-readers-no-writers), [Mutable borrows](/learn/mutable-borrows/)).
+
+### 4. `undefined` comes from anywhere; `None` is in the type
+
+Your habit: index past the end, or read a missing key, and get `undefined`. Under `strict` the compiler accepts line 2 below (`noUncheckedIndexedAccess` would flag it; not run). `||` also replaces `0`, where `??` does not.
+
+<Files guide="for-typescript" dir="ts" files={["h04.ts"]} run="ts04" lang="typescript" />
+
+Rust: `get` returns an `Option`, and `unwrap_or` behaves like `??`. An index with `[]` that is out of range panics (the second run below). The number after `thread 'main'` is an operating-system thread id and changes from run to run.
+
+<Files guide="for-typescript" dir="rust" files={["src/bin/h04.rs"]} />
+
+<Session guide="for-typescript" run="rs04" />
+
+Why: a missing value is a value of another type, so the compiler makes you handle it before you use it. One trap in the other direction: `u?.name` is valid Rust, and it means "return early from this function if `u` is `None` or an `Err`" ([What Rust lacks](/learn/what-rust-lacks/#your-habits-in-rust) runs it). [Option](/learn/option/) is the lesson, and the same lesson lists the `null` family.
+
+### 5. A matching shape is enough; Rust wants the `impl`
+
+Your habit: write a class or an object literal with the right methods and pass it where an interface is expected.
+
+<Files guide="for-typescript" dir="ts" files={["h05.ts"]} run="ts05" lang="typescript" />
+
+Rust: a type fits a trait when it says so with `impl Speaker for Robot`. Having a method of the same name does not count.
+
+<Files guide="for-typescript" dir="rust" files={["src/bin/h05.rs"]} />
+
+<Session guide="for-typescript" run="rs05" />
+
+Why: the `impl` is where a type states that it means to do what the trait asks, and the compiler checks the methods against the trait ([Traits](/learn/traits/#when-the-type-has-no-impl)).
+
+### 6. `as User` promises; `as u8` converts
+
+Your habit: parse something, then tell the compiler what it is.
+
+<Files guide="for-typescript" dir="ts" files={["h06.ts"]} run="ts06" lang="typescript" />
+
+The `as User` is erased, so nothing checked the data. This is the JavaScript `tsc` wrote for the same file:
+
+<Session guide="for-typescript" run="ts06-erased" />
+
+Rust: `as` between number types changes the value, and text becomes a number through a `parse` that returns a `Result`.
+
+<Files guide="for-typescript" dir="rust" files={["src/bin/h06.rs"]} run="rs06" />
+
+Why: TypeScript's types are a claim about code, and an `as` can lie. A Rust value has the type it was built with, so a conversion either changes the value (`as`) or says it can fail (`try_from`, `parse`). [Types](/learn/types/#as-casts-that-never-fail) covers `as`. For JSON in particular, the [serde guide](/build/serde/) checks the data against your struct as it reads it.
+
+### 7. A `switch` can skip a new case; a `match` lists it
+
+Your habit: add a member to a union and rely on the `switch`.
+
+<Files guide="for-typescript" dir="ts" files={["h07.ts"]} run="ts07" lang="typescript" />
+
+`tsc` accepted this, and the triangle printed nothing. TypeScript can catch it if you add a line that assigns the leftover value to `never`:
+
+<Files guide="for-typescript" dir="ts-never" files={["never.ts"]} lang="typescript" />
+
+<Session guide="for-typescript" run="ts07-never" />
+
+Rust does that check by itself:
+
+<Files guide="for-typescript" dir="rust" files={["src/bin/h07.rs"]} />
+
+<Session guide="for-typescript" run="rs07" />
+
+Why: the check is part of `match` and needs no extra line. A `_` arm turns it off, as `default:` does (the third task below tries that). [Enums](/learn/enums/#match-must-cover-every-variant) and [Match](/learn/match/#every-case-must-be-covered) explain it.
+
+### 8. `throw` and `NaN` become `Result` and `?`
+
+Your habit: `parseInt` gives `NaN` and the maths carries on, or a function throws and the type says nothing.
+
+<Files guide="for-typescript" dir="ts" files={["h08.ts"]} run="ts08" lang="typescript" />
+
+Rust: the failure is a value in the return type, and `?` passes it up.
+
+<Files guide="for-typescript" dir="rust" files={["src/bin/h08.rs"]} run="rs08" />
+
+Why: the signature says which functions can fail, and the `Err` is a value you match on or pass up with `?`. [Errors](/learn/errors/) is the lesson.
+
+### 9. A promise starts when you call; a future starts when you poll
+
+Your habit: call an `async` function and expect the work to be under way.
+
+<Files guide="for-typescript" dir="ts" files={["h09.ts"]} run="ts09" lang="typescript" />
+
+Rust: calling an `async fn` builds a future and runs nothing. The standard library has no runtime, so this program has a small `block_on` (poll once) in place of one. In real code you add a runtime crate, and the tokio guide below uses tokio.
+
+<Files guide="for-typescript" dir="rust" files={["src/bin/h09.rs"]} run="rs09" />
+
+Why: Node's event loop comes with Node, and Rust's is a library you choose, so a future is a value that a runtime drives. [Async basics](/learn/async-basics/#a-future-is-a-value-that-has-not-run) builds this up, and [Async with Tokio](/build/tokio/) is the real runtime.
+
+### 10. Spread and options objects become `..` and `Default`
+
+Your habit: `{ ...user, age: 31 }` for a changed copy, and an options object with defaults for optional settings.
+
+<Files guide="for-typescript" dir="ts" files={["h10.ts"]} run="ts10" lang="typescript" />
+
+Rust: `..ana` takes the remaining fields from `ana`, and that *moves* them, so the `String` is gone from `ana`. (The `age` is a number and is copied, which is why the print of `ana.age` is accepted.)
+
+<Files guide="for-typescript" dir="rust" files={["src/bin/h10.rs"]} />
+
+<Session guide="for-typescript" run="rs10" />
+
+For optional settings, write a `Default` and fill in the fields you care about with `..Default::default()`:
+
+<Files guide="for-typescript" dir="rust" files={["src/bin/h10b.rs"]} run="rs10-default" />
+
+Why: a struct update is a move of whatever is not `Copy`. Use `..ana.clone()` if you still need `ana`. [Structs](/learn/structs/#building-one-struct-from-another) and [Common traits](/learn/common-traits/#starting-from-a-default) cover both.
+
+## Idiom by idiom
+
+Each row is one line of `ts/idioms.ts` and one line of `src/bin/idioms.rs`, and both programs print the same row numbers. The Rust cells compile, and the TypeScript cells ran.
+
+| # | You write | In Rust |
+| --- | --- | --- |
+| 1 | `` `${n} items` `` | `format!("{n} items")` |
+| 2 | `x ?? 5` | `x.unwrap_or(5)` |
+| 3 | `u?.name` | `u.as_ref().map(\|u\| &u.name)` |
+| 4 | `xs.map((x) => x * 2)` | `xs.iter().map(\|x\| x * 2).collect::<Vec<_>>()` |
+| 5 | `xs.filter((x) => x % 2 === 0)` | `xs.iter().copied().filter(\|x\| x % 2 == 0).collect::<Vec<_>>()` |
+| 6 | `xs.reduce((a, b) => a + b, 0)` | `xs.iter().fold(0, \|a, b\| a + b)` |
+| 7 | `xs.find((x) => x > 2)` | `xs.iter().find(\|&&x\| x > 2)` |
+| 8 | `xs.includes(3)` | `xs.contains(&3)` |
+| 9 | `xs.slice(1, 3)` | `&xs[1..3]` |
+| 10 | `[...xs, ...ys]` | `[xs.as_slice(), ys.as_slice()].concat()` |
+| 11 | `[10, 9, 1].sort()` | `v.sort()` |
+| 12 | `a === b` | `a == b` |
+| 13 | `s.length`, `[...s].length` | `s.len()`, `s.chars().count()` |
+| 14 | `m.set("a", 1)`, `m.get("b") ?? 0` | `m.insert("a", 1)`, `m.get("b").copied().unwrap_or(0)` |
+| 15 | `for (const [i, x] of xs.entries())` | `for (i, x) in xs.iter().enumerate()` |
+| 16 | `parseInt(num, 10)` | `num.parse::<i32>()` |
+| 17 | `const { x: px, y: py } = p;` | `let Point { x: px, y: py } = p;` |
+| 18 | `(x: number) => x * 2` | `\|x: i32\| x * 2` |
+| 19 | `Array.from({ length: 3 }, (_, i) => i * i)` | `(0..3).map(\|i\| i * i).collect::<Vec<_>>()` |
+| 20 | `xs.every((x) => x > 0)` | `xs.iter().all(\|&x\| x > 0)` |
+
+<details>
+<summary>The two programs and what each printed</summary>
+
+<Files guide="for-typescript" dir="ts" files={["idioms.ts"]} run="idioms-ts" lang="typescript" />
+
+<Files guide="for-typescript" dir="rust" files={["src/bin/idioms.rs"]} run="idioms-rs" />
+
+</details>
+
+Everything else differs only in how `console.log` and `{:?}` draw the same value: quotes around a string (row 1), spacing and brackets (`[ 2, 3 ]` against `[2, 3]`), and tuples where TypeScript prints arrays (rows 13, 15, 16, 17). The places that differ in meaning:
+
+- **Rows 3 and 7** print `ana` and `3` in TypeScript, and `Some("ana")` and `Some(3)` in Rust: the Rust value is still an `Option`.
+- **Row 11**: `sort()` with no function compares numbers as text, which is why TypeScript printed `[ 1, 10, 9 ]`. Rust sorts numbers as numbers.
+- **Row 12**: two arrays with the same contents are not `===`. The two vectors are `==` by value ([Common traits](/learn/common-traits/)).
+- **Row 13**: `length` counts UTF-16 units, and `len()` counts UTF-8 bytes, so the same text gives 7 and 10. Counting code points is `chars().count()`, 6 here, and TypeScript's `[...s].length` agrees ([Strings](/learn/strings/)).
+- **Row 16**: a bad number is `NaN` in TypeScript and an `Err` in Rust.
+
+The rows with `.iter()` and `.collect()` show where the two languages differ: Rust iterators are lazy and nothing happens until `collect`, where `Array.prototype.map` builds a new array each time ([Iterators](/learn/iterators/)).
+
+## Toolchain map
+
+| Job | TypeScript and Node | Rust |
+| --- | --- | --- |
+| Add a dependency | `npm install is-number@7.0.0` | `cargo add itoa@1.0.15` |
+| Project file | `package.json`, plus `tsconfig.json` for the compiler | `Cargo.toml` |
+| Lock file | `package-lock.json` | `Cargo.lock` |
+| Check types | `tsc` | `cargo check` |
+| Run | `node file.ts` | `cargo run` |
+| Test | `node --test` (the runner built into Node) | `cargo test` |
+| Format | Prettier (named, not run) | `cargo fmt` |
+| Lint | ESLint (named, not run) | `cargo clippy` |
+| Docs | TypeDoc (named, not run) | `cargo doc` |
+| Debugger | `node --inspect` with an editor or browser DevTools (named, not run) | `rust-gdb` or `rust-lldb` (not run: the `command -v` line below found the two wrappers, and no `gdb` or `lldb`) |
+
+The image has these versions, and the last command lists which debugger and other tools it found (it prints only those it finds):
+
+<Session guide="for-typescript" run="versions" />
+
+<details>
+<summary>The npm and cargo commands, run (these two need network)</summary>
+
+`npm init -y` wrote `"type": "commonjs"`, and the test file uses `import`, so the second command switches the project to ES modules. npm then wrote a `package-lock.json`, and `node --test` found the two tests in `slugify.test.ts`:
+
+<Session guide="for-typescript" run="npm" />
+
+`cargo new` writes a `Cargo.toml` and `cargo add` adds the dependency line:
+
+<Session guide="for-typescript" run="cargo-new" />
+
+The same two tests in Rust, a doc-test, and the formatter and linter:
+
+<Files guide="for-typescript" dir="tool-rust" files={["src/lib.rs"]} />
+
+<Session guide="for-typescript" run="cargo" />
+
+</details>
+
+Two differences show in the commands above. In the TypeScript column the compiler, the runtime and the package manager are three commands (`tsc`, `node`, `npm`), and in the Rust column the build, test, format, lint and docs commands all start with `cargo`. And `cargo check` stops before generating code: the [Cargo docs](https://doc.rust-lang.org/cargo/commands/cargo-check.html) say it checks the code and its dependencies for errors without producing an executable, which fits the moments when you only want to know whether the code compiles.
+
+## A reading path
+
+You know the syntax, so start with the lessons where your instincts mislead you.
+
+1. [Rust at a glance](/learn/rust-at-a-glance/): a page of code to read, with your TypeScript beside it.
+2. [Stack and heap](/learn/stack-heap/) and [Copy or reference](/learn/copy-or-reference/): an object variable holds a reference, and a Rust variable holds the value itself (for a `Vec`, a small handle to its heap buffer).
+3. [Ownership](/learn/ownership/): habits 1 and 2, with the memory drawn.
+4. [Borrowing](/learn/borrowing/) and [Mutable borrows](/learn/mutable-borrows/): habit 3, and the rule you will meet most.
+5. [Option](/learn/option/) and [Errors](/learn/errors/): habits 4 and 8.
+6. [Enums](/learn/enums/) and [Match](/learn/match/): habit 7, and the home of your discriminated unions.
+7. [Traits](/learn/traits/) and [Generics](/learn/generics/): habit 5.
+8. [Closures](/learn/closures/) and [Iterators](/learn/iterators/): the chains from the table above.
+9. [Borrow checker](/learn/borrow-checker/): the ways out of the errors in habits 2 and 3.
+10. [Async basics](/learn/async-basics/), then [Async with Tokio](/build/tokio/): habit 9.
+11. [JSON with serde](/build/serde/): typed data from outside, the answer to habit 6.
+12. [Modules](/learn/modules/) and [Using crates](/start/using-crates/): `import`/`export` and `npm` on the Rust side.
+13. [Calling Rust from Node](/interop/node/) and [Rust and WebAssembly](/interop/wasm/): the two ways your Rust can run inside a JavaScript program.
+14. [Idioms and design patterns](/learn/idioms/): what to write once the rules stop surprising you.
+
+## What you will miss
+
+Each of these was run in the image, or cites its source.
+
+- **Running code that does not type-check.** By default `tsc` reports an error and still writes the JavaScript, so you can run the program anyway (here `n * 2` gave `NaN`); the `noEmitOnError` option in the [tsconfig reference](https://www.typescriptlang.org/tsconfig/) turns that off (not run). `cargo build` writes no executable when a build fails. The two sources:
+
+  <Files guide="for-typescript" dir="ts-errors" files={["emit.ts"]} lang="typescript" />
+
+  <Files guide="for-typescript" dir="rust" files={["src/bin/emit.rs"]} />
+
+  <Session guide="for-typescript" run="miss-emit-ts" />
+
+  <Session guide="for-typescript" run="miss-emit-rs" />
+
+- **Printing anything.** `console.log(p)` shows any object. In Rust, `{:?}` needs a type that derives or implements `Debug`, and the compiler says so when it does not.
+
+  <Files guide="for-typescript" dir="ts" files={["inspect.ts"]} run="miss-inspect-ts" lang="typescript" />
+
+  <Files guide="for-typescript" dir="rust" files={["src/bin/nodebug.rs"]} />
+
+  <Session guide="for-typescript" run="miss-inspect-rs" />
+
+- **A union written where you need it.** `string | number` in a parameter is one line. In Rust you name an enum and wrap each value, as habit 7 did.
+
+  <Files guide="for-typescript" dir="ts" files={["union.ts"]} run="miss-union-ts" lang="typescript" />
+
+  <Files guide="for-typescript" dir="rust" files={["src/bin/either.rs"]} run="miss-union-rs" />
+
+- **A REPL in the toolchain.** `node` starts one. The components installed in the image are below, and none is a REPL. A community one, [Evcxr](https://github.com/evcxr/evcxr), exists (not run).
+
+  <Session guide="for-typescript" run="miss-repl" />
+
+- **An event loop that comes with the runtime.** `async fn main` does not compile without a runtime crate, and [Async basics](/learn/async-basics/) shows the error.
+- **`JSON.parse` of any shape.** Rust needs a type for the data, or `serde_json::Value` when you do not have one ([serde guide](/build/serde/)).
+
+## Try it yourself
+
+The session below ran these three changes in the image.
+
+1. In `h01.rs`, change `let scores` to `let mut scores`. It builds and prints `[90, 85, 70]`.
+2. In `h02.rs`, change `let mut b = a;` to `let mut b = a.clone();` and print both. The build succeeds and `a` and `b` print as different lists.
+3. In `h07.rs`, add `_ => {}` as a last arm. The error is gone, and the triangle prints nothing, as in TypeScript's `switch`. This is what a wildcard costs you.
+
+<Session guide="for-typescript" run="try" />
+
+## Read more
+
+- [Node.js: Modules: TypeScript](https://nodejs.org/docs/latest-v24.x/api/typescript.html) and [Node.js: test runner](https://nodejs.org/docs/latest-v24.x/api/test.html), the two Node pages used above
+- [The TypeScript Handbook: Type Compatibility](https://www.typescriptlang.org/docs/handbook/type-compatibility.html), the structural typing of habit 5, and the [tsconfig reference](https://www.typescriptlang.org/tsconfig/)
+- [The Rust Book, chapter 4: ownership](https://doc.rust-lang.org/book/ch04-00-understanding-ownership.html), [chapter 6: enums](https://doc.rust-lang.org/book/ch06-00-enums.html) and [chapter 9: error handling](https://doc.rust-lang.org/book/ch09-00-error-handling.html)
+- [The Cargo Book: getting started](https://doc.rust-lang.org/cargo/guide/)

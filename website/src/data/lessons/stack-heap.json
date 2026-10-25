@@ -1,0 +1,158 @@
+{
+ "id": "stack-heap",
+ "title": "Values, the Stack and the Heap",
+ "part": "ownership",
+ "intro": "A Rust variable holds a value itself, not an arrow to an object somewhere else. Where that value lives, on the stack or on the heap, is mostly decided by its type. This lesson explains both places, so every later lesson can use the words.",
+ "coming_from": {
+  "go": "A Go struct variable holds its fields directly, and so does Rust's. The difference is who picks the place. Go's escape analysis moves a value to the heap for you when it has to outlive the function; in Rust the type says: a plain value lives in its variable, and `Box`, `Vec` and `String` own heap memory. A `Vec`'s header is the same three words as a Go slice header.",
+  "kotlin": "A Kotlin `class` variable is a reference to an object (normally on the JVM heap), so `val b = a` shares the object. A Rust variable holds the value itself, like a C struct, so `let b = a` copies the value (or moves it), and no second name for one object appears unless you ask for one with `&`, or with `Rc` or `Arc` when several owners need the value.",
+  "python": "In Python every variable is a name for an object, so `b = a` gives one object two names. In Rust a variable holds the value itself. `let b = a` copies the value (for small plain types) or moves it. A second name for the same value is a reference, written `&a`, or an `Rc`/`Arc` when there are several owners; you ask for it.",
+  "typescript": "Objects in JavaScript and TypeScript are always held by reference, so `const b = a` shares the object (`const` fixes the binding, not the object). A Rust variable holds the value itself, so `let b = a` copies it or moves it. To share, you write `&a`, or use `Rc`/`Arc` for several owners.",
+  "java": "A Java object variable is a reference to an object (normally on the heap), so `Point b = a` shares it. A Rust variable holds the value itself, closer to a Java `int` than to a Java `Point`: `let b = a` copies it or moves it, and sharing is something you ask for with `&`, or with `Rc`/`Arc` for several owners.",
+  "csharp": "Rust's variables work like C# `struct` variables: the value sits in the variable, and `var b = a` copies it. There is no `class` kind that shares by default. A reference is a separate thing you write with `&`, and the compiler checks it.",
+  "c": "You already know this: a Rust struct variable is a C struct on the stack, and `Box` is a pointer to heap memory that frees itself. What Rust adds is checking. It knows which variable owns each heap allocation, never frees one twice, and frees it when the owner goes out of scope. It also won't let a reference outlive what it points at.",
+  "cpp": "Same model as yours: locals live in the frame, and `Box<T>` is close to `std::unique_ptr<T>`. Rust adds two things: moves are the default and the old name can't be used afterwards, and the compiler rejects a reference that would outlive its value."
+ },
+ "notes": [
+  "The stack holds function calls' local variables, and is cleaned up when each call returns. The heap holds data whose size isn't known when the program is compiled, or that must outlive the call that made it, among other things.",
+  "A `String` or `Vec` is two parts: a small header (a pointer, a length and a capacity) in the variable, and the text or elements on the heap.",
+  "Numbers, and a small struct that derives `Copy`, are copied by `let b = a`. Types that own heap memory are moved: the header is copied and the old name stops working.",
+  "`size_of::<T>()` tells you how many bytes a type takes in its variable. A `&str` is 16 bytes (a pointer and a length) however long its text is."
+ ],
+ "order": 15,
+ "program": {
+  "rust": {
+   "code": "#[derive(Clone, Copy)]\nstruct Point {\n    x: i32,\n    y: i32,\n}\n\nfn main() {\n    let a = Point { x: 1, y: 2 };\n    let mut b = a; // b holds its own copy of the two numbers\n    b.x = 99;\n    println!(\"a = ({}, {})\", a.x, a.y);\n    println!(\"b = ({}, {})\", b.x, b.y);\n}\n",
+   "out": "a = (1, 2)\nb = (99, 2)\n"
+  },
+  "go": {
+   "code": "package main\n\nimport \"fmt\"\n\ntype Point struct {\n\tX, Y int\n}\n\nfunc main() {\n\ta := Point{1, 2}\n\tb := a // a struct is a value: b is a copy\n\tb.X = 99\n\tfmt.Printf(\"a = (%d, %d)\\n\", a.X, a.Y)\n\tfmt.Printf(\"b = (%d, %d)\\n\", b.X, b.Y)\n\n\t// To share, you take an address on purpose.\n\tp := &a\n\tp.X = 50\n\tfmt.Printf(\"a after p.X = 50: (%d, %d)\\n\", a.X, a.Y)\n}\n",
+   "out": "a = (1, 2)\nb = (99, 2)\na after p.X = 50: (50, 2)\n"
+  },
+  "kotlin": {
+   "code": "class Point(var x: Int, var y: Int) {\n    override fun toString() = \"($x, $y)\"\n}\n\nfun main() {\n    val a = Point(1, 2)\n    val b = a // b is another name for the same object\n    b.x = 99\n    println(\"a = $a\")\n    println(\"b = $b\")\n\n    // To get a separate point, you build one.\n    val c = Point(a.x, a.y)\n    c.x = 7\n    println(\"a after c.x = 7: $a\")\n}\n",
+   "out": "a = (99, 2)\nb = (99, 2)\na after c.x = 7: (99, 2)\n"
+  },
+  "python": {
+   "code": "class Point:\n    def __init__(self, x, y):\n        self.x = x\n        self.y = y\n\n    def __repr__(self):\n        return f\"({self.x}, {self.y})\"\n\n\na = Point(1, 2)\nb = a  # b is another name for the same object\nb.x = 99\nprint(\"a =\", a)\nprint(\"b =\", b)\n\n# To get a separate point, you build one.\nc = Point(a.x, a.y)\nc.x = 7\nprint(\"a after c.x = 7:\", a)\n",
+   "out": "a = (99, 2)\nb = (99, 2)\na after c.x = 7: (99, 2)\n"
+  },
+  "typescript": {
+   "code": "interface Point {\n  x: number;\n  y: number;\n}\n\nconst a: Point = { x: 1, y: 2 };\nconst b = a; // b is another name for the same object\nb.x = 99;\nconsole.log(`a = (${a.x}, ${a.y})`);\nconsole.log(`b = (${b.x}, ${b.y})`);\n\n// To get a separate point, you build one.\nconst c: Point = { ...a };\nc.x = 7;\nconsole.log(`a after c.x = 7: (${a.x}, ${a.y})`);\n",
+   "out": "a = (99, 2)\nb = (99, 2)\na after c.x = 7: (99, 2)\n"
+  },
+  "java": {
+   "code": "public class Main {\n    static class Point {\n        int x, y;\n\n        Point(int x, int y) {\n            this.x = x;\n            this.y = y;\n        }\n\n        @Override\n        public String toString() {\n            return \"(\" + x + \", \" + y + \")\";\n        }\n    }\n\n    public static void main(String[] args) {\n        Point a = new Point(1, 2);\n        Point b = a; // b is another name for the same object\n        b.x = 99;\n        System.out.println(\"a = \" + a);\n        System.out.println(\"b = \" + b);\n\n        // To get a separate point, you build one.\n        Point c = new Point(a.x, a.y);\n        c.x = 7;\n        System.out.println(\"a after c.x = 7: \" + a);\n    }\n}\n",
+   "out": "a = (99, 2)\nb = (99, 2)\na after c.x = 7: (99, 2)\n"
+  },
+  "csharp": {
+   "code": "var a = new PointClass { X = 1, Y = 2 };\nvar b = a; // a class: b is another name for the same object\nb.X = 99;\nConsole.WriteLine($\"class:  a.X = {a.X}, b.X = {b.X}\");\n\nvar s = new PointStruct { X = 1, Y = 2 };\nvar t = s; // a struct: t is a copy\nt.X = 99;\nConsole.WriteLine($\"struct: s.X = {s.X}, t.X = {t.X}\");\n\nclass PointClass\n{\n    public int X, Y;\n}\n\nstruct PointStruct\n{\n    public int X, Y;\n}\n",
+   "out": "class:  a.X = 99, b.X = 99\nstruct: s.X = 1, t.X = 99\n"
+  },
+  "c": {
+   "code": "#include <stdio.h>\n\nstruct Point {\n    int x, y;\n};\n\nint main(void) {\n    struct Point a = {1, 2};\n    struct Point b = a; // a struct is a value: b is a copy\n    b.x = 99;\n    printf(\"a = (%d, %d)\\n\", a.x, a.y);\n    printf(\"b = (%d, %d)\\n\", b.x, b.y);\n\n    // To share, you take an address on purpose.\n    struct Point *p = &a;\n    p->x = 50;\n    printf(\"a after p->x = 50: (%d, %d)\\n\", a.x, a.y);\n    return 0;\n}\n",
+   "out": "a = (1, 2)\nb = (99, 2)\na after p->x = 50: (50, 2)\n"
+  },
+  "cpp": {
+   "code": "#include <iostream>\n\nstruct Point {\n    int x, y;\n};\n\nint main() {\n    Point a{1, 2};\n    Point b = a; // a struct is a value: b is a copy\n    b.x = 99;\n    std::cout << \"a = (\" << a.x << \", \" << a.y << \")\\n\";\n    std::cout << \"b = (\" << b.x << \", \" << b.y << \")\\n\";\n\n    // To share, you take a reference on purpose.\n    Point &r = a;\n    r.x = 50;\n    std::cout << \"a after r.x = 50: (\" << a.x << \", \" << a.y << \")\\n\";\n}\n",
+   "out": "a = (1, 2)\nb = (99, 2)\na after r.x = 50: (50, 2)\n"
+  }
+ },
+ "faq": [],
+ "snippets": {
+  "copy-or-move.rs": {
+   "code": "fn main() {\n    // A Copy value: the bits are copied, and both variables stay usable.\n    let n = 7;\n    let m = n;\n    println!(\"n = {n}, m = {m}\");\n\n    // A String: only the header moves. The text stays where it was.\n    let a = String::from(\"hello\");\n    let text_before = a.as_ptr();\n    let b = a; // `a` can't be used after this line\n    println!(\"b = {b}\");\n    println!(\"len {}, capacity {}\", b.len(), b.capacity());\n    println!(\"text stayed where it was: {}\", b.as_ptr() == text_before);\n}\n",
+   "out": "n = 7, m = 7\nb = hello\nlen 5, capacity 5\ntext stayed where it was: true\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "heap-string.rs": {
+   "code": "fn main() {\n    let short = String::from(\"hello\");\n    let long = \"x\".repeat(1000);\n\n    println!(\n        \"short: {} bytes of text, variable takes {} bytes\",\n        short.len(),\n        size_of_val(&short)\n    );\n    println!(\n        \"long:  {} bytes of text, variable takes {} bytes\",\n        long.len(),\n        size_of_val(&long)\n    );\n    println!(\"capacity of short: {}\", short.capacity());\n\n    // An array keeps its elements inside the variable, so its size grows with them.\n    let small_array = [1u8; 5];\n    let big_array = [1u8; 1000];\n    println!(\"array of 5 bytes takes {} bytes\", size_of_val(&small_array));\n    println!(\n        \"array of 1000 bytes takes {} bytes\",\n        size_of_val(&big_array)\n    );\n}\n",
+   "out": "short: 5 bytes of text, variable takes 24 bytes\nlong:  1000 bytes of text, variable takes 24 bytes\ncapacity of short: 5\narray of 5 bytes takes 5 bytes\narray of 1000 bytes takes 1000 bytes\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "holds-value.rs": {
+   "code": "// `Copy` is a label that makes `let b = a` copy the bytes. More on it below.\n#[derive(Clone, Copy)]\nstruct Point {\n    x: i32,\n    y: i32,\n}\n\nfn main() {\n    let a = Point { x: 1, y: 2 };\n    let mut b = a;\n    b.x = 99;\n\n    println!(\"a: x = {}, y = {}\", a.x, a.y);\n    println!(\"b: x = {}, y = {}\", b.x, b.y);\n    println!(\"size of a: {} bytes\", size_of_val(&a));\n    println!(\"size of b: {} bytes\", size_of_val(&b));\n}\n",
+   "out": "a: x = 1, y = 2\nb: x = 99, y = 2\nsize of a: 8 bytes\nsize of b: 8 bytes\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "nested-calls.rs": {
+   "code": "fn square(n: i32) -> i32 {\n    let result = n * n;\n    println!(\"  in square: n = {n}, result = {result}\");\n    result\n}\n\nfn sum_of_squares(a: i32, b: i32) -> i32 {\n    println!(\"in sum_of_squares: a = {a}, b = {b}\");\n    let first = square(a);\n    let second = square(b);\n    first + second\n}\n\nfn main() {\n    let x = 3;\n    let y = 4;\n    println!(\"in main: x = {x}, y = {y}\");\n    let total = sum_of_squares(x, y);\n    println!(\"in main: total = {total}\");\n}\n",
+   "out": "in main: x = 3, y = 4\nin sum_of_squares: a = 3, b = 4\n  in square: n = 3, result = 9\n  in square: n = 4, result = 16\nin main: total = 25\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "padding.rs": {
+   "code": "use std::mem::{align_of, size_of};\n\n// We only measure these structs, so the fields are never read.\n// #[repr(C)] keeps the fields in the order written, as a C compiler would.\n#[allow(dead_code)]\n#[repr(C)]\nstruct MixedC {\n    a: u8,\n    n: u32,\n    b: u8,\n}\n\n#[allow(dead_code)]\n#[repr(C)]\nstruct SmallFirstC {\n    a: u8,\n    b: u8,\n    n: u32,\n}\n\nfn main() {\n    println!(\"            size  align\");\n    println!(\n        \"u32         {:>4}  {:>5}\",\n        size_of::<u32>(),\n        align_of::<u32>()\n    );\n    println!(\n        \"[u8; 16]    {:>4}  {:>5}\",\n        size_of::<[u8; 16]>(),\n        align_of::<[u8; 16]>()\n    );\n    println!(\n        \"MixedC      {:>4}  {:>5}\",\n        size_of::<MixedC>(),\n        align_of::<MixedC>()\n    );\n    println!(\n        \"SmallFirstC {:>4}  {:>5}\",\n        size_of::<SmallFirstC>(),\n        align_of::<SmallFirstC>()\n    );\n}\n",
+   "out": "            size  align\nu32            4      4\n[u8; 16]      16      1\nMixedC        12      4\nSmallFirstC    8      4\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "point-moves.fail.rs": {
+   "code": "// The same Point as above, but without #[derive(Clone, Copy)].\nstruct Point {\n    x: i32,\n    y: i32,\n}\n\nfn main() {\n    let a = Point { x: 1, y: 2 };\n    let b = a;\n    println!(\"b = ({}, {})\", b.x, b.y);\n    println!(\"a = ({}, {})\", a.x, a.y); // a was moved into b\n}\n",
+   "error": "error[E0382]: borrow of moved value: `a`\n  --> src/main.rs:11:35\n   |\n 8 |     let a = Point { x: 1, y: 2 };\n   |         - move occurs because `a` has type `Point`, which does not implement the `Copy` trait\n 9 |     let b = a;\n   |             - value moved here\n10 |     println!(\"b = ({}, {})\", b.x, b.y);\n11 |     println!(\"a = ({}, {})\", a.x, a.y); // a was moved into b\n   |                                   ^^^ value borrowed here after move\n   |\nnote: if `Point` implemented `Clone`, you could clone the value\n  --> src/main.rs:2:1\n   |\n 2 | struct Point {\n   | ^^^^^^^^^^^^ consider implementing `Clone` for this type\n...\n 9 |     let b = a;\n   |             - you could clone this value\n",
+   "lang": "rust"
+  },
+  "pointers.rs": {
+   "code": "use std::ptr;\n\nfn main() {\n    let x = 42;\n    let r = &x; // a reference to x: the address of x, not a copy\n    println!(\"r points at x: {}\", ptr::eq(r, &x));\n    println!(\"*r: {}\", *r);\n\n    let b = Box::new(x); // allocates 4 bytes on the heap and copies x into them\n    println!(\"*b: {}\", *b);\n    println!(\"b points at x: {}\", ptr::eq(&*b, &x));\n\n    println!(\"size of x: {} bytes\", size_of_val(&x));\n    println!(\"size of r: {} bytes\", size_of_val(&r));\n    println!(\"size of b: {} bytes\", size_of_val(&b));\n    println!(\"size of what b points at: {} bytes\", size_of_val(&*b));\n}\n",
+   "out": "r points at x: true\n*r: 42\n*b: 42\nb points at x: false\nsize of x: 4 bytes\nsize of r: 8 bytes\nsize of b: 8 bytes\nsize of what b points at: 4 bytes\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "recursion.panic.rs": {
+   "code": "// Each call to `depth` gets its own frame, and none of them returns\n// until the one below it does. The frames pile up.\nfn depth(n: u64) -> u64 {\n    if n == 0 { 0 } else { 1 + depth(n - 1) }\n}\n\nfn main() {\n    println!(\"depth(1_000): {}\", depth(1_000));\n    println!(\"depth(100_000_000): {}\", depth(100_000_000));\n}\n",
+   "out": "depth(1_000): 1000\n\nthread 'main' (1) has overflowed its stack\nfatal runtime error: stack overflow, aborting\n",
+   "lang": "rust",
+   "exit": -6
+  },
+  "sizes.rs": {
+   "code": "use std::mem::size_of;\n\n// We only measure this struct, so silence the \"fields never read\" warning.\n#[allow(dead_code)]\nstruct Pair {\n    x: i32,\n    y: i32,\n}\n\nfn main() {\n    println!(\"type               bytes\");\n    println!(\"i32                {:>5}\", size_of::<i32>());\n    println!(\"u64                {:>5}\", size_of::<u64>());\n    println!(\"f64                {:>5}\", size_of::<f64>());\n    println!(\"bool               {:>5}\", size_of::<bool>());\n    println!(\"char               {:>5}\", size_of::<char>());\n    println!(\"(i32, i32)         {:>5}\", size_of::<(i32, i32)>());\n    println!(\"[u8; 16]           {:>5}\", size_of::<[u8; 16]>());\n    println!(\"Pair               {:>5}\", size_of::<Pair>());\n    println!(\"&i32               {:>5}\", size_of::<&i32>());\n    println!(\"&str               {:>5}\", size_of::<&str>());\n    println!(\"String             {:>5}\", size_of::<String>());\n    println!(\"Vec<i32>           {:>5}\", size_of::<Vec<i32>>());\n    println!(\"Box<i32>           {:>5}\", size_of::<Box<i32>>());\n}\n",
+   "out": "type               bytes\ni32                    4\nu64                    8\nf64                    8\nbool                   1\nchar                   4\n(i32, i32)             8\n[u8; 16]              16\nPair                   8\n&i32                   8\n&str                  16\nString                24\nVec<i32>              24\nBox<i32>               8\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "static-data.rs": {
+   "code": "// The frame of `greeting` is gone when it returns, but the text it hands back\n// is not in the frame, so it is still there.\nfn greeting() -> &'static str {\n    \"hello\"\n}\n\nfn main() {\n    let g = greeting();\n    println!(\"g: {g}\");\n\n    // The variable `g` is a pointer and a length on the stack.\n    println!(\"size of g: {} bytes\", size_of_val(&g));\n    // The text it points at is 5 bytes of the program's own data.\n    println!(\"size of the text: {} bytes\", size_of_val(g));\n}\n",
+   "out": "g: hello\nsize of g: 16 bytes\nsize of the text: 5 bytes\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "use-after-move.fail.rs": {
+   "code": "fn main() {\n    let a = String::from(\"hello\");\n    let b = a;\n    println!(\"b = {b}\");\n    println!(\"a = {a}\");\n}\n",
+   "error": "error[E0382]: borrow of moved value: `a`\n --> src/main.rs:5:20\n  |\n2 |     let a = String::from(\"hello\");\n  |         - move occurs because `a` has type `String`, which does not implement the `Copy` trait\n3 |     let b = a;\n  |             - value moved here\n4 |     println!(\"b = {b}\");\n5 |     println!(\"a = {a}\");\n  |                    ^ value borrowed here after move\n  |\nhelp: consider cloning the value if the performance cost is acceptable\n  |\n3 |     let b = a.clone();\n  |              ++++++++\n",
+   "lang": "rust"
+  },
+  "object-sizes.java": {
+   "code": "import java.lang.management.ManagementFactory;\nimport java.util.ArrayList;\nimport java.util.List;\n\npublic class Main {\n    static class Point {\n        int x, y;\n        Point(int x, int y) { this.x = x; this.y = y; }\n    }\n\n    static final com.sun.management.ThreadMXBean MX =\n        (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();\n\n    static long allocated() {\n        return MX.getThreadAllocatedBytes(Thread.currentThread().threadId());\n    }\n\n    static Object keep; // the objects stay reachable, so the JIT cannot drop them\n\n    public static void main(String[] args) {\n        int n = 1_000_000;\n\n        long before = allocated();\n        Point[] points = new Point[n];\n        for (int i = 0; i < n; i++) points[i] = new Point(i, i);\n        keep = points;\n        System.out.println(\"1M Points in an array: \" + (allocated() - before) / 1_000_000 + \" MB\");\n\n        before = allocated();\n        int[] ints = new int[n];\n        for (int i = 0; i < n; i++) ints[i] = i + 1000;\n        keep = ints;\n        System.out.println(\"int[1M]:               \" + (allocated() - before) / 1_000_000 + \" MB\");\n\n        before = allocated();\n        List<Integer> boxed = new ArrayList<>(n);\n        for (int i = 0; i < n; i++) boxed.add(i + 1000);\n        keep = boxed;\n        System.out.println(\"List<Integer> of 1M:   \" + (allocated() - before) / 1_000_000 + \" MB\");\n    }\n}\n",
+   "out": "1M Points in an array: 28 MB\nint[1M]:               4 MB\nList<Integer> of 1M:   20 MB\n",
+   "lang": "java",
+   "exit": 0
+  }
+ },
+ "exercises": {
+  "move-or-copy": {
+   "starter": "// `Copy` makes `let b = a` copy the bytes, so `a` stays usable.\n#[derive(Clone, Copy)]\nstruct Point {\n    x: i32,\n    y: i32,\n}\n\n/// Returns a point `dx` to the right of `p`. `p` is `Copy`, so the caller keeps its own.\nfn shifted(p: Point, dx: i32) -> Point {\n    todo!(\"make a copy with `let mut q = p;`, change q.x, and return q\")\n}\n\n/// Takes the text (it is moved in) and hands it back with its length in bytes,\n/// so the caller can keep using it.\nfn with_len(text: String) -> (String, usize) {\n    todo!(\"get the length first, then build the tuple: `(text, text.len())` would not compile\")\n}\n\nfn main() {\n    let p = Point { x: 1, y: 2 };\n    let q = shifted(p, 10);\n    assert_eq!((p.x, p.y), (1, 2)); // p is untouched, and still usable\n    assert_eq!((q.x, q.y), (11, 2));\n\n    let text = String::from(\"héllo\");\n    let (text, n) = with_len(text); // the old `text` was moved; this is a new one\n    assert_eq!(text, \"héllo\");\n    assert_eq!(n, 6); // \"é\" takes two bytes\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "// `Copy` makes `let b = a` copy the bytes, so `a` stays usable.\n#[derive(Clone, Copy)]\nstruct Point {\n    x: i32,\n    y: i32,\n}\n\n/// Returns a point `dx` to the right of `p`. `p` is `Copy`, so the caller keeps its own.\nfn shifted(p: Point, dx: i32) -> Point {\n    let mut q = p;\n    q.x += dx;\n    q\n}\n\n/// Takes the text (it is moved in) and hands it back with its length in bytes,\n/// so the caller can keep using it.\nfn with_len(text: String) -> (String, usize) {\n    let n = text.len();\n    (text, n)\n}\n\nfn main() {\n    let p = Point { x: 1, y: 2 };\n    let q = shifted(p, 10);\n    assert_eq!((p.x, p.y), (1, 2)); // p is untouched, and still usable\n    assert_eq!((q.x, q.y), (11, 2));\n\n    let text = String::from(\"héllo\");\n    let (text, n) = with_len(text); // the old `text` was moved; this is a new one\n    assert_eq!(text, \"héllo\");\n    assert_eq!(n, 6); // \"é\" takes two bytes\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "sizes": {
+   "starter": "use std::mem::size_of;\n\n/// Bytes taken by each type on a 64-bit machine, in this order:\n/// u8, i32, (i32, i32), [u16; 5], &str, Box<String>, Vec<u8>\nfn predictions() -> [usize; 7] {\n    todo!(\"work out each size, then write the seven numbers\")\n}\n\nfn main() {\n    let actual = [\n        size_of::<u8>(),\n        size_of::<i32>(),\n        size_of::<(i32, i32)>(),\n        size_of::<[u16; 5]>(),\n        size_of::<&str>(),\n        size_of::<Box<String>>(),\n        size_of::<Vec<u8>>(),\n    ];\n    assert_eq!(predictions(), actual);\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "use std::mem::size_of;\n\n/// Bytes taken by each type on a 64-bit machine, in this order:\n/// u8, i32, (i32, i32), [u16; 5], &str, Box<String>, Vec<u8>\nfn predictions() -> [usize; 7] {\n    // A Box is one pointer, however big the String it points at is.\n    [1, 4, 8, 10, 16, 8, 24]\n}\n\nfn main() {\n    let actual = [\n        size_of::<u8>(),\n        size_of::<i32>(),\n        size_of::<(i32, i32)>(),\n        size_of::<[u16; 5]>(),\n        size_of::<&str>(),\n        size_of::<Box<String>>(),\n        size_of::<Vec<u8>>(),\n    ];\n    assert_eq!(predictions(), actual);\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "vec-header": {
+   "starter": "use std::mem::size_of;\n\n/// How many bytes the elements of `v` take on the heap, counting spare room.\nfn heap_bytes(v: &Vec<i32>) -> usize {\n    todo!(\"capacity times the size of one element\")\n}\n\n/// How many bytes the variable `v` itself takes (the header), however many elements it has.\nfn header_bytes(v: &Vec<i32>) -> usize {\n    todo!(\"the size of the Vec type itself, not of its elements\")\n}\n\n/// How many more elements fit before the Vec has to ask for a bigger buffer.\nfn spare(v: &Vec<i32>) -> usize {\n    todo!(\"capacity minus length\")\n}\n\nfn main() {\n    let mut v: Vec<i32> = Vec::with_capacity(10);\n    v.push(1);\n    v.push(2);\n    v.push(3);\n\n    assert_eq!(header_bytes(&v), 3 * size_of::<usize>());\n    assert_eq!(spare(&v), v.capacity() - 3);\n    assert!(spare(&v) >= 7);\n    assert_eq!(heap_bytes(&v), v.capacity() * 4);\n\n    // The header stays the same size when the Vec grows.\n    let before = header_bytes(&v);\n    for i in 0..1000 {\n        v.push(i);\n    }\n    assert_eq!(header_bytes(&v), before);\n    assert!(heap_bytes(&v) >= 1003 * 4);\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "use std::mem::size_of;\n\n/// How many bytes the elements of `v` take on the heap, counting spare room.\nfn heap_bytes(v: &Vec<i32>) -> usize {\n    v.capacity() * size_of::<i32>()\n}\n\n/// How many bytes the variable `v` itself takes (the header), however many elements it has.\nfn header_bytes(_v: &Vec<i32>) -> usize {\n    size_of::<Vec<i32>>()\n}\n\n/// How many more elements fit before the Vec has to ask for a bigger buffer.\nfn spare(v: &Vec<i32>) -> usize {\n    v.capacity() - v.len()\n}\n\nfn main() {\n    let mut v: Vec<i32> = Vec::with_capacity(10);\n    v.push(1);\n    v.push(2);\n    v.push(3);\n\n    assert_eq!(header_bytes(&v), 3 * size_of::<usize>());\n    assert_eq!(spare(&v), v.capacity() - 3);\n    assert!(spare(&v) >= 7);\n    assert_eq!(heap_bytes(&v), v.capacity() * 4);\n\n    // The header stays the same size when the Vec grows.\n    let before = header_bytes(&v);\n    for i in 0..1000 {\n        v.push(i);\n    }\n    assert_eq!(header_bytes(&v), before);\n    assert!(heap_bytes(&v) >= 1003 * 4);\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}

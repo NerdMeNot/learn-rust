@@ -1,0 +1,120 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Mutable Borrows"
+part: "ownership"
+intro: >-
+  `&mut` lends a value so it can be changed. The rule: while something holds a `&mut`,
+  nothing else can use that value at all. Many readers, or one writer, never both.
+coming_from:
+  go: >-
+    `&mut Vec<i32>` is like your `*[]int`, except you don't write `(*scores)[i]`:
+    indexing and loops look through the reference. What Go has no version of is the
+    exclusivity: while a `&mut` exists, nothing else can read or write that value.
+  kotlin: >-
+    A `&mut Vec<i32>` parameter is like a `MutableList<Int>` parameter, but the caller
+    has to write `&mut scores`, so the call shows what may change. A Kotlin `List` is a
+    read-only view that another reference can still change under you. While a `&mut` is
+    lent out, no other reference exists at all, not even to read.
+  python: >-
+    Python lets any reference change a list. Rust only allows it through `&mut`, which
+    must be written on both the parameter and the call. Only one `&mut` can exist at a
+    time, and nothing else can even read the list while it does.
+  typescript: >-
+    Any reference to an array can change it in TypeScript, unless that reference is
+    typed `readonly`, which restricts only that one reference. In Rust only a `&mut` can
+    change it, you write it at the call (`&mut scores`), and while it exists nothing
+    else can read or write the value.
+  java: >-
+    `&mut Vec<i32>` is like passing a `List<Integer>` that the method may change, except
+    the signature says so, and Rust allows only one such writer at a time with no
+    readers alongside it. (A read-only view such as `Collections.unmodifiableList` exists,
+    but it only restricts the reference you hold.) Java has references to element
+    objects but not to a list slot, so the Rust fix for changing two elements looks like
+    yours: `scores[i] += 1`, where you'd write `scores.set(i, scores.get(i) + 1)`.
+  csharp: >-
+    `&mut` is like a `ref` parameter or `ref` local, but exclusive: while one `&mut`
+    exists, nothing else can read or write that value. C# lets two `ref` locals point at
+    the same array slot; Rust doesn't, so use indexes or `split_at_mut`.
+  c: >-
+    `&mut T` is `restrict` made universal and checked. In C, `restrict` is a promise you
+    keep yourself; Rust refuses `&mut arr[i]` and `&mut arr[j]` at once, even for
+    different elements. (`split_at_mut` and slice patterns are the way to get two.)
+  cpp: >-
+    `&mut T` is a non-`const` `T&`, with one extra rule: only one can be alive at a
+    time, and no `const` references alongside it. Two `int&` into one vector are fine in
+    C++ (until it grows), but rejected in Rust; use indexes or `split_at_mut`.
+notes:
+  - >-
+    `&mut x` lends `x` out to be changed. A plain `&` only looks. Because `&mut` is
+    written at the call, you can see which calls change your data.
+  - >-
+    `*r` means "the value `r` points at". Method calls and printing look through a
+    reference for you, so you mostly see `*` when assigning: `*r += 1`.
+  - >-
+    You need `mut` in two places: the variable (`let mut scores`) and the borrow (`&mut
+    scores`). The first is at the declaration, the second at the call.
+  - >-
+    This one-writer rule is the main rule that prevents data races in safe Rust, together
+    with the `Send` and `Sync` rules for threads ([Send and Sync](/learn/send-sync/)). It is the rule of a
+    read-write lock (many readers or one writer), but checked while compiling.
+gotcha:
+  title: "Two writers into the same list"
+  verdict: "fine-elsewhere"
+  looks_fine: >-
+    In Go, `first := &scores[0]; last := &scores[2]` is fine. They point at different
+    elements, so nothing overlaps.
+  rust_sees: >-
+    `&mut scores[0]` lends element 0 out to be changed (see the notes above). The borrow
+    checker does not look at index values. It sees two `&mut` borrows of `scores`, both
+    alive at the same time. (It doesn't track indexes in an array either:
+    there the error names `scores[_]`.)
+  why: >-
+    This code is safe, but Rust can't prove it. Change 0 and 2 to variables `i` and `j`.
+    When `i == j`, you have two writers to the same number. The compiler cannot tell that
+    case from this one, so it refuses both. When you really need two parts at once, ask
+    for pieces that cannot overlap.
+  langs:
+    go:
+      status: "runs"
+      says: >-
+        Go runs this and prints [11 20 31]. Two pointers into the same slice are fine in
+        Go, even when both write. (If two goroutines wrote through them without
+        coordination, that would be a data race.)
+    kotlin:
+      status: "none"
+      says: >-
+        Kotlin has no reference to a list slot (and an `Int` can't be changed), so you
+        would write `scores[0] += 1` and `scores[2] += 1`. That is also the simplest Rust
+        fix.
+    python:
+      status: "none"
+      says: >-
+        Python has no reference to a list slot, only to the objects in it, so you would
+        write `scores[0] += 1` and `scores[2] += 1`. That is also the simplest Rust fix.
+    typescript:
+      status: "none"
+      says: >-
+        TypeScript has no reference to an array element. `let first = scores[0]; first +=
+        1` changes a copy of the number and leaves the array alone. You would write
+        `scores[0] += 1`, which is also the simplest Rust fix.
+    java:
+      status: "none"
+      says: >-
+        Java has references to element objects but not to a list slot, and an `Integer`
+        can't be changed, so you would write `scores.set(0, scores.get(0) + 1)`. In Rust,
+        `scores[0] += 1` is the simplest fix.
+    csharp:
+      status: "runs"
+      says: >-
+        C# allows two `ref` locals into the same array and prints [11, 20, 31]. Nothing
+        checks whether two refs point at the same slot.
+    c:
+      status: "runs"
+      says: >-
+        C allows any number of pointers that write into the same array. This prints [11,
+        20, 31].
+    cpp:
+      status: "runs"
+      says: >-
+        Two `int&` into the same vector are fine in C++, so this prints `[11, 20, 31]`.
+        (They would dangle if the vector grew.) Rust allows only one `&mut` at a time,
+        and you would use `split_at_mut` or indexes.

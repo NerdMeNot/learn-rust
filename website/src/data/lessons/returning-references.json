@@ -1,0 +1,396 @@
+{
+ "id": "returning-references",
+ "title": "Returning References",
+ "part": "abstractions",
+ "intro": "A function can return a reference only if it points into something that will still exist after the function returns. Usually that means into one of its inputs.",
+ "coming_from": {
+  "go": "Go lets you return `&s` for a local `s`: the compiler sees that `s` escapes the function and allocates it on the heap. (A Go function would normally just return the string.) Rust has no garbage collector, so you choose: return an owned `String`, or return a `&str` that points into one of the inputs.",
+  "kotlin": "Kotlin returns object references, and the garbage collector keeps whatever is still referenced alive. In Rust you choose: an owned `String` that the caller now owns, or a `&str` borrowed from an input, which works only while that input is still around.",
+  "python": "Python returns an object and keeps it alive for as long as anything refers to it. In Rust you return either an owned `String`, or a `&str` that borrows from an input and is valid only while that input lives.",
+  "typescript": "In TypeScript an object you return stays alive for as long as something refers to it. In Rust a returned `&str` must point into one of the inputs; anything made inside the function has to be returned as an owned `String`.",
+  "java": "Java returns object references, and the garbage collector keeps whatever is still referenced alive. In Rust a returned `&str` must point into one of the inputs; anything made inside the function has to be returned as an owned `String`: ownership moves to the caller, and the text is not copied.",
+  "csharp": "A returned `&str` is closest to a `ReadOnlySpan<char>` that points into the input. C# already refuses to return a span of a local or a `ref` to a local (CS8352, CS8168); Rust applies that rule to every reference, not only to ref structs. Anything the function makes itself is returned as an owned `String`.",
+  "c": "gcc warns when a function returns a pointer to a local array, but the program still builds, and using the pointer is undefined behaviour. In Rust it does not compile. Return an owned `String`, which frees itself, or a `&str` that points into an input.",
+  "cpp": "A returned `&str` is closest to a `std::string_view` into the input. Returning a reference to a local compiles in C++ (g++ warns) and is undefined behaviour when used; in Rust it is an error. Return a `String`, which is what returning a `std::string` by value is, and the usual fix in C++ too."
+ },
+ "notes": [
+  "Rule of thumb: if you made it inside the function, return it owned (`String`, `Vec`). If it is a piece of an input, you can return a reference (`&str`, `&[T]`).",
+  "`first_word` returns a `&str` that points into `g`. Rust remembers that link, so `w` can't outlive `g`.",
+  "This link is what Rust calls a lifetime. With one borrowed input, Rust fills it in by itself. With two, you must write it: `fn longer<'a>(a: &'a str, b: &'a str) -> &'a str`. The `'a` says \"the result comes from one of these inputs, so use it only while both are alive\"."
+ ],
+ "faq": [
+  {
+   "q": "Do people really write lifetimes all over their code?",
+   "a": "Not in every function. The compiler fills in the common cases (one reference in, a reference out; a method that returns a piece of `&self`), and a struct that owns its data (`String`, `Vec`, `Arc<T>`) needs no lifetime at all.\n\nThe two most common places for a lifetime you write by hand are a function that returns a reference and has more than one reference parameter, and a struct that holds a reference. The lifetimes lesson covers both, and more.\n\nIf your own code starts to feel like pointer gymnastics, returning an owned value is often a way out. Making an owned copy of borrowed data costs an allocation and a copy; that is usually fine until a measurement says otherwise."
+  }
+ ],
+ "gotcha": {
+  "title": "Returning a reference to something made inside the function",
+  "verdict": "rust-rule",
+  "looks_fine": "In Go, Python, TypeScript and C#, returning something you made inside the function is normal: the garbage collector keeps it alive for as long as anything refers to it. In C and C++ the same shape is a bug that the compiler only warns about.",
+  "rust_sees": "`s` is owned by `make_greeting`, so it is freed at the closing `}`. A reference to it would point at memory that no longer holds the string.",
+  "why": "Rust has no garbage collector to keep `s` alive, and it does not move values to the heap on its own. `s` is freed at the closing `}`, so a reference to it would really dangle. That is the bug the C and C++ versions below get from this same code, and Rust turns it into a compile error. Nothing is wrong with the habit in a garbage-collected language; here you say who owns the result: return the `String` itself, which moves ownership to the caller without copying the text, or return a `&str` that points into an input.",
+  "langs": {
+   "go": {
+    "status": "runs",
+    "says": "Go runs this and prints hello rust. Go sees that `s` outlives the function and allocates it on the heap, so the pointer stays valid.",
+    "code": "package main\n\nimport \"fmt\"\n\nfunc makeGreeting(name string) *string {\n\ts := \"hello \" + name\n\treturn &s\n}\n\nfunc main() {\n\tfmt.Println(*makeGreeting(\"rust\"))\n}\n",
+    "out": "hello rust\n"
+   },
+   "kotlin": {
+    "status": "runs",
+    "says": "Kotlin prints hello rust. Objects stay alive while something refers to them, so returning one made inside a function just works.",
+    "code": "fun makeGreeting(name: String): String {\n    val s = \"hello $name\"\n    return s\n}\n\nfun main() {\n    println(makeGreeting(\"rust\"))\n}\n",
+    "out": "hello rust\n"
+   },
+   "python": {
+    "status": "runs",
+    "says": "Python prints hello rust. The function returns the string object itself, and Python keeps it alive for as long as anything refers to it.",
+    "code": "def make_greeting(name: str) -> str:\n    s = f\"hello {name}\"\n    return s\n\n\nprint(make_greeting(\"rust\"))\n",
+    "out": "hello rust\n"
+   },
+   "typescript": {
+    "status": "runs",
+    "says": "Prints hello rust. The garbage collector keeps the string alive for as long as anything refers to it.",
+    "code": "function makeGreeting(name: string): string {\n  const s = `hello ${name}`;\n  return s;\n}\n\nconsole.log(makeGreeting(\"rust\"));\n",
+    "out": "hello rust\n"
+   },
+   "java": {
+    "status": "runs",
+    "says": "Java prints hello rust. Objects stay alive while something refers to them, so returning one made inside a method just works.",
+    "code": "public class Main {\n    static String makeGreeting(String name) {\n        String s = \"hello \" + name;\n        return s;\n    }\n\n    public static void main(String[] args) {\n        System.out.println(makeGreeting(\"rust\"));\n    }\n}\n",
+    "out": "hello rust\n"
+   },
+   "csharp": {
+    "status": "runs",
+    "says": "Strings live on the garbage-collected heap, so returning one made inside the method works and prints hello rust.",
+    "code": "Console.WriteLine(MakeGreeting(\"rust\"));\n\nstatic string MakeGreeting(string name)\n{\n    var s = $\"hello {name}\";\n    return s;\n}\n",
+    "out": "hello rust\n"
+   },
+   "c": {
+    "status": "crash",
+    "mode": "asan",
+    "says": "gcc warns that the function returns the address of a local array, then returns NULL in its place. Printing it crashes, and AddressSanitizer reports a read from the zero page (a null pointer). That substitution is gcc 14's; undefined behaviour could as well print garbage or appear to work.",
+    "code": "#include <stdio.h>\n\nchar *make_greeting(const char *name) {\n    char s[32];\n    snprintf(s, sizeof s, \"hello %s\", name);\n    return s;\n}\n\nint main(void) {\n    printf(\"%s\\n\", make_greeting(\"rust\"));\n    return 0;\n}\n",
+    "warnings": "main.c: In function ‘make_greeting’:\nmain.c:6:12: warning: function returns address of local variable [-Wreturn-local-addr]\n    6 |     return s;\n      |            ^",
+    "out": "AddressSanitizer:DEADLYSIGNAL\n=================================================================\n==1==ERROR: AddressSanitizer: SEGV on unknown address 0x············ (pc 0x············ bp 0x············ sp 0x············ T0)\n==1==The signal is caused by a READ memory access.\n==1==Hint: address points to the zero page.\n    #0 0x············ in __sanitizer::internal_strlen(char const*) ../../../../src/libsanitizer/sanitizer_common/sanitizer_libc.cpp:176\n    #1 0x············ in puts ../../../../src/libsanitizer/sanitizer_common/sanitizer_common_interceptors.inc:1236\n    #2 0x············ in main main.c:10\n    #3 0x············  (/lib/aarch64-linux-gnu/libc.so.6+0x22258)\n    #4 0x············ in __libc_start_main (/lib/aarch64-linux-gnu/libc.so.6+0x22338)\n    #5 0x············ in _start (main+0xaac)\n\nAddressSanitizer can not provide additional info.\nSUMMARY: AddressSanitizer: SEGV ../../../../src/libsanitizer/sanitizer_common/sanitizer_libc.cpp:176 in __sanitizer::internal_strlen(char const*)\n==1==ABORTING\n"
+   },
+   "cpp": {
+    "status": "crash",
+    "mode": "asan",
+    "says": "g++ warns about returning a reference to a local, but builds it. It even swaps the reference for a null one, so AddressSanitizer reports a SEGV when `cout` reads it. Returning `std::string` by value, which is what `-> String` is, is the usual fix in C++ too.",
+    "code": "#include <iostream>\n#include <string>\n\nconst std::string& make_greeting(const std::string& name) {\n    std::string s = \"hello \" + name;\n    return s;\n}\n\nint main() {\n    std::cout << make_greeting(\"rust\") << \"\\n\";\n}\n",
+    "warnings": "main.cpp: In function ‘const std::string& make_greeting(const std::string&)’:\nmain.cpp:6:12: warning: reference to local variable ‘s’ returned [-Wreturn-local-addr]\n    6 |     return s;\n      |            ^\nmain.cpp:5:17: note: declared here\n    5 |     std::string s = \"hello \" + name;\n      |                 ^",
+    "out": "AddressSanitizer:DEADLYSIGNAL\n=================================================================\n==1==ERROR: AddressSanitizer: SEGV on unknown address 0x············ (pc 0x············ bp 0x············ sp 0x············ T0)\n==1==The signal is caused by a READ memory access.\n==1==Hint: address points to the zero page.\n    #0 0x············ in std::basic_ostream<char, std::char_traits<char> >& std::operator<< <char, std::char_traits<char>, std::allocator<char> >(std::basic_ostream<char, std::char_traits<char> >&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&) (/lib/aarch64-linux-gnu/libstdc++.so.6+0x······)\n    #1 0x············ in main main.cpp:10\n    #2 0x············  (/lib/aarch64-linux-gnu/libc.so.6+0x22258)\n    #3 0x············ in __libc_start_main (/lib/aarch64-linux-gnu/libc.so.6+0x22338)\n    #4 0x············ in _start (main+0x232c)\n\nAddressSanitizer can not provide additional info.\nSUMMARY: AddressSanitizer: SEGV (/lib/aarch64-linux-gnu/libstdc++.so.6+0x······) in std::basic_ostream<char, std::char_traits<char> >& std::operator<< <char, std::char_traits<char>, std::allocator<char> >(std::basic_ostream<char, std::char_traits<char> >&, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&)\n==1==ABORTING\n"
+   }
+  },
+  "code": "fn make_greeting(name: &str) -> &str {\n    let s = format!(\"hello {name}\");\n    &s\n}\n\nfn main() {\n    println!(\"{}\", make_greeting(\"rust\"));\n}\n",
+  "error": "error[E0515]: cannot return reference to local variable `s`\n --> src/main.rs:3:5\n  |\n3 |     &s\n  |     ^^ returns a reference to data owned by the current function\n",
+  "error_code": "E0515",
+  "fixed": {
+   "code": "fn make_greeting(name: &str) -> String {\n    let s = format!(\"hello {name}\");\n    s\n}\n\nfn main() {\n    println!(\"{}\", make_greeting(\"rust\"));\n}\n",
+   "out": "hello rust\n"
+  }
+ },
+ "order": 36,
+ "program": {
+  "rust": {
+   "code": "// returns a NEW String: the caller owns it\nfn make_greeting(name: &str) -> String {\n    format!(\"hello {name}\")\n}\n\n// returns a piece of the input: no copy, borrowed from `text`\nfn first_word(text: &str) -> &str {\n    text.split(' ').next().unwrap_or(\"\")\n}\n\nfn main() {\n    let g = make_greeting(\"rust\");\n    let w = first_word(&g);\n    println!(\"{g} / {w}\");\n}\n",
+   "out": "hello rust / hello\n"
+  },
+  "go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"strings\"\n)\n\n// a Go function would normally return the string itself; `&s` is the shape Rust rejects\nfunc makeGreeting(name string) *string {\n\ts := \"hello \" + name\n\treturn &s // fine in Go: s escapes, so the compiler allocates it on the heap\n}\n\n// returns a piece of the input: no copy\nfunc firstWord(text string) string {\n\tword, _, _ := strings.Cut(text, \" \")\n\treturn word\n}\n\nfunc main() {\n\tg := makeGreeting(\"rust\")\n\tw := firstWord(*g)\n\tfmt.Println(*g, \"/\", w)\n}\n",
+   "out": "hello rust / hello\n"
+  },
+  "kotlin": {
+   "code": "fun makeGreeting(name: String): String = \"hello $name\"\n\nfun firstWord(text: String): String = text.substringBefore(' ')\n\nfun main() {\n    val g = makeGreeting(\"rust\")\n    val w = firstWord(g)\n    println(\"$g / $w\")\n}\n",
+   "out": "hello rust / hello\n"
+  },
+  "python": {
+   "code": "def make_greeting(name: str) -> str:\n    return f\"hello {name}\"\n\n\ndef first_word(text: str) -> str:  # returns a new string\n    return text.split(\" \")[0]\n\n\ng = make_greeting(\"rust\")\nw = first_word(g)\nprint(f\"{g} / {w}\")\n",
+   "out": "hello rust / hello\n"
+  },
+  "typescript": {
+   "code": "// returns a new string\nfunction makeGreeting(name: string): string {\n  return `hello ${name}`;\n}\n\n// returns part of the input (also a new string: JS strings are immutable)\nfunction firstWord(text: string): string {\n  return text.split(\" \")[0] ?? \"\";\n}\n\nconst g = makeGreeting(\"rust\");\nconst w = firstWord(g);\nconsole.log(`${g} / ${w}`);\n",
+   "out": "hello rust / hello\n"
+  },
+  "java": {
+   "code": "public class Main {\n    static String makeGreeting(String name) {\n        return \"hello \" + name;\n    }\n\n    // returns a new String holding the first word\n    static String firstWord(String text) {\n        return text.substring(0, text.indexOf(' '));\n    }\n\n    public static void main(String[] args) {\n        var g = makeGreeting(\"rust\");\n        var w = firstWord(g);\n        System.out.println(g + \" / \" + w);\n    }\n}\n",
+   "out": "hello rust / hello\n"
+  },
+  "csharp": {
+   "code": "var g = MakeGreeting(\"rust\");\nvar w = FirstWord(g);\nConsole.WriteLine($\"{g} / {w}\");\n\n// returns a NEW string\nstatic string MakeGreeting(string name) => $\"hello {name}\";\n\n// returns a view into the input: no copy\nstatic ReadOnlySpan<char> FirstWord(ReadOnlySpan<char> text)\n{\n    var space = text.IndexOf(' ');\n    return space < 0 ? text : text[..space];\n}\n",
+   "out": "hello rust / hello\n"
+  },
+  "c": {
+   "code": "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n\n// returns NEW memory: the caller owns it and must free it\nchar *make_greeting(const char *name) {\n    size_t n = strlen(\"hello \") + strlen(name) + 1;\n    char *s = malloc(n);\n    snprintf(s, n, \"hello %s\", name);\n    return s;\n}\n\n// returns a pointer into the input: the end of the first word, no copy\nconst char *first_word_end(const char *text) {\n    const char *space = strchr(text, ' ');\n    return space ? space : text + strlen(text);\n}\n\nint main(void) {\n    char *g = make_greeting(\"rust\");\n    const char *end = first_word_end(g);\n    printf(\"%s / %.*s\\n\", g, (int)(end - g), g);\n    free(g);\n    return 0;\n}\n",
+   "out": "hello rust / hello\n"
+  },
+  "cpp": {
+   "code": "#include <format>\n#include <iostream>\n#include <string>\n#include <string_view>\n\n// returns a NEW std::string: the caller owns it\nstd::string make_greeting(std::string_view name) {\n    return std::format(\"hello {}\", name);\n}\n\n// returns a view into the input: no copy, only valid while `text` lives\nstd::string_view first_word(std::string_view text) {\n    return text.substr(0, text.find(' '));\n}\n\nint main() {\n    std::string g = make_greeting(\"rust\");\n    std::string_view w = first_word(g);\n    std::cout << g << \" / \" << w << \"\\n\";\n}\n",
+   "out": "hello rust / hello\n"
+  }
+ },
+ "snippets": {
+  "body-is-fine.fail.rs": {
+   "code": "fn first_of(a: &str, b: &str) -> &str {\n    println!(\"ignoring {b:?}\");\n    a\n}\n\nfn main() {\n    println!(\"{}\", first_of(\"ab\", \"abc\"));\n}\n",
+   "error": "error[E0106]: missing lifetime specifier\n --> src/main.rs:1:34\n  |\n1 | fn first_of(a: &str, b: &str) -> &str {\n  |                ----     ----     ^ expected named lifetime parameter\n  |\n  = help: this function's return type contains a borrowed value, but the signature does not say whether it is borrowed from `a` or `b`\nhelp: consider introducing a named lifetime parameter\n  |\n1 | fn first_of<'a>(a: &'a str, b: &'a str) -> &'a str {\n  |            ++++     ++          ++          ++\n",
+   "lang": "rust"
+  },
+  "buffer.rs": {
+   "code": "fn write_greeting(name: &str, out: &mut String) {\n    out.push_str(\"hello \");\n    out.push_str(name);\n}\n\nfn main() {\n    let mut out = String::with_capacity(64);\n    let start = out.as_ptr() as usize;\n    for name in [\"ana\", \"bo\", \"cy\"] {\n        out.clear();\n        write_greeting(name, &mut out);\n        println!(\"{out}\");\n    }\n    println!(\"same buffer: {}\", out.as_ptr() as usize == start);\n    println!(\"capacity: {}\", out.capacity());\n}\n",
+   "out": "hello ana\nhello bo\nhello cy\nsame buffer: true\ncapacity: 64\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-go-table.rs": {
+   "code": "struct Config {\n    retries: u32,\n}\n\nfn new_config() -> Config {\n    Config { retries: 3 } // `return &Config{...}` in Go\n}\n\nfn head(xs: &[i32]) -> &[i32] {\n    &xs[..2]\n}\n\nfn head_mut(xs: &mut [i32]) -> &mut [i32] {\n    &mut xs[..2]\n}\n\nfn before(s: &str, i: usize) -> &str {\n    &s[..i]\n}\n\nfn fill(buf: &mut [u8]) -> usize {\n    buf[0] = b'x';\n    1\n}\n\nfn main() {\n    assert_eq!(new_config().retries, 3);\n    let mut xs = [1, 2, 3];\n    assert_eq!(head(&xs), [1, 2]);\n    head_mut(&mut xs)[0] = 9;\n    assert_eq!(xs, [9, 2, 3]);\n    assert_eq!(before(\"abc\", 1), \"a\");\n    let mut buf = [0u8; 4];\n    assert_eq!(fill(&mut buf), 1);\n}\n",
+   "out": "",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-method-self.rs": {
+   "code": "struct Text(String);\n\nimpl Text {\n    // two references in, but a method with `&self`: the result borrows from `self`\n    fn before(&self, sep: &str) -> &str {\n        self.0.split(sep).next().unwrap_or(\"\")\n    }\n}\n\nfn main() {\n    let t = Text(String::from(\"a,b\"));\n    let r;\n    {\n        let sep = String::from(\",\");\n        r = t.before(&sep); // `sep` is dropped at the closing brace; `r` is still fine\n    }\n    assert_eq!(r, \"a\");\n}\n",
+   "out": "",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-one-input.rs": {
+   "code": "fn f(a: &str) -> &str {\n    a\n}\n\nfn main() {\n    assert_eq!(f(\"x\"), \"x\");\n}\n",
+   "out": "",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-one-ref-among-others.rs": {
+   "code": "fn f(a: &str, n: usize) -> &str {\n    &a[..n]\n}\n\nfn main() {\n    assert_eq!(f(\"xyz\", 2), \"xy\");\n}\n",
+   "out": "",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-slice-of-strings.rs": {
+   "code": "fn f(words: &[String]) -> &str {\n    &words[0]\n}\n\nfn main() {\n    assert_eq!(f(&[String::from(\"x\")]), \"x\");\n}\n",
+   "out": "",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-slice-of-strs.fail.rs": {
+   "code": "fn f(words: &[&str]) -> &str {\n    words[0]\n}\n\nfn main() {\n    println!(\"{}\", f(&[\"x\"]));\n}\n",
+   "error": "error[E0106]: missing lifetime specifier\n --> src/main.rs:1:25\n  |\n1 | fn f(words: &[&str]) -> &str {\n  |             -------     ^ expected named lifetime parameter\n  |\n  = help: this function's return type contains a borrowed value, but the signature does not say which one of `words`'s 2 lifetimes it is borrowed from\nhelp: consider introducing a named lifetime parameter\n  |\n1 | fn f<'a>(words: &'a [&'a str]) -> &'a str {\n  |     ++++         ++   ++           ++\n",
+   "lang": "rust"
+  },
+  "check-std-returns.rs": {
+   "code": "fn main() {\n    let s = String::from(\" a=b \");\n    let _: String = s.to_uppercase();\n    let _: &str = s.trim();\n    let _: Option<(&str, &str)> = s.split_once('=');\n    let v = vec![1, 2];\n    let _: Option<&i32> = v.get(0);\n    let _: Vec<i32> = v[..1].to_vec();\n    let mut out = String::new();\n    out.push_str(\"x\");\n    let _: Option<&mut i32> = vec![1].get_mut(0);\n}\n",
+   "out": "",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-two-inputs.fail.rs": {
+   "code": "fn f(a: &str, b: &str) -> &str {\n    if a.is_empty() { b } else { a }\n}\n\nfn main() {\n    println!(\"{}\", f(\"x\", \"y\"));\n}\n",
+   "error": "error[E0106]: missing lifetime specifier\n --> src/main.rs:1:27\n  |\n1 | fn f(a: &str, b: &str) -> &str {\n  |         ----     ----     ^ expected named lifetime parameter\n  |\n  = help: this function's return type contains a borrowed value, but the signature does not say whether it is borrowed from `a` or `b`\nhelp: consider introducing a named lifetime parameter\n  |\n1 | fn f<'a>(a: &'a str, b: &'a str) -> &'a str {\n  |     ++++     ++          ++          ++\n",
+   "lang": "rust"
+  },
+  "getter.fail.rs": {
+   "code": "struct Team {\n    names: Vec<String>,\n}\n\nimpl Team {\n    fn names(&self) -> &[String] {\n        &self.names\n    }\n}\n\nfn main() {\n    let team = Team {\n        names: vec![String::from(\"ana\"), String::from(\"bo\")],\n    };\n    let names = team.names();\n    names[0] = String::from(\"changed\");\n}\n",
+   "error": "error[E0594]: cannot assign to `names[_]`, which is behind a `&` reference\n  --> src/main.rs:16:5\n   |\n16 |     names[0] = String::from(\"changed\");\n   |     ^^^^^^^^ `names` is a `&` reference, so it cannot be written to\n   |\nhelp: consider specifying this binding's type\n   |\n15 |     let names: &mut [String] = team.names();\n   |              +++++++++++++++\n",
+   "lang": "rust"
+  },
+  "input-changed.fail.rs": {
+   "code": "fn first_word(text: &str) -> &str {\n    text.split(' ').next().unwrap_or(\"\")\n}\n\nfn main() {\n    let mut text = String::from(\"hello world\");\n    let w = first_word(&text);\n    text.clear();\n    println!(\"w: {w}\");\n}\n",
+   "error": "error[E0502]: cannot borrow `text` as mutable because it is also borrowed as immutable\n --> src/main.rs:8:5\n  |\n7 |     let w = first_word(&text);\n  |                        ----- immutable borrow occurs here\n8 |     text.clear();\n  |     ^^^^^^^^^^^^ mutable borrow occurs here\n9 |     println!(\"w: {w}\");\n  |                   - immutable borrow later used here\n",
+   "lang": "rust"
+  },
+  "into-input.rs": {
+   "code": "fn first_word(text: &str) -> &str {\n    text.split(' ').next().unwrap_or(\"\")\n}\n\nfn main() {\n    let text = String::from(\"hello world\");\n    let w = first_word(&text);\n    let start = text.as_ptr() as usize;\n    println!(\"w: {w:?}\");\n    println!(\"w starts {} bytes into text\", w.as_ptr() as usize - start);\n    println!(\n        \"w.len(): {}, text.len(): {}, text.capacity(): {}\",\n        w.len(),\n        text.len(),\n        text.capacity()\n    );\n    let again = first_word(&text[6..]);\n    println!(\n        \"again: {again:?}, starts {} bytes into text\",\n        again.as_ptr() as usize - start\n    );\n}\n",
+   "out": "w: \"hello\"\nw starts 0 bytes into text\nw.len(): 5, text.len(): 11, text.capacity(): 11\nagain: \"world\", starts 6 bytes into text\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "local-ref.fail.rs": {
+   "code": "fn shout(name: &str) -> &str {\n    let upper = name.to_uppercase();\n    &upper\n}\n\nfn main() {\n    println!(\"{}\", shout(\"rust\"));\n}\n",
+   "error": "error[E0515]: cannot return reference to local variable `upper`\n --> src/main.rs:3:5\n  |\n3 |     &upper\n  |     ^^^^^^ returns a reference to data owned by the current function\n",
+   "lang": "rust"
+  },
+  "lookup.rs": {
+   "code": "fn longest(words: &[String]) -> Option<&str> {\n    let mut best: Option<&str> = None;\n    for w in words {\n        match best {\n            Some(b) if b.len() >= w.len() => {}\n            _ => best = Some(w),\n        }\n    }\n    best\n}\n\nfn main() {\n    let words = vec![\n        String::from(\"fig\"),\n        String::from(\"banana\"),\n        String::from(\"kiwi\"),\n    ];\n    println!(\"longest: {:?}\", longest(&words));\n    println!(\"empty: {:?}\", longest(&[]));\n    let owned: Option<String> = longest(&words).map(str::to_owned);\n    println!(\"owned copy: {owned:?}\");\n}\n",
+   "out": "longest: Some(\"banana\")\nempty: None\nowned copy: Some(\"banana\")\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "mut-held.fail.rs": {
+   "code": "fn largest(scores: &mut [i32]) -> &mut i32 {\n    let mut best = 0;\n    for i in 1..scores.len() {\n        if scores[i] > scores[best] {\n            best = i;\n        }\n    }\n    &mut scores[best]\n}\n\nfn main() {\n    let mut scores = vec![3, 9, 4];\n    let top = largest(&mut scores);\n    println!(\"length: {}\", scores.len());\n    *top += 1;\n}\n",
+   "error": "error[E0502]: cannot borrow `scores` as immutable because it is also borrowed as mutable\n  --> src/main.rs:14:28\n   |\n13 |     let top = largest(&mut scores);\n   |                       ----------- mutable borrow occurs here\n14 |     println!(\"length: {}\", scores.len());\n   |                            ^^^^^^ immutable borrow occurs here\n15 |     *top += 1;\n   |     --------- mutable borrow later used here\n",
+   "lang": "rust"
+  },
+  "no-input.fail.rs": {
+   "code": "fn greeting() -> &str {\n    \"hello\"\n}\n\nfn main() {\n    println!(\"{}\", greeting());\n}\n",
+   "error": "error[E0106]: missing lifetime specifier\n --> src/main.rs:1:18\n  |\n1 | fn greeting() -> &str {\n  |                  ^ expected named lifetime parameter\n  |\n  = help: this function's return type contains a borrowed value, but there is no value for it to be borrowed from\nhelp: consider using the `'static` lifetime, but this is uncommon unless you're returning a borrowed value from a `const` or a `static`\n  |\n1 | fn greeting() -> &'static str {\n  |                   +++++++\nhelp: instead, you are more likely to want to return an owned value\n  |\n1 - fn greeting() -> &str {\n1 + fn greeting() -> String {",
+   "lang": "rust"
+  },
+  "owned.rs": {
+   "code": "fn shout(name: &str) -> (String, usize) {\n    let upper = name.to_uppercase();\n    let addr_inside = upper.as_ptr() as usize;\n    (upper, addr_inside) // `upper` moves out to the caller\n}\n\nfn main() {\n    let (s, addr_inside) = shout(\"rust\");\n    println!(\"s: {s}\");\n    println!(\n        \"same buffer inside and outside: {}\",\n        s.as_ptr() as usize == addr_inside\n    );\n    println!(\"len {}, capacity {}\", s.len(), s.capacity());\n}\n",
+   "out": "s: RUST\nsame buffer inside and outside: true\nlen 4, capacity 4\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "return-mut.rs": {
+   "code": "fn largest(scores: &mut [i32]) -> &mut i32 {\n    let mut best = 0;\n    for i in 1..scores.len() {\n        if scores[i] > scores[best] {\n            best = i;\n        }\n    }\n    &mut scores[best]\n}\n\nfn main() {\n    let mut scores = vec![3, 9, 4];\n    *largest(&mut scores) += 100;\n    println!(\"scores: {scores:?}\");\n}\n",
+   "out": "scores: [3, 109, 4]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "static-item.rs": {
+   "code": "static NAMES: [&str; 2] = [\"ana\", \"bo\"];\n\nfn first_name() -> &'static str {\n    NAMES[0]\n}\n\nfn leaked() -> &'static str {\n    // gives the String away for the rest of the run; it is never freed\n    Box::leak(String::from(\"never freed\").into_boxed_str())\n}\n\nfn main() {\n    println!(\"first_name: {}\", first_name());\n    println!(\"leaked: {}\", leaked());\n}\n",
+   "out": "first_name: ana\nleaked: never freed\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "static-str.rs": {
+   "code": "fn language() -> &'static str {\n    \"rust\"\n}\n\nfn main() {\n    let name = language();\n    println!(\"language: {name}\");\n}\n",
+   "out": "language: rust\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "temp-dropped.fail.rs": {
+   "code": "fn first_word(text: &str) -> &str {\n    text.split(' ').next().unwrap_or(\"\")\n}\n\nfn main() {\n    let w = first_word(&String::from(\"hello world\"));\n    println!(\"w: {w}\");\n}\n",
+   "error": "error[E0716]: temporary value dropped while borrowed\n --> src/main.rs:6:25\n  |\n6 |     let w = first_word(&String::from(\"hello world\"));\n  |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^ - temporary value is freed at the end of this statement\n  |                         |\n  |                         creates a temporary value which is freed while still in use\n7 |     println!(\"w: {w}\");\n  |                   - borrow later used here\n  |\nhelp: consider using a `let` binding to create a longer lived value\n  |\n6 ~     let binding = String::from(\"hello world\");\n7 ~     let w = first_word(&binding);",
+   "lang": "rust"
+  },
+  "two-inputs-fixed.rs": {
+   "code": "fn longer<'a>(a: &'a str, b: &'a str) -> &'a str {\n    if a.len() >= b.len() { a } else { b }\n}\n\nfn main() {\n    println!(\"longer: {}\", longer(\"ab\", \"abc\"));\n}\n",
+   "out": "longer: abc\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "two-inputs.fail.rs": {
+   "code": "fn longer(a: &str, b: &str) -> &str {\n    if a.len() >= b.len() { a } else { b }\n}\n\nfn main() {\n    println!(\"{}\", longer(\"ab\", \"abc\"));\n}\n",
+   "error": "error[E0106]: missing lifetime specifier\n --> src/main.rs:1:32\n  |\n1 | fn longer(a: &str, b: &str) -> &str {\n  |              ----     ----     ^ expected named lifetime parameter\n  |\n  = help: this function's return type contains a borrowed value, but the signature does not say whether it is borrowed from `a` or `b`\nhelp: consider introducing a named lifetime parameter\n  |\n1 | fn longer<'a>(a: &'a str, b: &'a str) -> &'a str {\n  |          ++++     ++          ++          ++\n",
+   "lang": "rust"
+  },
+  "view-then-change.fail.rs": {
+   "code": "fn main() {\n    let mut scores = vec![3, 9, 4];\n    let top = &scores[..2];\n    scores.push(7);\n    println!(\"top: {top:?}\");\n}\n",
+   "error": "error[E0502]: cannot borrow `scores` as mutable because it is also borrowed as immutable\n --> src/main.rs:4:5\n  |\n3 |     let top = &scores[..2];\n  |                ------ immutable borrow occurs here\n4 |     scores.push(7);\n  |     ^^^^^^^^^^^^^^ mutable borrow occurs here\n5 |     println!(\"top: {top:?}\");\n  |                     --- immutable borrow later used here\n",
+   "lang": "rust"
+  },
+  "alias.py": {
+   "code": "def first(rows):\n    return rows[0]  # the same list, not a copy\n\n\nrows = [[1], [2]]\nf = first(rows)\nf.append(99)\nprint(\"rows:\", rows)\n",
+   "out": "rows: [[1, 99], [2]]\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "alias.ts": {
+   "code": "function first(rows: number[][]): number[] {\n  return rows[0]!; // the same array, not a copy\n}\n\nconst rows = [[1], [2]];\nfirst(rows).push(99);\nconsole.log(\"rows:\", JSON.stringify(rows));\n",
+   "out": "rows: [[1,99],[2]]\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "append-alias.go": {
+   "code": "package main\n\nimport \"fmt\"\n\n// returns a piece of the input: no copy\nfunc firstTwo(xs []int) []int {\n\treturn xs[:2]\n}\n\n// the same piece, with its capacity cut to its length\nfunc firstTwoCapped(xs []int) []int {\n\treturn xs[:2:2]\n}\n\nfunc main() {\n\tscores := []int{3, 9, 4}\n\ttop := append(firstTwo(scores), 99)\n\tfmt.Println(\"top:   \", top)\n\tfmt.Println(\"scores:\", scores)\n\n\tscores = []int{3, 9, 4}\n\tcapped := append(firstTwoCapped(scores), 99)\n\tfmt.Println(\"capped:\", capped)\n\tfmt.Println(\"scores:\", scores)\n}\n",
+   "out": "top:    [3 9 99]\nscores: [3 9 99]\ncapped: [3 9 99]\nscores: [3 9 4]\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "append-into.go": {
+   "code": "package main\n\nimport \"fmt\"\n\n// the caller's slice goes in, and the grown slice comes back\nfunc appendGreeting(dst []byte, name string) []byte {\n\treturn fmt.Appendf(dst, \"hello %s\", name)\n}\n\nfunc main() {\n\tbuf := make([]byte, 0, 64)\n\tfor _, name := range []string{\"ana\", \"bo\", \"cy\"} {\n\t\tbuf = appendGreeting(buf[:0], name)\n\t\tfmt.Println(string(buf))\n\t}\n\tfmt.Println(\"capacity:\", cap(buf))\n}\n",
+   "out": "hello ana\nhello bo\nhello cy\ncapacity: 64\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "by-value.cpp": {
+   "code": "#include <iostream>\n#include <string>\n\nconst char *inside = nullptr;\n\n// returns a NEW std::string: the caller owns it\nstd::string shout(const std::string &name) {\n    std::string upper = \"HELLO, \" + name + \", THIS IS A LONG GREETING\";\n    inside = upper.data();\n    return upper;\n}\n\nint main() {\n    std::string s = shout(\"rust\");\n    std::cout << \"s: \" << s << \"\\n\";\n    std::cout << \"same buffer inside and outside: \" << std::boolalpha << (s.data() == inside) << \"\\n\";\n}\n",
+   "out": "s: HELLO, rust, THIS IS A LONG GREETING\nsame buffer inside and outside: true\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "dangling-view.cpp": {
+   "code": "#include <iostream>\n#include <string>\n#include <string_view>\n\nstd::string_view first_word(const std::string& text) {\n    return std::string_view(text).substr(0, text.find(' '));\n}\n\nint main() {\n    // the temporary string is destroyed at the semicolon; it is long enough to need the heap\n    std::string_view w = first_word(std::string(\"hello world, this is a long text\"));\n    std::cout << \"w.size(): \" << w.size() << \"\\n\";\n    std::cout << \"w still starts with 'h': \" << std::boolalpha << (w[0] == 'h') << \"\\n\";\n}\n",
+   "out": "w.size(): 5\nw still starts with 'h': false\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "dangling-view.crash.asan.cpp": {
+   "code": "#include <iostream>\n#include <string>\n#include <string_view>\n\nstd::string_view first_word(const std::string& text) {\n    return std::string_view(text).substr(0, text.find(' '));\n}\n\nint main() {\n    // the temporary string is destroyed at the semicolon; it is long enough to need the heap\n    std::string_view w = first_word(std::string(\"hello world, this is a long text\"));\n    std::cout << \"w: \" << w << \"\\n\";\n}\n",
+   "out": "=================================================================\n==1==ERROR: AddressSanitizer: heap-use-after-free on address 0x············ at pc 0x············ bp 0x············ sp 0x············\nREAD of size 5 at 0x············ thread T0\n    #0 0x············ in fwrite ../../../../src/libsanitizer/sanitizer_common/sanitizer_common_interceptors.inc:1110\n    #1 0x············ in std::basic_ostream<char, std::char_traits<char> >& std::__ostream_insert<char, std::char_traits<char> >(std::basic_ostream<char, std::char_traits<char> >&, char const*, long) (/lib/aarch64-linux-gnu/libstdc++.so.6+0x······)\n    #2 0x············ in std::basic_ostream<char, std::char_traits<char> >& std::operator<< <char, std::char_traits<char> >(std::basic_ostream<char, std::char_traits<char> >&, std::basic_string_view<char, std::char_traits<char> >) /usr/include/c++/14/string_view:765\n    #3 0x············ in main main.cpp:12\n    #4 0x············  (/lib/aarch64-linux-gnu/libc.so.6+0x22258)\n    #5 0x············ in __libc_start_main (/lib/aarch64-linux-gnu/libc.so.6+0x22338)\n    #6 0x············ in _start (main+0x216c)\n\n0x············ is located 0 bytes inside of 33-byte region [0x············,0x············)\nfreed by thread T0 here:\n    #0 0x············ in operator delete(void*, unsigned long) ../../../../src/libsanitizer/asan/asan_new_delete.cpp:164\n    #1 0x············ in std::__new_allocator<char>::deallocate(char*, unsigned long) /usr/include/c++/14/bits/new_allocator.h:172\n    #2 0x············ in std::allocator<char>::deallocate(char*, unsigned long) /usr/include/c++/14/bits/allocator.h:208\n    #3 0x············ in std::allocator_traits<std::allocator<char> >::deallocate(std::allocator<char>&, char*, unsigned long) /usr/include/c++/14/bits/alloc_traits.h:550\n    #4 0x············ in std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::_M_destroy(unsigned long) /usr/include/c++/14/bits/basic_string.h:294\n    #5 0x············ in std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::_M_dispose() /usr/include/c++/14/bits/basic_string.h:288\n    #6 0x············ in std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::~basic_string() /usr/include/c++/14/bits/basic_string.h:809\n    #7 0x············ in main main.cpp:11\n    #8 0x············  (/lib/aarch64-linux-gnu/libc.so.6+0x22258)\n    #9 0x············ in __libc_start_main (/lib/aarch64-linux-gnu/libc.so.6+0x22338)\n    #10 0x············ in _start (main+0x216c)\n\npreviously allocated by thread T0 here:\n    #0 0x············ in operator new(unsigned long) ../../../../src/libsanitizer/asan/asan_new_delete.cpp:95\n    #1 0x············ in std::__new_allocator<char>::allocate(unsigned long, void const*) /usr/include/c++/14/bits/new_allocator.h:151\n    #2 0x············ in std::allocator<char>::allocate(unsigned long) /usr/include/c++/14/bits/allocator.h:196\n    #3 0x············ in std::allocator_traits<std::allocator<char> >::allocate(std::allocator<char>&, unsigned long) /usr/include/c++/14/bits/alloc_traits.h:515\n    #4 0x············ in std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::_S_allocate(std::allocator<char>&, unsigned long) /usr/include/c++/14/bits/basic_string.h:131\n    #5 0x············ in std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::_M_create(unsigned long&, unsigned long) /usr/include/c++/14/bits/basic_string.tcc:159\n    #6 0x············ in void std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::_M_construct<char const*>(char const*, char const*, std::forward_iterator_tag) /usr/include/c++/14/bits/basic_string.tcc:229\n    #7 0x············ in std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::basic_string<std::allocator<char> >(char const*, std::allocator<char> const&) /usr/include/c++/14/bits/basic_string.h:654\n    #8 0x············ in main main.cpp:11\n    #9 0x············  (/lib/aarch64-linux-gnu/libc.so.6+0x22258)\n    #10 0x············ in __libc_start_main (/lib/aarch64-linux-gnu/libc.so.6+0x22338)\n    #11 0x············ in _start (main+0x216c)\n\nSUMMARY: AddressSanitizer: heap-use-after-free ../../../../src/libsanitizer/sanitizer_common/sanitizer_common_interceptors.inc:1110 in fwrite\nShadow bytes around the buggy address:\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n=>0x············: fa fa[fd]fd fd fd fd fa fa fa fa fa fa fa fa fa\n  0x············: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\n  0x············: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\n  0x············: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\n  0x············: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\n  0x············: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\nShadow byte legend (one shadow byte represents 8 application bytes):\n  Addressable:           00\n  Partially addressable: 01 02 03 04 05 06 07 \n  Heap left redzone:       fa\n  Freed heap region:       fd\n  Stack left redzone:      f1\n  Stack mid redzone:       f2\n  Stack right redzone:     f3\n  Stack after return:      f5\n  Stack use after scope:   f8\n  Global redzone:          f9\n  Global init order:       f6\n  Poisoned by user:        f7\n  Container overflow:      fc\n  Array cookie:            ac\n  Intra object redzone:    bb\n  ASan internal:           fe\n  Left alloca redzone:     ca\n  Right alloca redzone:    cb\n==1==ABORTING\n",
+   "lang": "cpp",
+   "mode": "asan",
+   "exit": 1
+  },
+  "getter-leak.java": {
+   "code": "import java.util.*;\n\npublic class Main {\n    static class Team {\n        private final List<String> names = new ArrayList<>(List.of(\"ana\", \"bo\"));\n\n        List<String> getNames() {\n            return names; // the caller gets the list the object keeps\n        }\n\n        int size() {\n            return names.size();\n        }\n    }\n\n    public static void main(String[] args) {\n        var team = new Team();\n        team.getNames().clear();\n        System.out.println(\"size: \" + team.size());\n    }\n}\n",
+   "out": "size: 0\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "max-temp.cpp": {
+   "code": "#include <algorithm>\n#include <iostream>\n#include <string>\n\nint main() {\n    // std::max returns a reference to one of its arguments, like `longer` in Rust\n    const std::string& m = std::max(std::string(\"apple pie, a long text\"), std::string(\"banana bread, a long text\"));\n    (void)m; // reading `m` now would read a destroyed string\n    std::cout << \"built\\n\";\n}\n",
+   "warnings": "main.cpp: In function ‘int main()’:\nmain.cpp:7:24: warning: possibly dangling reference to a temporary [-Wdangling-reference]\n    7 |     const std::string& m = std::max(std::string(\"apple pie, a long text\"), std::string(\"banana bread, a long text\"));\n      |                        ^\nmain.cpp:7:36: note: the temporary was destroyed at the end of the full expression ‘std::max<__cxx11::basic_string<char> >(std::__cxx11::basic_string<char>(((const char*)\"apple pie, a long text\"), std::allocator<char>()), std::__cxx11::basic_string<char>(((const char*)\"banana bread, a long text\"), std::allocator<char>()))’\n    7 |     const std::string& m = std::max(std::string(\"apple pie, a long text\"), std::string(\"banana bread, a long text\"));\n      |                            ~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~",
+   "out": "built\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "same-type.c": {
+   "code": "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n\n// three functions, one return type, three different promises\nchar *into_input(char *text) { return strchr(text, ' '); }             // points into `text`\nchar *static_buffer(void) { static char buf[] = \"static\"; return buf; } // lives for the whole run\nchar *new_memory(void) { return strdup(\"malloc\"); }                     // the caller must free it\n\nint main(void) {\n    char text[] = \"hello world\";\n    char *a = into_input(text);\n    char *b = static_buffer();\n    char *c = new_memory();\n    printf(\"into_input:    %s (%ld bytes into text)\\n\", a, (long)(a - text));\n    printf(\"static_buffer: %s\\n\", b);\n    printf(\"new_memory:    %s\\n\", c);\n    free(c); // free(a) or free(b) would be a bug, and the types would not warn you\n    return 0;\n}\n",
+   "out": "into_input:     world (5 bytes into text)\nstatic_buffer: static\nnew_memory:    malloc\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "span-escape.fail.cs": {
+   "code": "Console.WriteLine(BadSpan().Length);\nConsole.WriteLine(BadRef());\n\nstatic Span<int> BadSpan()\n{\n    Span<int> s = stackalloc int[4];\n    return s;\n}\n\nstatic ref int BadRef()\n{\n    int x = 1;\n    return ref x;\n}\n",
+   "error": "Program.cs(7,12): error CS8352: Cannot use variable 's' in this context because it may expose referenced variables outside of their declaration scope\nProgram.cs(13,16): error CS8168: Cannot return local 'x' by reference because it is not a ref local",
+   "lang": "csharp"
+  },
+  "stale-span.cs": {
+   "code": "using System.Runtime.InteropServices;\n\nvar scores = new List<int>(3) { 3, 9, 4 };\nSpan<int> top = FirstTwo(scores);\nscores.Add(7); // the list is full, so it moves to a bigger array\ntop[0] = 100;  // writes into the old array\nConsole.WriteLine($\"scores[0]: {scores[0]}\");\n\n// returns a piece of the input: a view of it, not a copy\nstatic Span<int> FirstTwo(List<int> xs) => CollectionsMarshal.AsSpan(xs)[..2];\n",
+   "out": "scores[0]: 3\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "sublist-view.crash.java": {
+   "code": "import java.util.*;\n\npublic class Main {\n    // returns a piece of the input: a view of it, not a copy\n    static List<Integer> firstTwo(List<Integer> xs) {\n        return xs.subList(0, 2);\n    }\n\n    public static void main(String[] args) {\n        List<Integer> scores = new ArrayList<>(List.of(3, 9, 4));\n        List<Integer> top = firstTwo(scores);\n        System.out.println(\"top: \" + top);\n        scores.add(7); // the owner changes the list while the view exists\n        System.out.println(\"top: \" + top);\n    }\n}\n",
+   "out": "top: [3, 9]\nException in thread \"main\" java.util.ConcurrentModificationException\n\tat java.base/java.util.ArrayList$SubList.checkForComodification(ArrayList.java:1498)\n\tat java.base/java.util.ArrayList$SubList.listIterator(ArrayList.java:1367)\n\tat java.base/java.util.AbstractList.listIterator(AbstractList.java:313)\n\tat java.base/java.util.ArrayList$SubList.iterator(ArrayList.java:1363)\n\tat java.base/java.util.AbstractCollection.toString(AbstractCollection.java:451)\n\tat java.base/java.lang.String.valueOf(String.java:4530)\n\tat Main.main(Main.java:14)\n",
+   "lang": "java",
+   "exit": 1
+  },
+  "sublist-view.crash.kt": {
+   "code": "// returns a piece of the input: a view of it, not a copy\nfun firstTwo(xs: List<Int>): List<Int> = xs.subList(0, 2)\n\nfun main() {\n    val scores = mutableListOf(3, 9, 4)\n    val top = firstTwo(scores)\n    println(\"top: $top\")\n    scores.add(7) // the owner changes the list while the view exists\n    println(\"top: $top\")\n}\n",
+   "out": "top: [3, 9]\nException in thread \"main\" java.util.ConcurrentModificationException\n\tat java.base/java.util.ArrayList$SubList.checkForComodification(ArrayList.java:1498)\n\tat java.base/java.util.ArrayList$SubList.listIterator(ArrayList.java:1367)\n\tat java.base/java.util.AbstractList.listIterator(AbstractList.java:313)\n\tat java.base/java.util.ArrayList$SubList.iterator(ArrayList.java:1363)\n\tat java.base/java.util.AbstractCollection.toString(AbstractCollection.java:451)\n\tat java.base/java.lang.String.valueOf(String.java:4530)\n\tat java.base/java.lang.StringBuilder.append(StringBuilder.java:173)\n\tat MainKt.main(Main.kt:9)\n\tat MainKt.main(Main.kt)\n",
+   "lang": "kotlin",
+   "exit": 1
+  },
+  "view.py": {
+   "code": "data = bytearray(b\"hello world\")\nview = memoryview(data)[:5]  # a view of the first five bytes, not a copy\ndata[0] = ord(\"J\")  # change the owner in place\nprint(\"view:\", bytes(view))\ntry:\n    data.append(33)  # resize the owner while the view exists\nexcept BufferError as e:\n    print(\"BufferError:\", e)\n\nxs = [1, 2, 3]\npart = xs[:2]  # slicing a list makes a new list\npart[0] = 100\nprint(\"xs:\", xs)\n",
+   "out": "view: b'Jello'\nBufferError: Existing exports of data: object cannot be re-sized\nxs: [1, 2, 3]\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "view.ts": {
+   "code": "const data = new Uint8Array([1, 2, 3, 4]);\n\nconst view = data.subarray(0, 2); // shares memory with data\nview[0] = 100;\nconsole.log(\"data after view[0] = 100:\", data);\n\nconst copy = data.slice(0, 2); // a new array\ncopy[1] = 200;\nconsole.log(\"data after copy[1] = 200:\", data);\n",
+   "out": "data after view[0] = 100: Uint8Array(4) [ 100, 2, 3, 4 ]\ndata after copy[1] = 200: Uint8Array(4) [ 100, 2, 3, 4 ]\n",
+   "lang": "typescript",
+   "exit": 0
+  }
+ },
+ "exercises": {
+  "after": {
+   "starter": "/// Return the part of `text` after the first `marker`, or \"\" when `marker` is not in `text`.\n/// The result must be a slice of `text`, not a copy. The signature is part of the exercise:\n/// say which input the result is borrowed from, so the caller can drop `marker` early.\nfn after(text: &str, marker: &str) -> String {\n    todo!(\"find the marker, slice text after it; change -> String so the result borrows from text\")\n}\n\n/// True when `inner` is a slice of `outer`: it points inside the same bytes.\nfn is_slice_of(outer: &str, inner: &str) -> bool {\n    let start = outer.as_ptr() as usize;\n    let end = start + outer.len();\n    let at = inner.as_ptr() as usize;\n    at >= start && at + inner.len() <= end\n}\n\nfn main() {\n    let text = String::from(\"key: value: more\");\n    let rest;\n    {\n        let marker = String::from(\": \");\n        rest = after(&text, &marker);\n    } // `marker` is dropped here; `rest` is still used below\n    assert_eq!(rest, \"value: more\");\n    assert!(\n        is_slice_of(&text, &rest),\n        \"return a slice of text, not a copy\"\n    );\n\n    // The marker is not there.\n    assert_eq!(after(\"no colon\", \": \"), \"\");\n\n    // Not English: the marker is three bytes long.\n    assert_eq!(after(\"é→b\", \"→\"), \"b\");\n\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "/// Return the part of `text` after the first `marker`, or \"\" when `marker` is not in `text`.\n/// The result must be a slice of `text`, not a copy. The signature is part of the exercise:\n/// say which input the result is borrowed from, so the caller can drop `marker` early.\nfn after<'a>(text: &'a str, marker: &str) -> &'a str {\n    match text.find(marker) {\n        Some(i) => &text[i + marker.len()..],\n        None => \"\",\n    }\n}\n\n/// True when `inner` is a slice of `outer`: it points inside the same bytes.\nfn is_slice_of(outer: &str, inner: &str) -> bool {\n    let start = outer.as_ptr() as usize;\n    let end = start + outer.len();\n    let at = inner.as_ptr() as usize;\n    at >= start && at + inner.len() <= end\n}\n\nfn main() {\n    let text = String::from(\"key: value: more\");\n    let rest;\n    {\n        let marker = String::from(\": \");\n        rest = after(&text, &marker);\n    } // `marker` is dropped here; `rest` is still used below\n    assert_eq!(rest, \"value: more\");\n    assert!(\n        is_slice_of(&text, &rest),\n        \"return a slice of text, not a copy\"\n    );\n\n    // The marker is not there.\n    assert_eq!(after(\"no colon\", \": \"), \"\");\n\n    // Not English: the marker is three bytes long.\n    assert_eq!(after(\"é→b\", \"→\"), \"b\");\n\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "banner": {
+   "starter": "/// Build the text \"== NAME ==\" with `name` in upper case (all Unicode letters, not just ASCII).\n/// The text is made inside the function, so the caller has to own it: fix the return type.\nfn banner(name: &str) -> &str {\n    todo!(\"build the text with format!, then change -> &str so the caller owns it\")\n}\n\n/// True when `T` is `String` (a `&str`, even a leaked one, is not).\nfn is_string<T>(_: &T) -> bool {\n    std::any::type_name::<T>() == \"alloc::string::String\"\n}\n\nfn main() {\n    let b = banner(\"rust\");\n    assert_eq!(b, \"== RUST ==\");\n    assert!(is_string(&b), \"return an owned String\");\n\n    // Not English: to_ascii_uppercase would leave the é alone.\n    assert_eq!(banner(\"café\"), \"== CAFÉ ==\");\n    assert_eq!(banner(\"\"), \"==  ==\");\n\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "/// Build the text \"== NAME ==\" with `name` in upper case (all Unicode letters, not just ASCII).\n/// The text is made inside the function, so the caller has to own it: fix the return type.\nfn banner(name: &str) -> String {\n    format!(\"== {} ==\", name.to_uppercase())\n}\n\n/// True when `T` is `String` (a `&str`, even a leaked one, is not).\nfn is_string<T>(_: &T) -> bool {\n    std::any::type_name::<T>() == \"alloc::string::String\"\n}\n\nfn main() {\n    let b = banner(\"rust\");\n    assert_eq!(b, \"== RUST ==\");\n    assert!(is_string(&b), \"return an owned String\");\n\n    // Not English: to_ascii_uppercase would leave the é alone.\n    assert_eq!(banner(\"café\"), \"== CAFÉ ==\");\n    assert_eq!(banner(\"\"), \"==  ==\");\n\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "join-into": {
+   "starter": "/// Append `parts` to `out`, with `sep` between them (not before the first or after the last).\n/// What `out` already holds stays.\nfn join_into(parts: &[&str], sep: &str, out: &mut String) {\n    todo!(\"loop over the parts; push_str the separator before every part but the first\")\n}\n\nfn main() {\n    let mut out = String::with_capacity(32);\n    out.push('>');\n    let buffer = out.as_ptr();\n\n    join_into(&[\"a\", \"b\", \"c\"], \", \", &mut out);\n    assert_eq!(out, \">a, b, c\");\n    assert_eq!(\n        out.as_ptr(),\n        buffer,\n        \"write into the caller's String, don't replace it\"\n    );\n    assert_eq!(out.capacity(), 32);\n\n    // One part: no separator. No parts: nothing added.\n    out.clear();\n    join_into(&[\"solo\"], \", \", &mut out);\n    assert_eq!(out, \"solo\");\n    join_into(&[], \", \", &mut out);\n    assert_eq!(out, \"solo\");\n\n    // Not English, and a separator that is more than one byte.\n    out.clear();\n    join_into(&[\"é\", \"ü\"], \"·\", &mut out);\n    assert_eq!(out, \"é·ü\");\n    assert_eq!(out.as_ptr(), buffer);\n\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "/// Append `parts` to `out`, with `sep` between them (not before the first or after the last).\n/// What `out` already holds stays.\nfn join_into(parts: &[&str], sep: &str, out: &mut String) {\n    for (i, part) in parts.iter().enumerate() {\n        if i > 0 {\n            out.push_str(sep);\n        }\n        out.push_str(part);\n    }\n}\n\nfn main() {\n    let mut out = String::with_capacity(32);\n    out.push('>');\n    let buffer = out.as_ptr();\n\n    join_into(&[\"a\", \"b\", \"c\"], \", \", &mut out);\n    assert_eq!(out, \">a, b, c\");\n    assert_eq!(\n        out.as_ptr(),\n        buffer,\n        \"write into the caller's String, don't replace it\"\n    );\n    assert_eq!(out.capacity(), 32);\n\n    // One part: no separator. No parts: nothing added.\n    out.clear();\n    join_into(&[\"solo\"], \", \", &mut out);\n    assert_eq!(out, \"solo\");\n    join_into(&[], \", \", &mut out);\n    assert_eq!(out, \"solo\");\n\n    // Not English, and a separator that is more than one byte.\n    out.clear();\n    join_into(&[\"é\", \"ü\"], \"·\", &mut out);\n    assert_eq!(out, \"é·ü\");\n    assert_eq!(out.as_ptr(), buffer);\n\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}

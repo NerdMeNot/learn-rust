@@ -1,0 +1,153 @@
+---
+title: Why Rust, and what it costs you
+description: Why Rust is hard to ignore in 2026, what it gives someone coming from Go, Java, Kotlin, C#, Python, TypeScript, C or C++, and what it costs. Every figure and quotation is sourced.
+---
+
+import { Aside } from '@astrojs/starlight/components'
+import { Remember } from '../../../components/guide'
+import ForLang from '../../../components/lesson/ForLang.astro'
+
+You already have a language that works. Learning Rust takes real effort, so before asking for it, this page makes the case honestly: what Rust is good at, the evidence behind that, what it costs you, and when it is the wrong choice. Every number links to where it came from. As of October 2026.
+
+<Remember>Rust trades effort up front for whole classes of bugs that can't happen later. Whether that trade pays off depends on what you build.</Remember>
+
+## The short version
+
+- **Memory bugs are a large share of the security bugs in big C and C++ codebases.** Microsoft put it at about 70% of the vulnerabilities it assigns a CVE each year (2019), and Chrome at about 70% of its high-severity bugs. In safe Rust, the compiler rules out that class of bug (an out-of-bounds access is caught by a check at runtime instead), and it does it without a tracing garbage collector.
+- **It works at scale, and the evidence is public.** Android, the Linux kernel, Chrome and Cloudflare have published what happened when they moved code to Rust.
+- **You probably already depend on it.** uv and Ruff for Python; Turbopack, Rolldown, Biome and Deno for JavaScript; ripgrep inside VS Code's search.
+- **It costs you time.** In a Google survey, a third of respondents said they became as productive in Rust as in their other languages within two months, and over half within four. The rest took longer. Slow compilation tops the list of productivity problems in the 2025 State of Rust survey.
+- **It is not the right tool for everything.** Teams have chosen Go or TypeScript over it for good, specific reasons, listed below.
+
+## What Rust offers you
+
+This part depends on the language you know. It shows the one you picked at the top of the page; change it there to read the others.
+
+<ForLang only="go">
+You already have memory safety, fast builds, easy concurrency and a great standard library. What Rust adds:
+
+- **No garbage collector at all.** Go's collector does most of its work while your program runs, with short pauses, but it costs CPU time and needs memory headroom, which is why `GOGC` and `GOMEMLIMIT` exist ([Go GC guide](https://go.dev/doc/gc-guide)). Rust frees each value at a point the compiler works out, so there is no collector to tune. Discord's 2020 story of moving a service from Go to Rust to get rid of latency spikes is the famous example ([Discord, 2020](https://discord.com/blog/why-discord-is-switching-from-go-to-rust)), though it measured Go 1.9.2 (the post says versions 1.8, 1.9 and 1.10 showed no improvement), and the Go GC guide says the collector's performance "has steadily improved over time".
+- **Data races caught before the program runs.** Go's race detector "only finds races that happen at runtime" ([Go docs](https://go.dev/doc/articles/race_detector)). In safe Rust, code that could race on data doesn't compile ([Send and Sync](/learn/send-sync/) explains how). Deadlocks and logic races (two correct steps in the wrong order) are still yours to avoid.
+- **`?` instead of `if err != nil`.** Errors are values, as in Go, but one character passes them up, and the compiler warns when you ignore one ([Errors](/learn/errors/)).
+- **Enums that carry data, and no `nil` in safe code.** No nil map writes, no typed-nil-in-an-interface surprise.
+
+What you give up: Go's fast compiles, its batteries-included standard library (`net/http`, `pprof`, `go test`, easy cross-compiling), and the simplicity of `go` plus channels. Rust has threads and channels too, but async Rust is considerably more to learn than goroutines.
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+You already have memory safety, a mature ecosystem, great IDEs and profilers. What Rust adds:
+
+- **No runtime to install or tune, by default.** A Rust program is one native binary with predictable memory use. (GraalVM native image, .NET Native AOT and Kotlin/Native can do this too, with trade-offs.)
+- **Errors as values, everywhere.** `Result` is like a checked exception that the compiler makes you open before you can use the value, and warns about if you ignore it, without the stack unwinding. Rust still has panics for bugs, which behave more like an unchecked exception.
+- **No `null` in safe code.** Kotlin already gives you this at compile time, and C#'s nullable reference types warn about it; in Rust a possibly-missing value is an `Option` in the type, in libraries too.
+- **Data races caught at compile time,** in safe code. The JVM and .NET leave that to you and your tests.
+
+What you give up: inheritance (Rust uses traits and composition, which takes adjusting to); runtime reflection and the annotation-driven frameworks built on it, like Spring's dependency injection; a JIT that optimises from how your program actually runs; a huge, mature library ecosystem; the ease of object graphs that point at each other, which a garbage collector handles for you; and, for Kotlin developers, coroutines, which many find simpler to pick up than async Rust.
+</ForLang>
+
+<ForLang only="python typescript">
+You're probably here because tools you use got fast: uv, Ruff, Polars, Turbopack, Rolldown. What Rust gives you:
+
+- **Compiled, native code,** with memory safety. The usual first project isn't a rewrite: it's a command-line tool, or one slow function moved into Rust and called from your code, using [PyO3](https://pyo3.rs/) and [maturin](https://www.maturin.rs/) for Python or [napi-rs](https://napi.rs/) for Node.
+- **Types you can't bypass.** TypeScript under `strict` checks a lot, but types are erased at runtime and `any` or a cast can skip them. Python's type hints are optional. Rust's types are checked at compile time everywhere, and in safe code no cast or `any` skips the check.
+- **One standard tool.** Cargo builds, tests, formats, lints and manages packages for every Rust project, the same way.
+
+What you give up: quick scripting, notebooks and REPL-style exploration, dynamic flexibility, and a gentle start. Rust asks you to think about who owns each value, which Python and JavaScript don't ask of you. This course explains that from scratch.
+</ForLang>
+
+<ForLang only="c cpp">
+You already have the performance and the control. What Rust adds:
+
+- **Memory safety by default.** Use-after-free, double free, dangling references and data races are compile errors in safe Rust, barring compiler bugs. Out-of-bounds access is stopped by a bounds check at runtime, which panics instead of corrupting memory. You opt out with `unsafe`, in marked blocks you can audit.
+- **Comparable performance, measured program by program.** The [Benchmarks Game](https://benchmarksgame-team.pages.debian.net/benchmarksgame/fastest/rust-gpp.html) lists the fastest Rust and C++ (g++) programs for each task side by side. In its 25.03 results, the fastest n-body programs took 2.15 s (C++) and 2.19 s (Rust), but both of those programs are flagged on the source page as possibly using hand-written vector instructions, `unsafe` or FFI. The page warns that "How the programs are written matters! Always look at the source code". Read it as "same league", not a ranking.
+- **A standard package manager and build tool.** Cargo, for every project.
+
+What you give up: unchecked control by default (you can still have it, inside `unsafe`); some designs that are easy in C++, like graphs of pointers and self-referencing structs; and easy use of existing C++ libraries. Calling C is straightforward, but C++ interop needs bridging tools like `cxx`, and Rust has no stable ABI.
+</ForLang>
+
+## The problem Rust was built to solve
+
+A **memory-safety bug** is a program touching memory it shouldn't: using something after it was freed, writing past the end of a buffer, or two threads changing the same data at once. In C and C++ these often compile without an error and turn into crashes or, worse, security holes.
+
+- **Microsoft**: "~70% of the vulnerabilities Microsoft assigns a CVE each year continue to be memory safety issues." (a figure caption in [MSRC, July 2019](https://www.microsoft.com/en-us/msrc/blog/2019/07/a-proactive-approach-to-more-secure-code))
+- **Chrome**: "Around 70% of our high severity security bugs are memory unsafety problems", counted over 912 high and critical bugs affecting the Stable channel since 2015. The page is undated. ([Chromium](https://www.chromium.org/Home/chromium-security/memory-safety/))
+
+Garbage-collected languages (Go, Java, Kotlin, C#, Python, TypeScript) already avoid most of this by checking at runtime and freeing memory automatically while the program runs, though not data races, which can still happen in Go, Java, Kotlin and C#. Rust gets that safety, data races included, **with no tracing collector**: the compiler works out who owns each value and when it's freed, and refuses programs where that isn't clear. That is what [ownership](/learn/ownership/) is, and why the compiler can seem strict. [How Rust wants you to think](/start/how-rust-thinks/) explains the mindset.
+
+## The evidence that it works
+
+**Android** has published the most data:
+
+- Memory-safety issues fell from 76% of Android's vulnerabilities in 2019 to 24% in 2024 (as of September that year). Google's explanation is that old bugs get found and fixed over time, so writing *new* code in memory-safe languages steadily shrinks the problem without rewriting old code. ([Google Security Blog, Sep 2024](https://security.googleblog.com/2024/09/eliminating-memory-safety-vulnerabilities-Android.html)) That credits memory-safe languages in general, not Rust alone: Google's later post says its data covers C, C++, Java, Kotlin and Rust.
+- By late 2025, memory-safety bugs had dropped below 20% of Android's vulnerabilities for the first time. For medium and large changes, the rollback rate of Rust changes was about 4 times lower than that of C++ changes, and Rust changes spent about 25% less time in code review than C++ ones. Android has roughly 5 million lines of Rust. ([Google, Nov 2025](https://blog.google/security/rust-in-android-move-fast-fix-things/))
+
+**Linux** has had Rust support since version 6.1 (December 2022). At the Maintainers Summit in December 2025, the conclusion was that the Rust experiment is a success. Android 16 devices running the 6.12 kernel ship a Rust-written kernel module (ashmem). ([Linux 6.1](https://kernelnewbies.org/Linux_6.1), [LWN, Dec 2025](https://lwn.net/Articles/1050174/)) The first security bug (CVE) in the kernel's Rust code came that month: a data race inside an `unsafe` block in the Rust Binder driver ([CVE-2025-68260](https://www.cve.org/CVERecord?id=CVE-2025-68260)). Greg Kroah-Hartman said it "just causes a crash", and noted the same day brought "159 kernel CVEs" for the C code. His summary: Rust "is not a 'silver bullet'… but it sure helps out a lot". ([Greg Kroah-Hartman, Dec 2025](https://social.kernel.org/notice/B1JLrtkxEBazCPQHDM))
+
+**Chrome** replaced FreeType, the C library it used to parse fonts, with Skrifa, a Rust library, starting with web fonts; the blog post's later update says FreeType was removed from Chrome's rendering engine (Blink) in Chrome 145. Keeping up with the bugs fuzzing found in the old code cost Google "at least 0.25 full time software engineers". As of March 2025, fuzzing the Rust replacement had found 39 bugs, "none of these have been security critical". ([Chrome, Mar 2025](https://developer.chrome.com/blog/memory-safety-fonts))
+
+**Cloudflare** rewrote, in Rust, the proxy that connects its network to the servers behind it. It uses "about 70% less CPU and 67% less memory" than the NGINX-based system it replaced, and in its first few hundred trillion requests it had not crashed because of its own code. ([Cloudflare, 2022](https://blog.cloudflare.com/how-we-built-pingora-the-proxy-that-connects-cloudflare-to-the-internet/)) That compares against their own old setup, which differed in more ways than the language.
+
+## Governments now recommend memory-safe languages
+
+- In December 2023, the US agencies CISA, NSA and FBI, with their counterparts in Australia, Canada, the UK and New Zealand, published [*The Case for Memory Safe Roadmaps*](https://www.cisa.gov/news-events/alerts/2023/12/06/cisa-releases-joint-guide-software-manufacturers-case-memory-safe-roadmaps), asking software makers to plan how to get memory-safety bugs out of their products.
+- In January 2025 (a revision of a document first published in October 2024), CISA and the FBI's [*Product Security Bad Practices*](https://www.cisa.gov/resources-tools/resources/product-security-bad-practices), aimed at products used in critical infrastructure, called starting new product lines in C or C++ "dangerous" where "readily available" memory-safe alternatives could be used. It asked makers of existing products to "publish a memory safety roadmap by the end of 2025".
+
+This is guidance, not law. It asks for a plan, not an immediate rewrite.
+
+## You may already be using it
+
+| If you write | Tools you may use that are written in Rust |
+|---|---|
+| Python | [uv](https://docs.astral.sh/uv/) (packages and projects), [Ruff](https://docs.astral.sh/ruff/) (lint and format), [Polars](https://github.com/pola-rs/polars) (dataframes), [pydantic-core](https://github.com/pydantic/pydantic-core) (the core of pydantic) |
+| TypeScript / JavaScript | [Turbopack](https://nextjs.org/docs/app/api-reference/turbopack) (Next.js's default bundler), [Rolldown](https://rolldown.rs/) (Vite 8+), [SWC](https://swc.rs/), [Biome](https://biomejs.dev/), [Oxc](https://oxc.rs/), [Deno](https://deno.com/) |
+| Anything, in VS Code | [ripgrep](https://github.com/BurntSushi/ripgrep), which has powered VS Code's search since [2017](https://code.visualstudio.com/updates/v1_11) |
+
+The pattern: tools a community wanted to be much faster were rewritten in Rust, while their users kept writing Python or TypeScript. Take the speed-up figures on those sites as their authors' claims.
+
+## What it costs
+
+These come from Rust's own surveys and from teams that have used it at scale.
+
+**Learning takes months, not days.** Google's 2022 survey drew on the 1,000+ Google developers who committed Rust code that year (the post does not give the number of respondents). In it, "a third of respondents become as productive using Rust as other languages in two months or less", and over half within four months. The same post says more than two thirds were confident contributing to a Rust codebase within two months, and that Google saw "no data to indicate that there is any productivity penalty for Rust relative to any other language these developers previously used". Self-reported answers from people already at Google are not a controlled study. ([Google, Jun 2023](https://opensource.googleblog.com/2023/06/rust-fact-vs-fiction-5-insights-from-googles-rust-journey-2022.html)) In the [2025 State of Rust survey](https://blog.rust-lang.org/2026/03/02/2025-State-Of-Rust-Survey-results), 24.9% of the 417 respondents who had stopped using Rust said it was too difficult to learn (most of them said they plan to come back).
+
+**Compiling is slow.** In the same survey, 27% of respondents called slow compilation a big problem, the highest of any productivity problem, and only 18% said it wasn't an issue. In the Rust compiler performance survey, asked about the one project that struggles most with build times, 55% of respondents waited more than 10 seconds for a rebuild after a code change. ([Rust blog, Sep 2025](https://blog.rust-lang.org/2025/09/10/rust-compiler-performance-survey-2025-results/)) Google's survey found the same: "Slow build speeds were by far the #1 reported challenge."
+
+**Async Rust still has rough edges.** In the 2025 survey, 17.6% called "writing executor-agnostic async code" a big problem, and 13.7% said the same of "achieving structured concurrency with async code".
+
+**The compiler sometimes says no to code that's fine.** 9.5% called "borrow checker not allowing valid code" a big problem. This course points out those cases as they come up, and shows the usual way around each. Stuck on an error you can't fix? See [Working with the Borrow Checker](/learn/borrow-checker/#from-error-to-fix).
+
+**Memory safety isn't reliability.** On 18 November 2025, a database permissions change produced an oversized configuration file at Cloudflare. Their Rust proxy hit a size limit and called `unwrap()` on the error (a [`Result`](/learn/errors/) the code did not handle), which made it panic, and took much of their network down. Their older proxy didn't crash on the same file, but gave every request a bot score of zero. ([Cloudflare, Nov 2025](https://blog.cloudflare.com/18-november-2025-outage/)) Rust makes you decide what happens on an error. It can't make that decision a good one.
+
+## When Rust is the wrong choice
+
+- **When porting a large codebase whose style fits another language.** Microsoft wrote TypeScript's new native compiler in Go. Their reasons for Go: "Idiomatic Go strongly resembles the existing coding patterns of the TypeScript codebase", it is "a port that maintains the existing behavior", and "the downsides of a GC aren't particularly salient in our codebase". ([TypeScript team, Mar 2025](https://github.com/microsoft/typescript-go/discussions/411))
+- **When your team and users live in another language.** Prisma moved its query engine from Rust to TypeScript (the Rust-free version is production-ready as of version 6.16). Contributors needed both languages, it shipped a separate binary for every platform, and data had to be converted between JavaScript and Rust and back. They praised Rust; for their users it was the wrong fit. ([Prisma, Jan 2025](https://www.prisma.io/blog/from-rust-to-typescript-a-new-chapter-for-prisma-orm))
+- **When you need to change everything all the time.** A two-person indie game team left Rust after three years and over 100,000 lines, saying "the borrow checker forces a refactor at the most inconvenient times". ([LogLog Games, 2024](https://loglog.games/blog/leaving-rust-gamedev/)) That's one team's account; Rust tends to reward code whose shape has settled.
+- **When a rewrite is the plan.** Dropbox, which rewrote its sync engine in Rust and called the language "a force multiplier", also warns that rewriting "would have been a terrible idea" in many settings. ([Dropbox, 2020](https://dropbox.tech/infrastructure/rewriting-the-heart-of-our-sync-engine))
+- Quick prototypes, notebooks and throwaway scripts, where the compiler's demands buy you nothing.
+
+## Claims you'll hear that aren't quite true
+
+- **"Rust is the most admired language, every year."** It was in Stack Overflow's 2025 survey (72%). In 2026 it came third at 67%, behind Elm and Odin, which fewer than 1% of respondents want to use. Among languages that at least 1% want to use, it is still the most admired. ("Admired" there means people who have used the language and want to keep using it.) ([2025](https://survey.stackoverflow.co/2025/technology/), [2026](https://survey.stackoverflow.co/2026/technology/data))
+- **"Android cut memory-safety bugs from 76% to 24% thanks to Rust."** Thanks to memory-safe languages, which on Android include Kotlin and Java. ([Google, Nov 2025](https://blog.google/security/rust-in-android-move-fast-fix-things/))
+- **"Rust code has 1000 times fewer vulnerabilities."** Google's figure is memory-safety vulnerability density, based on one near-miss (caught before release) in about 5 million lines. Encouraging, but one data point makes the ratio a very rough estimate.
+- **"The government says stop using C and C++."** It asks for a plan, and calls new C/C++ product lines dangerous for critical infrastructure where alternatives exist. It is guidance, not a ban.
+- **"Microsoft is rewriting Windows in Rust."** A Microsoft distinguished engineer wrote that his goal was "to eliminate every line of C and C++ from Microsoft by 2030". After the post spread, he added to it: "Windows is *NOT* being rewritten in Rust with AI", and called his team's work a research project on migrating code from one language to another. ([The Register, Dec 2025](https://www.theregister.com/software/2025/12/24/microsoft-wants-to-replace-its-entire-c-and-c-codebase/2339230))
+- **"Rust is the greenest language."** A widely shared [2017 study](https://greenlab.di.uminho.pt/wp-content/uploads/2017/10/sleFinal.pdf) ranked languages by energy use, with C first and Rust close behind. A [2025 study](https://arxiv.org/abs/2410.05460) found that once you account for language implementations versus languages, the benchmark code, the number of active cores and memory activity, "the choice of programming language implementation has no significant impact on energy consumption beyond execution time." Faster programs use less energy, and the study found little else on top of that.
+- **"If it compiles, it works."** Rust rules out whole categories of bugs, not all of them. See the Cloudflare outage above.
+
+## Where to go from here
+
+- [How Rust wants you to think](/start/how-rust-thinks/): the mindset behind the rules, before any syntax.
+- [Your first project with Cargo](/start/first-project/): install Rust and run something.
+- Or go straight to [Hello World](/learn/hello-world/). Every lesson shows Rust next to the language you picked at the top of the page.
+
+## Read more
+
+- [Understanding Ownership](https://doc.rust-lang.org/book/ch04-00-understanding-ownership.html), chapter 4 of The Rust Programming Language: the rule behind the "no collector" claims above.
+- [Fearless Concurrency](https://doc.rust-lang.org/book/ch16-00-concurrency.html), chapter 16 of the same book: how the type system turns data races into compile errors.
+- [Rust by Example](https://doc.rust-lang.org/rust-by-example/): short runnable examples, if you prefer reading code first.
+
+<Aside type="note" title="How this page was checked">
+Every figure and quotation on this page was checked against the linked source, opened and read, in October 2026. Where a source is old, its year is given. The State of Rust percentages appear only in the charts of that post, and were read from the charts (the 55% rebuild-wait figure is in the compiler survey post's text, and agrees with its chart). Pages change, so a figure may move after this check. If you find something out of date, please tell us.
+</Aside>

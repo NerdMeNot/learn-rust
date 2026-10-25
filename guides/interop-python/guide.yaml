@@ -1,0 +1,134 @@
+# Use Rust from Python: PyO3 + maturin
+#
+# NEEDS NETWORK. The image has Python 3.13 but no pip and no ensurepip, so the sessions
+# bootstrap a virtual environment the way guides/for-python does: `venv --without-pip`,
+# then get-pip.py, then maturin (pinned). get-pip.py itself and the packages' own
+# dependencies are not pinned. Cargo crates are pinned by Cargo.lock.
+#
+# One long session (`build`) does the whole flow, because a virtual environment does not
+# survive from one session to the next. The page shows steps of it with `only`; the index
+# of each step is in the comment above it.
+name: wordstats
+sessions:
+  build:
+    dir: rust
+    local_target: true
+    steps:
+      # 0
+      - cmd: python3 -m venv .venv
+        expect: fail
+        show: '$ python3 -m venv .venv   # fails in this image: no ensurepip'
+      # 1
+      - cmd: python3 -m venv --without-pip .venv
+      # 2
+      - cmd: curl -sS -o get-pip.py https://bootstrap.pypa.io/get-pip.py && .venv/bin/python get-pip.py -q pip==26.2.2
+        timeout: 600
+        show: '$ curl -O https://bootstrap.pypa.io/get-pip.py && .venv/bin/python get-pip.py pip==26.2.2   # needs network; get-pip.py is not pinned'
+      # 3
+      - cmd: .venv/bin/pip install -q maturin==1.15.0
+        timeout: 600
+        show: '$ .venv/bin/pip install maturin==1.15.0   # needs network; maturin has its own dependencies, not pinned'
+      # 4
+      - cmd: .venv/bin/maturin develop
+        timeout: 900
+        show: '$ .venv/bin/maturin develop   # needs network: downloads PyO3 and its dependencies'
+        varies: true
+      # 5
+      - cmd: .venv/bin/python py/calls.py
+      # 6
+      - cmd: .venv/bin/python py/mistakes.py
+      # 7
+      - cmd: .venv/bin/python py/panic.py
+        varies: true
+      # 8
+      - cmd: .venv/bin/python py/counter.py
+      # 9
+      - cmd: .venv/bin/python py/gil.py
+      # 10
+      - cmd: .venv/bin/maturin build --release -o dist
+        timeout: 900
+        show: '$ .venv/bin/maturin build --release -o dist   # needs network: downloads PyO3 and its dependencies'
+      # 11
+      - cmd: ls dist && python3 -m zipfile -l dist/*.whl
+        show: '$ python3 -m zipfile -l dist/wordstats-0.1.0-*.whl'
+        varies: true
+      # 12
+      - cmd: python3 -m venv --without-pip fresh && fresh/bin/python get-pip.py -q pip==26.2.2 && fresh/bin/pip install -q dist/*.whl && fresh/bin/pip list
+        timeout: 600
+        show: '$ python3 -m venv --without-pip fresh   # then pip install dist/*.whl into it (needs network for pip itself)'
+      # 13
+      - cmd: fresh/bin/python -c "import wordstats; print(wordstats.__file__); print(wordstats.add(2, 3))"
+  # The compiler stops you from taking Python objects into a GIL-free closure.
+  detach-error:
+    dir: rust
+    overlay:
+      src/lib.rs: fixes/detach_borrowed.rs
+    steps:
+      - cmd: cargo check
+        expect: fail
+        show: '$ cargo check   # needs network: downloads PyO3 and its dependencies'
+  detach-fixed:
+    dir: rust
+    overlay:
+      src/lib.rs: fixes/detach_fixed.rs
+    steps:
+      - cmd: cargo check
+        show: '$ cargo check   # needs network: downloads PyO3 and its dependencies'
+  # Why plain `cargo build` is not the way to build the module in this image.
+  plain-cargo:
+    dir: rust
+    steps:
+      - cmd: cargo build 2>&1 | grep -o 'cannot find -lpython[0-9.]*'
+        show: '$ cargo build   # filtered to the linker complaint; needs network: downloads PyO3 and its dependencies'
+      - cmd: PYO3_BUILD_EXTENSION_MODULE=1 cargo build
+        show: '$ PYO3_BUILD_EXTENSION_MODULE=1 cargo build   # needs network if run on its own'
+  # The same function through the C ABI: ctypes (standard library) and cffi (pip).
+  c-abi:
+    dir: cabi
+    local_target: true
+    steps:
+      - cmd: cargo build
+      - cmd: python3 py/use_ctypes.py target/debug/libcabi.so
+        show: '$ python3 py/use_ctypes.py target/debug/libcabi.so'
+      - cmd: python3 -m venv --without-pip .venv && curl -sS -o get-pip.py https://bootstrap.pypa.io/get-pip.py && .venv/bin/python get-pip.py -q pip==26.2.2 && .venv/bin/pip install -q cffi==2.1.1
+        timeout: 600
+        show: '$ pip install cffi==2.1.1   # in a virtual environment made the same way; needs network'
+      - cmd: .venv/bin/python py/use_cffi.py target/debug/libcabi.so
+        show: '$ python py/use_cffi.py target/debug/libcabi.so'
+      - cmd: python3 -c "import sysconfig, os; print('Python.h present:', os.path.exists(sysconfig.get_paths()['include'] + '/Python.h'))"
+  # The page's "Try it yourself": three tasks, one session (the virtual environment does
+  # not survive between sessions). The two Rust variants are swapped in as src/lib.rs.
+  try:
+    dir: rust
+    local_target: true
+    overlay:
+      tries/option.rs: fixes/try_option.rs
+      tries/exception.rs: fixes/try_exception.rs
+    steps:
+      # 0
+      - cmd: python3 -m venv --without-pip .venv && curl -sS -o get-pip.py https://bootstrap.pypa.io/get-pip.py && .venv/bin/python get-pip.py -q pip==26.2.2 && .venv/bin/pip install -q maturin==1.15.0
+        timeout: 900
+        show: '$ python3 -m venv --without-pip .venv; pip install maturin==1.15.0   # the steps from the page again; needs network'
+      # 1
+      - cmd: |-
+          .venv/bin/maturin develop -q && .venv/bin/python py/calls.py > debug.txt && .venv/bin/maturin develop --release -q && .venv/bin/python py/calls.py > release.txt; diff debug.txt release.txt; echo "diff exit code: $?"; ls target
+        timeout: 900
+        show: '$ maturin develop; python py/calls.py > debug.txt; maturin develop --release; python py/calls.py > release.txt; diff debug.txt release.txt; ls target   # needs network: downloads PyO3 and its dependencies'
+        varies: true
+      # 2
+      - cmd: cp tries/option.rs src/lib.rs && .venv/bin/maturin develop -q && .venv/bin/python -c "import wordstats; print(wordstats.longest(['a', 'abc', 'ab'])); print(wordstats.longest([]))"
+        timeout: 900
+        show: '$ cp tries/option.rs src/lib.rs; maturin develop; python -c "import wordstats; print(wordstats.longest([''a'', ''abc'', ''ab''])); print(wordstats.longest([]))"   # needs network: downloads PyO3 and its dependencies'
+        varies: true
+      # 3
+      - cmd: cp tries/exception.rs src/lib.rs && .venv/bin/maturin develop -q && .venv/bin/python py/try_exception.py
+        timeout: 900
+        show: '$ cp tries/exception.rs src/lib.rs; maturin develop; python py/try_exception.py   # needs network: downloads PyO3 and its dependencies'
+        varies: true
+  versions:
+    dir: rust
+    steps:
+      - cmd: python3 --version
+      - cmd: rustc --version
+      - cmd: cargo --version
+      - cmd: python3 -c "import sys; print('GIL enabled:', sys._is_gil_enabled())"

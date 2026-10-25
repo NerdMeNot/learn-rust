@@ -1,0 +1,162 @@
+---
+title: "The crates everyone uses"
+description: "Rust's standard library leaves out JSON, HTTP, regular expressions and an async runtime. Here are the crates used for those jobs, next to what you'd reach for in your language."
+---
+
+import { Files, Remember, Session } from '../../../components/guide'
+import ForLang from '../../../components/lesson/ForLang.astro'
+
+Rust's standard library has less in it than you may be used to. Its [list of all items](https://doc.rust-lang.org/std/all.html) has TCP and UDP sockets, a `Future` trait, and `Instant`, `SystemTime` and `Duration` for time. When I looked on 25 October 2026 it had no JSON, regular-expression, HTTP, UUID or calendar items, and nothing that runs futures for you. Those jobs come from crates. [A tour of the standard library](/std/tour/) covers what `std` does have, and [Finding and using crates](/start/using-crates/) covers how to add one.
+
+<Remember>Find your job in the table, read what the crate says it is with `cargo info <name>`, then `cargo add` it.</Remember>
+
+## The map
+
+In the Rust column, a name links to this site's page when there is one, and to docs.rs when there isn't (`reqwest` links to the axum page, where its client is used). "Usual" is my judgement, not a ranking. As a check on it, here are all-time downloads from the crates.io API on 25 October 2026: from 16 million (polars) to 1.7 billion (thiserror). diesel, SeaORM, datafusion, polars and tantivy are under 50 million, so read those rows as "an option", not "the standard".
+
+In the other columns, "built in" means it ships with the language or its runtime. Most of those cells I ran, in the image behind this site, but a few built-in ones I did not (the last section says which, and what each run covers: [what I ran, and what I only checked](#what-i-ran-and-what-i-only-checked)). The rest are library names that I checked exist; I did not run them. A Go module path can end in a version, such as `/v2` (duckdb-go) or `/v18` (arrow-go), so copy the path from the project's own README before `go get`.
+
+<ForLang only="go">
+
+| Job | Rust | Go |
+| --- | --- | --- |
+| JSON and other formats | [serde](/build/serde/), [serde_json](https://docs.rs/serde_json) | `encoding/json` (built in) |
+| Async runtime | [tokio](/build/tokio/) | goroutines and the runtime (built in) |
+| HTTP server | [axum](/build/axum/) | `net/http` (built in), chi |
+| HTTP client | [reqwest](/build/axum/) | `net/http` (built in) |
+| gRPC | [tonic](/build/grpc/), [prost](https://docs.rs/prost) | grpc-go |
+| SQL databases | [sqlx](/build/sqlx/), [diesel](https://docs.rs/diesel), [SeaORM](https://docs.rs/sea-orm) | `database/sql` (built in) with pgx, or sqlc |
+| Command-line tools | [clap](/build/clap/) | `flag` (built in), cobra |
+| Errors | [anyhow, thiserror](/build/app-errors/) | `errors` and `fmt.Errorf` (built in) |
+| Logging | [tracing](/build/tracing/) | `log/slog` (built in) |
+| Testing | [built in](/build/testing/); [proptest](https://docs.rs/proptest), [insta](https://docs.rs/insta) as extras | `testing` (built in), testify |
+| Dates and times | [chrono](https://docs.rs/chrono), [jiff](https://docs.rs/jiff) | `time` (built in) |
+| Regular expressions | [regex](https://docs.rs/regex) | `regexp` (built in) |
+| Unique IDs | [uuid](https://docs.rs/uuid) | google/uuid |
+| Parallel loops | [rayon](/build/rayon/) | goroutines and `sync.WaitGroup` (built in), splitting the work yourself |
+| Data and SQL engines | [datafusion](/build/datafusion/), [polars](https://docs.rs/polars) | arrow-go, [duckdb-go](https://github.com/duckdb/duckdb-go) |
+| Full-text search | [tantivy](https://docs.rs/tantivy) | bleve |
+
+</ForLang>
+
+<ForLang only="python typescript">
+
+| Job | Rust | Python | TypeScript |
+| --- | --- | --- | --- |
+| JSON and other formats | [serde](/build/serde/), [serde_json](https://docs.rs/serde_json) | `json` (built in), pydantic | `JSON` (built in), zod |
+| Async runtime | [tokio](/build/tokio/) | `asyncio` (built in) | promises and the event loop (built in) |
+| HTTP server | [axum](/build/axum/) | FastAPI | Express, Hono |
+| HTTP client | [reqwest](/build/axum/) | httpx, requests | `fetch` (built in to Node) |
+| gRPC | [tonic](/build/grpc/), [prost](https://docs.rs/prost) | grpcio | @grpc/grpc-js |
+| SQL databases | [sqlx](/build/sqlx/), [diesel](https://docs.rs/diesel), [SeaORM](https://docs.rs/sea-orm) | SQLAlchemy, asyncpg | Prisma, Drizzle |
+| Command-line tools | [clap](/build/clap/) | `argparse` (built in), Typer | commander |
+| Errors | [anyhow, thiserror](/build/app-errors/) | exceptions | `Error`, with a `cause` |
+| Logging | [tracing](/build/tracing/) | `logging` (built in), structlog | pino |
+| Testing | [built in](/build/testing/); [proptest](https://docs.rs/proptest), [insta](https://docs.rs/insta) as extras | `unittest` (built in), pytest, hypothesis | `node:test` (built in to Node), vitest |
+| Dates and times | [chrono](https://docs.rs/chrono), [jiff](https://docs.rs/jiff) | `datetime` (built in) | `Date` (built in), date-fns |
+| Regular expressions | [regex](https://docs.rs/regex) | `re` (built in) | `RegExp` (built in) |
+| Unique IDs | [uuid](https://docs.rs/uuid) | `uuid` (built in) | `crypto.randomUUID` (built in to Node) |
+| Parallel loops | [rayon](/build/rayon/) | `multiprocessing`, `concurrent.futures` (built in) | `worker_threads` (built in to Node) |
+| Data and SQL engines | [datafusion](/build/datafusion/), [polars](https://docs.rs/polars) | pandas, Polars, DuckDB | @duckdb/node-api, @duckdb/duckdb-wasm |
+| Full-text search | [tantivy](https://docs.rs/tantivy) | `tantivy` (the tantivy-py project, bindings to tantivy), Whoosh | MiniSearch |
+
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+
+| Job | Rust | Java | Kotlin | C# |
+| --- | --- | --- | --- | --- |
+| JSON and other formats | [serde](/build/serde/), [serde_json](https://docs.rs/serde_json) | Jackson | kotlinx.serialization | `System.Text.Json` (built in) |
+| Async runtime | [tokio](/build/tokio/) | virtual threads (`Thread.ofVirtual`, built in) | kotlinx.coroutines | `async`/`await` with `Task` (built in) |
+| HTTP server | [axum](/build/axum/) | Spring Boot | Ktor | ASP.NET Core |
+| HTTP client | [reqwest](/build/axum/) | `java.net.http` (built in) | Ktor client | `HttpClient` (built in) |
+| gRPC | [tonic](/build/grpc/), [prost](https://docs.rs/prost) | grpc-java | grpc-kotlin | Grpc.Net.Client, Grpc.AspNetCore |
+| SQL databases | [sqlx](/build/sqlx/), [diesel](https://docs.rs/diesel), [SeaORM](https://docs.rs/sea-orm) | JDBC (`java.sql`, built in), jOOQ | Exposed, jOOQ | EF Core, Dapper |
+| Command-line tools | [clap](/build/clap/) | picocli | Clikt | System.CommandLine |
+| Errors | [anyhow, thiserror](/build/app-errors/) | exceptions | exceptions, `Result` | exceptions |
+| Logging | [tracing](/build/tracing/) | SLF4J with Logback | kotlin-logging with SLF4J | `ILogger`, Serilog |
+| Testing | [built in](/build/testing/); [proptest](https://docs.rs/proptest), [insta](https://docs.rs/insta) as extras | JUnit | Kotest | xUnit |
+| Dates and times | [chrono](https://docs.rs/chrono), [jiff](https://docs.rs/jiff) | `java.time` (built in) | kotlinx-datetime | `DateTime` (built in), NodaTime |
+| Regular expressions | [regex](https://docs.rs/regex) | `java.util.regex` (built in) | `Regex` (built in) | `Regex` (built in) |
+| Unique IDs | [uuid](https://docs.rs/uuid) | `java.util.UUID` (built in) | `java.util.UUID` from the JDK | `Guid` (built in) |
+| Parallel loops | [rayon](/build/rayon/) | parallel streams (built in) | Java's `parallelStream`, or coroutines | `Parallel.For`, PLINQ (built in) |
+| Data and SQL engines | [datafusion](/build/datafusion/), [polars](https://docs.rs/polars) | Apache Spark, DuckDB JDBC | Kotlin DataFrame, Spark | DuckDB.NET.Data, Microsoft.Data.Analysis |
+| Full-text search | [tantivy](https://docs.rs/tantivy) | Lucene | Lucene | Lucene.NET |
+
+</ForLang>
+
+<ForLang only="c cpp">
+
+| Job | Rust | C | C++ |
+| --- | --- | --- | --- |
+| JSON and other formats | [serde](/build/serde/), [serde_json](https://docs.rs/serde_json) | cJSON, json-c | nlohmann/json |
+| Async runtime | [tokio](/build/tokio/) | libuv, libevent | Asio (standalone or Boost.Asio) |
+| HTTP server | [axum](/build/axum/) | libmicrohttpd | Drogon, Crow, Boost.Beast |
+| HTTP client | [reqwest](/build/axum/) | libcurl | libcurl, cpr |
+| gRPC | [tonic](/build/grpc/), [prost](https://docs.rs/prost) | no C entry on grpc.io's list of languages (it has C++) | gRPC C++ |
+| SQL databases | [sqlx](/build/sqlx/), [diesel](https://docs.rs/diesel), [SeaORM](https://docs.rs/sea-orm) | the SQLite C API, libpq | libpqxx, SOCI |
+| Command-line tools | [clap](/build/clap/) | `getopt` (POSIX, in the C library) | CLI11, Boost.Program_options |
+| Errors | [anyhow, thiserror](/build/app-errors/) | return codes and `errno` | exceptions, `std::expected` (C++23) |
+| Logging | [tracing](/build/tracing/) | `syslog` (POSIX) | spdlog |
+| Testing | [built in](/build/testing/); [proptest](https://docs.rs/proptest), [insta](https://docs.rs/insta) as extras | Unity, CMocka, Check | GoogleTest, Catch2 |
+| Dates and times | [chrono](https://docs.rs/chrono), [jiff](https://docs.rs/jiff) | `<time.h>` (built in) | `<chrono>` (built in) |
+| Regular expressions | [regex](https://docs.rs/regex) | `regcomp` and `regexec` in `<regex.h>` (POSIX, in the C library) | `<regex>` (built in) |
+| Unique IDs | [uuid](https://docs.rs/uuid) | libuuid | Boost.UUID |
+| Parallel loops | [rayon](/build/rayon/) | OpenMP | C++17 parallel algorithms (`<execution>`), OpenMP |
+| Data and SQL engines | [datafusion](/build/datafusion/), [polars](https://docs.rs/polars) | the DuckDB C API | Arrow C++, DuckDB |
+| Full-text search | [tantivy](https://docs.rs/tantivy) | SQLite FTS5 | Xapian |
+
+</ForLang>
+
+## What each crate says it is
+
+This is each Rust crate's own description, read by `cargo info` from the crate's `Cargo.toml`. It is what the authors wrote, not a review, and the descriptions change when authors change them. Some say what the crate does and some barely do (`thiserror` is `derive(Error)`), so open the docs before you depend on one. The docs for tantivy say "Think Lucene, but in Rust", which is why Lucene sits next to it in the table.
+
+<Session guide="crates-map" run="info" only={[0]} />
+
+## Five of them in one program
+
+The pages above cover most of these crates. `regex`, `chrono`, `jiff` and `uuid` have no page of their own, so here is a first line of each, run at the versions in `Cargo.lock`, plus a first line of `rayon`, which has [its own page](/build/rayon/).
+
+<Files guide="crates-map" dir="rust" files={["Cargo.toml", "src/main.rs"]} run="run" />
+
+The `rayon` line (more on the [rayon page](/build/rayon/), and on mixing it with async code on the [Rayon and Tokio together page](/build/rayon-tokio/)) sums the squares from 1 to 100 on its thread pool and asserts that the plain iterator gives the same total. It says nothing about speed. Both date crates agree on the weekday of 25 October 2026.
+
+## Try it yourself
+
+I did both in the image behind this page.
+
+1. **Read a crate's features before you add it.** Run `cargo info uuid` in any folder. Under `features:` the default is only `std`, and `v4 = [rng]` is a separate switch.
+
+   <Session guide="crates-map" run="info" only={[1]} />
+
+2. **Switch one on.** Call `Uuid::new_v4()` in a project that depends on `uuid` as above. `cargo build` fails with E0599, "no associated function or constant named `new_v4`". `cargo add uuid --features v4` turns the feature on, and the program builds and prints `version 4`. The `uuid` docs show the same `features = ["v4"]` line. See [Features](https://doc.rust-lang.org/cargo/reference/features.html) in the Cargo Book.
+
+   <Session guide="crates-map" run="feature" />
+
+## What I ran, and what I only checked
+
+For the Rust crates: the descriptions above come from `cargo info`, and the five-crate program above was built and run. The crates that have their own page were run there. I did not run `diesel`, `sea-orm`, `proptest`, `insta`, `polars` or `tantivy`. For them I have only the description and, for the last four, the front page of their docs.rs documentation.
+
+For the other languages, I ran one small program per language to check that most of the built-in names exist in the image (Go 1.27, Python 3.13, Node, Java 25, Kotlin, .NET 10, gcc 14). Some built-in cells were not part of those runs: TypeScript's `JSON`, `Date`, `RegExp` and `Error` with a `cause`, C#'s `async`/`await` with `Task`, Go's `sync.WaitGroup` and `fmt.Errorf` (for Go I only read the first line of `go doc sync` and `go doc errors`), and Kotlin's `Result`. They are standard features, but I did not run them. For C++, `<execution>` only compiles; it does not link and run here.
+
+<details>
+<summary>The runs</summary>
+
+<Session guide="crates-map" run="languages" />
+
+</details>
+
+Everything else in the other columns is a name only. I looked each one up and it exists: the npm, PyPI, Go module proxy, NuGet and Maven Central registries answered for the libraries on those, and the C and C++ libraries have a live home page or repository. The registry checks show the name exists. They do not show the library is maintained or a good choice. The JVM libraries, `kotlinx.coroutines` among them, were looked up on Maven Central only.
+
+## Read more
+
+- [Finding and using crates](/start/using-crates/): `cargo add`, features, the lock file, and how to judge a crate.
+- [blessed.rs](https://blessed.rs): an unofficial, hand-curated directory of crates. Its front page says the standard library is not "batteries included".
+- [Features](https://doc.rust-lang.org/cargo/reference/features.html) in the Cargo Book, and [`cargo info`](https://doc.rust-lang.org/cargo/commands/cargo-info.html).
+- [A tour of the standard library](/std/tour/): what is in `std` before you reach for a crate.
+- [The list of all `std` items](https://doc.rust-lang.org/std/all.html), if you want to check what the standard library has.
+
+:::tip[We've got you]
+Each page in this track comes from a small project in this site's repository (`guides/<name>/`), built and run in the same container image as the lessons, with its `Cargo.lock` committed, so the versions are pinned. The axum page, for example, starts its server and calls it with `curl`. Several pages (serde, tokio, axum, grpc, clap, app-errors, tracing, testing, rayon and Rayon and Tokio together) also show a Go version, run for real, and every page but this one has a "same job in your language" table. One page needs more than `cargo run`: [gRPC](/build/grpc/) needs the `protoc` compiler installed.
+:::

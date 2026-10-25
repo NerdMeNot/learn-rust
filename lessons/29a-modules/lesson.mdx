@@ -1,0 +1,293 @@
+<p class="lr-layer">The toolkit</p>
+
+Outputs on this page come from Linux on 64-bit ARM with Rust 1.99.1, edition 2024 (the language version a project's `Cargo.toml` selects). This page is the reference: [Splitting code into files](/start/files-and-modules/) is the step-by-step guide, and [Reading signatures](/learn/reading-signatures/#paths-use-pub-and-mod) shows the path forms and `pub`.
+
+Three words, defined once. A **module** (`mod`) is a named group of items that hides whatever you do not mark `pub`: a namespace and also the privacy boundary. A **crate** is one unit of compilation, a program or a library, made of a tree of modules. A Cargo **package** is a `Cargo.toml` with one or more crates beside it. Your language uses "package" and "module" for other things; the blocks at the end say which is which.
+
+## Modules, inline and in files
+
+The top of the module tree is the **crate root**: `src/main.rs` for a program, `src/lib.rs` for a library. You can write a module inline, as the first program on this page does with `mod shop { ... }`, or in its own file with `mod shop;`, which makes the compiler read `shop.rs`.
+
+Inside a crate, `mod` is how a source file joins the program (`include!` can paste one in, rarely: case 11). `use` only gives a path a shorter name and loads nothing. This program builds eleven small projects with `cargo check` and prints each file's `mod` lines and the verdict:
+
+<Snippet file="lookup.rs" />
+
+- A `mod a;` in the root finds `src/a.rs` or `src/a/mod.rs` (cases 1 and 2). Having both is E0761 (3), having neither is E0583 (4).
+- A module declared inside `a` looks in a folder named after `a`: `src/a/b.rs`, whether `a` is `a.rs` or `a/mod.rs` (5, 6). A file beside `a.rs` is the wrong place (7).
+- An inline module nests the folder too (8).
+- A file no `mod` names is never compiled (9). It was not valid Rust and nothing complained.
+- `mod a;` twice is E0428 (10): `mod` names one node of a tree, it does not paste text.
+
+The Book calls `a.rs` the most idiomatic style and `mod.rs` the older one, still supported; mixing them "might be confusing". Either way, the module tree is written down in `mod` lines, not discovered from the folders.
+
+## Private by default
+
+Everything is private unless marked. A private item can be used in the module that holds it and in every module inside that one, and nowhere else (the [Reference](https://doc.rust-lang.org/reference/visibility-and-privacy.html) says so). `pub` widens that, and the forms in the middle name how far:
+
+| Written | Visible in |
+|---|---|
+| nothing (or `pub(self)`) | the module that holds the item, and the modules inside it |
+| `pub(super)` | the parent module, and what is inside it |
+| `pub(in crate::outer)` | that ancestor module, and what is inside it |
+| `pub(crate)` | the whole crate |
+| `pub` | everywhere the path to it is visible, other crates included |
+
+This program checks the table instead of asserting it. The function `f` lives in `outer::mid::a`. For each row it compiles a small library with a call to `f` from each place and reports what the compiler said. `child` is a module inside `a`, `sibling` is `mid::b`, `cousin` is `outer::cousin`:
+
+<Snippet file="visibility-matrix.rs" />
+
+The `pub(super)` and `pub(in crate::outer)` rows differ at `cousin`, which is inside `outer` but not inside `mid`. `pub(crate)` stops at the crate boundary.
+
+`pub` is not enough if a module on the way is private: a public item is reachable from outside only if all its ancestor modules are too. `shop::rules::bulk_discount` needs both `rules` and the function to be visible:
+
+<Snippet file="private-module.fail.rs" />
+
+A rule of thumb: start private, widen to `pub(crate)` when a sibling needs it, and mark `pub` only the crate's interface. A `pub` item is a promise to every caller; a private one can be renamed or removed.
+
+### Fields and variants
+
+A struct's fields are private by default, one by one. A private field and a constructor let a module keep a promise, here "no `Account` has a negative balance":
+
+<Snippet file="fields.rs" />
+
+Outside the module the compiler enforces the promise: reading the field and building the struct by hand are both refused. Inside, only the module's own code can break it (the second exercise is about this).
+
+<Snippet file="field-read.fail.rs" />
+
+<Snippet file="struct-literal.fail.rs" />
+
+A tuple struct with a private field has a private constructor too:
+
+<Snippet file="tuple-ctor.fail.rs" />
+
+Enum variants are different: they take the visibility of the enum. A `pub enum` has public variants, while its struct neighbour still needs `pub` on each field:
+
+<Snippet file="enum-variants.rs" />
+
+## Re-exports
+
+`pub use` makes an item reachable under a second path. The item is the same item; a library uses this to keep its file layout private and present a flat interface.
+
+<Snippet file="reexport.rs" />
+
+`a` is typed with the long path and built with the short name `Circle`; `b` is typed with the short path. Moving `a` into `b` compiles only because both paths name one type. The Reference notes that when `implementation` is private and `api` is re-exported, outside crates may use `api::f` but not `implementation::api::f`.
+
+## Globs and the prelude
+
+`use a::*;` imports every name of `a` that the importing module is allowed to use: the `pub` ones from outside, and also the private ones when the glob sits inside `a` (`use super::*;` in the tests below). Names written in the module itself win over glob imports:
+
+<Snippet file="glob.rs" />
+
+If two globs bring the same name, using that name is an error until you choose one:
+
+<Snippet file="glob-clash.fail.rs" />
+
+The **prelude** is a short list of names every module gets without writing `use`. This program asks the compiler about each name:
+
+<Snippet file="prelude.rs" />
+
+The [std docs](https://doc.rust-lang.org/std/prelude/index.html) list these and more, and say which edition added `TryFrom`, `TryInto` and `FromIterator` (2021) and `Future` (2024). Collections, `Rc`, `Arc`, the formatting traits and everything in `fmt` and `io` need a `use`:
+
+<Snippet file="prelude-missing.fail.rs" />
+
+## Packages and crates
+
+A **workspace** groups several packages that share a `Cargo.lock` and a `target/` folder ([more than one program](/start/several-programs/)). A package can hold a library crate (`src/lib.rs`), a program crate named like the package (`src/main.rs`) and more in `src/bin/`. This program builds one with a dependency on a second package, then breaks it two ways:
+
+<Snippet file="crates.rs" />
+
+- One package, three crates: the compiled library `libapp.rlib` and the programs `app` and `tool`.
+- `main.rs` and `lib.rs` are different crates. `main.rs` names the library by the package name (`app::greet()`), `crate::` in `main.rs` means `main.rs` itself, and `pub(crate)` stops at the end of `lib.rs`.
+- `my-util` is a dependency listed in `[dependencies]`; code names it `my_util`, hyphen turned into underscore, and needs no `mod`. For crates.io, see [using crates](/start/using-crates/).
+
+## Tests live in a child module
+
+The convention is a `tests` module at the bottom of the file, compiled only when testing. Because it is a child module, it can see its parent's private items, and `use super::*;` brings them in:
+
+<Snippet file="tests.rs" />
+
+`#[cfg(test)]` says "compile this only for tests" ([attributes](/learn/macros-attributes-naming/)). Files in the `tests/` folder are separate crates, so they see only what is `pub` (E0603 above). Broken test code does not stop a normal `cargo build` (the last runs).
+
+<p class="lr-layer">Going deeper</p>
+
+## Privacy follows the module, not the type
+
+Another type in the same module can read a private field: privacy is about where the code is, not which type it belongs to.
+
+<Snippet file="module-not-type.rs" />
+
+This differs from a class-based `private`. If you want a type to protect a field from its neighbours, give the type a module of its own.
+
+## A public signature should not name a private type
+
+A `pub` function that returns a type nobody outside can name is usually a slip: callers can hold the value but not write its type. The lint `private_interfaces` (a warning you can turn into an error) catches it; this program sets it to `deny`. In a program no other crate can call in, so the compiler measures the function's reach as `pub(crate)`: there `pub` and `pub(crate)` come to the same thing, and the difference starts with a library.
+
+<Snippet file="private-type.fail.rs" />
+
+The fix: make the type as visible as the function, or the function as private as the type.
+
+## A crate is compiled as a whole
+
+The compiler starts at the root and follows every `mod`. There are no headers and no include order, and two modules of one crate may use each other:
+
+<Snippet file="cycle.rs" />
+
+Packages may not, and so neither may their crates. Cargo refuses a dependency cycle between packages:
+
+<Snippet file="cargo-cycle.rs" />
+
+## In your language
+
+<ForLang only="go">
+
+A Go package is two things at once: the unit of privacy (in Rust, the module) and the unit of compilation (the crate). Rust separates them, which is why Go refuses an import cycle between packages (case 3) while Rust allows one between modules of a crate. A Go file joins its package by sitting in the folder (case 1); in Rust only a `mod` line adds a file (case 9 above). `go.mod` and `Cargo.toml` both name the project and list its dependencies.
+
+| | Go | Rust |
+|---|---|---|
+| privacy line | package | module |
+| compiled as one | package | crate |
+| exported | Capitalised name | `pub` |
+| import a unit | `import "demo/shop"`, then `shop.Total(3)` | `use crate::shop;`, then `shop::total(3)` |
+| import cycle | refused between packages | fine between modules, refused between Cargo packages |
+| `internal/` folder | only code under its parent may import it | `pub(in crate::a)`, or `pub(crate)` for the whole crate |
+| test file in `package a` / `package a_test` | sees unexported / only exported names | child module `tests` / the `tests/` folder |
+
+<Snippet file="packages.go" />
+
+Case 2 is the refusal from another package, 3 the import cycle, 4 and 5 the `internal/` rule, 6 and 7 the two test packages. The gotcha at the top shows why a one-file Go program cannot show the refusal.
+
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+
+Two words need care. A Rust module is a namespace like a Java package or a C# namespace, but it is also the privacy boundary, which a Kotlin package or C# namespace is not (the runs below show it). What Java calls a module (`module-info.java`), Kotlin a module and C# an assembly is a Rust crate. A Cargo package is your project file's job (`pom.xml`, Gradle, `.csproj`).
+
+| | Rust | Java | Kotlin | C# |
+|---|---|---|---|---|
+| names grouped by | module | package | package | namespace |
+| private means visible in | this module and its children | this top-level class | this class (top level: this file) | this class |
+| built and shared as one | crate | module | module | assembly |
+| member, no modifier | this module and its children | package | public | private (a top-level type: `internal`) |
+| everywhere | `pub` | `public` | the default | `public` |
+| whole crate only | `pub(crate)` | `module-info.java` `exports` picks the packages other modules see | `internal` | `internal` |
+
+`pub` is not quite `public`: a `pub` item in a private module is unreachable from outside, like Java's case 5 below (a public class in a package its module does not export). There is no row for `protected`: Rust has no inheritance, so modules and crates alone set the reach.
+
+A nested `mod` is not a nested class. In Java the outer class can read its nested class's private members (the gotcha at the top runs). In Rust the inner module reads the outer one's private items, but the outer cannot read the inner's:
+
+<Snippet file="nested-mod.fail.rs" />
+
+</ForLang>
+
+<ForLang only="java">
+
+<Snippet file="packages.java" />
+
+Cases 1 and 2 are package-private. Cases 3 and 4 show that `protected` means the package plus subclasses. Case 5 is the `exports` rule. Java's `private` belongs to the top-level class, so a nested class and its outer class share it, while a second top-level class is refused:
+
+<Snippet file="private-top-level.fail.java" />
+
+</ForLang>
+
+<ForLang only="kotlin">
+
+<Snippet file="visibility.kt" />
+
+Case 1: a package does not widen access, so another file of the same package is refused. Case 2: unlike Java, Kotlin's outer class cannot read its nested class's private member, as in Rust. Case 4: `internal` stops at the module, as `pub(crate)` stops at the crate.
+
+</ForLang>
+
+<ForLang only="csharp">
+
+<Snippet file="visibility.cs" />
+
+Case 4: neither a class in the same namespace nor an outer class can read a private member, so a namespace only groups names, and (as in Rust) an outer class cannot read its nested class's private member. Case 2: an `internal` member and a top-level type with no modifier (also `internal`) are refused from another assembly. Case 3: `InternalsVisibleTo` lets a friend project in, which is how a C# test project reaches `internal` code; in Rust the child `tests` module sees private items, and the `tests/` folder sees only `pub`.
+
+</ForLang>
+
+<ForLang only="python typescript">
+
+"Package" and "module" already mean something to you. In Python a module is a file and a package a folder with `__init__.py` (or what you `pip install`); in TypeScript a module is a file with an `import` or `export`, and a package is the npm unit. In Rust a module is a `mod` item, not a file, and the unit you publish and depend on is a crate (what crates.io lists).
+
+| You write | In Rust |
+|---|---|
+| a file `shop.py` / `shop.ts` | `shop.rs`, declared by `mod shop;` in its parent |
+| a folder with `__init__.py` / `index.ts` | `a.rs` (or `a/mod.rs`) with the `mod` lines for the folder `a/` |
+| `from .rates import rate` / `export { rate } from "./rates"` | `pub use rates::rate;` |
+| `from .. import x` | `use super::x;` |
+| `from app.db import q` | `use crate::db::q;` |
+| `from a import *` / `export * from "./a"` | `use a::*;` / `pub use a::*;` |
+| `_name` / a name that is not exported | no `pub`, and the compiler enforces it |
+
+Importing runs a file in both languages, so a cycle works or fails depending on what is used while loading. A Rust `use` runs nothing, so modules of one crate may use each other freely; Cargo packages may not (above).
+
+</ForLang>
+
+<ForLang only="python">
+
+Python modules are found by name, and importing runs the file. Privacy is a convention:
+
+<Snippet file="modules.py" />
+
+Case 1 reaches a `_name` and nothing stops it. Case 2: `import *` skips underscore names (the [tutorial](https://docs.python.org/3/tutorial/modules.html) says so); case 3: `__all__` is the list `import *` uses, and case 5: it refuses nothing else. Case 4: an import runs the file. Case 6: a cycle of `from ... import` fails, while the same cycle with `import` works (7). Case 8: `__init__.py` re-exporting a name is `pub use`.
+
+A Rust module file holds items, not statements, so a call at the top level is refused ([Hello World](/learn/hello-world/)); a module-level constant is a `const` or `static` ([Variables](/learn/variables/)).
+
+</ForLang>
+
+<ForLang only="typescript">
+
+`export` is `pub`, and a file is a module when it has a top-level `import` or `export` ([handbook](https://www.typescriptlang.org/docs/handbook/2/modules.html)). Nothing declares the file in its parent: you import it by path, and importing runs it. A name that is not exported cannot be imported:
+
+<Snippet file="modules.ts" />
+
+Case 3 is an `index.ts` that re-exports with `export *`. Cases 4 and 5 run two files that import each other as ES modules: the cycle works while `b` calls `f` later, and fails once `b` uses it while loading.
+
+</ForLang>
+
+<ForLang only="c cpp">
+
+A header holds declarations, a source file holds definitions, and the linker joins them. `#include` pastes text, so a header included twice appears twice (C case 4) and a guard is the fix (case 5). Rust's `mod a;` names one node of a tree and pastes nothing: written twice, it is E0428 (case 10 above).
+
+The linker knows a function by its bare name, so two non-static definitions of `helper` are a link error (C case 6, C++ case 4). Rust names an item by its path, so `a::helper` and `b::helper` coexist:
+
+<Snippet file="same-name.rs" />
+
+A crate is the translation unit: the compiler gets the root file and follows every `mod`, so `mod` files are not compiled one by one like `.c` files ([Reference](https://doc.rust-lang.org/reference/crates-and-source-files.html)). Rust's `static` is a global variable that lives for the whole program ([Variables](/learn/variables/)), not a visibility keyword; privacy is the lack of `pub`. The nearest thing to `pub(crate)` is a function declared in an internal header and left out of the public one.
+
+</ForLang>
+
+<ForLang only="c">
+
+A C function is visible to the linker unless it is `static` (case 3 removes the `static`), so the default is the reverse of Rust's:
+
+<Snippet file="files.c" />
+
+</ForLang>
+
+<ForLang only="cpp">
+
+C++ has `static` too. An unnamed namespace does the same job (case 1), and C++20 modules have `export`, which plays the part of `pub` (cases 2 and 3). A module has to be compiled before the file that imports it; a crate has no such order. `using namespace` is the glob `use a::*;`. The cppreference page on [modules](https://en.cppreference.com/w/cpp/language/modules) describes the C++ feature.
+
+<Snippet file="files.cpp" />
+
+</ForLang>
+
+<p class="lr-layer">Practice</p>
+
+<Exercise name="ladder" title="Climb the visibility ladder">
+Write `store::report::line`, which formats `"tea: 3 EUR"` for 250 cents in region `"fr"`. It needs `util::round`, private to `util`, and `currency`, private to `store`. One needs a wider visibility and the other needs none. `main` imports `round` from two places, so it compiles only if `util::round` is no wider than it must be.
+</Exercise>
+
+<Exercise name="percent" title="A number that cannot be wrong">
+Finish `Percent`, a number from 0 to 100, and its child module `parse`. The field has no `pub`, yet `parse` could write `Percent(n)` itself, because a child sees its parent's private items. Decide whether it should: the checks include `"150%"`. In `report`, outside `percent`, try `p.0` and read the error.
+</Exercise>
+
+## Read more
+
+- [The Rust Book, chapter 7: Packages, Crates and Modules](https://doc.rust-lang.org/book/ch07-00-managing-growing-projects-with-packages-crates-and-modules.html), especially [paths](https://doc.rust-lang.org/book/ch07-03-paths-for-referring-to-an-item-in-the-module-tree.html), [`use`](https://doc.rust-lang.org/book/ch07-04-bringing-paths-into-scope-with-the-use-keyword.html) and [separating modules into files](https://doc.rust-lang.org/book/ch07-05-separating-modules-into-different-files.html)
+- [The Reference: Visibility and privacy](https://doc.rust-lang.org/reference/visibility-and-privacy.html), [Modules](https://doc.rust-lang.org/reference/items/modules.html) and [Crates and source files](https://doc.rust-lang.org/reference/crates-and-source-files.html)
+- [Rust by Example: Modules](https://doc.rust-lang.org/rust-by-example/mod.html), with [visibility](https://doc.rust-lang.org/rust-by-example/mod/visibility.html) and [file hierarchy](https://doc.rust-lang.org/rust-by-example/mod/split.html)
+- [Cargo: targets](https://doc.rust-lang.org/cargo/reference/cargo-targets.html) and [workspaces](https://doc.rust-lang.org/cargo/reference/workspaces.html)
+- [The Book: test organization](https://doc.rust-lang.org/book/ch11-03-test-organization.html), for `#[cfg(test)]` and the `tests/` folder
+- [The standard library prelude](https://doc.rust-lang.org/std/prelude/index.html)

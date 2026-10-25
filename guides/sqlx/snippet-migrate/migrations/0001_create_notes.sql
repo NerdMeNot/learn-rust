@@ -1,0 +1,5 @@
+CREATE TABLE notes (
+    id INTEGER PRIMARY KEY,
+    text TEXT NOT NULL,
+    done BOOLEAN NOT NULL DEFAULT 0
+);

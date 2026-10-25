@@ -1,0 +1,157 @@
+# An HTTP service with axum
+#
+# curl exits 0 for any HTTP status it receives, so the 404 and bad-JSON steps succeed
+# as commands (expect: ok, the default). `-w` prints the status after the body.
+# Every session that starts a server uses background: true; the runner kills it when
+# the session ends (and the container is --rm), so nothing is left running.
+name: notes-api
+sessions:
+  server:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin notes-api
+        background: true
+        ready: listening on
+        timeout: 900
+      - cmd: >-
+          curl -s -X POST localhost:3000/notes -H 'content-type: application/json'
+          -d '{"text":"learn rust"}'
+      - cmd: >-
+          curl -s -X POST localhost:3000/notes -H 'content-type: application/json'
+          -d '{"text":"ship it"}'
+      - cmd: curl -s localhost:3000/notes
+      - cmd: curl -s localhost:3000/notes/2
+      - cmd: curl -s -o /dev/null -w '%{http_code}\n' localhost:3000/notes/99
+      - cmd: >-
+          curl -s -w '\n[%{http_code}]\n' -X POST localhost:3000/notes
+          -H 'content-type: application/json' -d '{"txt":"typo"}'
+      - cmd: cargo run --bin client
+        timeout: 600
+  status:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin notes-api
+        background: true
+        ready: listening on
+        timeout: 900
+      - cmd: curl -s -w '\n[%{http_code} %{content_type}]\n' localhost:3000/notes
+      - cmd: >-
+          curl -s -w '\n[%{http_code} %{content_type}]\n' -X POST localhost:3000/notes
+          -H 'content-type: application/json' -d '{"text":"learn rust"}'
+      - cmd: curl -s -w '\n[%{http_code} %{content_type}]\n' localhost:3000/notes/abc
+      - cmd: >-
+          curl -s -w '\n[%{http_code} %{content_type}]\n' -X POST localhost:3000/notes
+          -d '{"text":"no content type"}'
+      - cmd: >-
+          curl -s -w '\n[%{http_code} %{content_type}]\n' -X POST localhost:3000/notes
+          -H 'content-type: application/json' -d '{"text":'
+      - cmd: >-
+          curl -s -w '\n[%{http_code} %{content_type}]\n' -X POST localhost:3000/notes
+          -H 'content-type: application/json' -d '{"text":5}'
+      - cmd: curl -s -w '\n[%{http_code} %{content_type}]\n' -X DELETE localhost:3000/notes
+      - cmd: curl -s -w '\n[%{http_code} %{content_type}]\n' localhost:3000/nowhere
+      - cmd: curl -s localhost:3000/notes
+  go:
+    dir: go
+    steps:
+      - cmd: go run .
+        background: true
+        ready: listening on
+        timeout: 300
+      - cmd: >-
+          curl -s -X POST localhost:3000/notes -H 'content-type: application/json'
+          -d '{"text":"learn rust"}'
+      - cmd: >-
+          curl -s -X POST localhost:3000/notes -H 'content-type: application/json'
+          -d '{"text":"ship it"}'
+      - cmd: curl -s localhost:3000/notes
+      - cmd: curl -s localhost:3000/notes/2
+      - cmd: curl -s -o /dev/null -w '%{http_code}\n' localhost:3000/notes/99
+      - cmd: >-
+          curl -s -w '\n[%{http_code}]\n' -X POST localhost:3000/notes
+          -H 'content-type: application/json' -d '{"txt":"typo"}'
+      - cmd: go run ./client
+  body-first:
+    dir: rust
+    overlay:
+      src/main.rs: gotcha/main.rs
+    steps:
+      - cmd: cargo build
+        expect: fail
+        timeout: 900
+  body-last:
+    dir: rust
+    overlay:
+      src/main.rs: gotcha/fixed.rs
+    steps:
+      - cmd: cargo run --bin notes-api
+        background: true
+        ready: listening on
+        timeout: 900
+      - cmd: >-
+          curl -s -X POST localhost:3000/notes -H 'content-type: application/json'
+          -d '{"text":"learn rust"}'
+  debug-handler:
+    dir: debug
+    steps:
+      - cmd: cargo build
+        expect: fail
+        timeout: 900
+  colon-route:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-colon/src/main.rs
+    steps:
+      - cmd: cargo run --bin notes-api
+        expect: fail
+        timeout: 900
+  borrow-response:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-borrow/src/main.rs
+    steps:
+      - cmd: cargo build --bin notes-api
+        expect: fail
+        timeout: 900
+  into-response:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-into-response/src/main.rs
+    steps:
+      - cmd: cargo run --bin notes-api
+        background: true
+        ready: listening on
+        timeout: 900
+      - cmd: >-
+          curl -s -X POST localhost:3000/notes -H 'content-type: application/json'
+          -d '{"text":"learn rust"}'
+      - cmd: curl -s localhost:3000/notes
+gotcha:
+  kind: compile
+  title: Putting the request body first
+  verdict: rust-rule
+  looks_fine: >-
+    When the request reaches your code as one object, you can read the body at any
+    point in the function. Here the order of the arguments is the order in which the
+    parts are extracted.
+  rust_sees: >-
+    In axum the handler's arguments are the extractors, and they run from left to right.
+    The docs say the request body is "an asynchronous stream that can only be consumed
+    once", so axum requires an extractor that consumes it (`Json`, `String`, `Bytes`) to
+    be the last argument.
+  why: >-
+    The error is long because axum works this out through traits: a function whose
+    arguments are in the wrong order no longer counts as a handler. When you see "the
+    trait `Handler<_, _>` is not implemented", check the argument order first. With
+    axum's `macros` feature, `#[axum::debug_handler]` above the function puts a short
+    message first: "`Json<_>` consumes the request body and thus must be the last
+    argument to the handler function" (the long error still follows it in the run above).
+  code: { file: gotcha/main.rs, name: src/main.rs }
+  session: body-first
+  fixed: { file: gotcha/fixed.rs, name: src/main.rs, session: body-last }
+  langs:
+    go:
+      status: none
+      says: >-
+        In Go you choose where in the handler to read the body, once, with
+        `json.NewDecoder(r.Body)`, as this page's Go service does.

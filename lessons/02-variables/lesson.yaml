@@ -1,0 +1,113 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Variables"
+part: "basics"
+intro: >-
+  Variables are declared with `let`. They cannot change unless you add `mut`.
+coming_from:
+  go: >-
+    `let` is your `:=`, but the variable can't change unless you write `let mut`.
+    Writing `let count = ...` again in the same scope is allowed and makes a new
+    variable, where Go's `:=` would complain that nothing is new.
+  kotlin: >-
+    `let` is your `val` and `let mut` is your `var`, and `let` also freezes the contents:
+    a `val` list still takes `add`, a Rust `let` list does not take `push`. The other
+    difference is shadowing: you can write `let count = ...` again in the same scope,
+    even with a new type, which Kotlin won't allow.
+  python: >-
+    Any Python name can be reassigned, but a Rust `let` can't change unless you write
+    `let mut`. Writing `let count = ...` again makes a new variable, and its type is
+    still checked at compile time.
+  typescript: >-
+    Rust's `let` is your `const` and `let mut` is your `let`. Unlike `const`, a plain
+    `let` also stops you changing what's inside (pushing to a `Vec`, setting a field),
+    and you may redeclare the same name in one scope. (References and `Cell`-style
+    types are the exceptions; the page covers them.)
+  java: >-
+    Rust flips Java's default: `let` is `final var`, and you add `mut` to get a plain
+    changeable local. Rust's `let` also freezes the contents, where a `final` list
+    still takes `add`. Rust also lets you shadow a name with a new `let`, which Java
+    forbids for locals.
+  csharp: >-
+    `let` is a local you cannot reassign, which C# has no keyword for (`const` only
+    works for compile-time constants, and locals can't be `readonly`). `let mut` is your
+    everyday `var`, and a second `let` with the same name shadows the first, which C#
+    rejects.
+  c: >-
+    `let` is `const int`, and `let mut` is a plain `int`, so the default is the reverse
+    of C. Shadowing is allowed even in the same block, where C would report a
+    redeclaration.
+  cpp: >-
+    `let x` is like `const auto x`, and `let mut x` like plain `auto x`, so Rust makes
+    `const` the default. The difference: `auto` reads only the right-hand side, and
+    `let` can wait for a later line to decide the type. Shadowing with a second `let` is allowed in the same scope, which C++
+    only allows in an inner block.
+notes:
+  - >-
+    Plain `let` can't change. You opt in with `let mut`, so a reader can see at a glance
+    which variables change.
+  - >-
+    Shadowing (`let count = ...` again) makes a new variable that hides the old one. It
+    can even have a different type. It is common for steps like `let input =
+    input.trim();`.
+  - >-
+    `const` is for a value known before the program runs. It always needs a type and may
+    sit outside any function, and by convention its name is `SHOUTING_CASE`.
+  - >-
+    A variable you never read gets a compiler warning. Start its name with `_` to say
+    that is on purpose.
+gotcha:
+  title: "Changing a variable without mut"
+  verdict: "rust-rule"
+  looks_fine: >-
+    In Go, `count := 1` can always be changed later. (Kotlin refuses this too if you
+    wrote `val`.)
+  rust_sees: >-
+    In Rust, plain `let` means "this never changes". You only get a changeable variable
+    when you ask for one with `mut`.
+  why: >-
+    Rust chose this default so that a reader can see which variables change. The Rust
+    Book's reason: code that assumes a value never changes can break when other code
+    changes it. When you read `let x`, that name is not assigned again; only the `mut`
+    ones need watching.
+  langs:
+    go:
+      status: "runs"
+      says: >-
+        Go runs this and prints 2. A variable made with `:=` can always be changed
+        later.
+    kotlin:
+      status: "refuses"
+      says: >-
+        Kotlin refuses this too if you write `val count = 1`; with `var` it runs and
+        prints 2. Rust's `let` is Kotlin's `val`, and `let mut` is `var`. What is new is
+        that Rust's `let` also stops the `push` on a list, as the page shows.
+    python:
+      status: "none"
+      says: >-
+        Python has no `mut`: every variable can be reassigned, so this mistake can't
+        happen.
+    typescript:
+      status: "refuses"
+      says: >-
+        TypeScript refuses this too if you write `const`: you cannot assign to a
+        constant. Rust's `let` is TypeScript's `const`, and `let mut` is `let`.
+    java:
+      status: "runs"
+      says: >-
+        Java locals can change by default, so this prints 2. Write `final var count = 1`
+        and javac refuses it, like Rust's `let`.
+    csharp:
+      status: "runs"
+      says: >-
+        A plain `var` can always change in C#, so this prints 2. Only `const` and
+        `readonly` fields are locked, and local variables can't be `readonly`.
+    c:
+      status: "runs"
+      says: >-
+        C variables can change unless you mark them `const`, so this prints 2. Rust
+        flips the default: you opt in to change with `mut`.
+    cpp:
+      status: "runs"
+      says: >-
+        C++ variables can change unless you mark them `const`, so this prints 2. Rust
+        flips the default: you opt in to change with `mut`.

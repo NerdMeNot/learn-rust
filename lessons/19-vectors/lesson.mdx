@@ -1,0 +1,525 @@
+<p class="lr-layer">The toolkit</p>
+
+Outputs on this page come from Linux on 64-bit ARM with Rust 1.99.1. Where a fact depends on the platform, the text says so.
+
+## Making a Vec
+
+A `Vec<T>` is a list of items that all have the same type `T`. Its items live on the [heap](/learn/stack-heap/), so it can grow and shrink while the program runs.
+
+<Snippet file="create.rs" />
+
+- `vec![…]` is the usual way; `vec![0; 4]` makes four copies of `0`.
+- `Vec::new()` makes an empty list. The compiler must learn the item type, from a written type (`Vec<i32>`) or a later line such as a `push`.
+- `with_capacity(n)` is empty with room for at least `n` items ([capacity and growth](#capacity-and-growth)).
+- `collect()` turns many things into a `Vec` ([iterators](/learn/iterators/)).
+
+`{:?}` prints a whole list; plain `{}` is not defined for lists.
+
+## Adding, reading and removing
+
+<Snippet file="basics.rs" />
+
+- `push` adds at the end and `pop` takes the last item off. `pop` returns an [`Option`](/learn/option/), because the list may be empty.
+- `v[1]` reads (and `v[1] = 25` writes) the item at position 1. The first item is position 0, and the `Vec` must be `let mut` to write.
+- `get(i)`, `first()` and `last()` also return an `Option`: the way to ask for an item that might not be there.
+
+Reading a position that does not exist is not an `Option`: `v[i]` **panics**, which stops the program with a message:
+
+<Snippet file="out-of-bounds.panic.rs" />
+
+Safe Rust checks every index. Use `v[i]` when a missing item would be a bug, and `get(i)` when it is a normal case (user input, a lookup that might miss). The index must be a `usize` (an unsigned number the size of an address), not an `i32`:
+
+<Snippet file="index-i32.fail.rs" />
+
+Keep positions as `usize` from the start. What your language does for an index past the end is run in [Your lists in Rust](#your-lists-in-rust).
+
+## Changing the list
+
+<Snippet file="editing.rs" />
+
+| Call | What it does | Notes |
+|---|---|---|
+| `insert(i, x)` | puts `x` at position `i` | later items shift right; panics if `i > len()` |
+| `remove(i)` | takes out item `i` and returns it | later items shift left. It removes by **position**, not by value |
+| `swap_remove(i)` | takes out item `i` and returns it | the last item fills the gap: order changes, nothing shifts (O(1), say the docs) |
+| `drain(a..b)` | removes positions `a` up to `b` and hands them to you | the rest shift down |
+| `extend(w)` | adds the items of `w` | a `Vec` `w` is **moved** in (below). `extend(&w)` copies `Copy` items and keeps `w` |
+| `append(&mut w)` | moves all of `w`'s items over | leaves `w` empty |
+| `truncate(n)`, `clear()`, `resize(n, x)` | cut to `n` items, remove all, or cut or pad with `x` to exactly `n` | `truncate` and `clear` keep the capacity |
+| `retain(f)` | keeps the items for which `f` says true | in place |
+| `dedup()` | removes repeats **next to each other** | `[1, 1, 2, 1]` becomes `[1, 2, 1]`; sort first to remove all repeats |
+| `reverse()` | flips the order | in place |
+
+`|x| *x != 30` is a **closure**, a small function written inline ([closures](/learn/closures/)). `retain` calls it per item with a reference, so `*x` is the number. `remove` and `swap_remove` hand you the removed item, which matters for lists of `String` ([below](#owning-the-items)).
+
+`extend(w)` uses `w` up, so a later use of it is an error:
+
+<Snippet file="extend-moves.fail.rs" />
+
+## Looping
+
+<Snippet file="looping.rs" />
+
+- `for s in &scores` borrows the list and gives a `&i32` per item. The list is still yours afterwards.
+- `for s in &mut scores` gives `&mut i32`, so `*s += 5` changes the item in place.
+- `for s in scores` (no `&`) **moves** the list into the loop, so the last comment is true.
+- `.iter().enumerate()` adds the position. [Iterators](/learn/iterators/) has the rest, including `sum`, `min` and `max` (iterator methods, not `Vec` methods); [looping over collections](/learn/for-collections/) covers the three loop forms.
+
+## Sorting and searching
+
+<Snippet file="sorting.rs" />
+
+- `sort()` orders the items in place. It is **stable**: equal items keep their relative order (the docs say so). `sort_unstable()` may reorder equal items, which does not matter when they look the same.
+- `sort_by(|a, b| …)` takes a closure that gets two references and returns an `Ordering`: `Less`, `Equal` or `Greater`. `a.cmp(b)` gives one, so `b.cmp(a)` puts the biggest first.
+- `sort_by_key(|w| w.len())` sorts by a value worked out from each item.
+- `contains(&x)` checks items one by one until it finds `x`. `binary_search(&x)` looks at far fewer on a long list but **needs a sorted one**; otherwise its answer means nothing. It returns a `Result` ([errors](/learn/errors/)): `Ok(position)`, or `Err(position)` where `x` could be inserted to keep the order. With equal items, any of them may be returned.
+
+### Sorting floats
+
+`f64` cannot use plain `sort()`:
+
+<Snippet file="sort-floats.fail.rs" />
+
+`Ord` is a **trait**, a named ability a type has or lacks ([traits](/learn/traits/)): "any two values can be put in order". `f64` lacks it because of `NaN` ("not a number"), which is neither smaller than, larger than nor equal to anything, itself included. `partial_cmp` returns an `Option` of an `Ordering`, `None` for that case. `total_cmp` puts every `f64` in one fixed order; use it with `sort_by`:
+
+<Snippet file="sort-floats.rs" />
+
+`a.partial_cmp(b).unwrap()` works until a `NaN` is compared, and then panics. Strings sort by bytes, so capitals come first ([strings](/learn/strings/#changing-text)).
+
+## Slices: a window onto a list
+
+A **slice**, written `&[T]`, is a borrowed view of items stored in a row: a pointer to the first one and a count. `&v[1..3]` is the items at positions 1 and 2 (the end is left out). Nothing is copied.
+
+<Snippet file="slices.rs" />
+
+- Leave out either end of the range for "from the start" or "to the end".
+- `&v[1..9]` on a shorter list panics, like `v[9]`. `v.get(3..9)` returns `None`.
+- `split_at`, `windows` and `chunks` are slice methods. `windows(2)` gives overlapping pairs, `chunks(2)` gives pieces that do not overlap, the last possibly shorter. Both panic on 0. More in [iterators](/learn/iterators/#peeking-windows-and-chunks).
+- `concat` glues a list of lists into one, `join(sep)` does it with something in between (strings too), and `to_vec()` copies a slice into a new `Vec`.
+
+A function that only reads takes `&[i32]`; one that changes items takes `&mut [i32]`. Both accept a `Vec`, an array, or part of either ([Borrowing](/learn/borrowing/) says why). Writing through `&mut v[3..]` changes `v` itself, because it is a view:
+
+<Snippet file="slice-params.rs" />
+
+A slice has a length but no capacity, so it cannot `push`. The `Vec` that owns the items can, so a function that must grow a list takes `&mut Vec<T>` ([Mutable borrows](/learn/mutable-borrows/)).
+
+<ForLang only="go">
+
+A Go slice is a pointer, a length **and a capacity**: one value is both handle and view. Rust splits the job: `Vec<T>` owns and grows, `&[T]` views and has no capacity. A Go subslice can write into spare room it does not own, and be resliced up to its capacity:
+
+<Snippet file="subslice-append.go" />
+
+A Rust slice can be cut only up to `len` and has no `push`. A `push` on the `Vec` while a slice is alive is refused ([below](#changing-a-list-you-are-reading)). The [Borrowing lesson](/learn/borrowing/) shows the same surprise, in its Go box "Why bother, when Go has pointers?".
+
+</ForLang>
+
+<ForLang only="python">
+
+A Python slice is a **copy**, so changing it leaves the list alone. Rust's `&mut v[3..]` is a view. For Python's behaviour, copy with `v[1..3].to_vec()`.
+
+<Snippet file="slice-copy.py" />
+
+</ForLang>
+
+## Arrays
+
+An **array**, `[T; N]`, has its length `N` in its type. It cannot grow, and needs no heap: its items sit in the variable.
+
+<Snippet file="arrays.rs" />
+
+| | `[i32; 4]` | `Vec<i32>` | `&[i32]` |
+|---|---|---|---|
+| Length known | when compiling | when running | when running |
+| Can grow | no | yes | no |
+| Items stored | in the variable itself | on the heap | not owned: a view |
+| Is `Copy` | yes, when the items are | no | yes (a reference) |
+
+`let b = a;` above leaves `a` usable, because an array of `Copy` items is `Copy`. An array of `String`s is not:
+
+<Snippet file="array-move.fail.rs" />
+
+Arrays are bounds-checked too. If the compiler can see the index is too big, a default-on lint (a built-in check, so no `E` code) refuses to build the program:
+
+<Snippet file="array-index.fail.rs" />
+
+If the index is known only at run time, it is a panic, as with a `Vec`.
+
+<Snippet file="array-index.panic.rs" />
+
+## Lists of lists
+
+A grid is a `Vec<Vec<T>>`. `vec![vec![0; 3]; 2]` makes two rows of three zeros. The inner `vec![0; 3]` is **cloned** for each row, so the rows are independent.
+
+<Snippet file="grid.rs" />
+
+Each non-empty row is its own heap block, so rows can differ in length, at the cost of one more pointer to follow.
+
+## Owning the items
+
+`let x = v[0]` copies a number out, but a `String` is never copied by accident, so `let first = names[0]` is the [gotcha at the top of the page](#gotcha) (E0507, "cannot move out of index"). So is any item that is not `Copy`, a row of a `Vec<Vec<T>>` included. This is the rule from [Ownership and Moves](/learn/ownership/#moving-out-of-things): a list owns its items, so taking one out must leave something valid behind. The ways to say what you mean:
+
+<Snippet file="owning.rs" />
+
+| You want | Use | What the list is left with |
+|---|---|---|
+| to look at it | `&names[0]` | unchanged |
+| a second copy | `names[0].clone()` | unchanged |
+| the item, and the gap closed | `names.remove(0)` | one shorter, the rest shift down |
+| the item, and the order may change | `names.swap_remove(0)` | one shorter, the last item fills the gap |
+| the item, and the position kept | `std::mem::take(&mut names[0])` | an empty `String` in that position |
+
+`mem::take` and `mem::swap` are in [Mutable borrows](/learn/mutable-borrows/#swapping-and-taking), which also covers `split_at_mut` for two `&mut` items at once.
+
+<ForLang only="cpp">
+
+Row for row: `mem::take(&mut names[0])` is `std::exchange(names[0], {})`, and `remove` is moving out and then `erase`. Rust has no moved-from state to leave in the slot: a slot that was moved out of would still be dropped with the list.
+
+</ForLang>
+
+## Your lists in Rust
+
+Pick your language in "Coming from" at the top of the page. Rows with `iter()` or `|x|` use [iterators](/learn/iterators/) and [closures](/learn/closures/), covered later: read them as "the position of `x`" and "keep the items where…".
+
+<ForLang only="go">
+
+| You write in Go | In Rust |
+|---|---|
+| `v = append(v, x)` | `v.push(x)`, in place |
+| `v = append(v, w...)` | `v.extend_from_slice(&w)`. `v.extend(w)` moves `w`; Go keeps it |
+| `make([]int, n)`, `make([]int, 0, n)` | `vec![0; n]`, `Vec::with_capacity(n)` |
+| `v[len(v)-1]`, `v = v[:len(v)-1]` | `v.last()`, `v.pop()` (both give an `Option`) |
+| `append(v[:i], v[i+1:]...)`, `v = v[:0]` | `v.remove(i)`, `v.clear()` |
+| `copy(dst, src)` | `dst.copy_from_slice(&src)`: equal lengths, or it panics (Go copies the shorter) |
+| `slices.Clone(v)` | `v.clone()` |
+| `slices.Sort(v)`, `sort.Slice(v, less)` | `v.sort()`, `v.sort_by(\|a, b\| …)` (returns an `Ordering`, not a `bool`) |
+| `slices.Contains`, `slices.Index` | `v.contains(&x)`, `v.iter().position(\|&e\| e == x)` (an `Option`, not `-1`) |
+| `slices.BinarySearch(v, x)` | `v.binary_search(&x)`, a `Result` instead of `(pos, found)` |
+| `[3]int` (copied on assignment) | `[i32; 3]` (also copied) |
+
+Going past the end panics in Go too:
+
+<Snippet file="oob.crash.go" />
+
+</ForLang>
+
+<ForLang only="java">
+
+| In Java | In Rust |
+|---|---|
+| `new ArrayList<>(n)` | `Vec::with_capacity(n)` |
+| `list.add(x)`, `add(i, x)`, `remove(i)` | `v.push(x)`, `v.insert(i, x)`, `v.remove(i)` |
+| `list.get(i)`, `set(i, x)`, `size()` | `v[i]`, `v[i] = x`, `v.len()` |
+| `list.indexOf(x)` | `v.iter().position(\|&e\| e == x)` (an `Option`, not `-1`) |
+| `list.addAll(other)` | `v.extend(&other)` keeps `other`; `v.extend(other)` moves it |
+| `list.removeIf(p)` | `v.retain(\|x\| !p(x))`: `retain` keeps, `removeIf` removes |
+| `Collections.sort(list)`, `binarySearch` | `v.sort()` (stable, like Java's), `v.binary_search(&x)` (a `Result`, not a negative number) |
+| `list.subList(a, b)`, `.clear()` on it | `&v[a..b]`, `v.drain(a..b)` |
+| `ensureCapacity`, `trimToSize` | `v.reserve(extra)`, `v.shrink_to_fit()` |
+| `int[]` | `[i32; N]`, or a `Vec<i32>` if the length can change |
+
+One habit flips: `int[] y = x` makes two names for one array, but Rust's `let b = a` on an array copies it. Java generics only take object types, so a list of numbers holds `Integer` objects:
+
+<Snippet file="list-of-int.fail.java" />
+
+A `Vec<i32>` stores the numbers side by side ([where the bytes live](#where-the-bytes-live)), like a Java `int[]` that can grow. Both check the index:
+
+<Snippet file="oob.java" />
+
+`subList` is a live view that can do more than a Rust slice: besides overwriting items (like `&mut v[a..b]`) it can `add` to the parent or `clear` a range, which a slice cannot; `drain(a..b)` deletes a range. Change an `ArrayList`'s size behind the view, use the view, and it throws (the docs call this undefined). Rust refuses to compile that ([below](#changing-a-list-you-are-reading)).
+
+<Snippet file="sublist-stale.crash.java" />
+
+</ForLang>
+
+<ForLang only="kotlin">
+
+| In Kotlin | In Rust |
+|---|---|
+| `mutableListOf(1, 2, 3)`, `listOf(…)` | `vec![1, 2, 3]`; for `listOf`, a `Vec` that is not `mut` |
+| `list.add(x)`, `removeAt(i)`, `removeLastOrNull()` | `v.push(x)`, `v.remove(i)`, `v.pop()` (an `Option`) |
+| `list[i]`, `list.getOrNull(i)` | `v[i]`, `v.get(i)` |
+| `list.addAll(other)` | `v.extend(&other)` keeps `other`; `v.extend(other)` moves it |
+| `list.removeAll { p(it) }` | `v.retain(\|x\| !p(x))`: `retain` keeps, `removeAll` removes |
+| `sort()`, `sortBy { … }`, `sorted()` | `v.sort()`, `v.sort_by_key(…)`, clone then sort |
+| `list.subList(a, b)` | `&v[a..b]` (a slice cannot add or remove, unlike `subList`) |
+
+Kotlin's `List` is a read-only **view**: nothing on the `List` interface changes the list, but another reference to the same `MutableList` can, and so can a cast ([Mutable borrows](/learn/mutable-borrows/#changing-a-list-while-looping-over-it)). In Rust, while a `&[T]` exists, nobody can push to, remove from or assign into the `Vec` it looks at. A `Vec` that is not `let mut` cannot be pushed to or assigned into at all (`Cell` and `RefCell` items, from a later lesson, are the exception).
+
+<Snippet file="oob.kt" />
+
+`getOrNull` is `get`. Past the end, `[]` fails on both sides.
+
+</ForLang>
+
+<ForLang only="csharp">
+
+| In C# | In Rust |
+|---|---|
+| `new List<int>()` | `Vec::<i32>::new()` |
+| `list.Add(x)`, `Insert(i, x)`, `RemoveAt(i)` | `v.push(x)`, `v.insert(i, x)`, `v.remove(i)` |
+| `list.AddRange(other)` | `v.extend(&other)` keeps `other`; `v.extend(other)` moves it |
+| `list.Count`, `list[^1]` | `v.len()`, `v.last()` (an `Option`) |
+| `list.Contains(x)` | `v.contains(&x)` |
+| `list.RemoveAll(p)` | `v.retain(\|x\| !p(x))`: `retain` keeps, `RemoveAll` removes |
+| `list.Sort()`, `Sort((a, b) => …)` | `v.sort()`, `v.sort_by(…)` |
+| `list.BinarySearch(x)` | `v.binary_search(&x)`: a `Result`, not a number that is negative when missing |
+| `list.GetRange(a, n)` (a copy) | `v[a..a + n].to_vec()` |
+| `CollectionsMarshal.AsSpan(list)[a..b]` (a view) | `&v[a..b]` |
+
+A range on an **array** is a copy in C#; a `Span` is the view:
+
+<Snippet file="array-range.cs" />
+
+`&v[a..b]` is the `Span` kind. Below, `ElementAtOrDefault(10)` gives `0`, which cannot be told from a stored zero; `get(10)` gives `None`.
+
+<Snippet file="oob.cs" />
+
+</ForLang>
+
+<ForLang only="python">
+
+| You write in Python | In Rust |
+|---|---|
+| `[]`, `[0] * n` | `Vec::new()`, `vec![0; n]` |
+| `v.append(x)`, `v.pop()` | `v.push(x)`, `v.pop()` (an `Option`, not an `IndexError`) |
+| `v.pop(i)`, `del v[i]`, `del v[1:3]` | `v.remove(i)`, `v.remove(i)`, `v.drain(1..3)` |
+| `v.remove(x)` (by **value**) | `v.remove(i)` is by **position**: `v.remove(30)` compiles and panics. Use `retain` to drop every match |
+| `v.extend(w)` | `v.extend_from_slice(&w)`. `v.extend(w)` moves a `Vec` `w`; Python keeps it |
+| `v[-1]` | `v.last()`, an `Option`. `v[v.len() - 1]` on an empty list panics |
+| `v[1:3]` | `&v[1..3]` (a view), or `v[1..3].to_vec()` (a copy) |
+| `x in v`, `v.index(x)` | `v.contains(&x)`, `v.iter().position(\|&e\| e == x)` (an `Option`, not a `ValueError`) |
+| `sorted(v)`, `v.sort(key=len)`, `reverse=True` | clone then `sort()`; `v.sort_by_key(\|s\| s.len())`; `v.sort_by(\|a, b\| b.cmp(a))` |
+| `v.copy()`, `sum(v)`, `min(v)` | `v.clone()`, `v.iter().sum::<i32>()`, `v.iter().min()` |
+
+A Rust `Vec` holds one type; a list of mixed things is a `Vec` of an [enum](/learn/enums/):
+
+<Snippet file="mixed.py" />
+
+Slicing, indexing and lists of lists differ too:
+
+<Snippet file="oob.py" />
+
+<Snippet file="grid-alias.py" />
+
+`[[0] * 3] * 2` repeats the *same* row object, so one write shows in both rows. `vec![vec![0; 3]; 2]` clones the row for each. And `row = grid[0]`, an alias in Python, is the move-out error in Rust (`&grid[0]` is the alias):
+
+<Snippet file="grid-row.fail.rs" />
+
+</ForLang>
+
+<ForLang only="typescript">
+
+| You write in TypeScript | In Rust |
+|---|---|
+| `[]`, `new Array(n).fill(0)` | `Vec::new()`, `vec![0; n]` |
+| `a.push(x)`, `a.pop()` | `v.push(x)`, `v.pop()` (an `Option`; JS gives `undefined`) |
+| `a.splice(i, 1)`, `a.splice(i, 0, x)` | `v.remove(i)`, `v.insert(i, x)` |
+| `a.at(-1)`, `a.at(i)` | `v.last()`, `v.get(i)` |
+| `a.includes(x)`, `a.indexOf(x)` | `v.contains(&x)`, `v.iter().position(\|&e\| e == x)` |
+| `a.slice(1, 3)` (a copy) | `&v[1..3]` (a view), or `v[1..3].to_vec()` |
+| `a.concat(b)` (a new array) | `[a.as_slice(), b.as_slice()].concat()`. `[a, b].concat()` would move `a` and `b` |
+| `a.push(...b)` | `a.extend_from_slice(&b)`. `a.extend(b)` moves `b` |
+| `a.sort()`, `a.sort((x, y) => x - y)` | `v.sort()` for both: numbers sort as numbers |
+| `a.reverse()`, `[...a]` | `v.reverse()`, `v.clone()` |
+
+<Snippet file="quirks.ts" />
+
+`sort()` with no argument compares items **as strings**, so `[10, 9, 1]` becomes `[1, 10, 9]`; Rust sorts numbers as numbers. A `Vec` has no holes: `holes[6] = 70` on three items panics. A `row = grid[0]` on a `Vec<Vec<T>>` is an alias in TypeScript and a move-out error in Rust (`&grid[0]` is the alias):
+
+<Snippet file="grid-row.fail.rs" />
+
+</ForLang>
+
+<ForLang only="c cpp">
+
+| You write in C or C++ | In Rust |
+|---|---|
+| `malloc`/`realloc`/`free`, or a struct of pointer, length, capacity | `Vec<T>`: `push` grows it, dropping frees it |
+| `std::vector<int> v(n, 0)`, `v{1, 2, 3}` | `vec![0; n]`, `vec![1, 2, 3]` |
+| `v.pop_back()`, `v.back()` (undefined on empty) | `v.pop()`, `v.last()` (`Option`s) |
+| `v[i]` (unchecked), `v.at(i)` (throws) | `v[i]` (panics), `v.get(i)` (`Option`) |
+| `v.insert(v.begin() + i, x)`, `v.erase(v.begin() + i)` | `v.insert(i, x)`, `v.remove(i)` |
+| `v.erase(first, last)` | `v.drain(a..b)` |
+| `v.erase(std::remove_if(…), v.end())` | `v.retain(\|x\| !p(x))`: `retain` keeps, `remove_if` removes |
+| `std::sort(v.begin(), v.end())` | `v.sort_unstable()`. Rust's `sort()` is stable, like `std::stable_sort` |
+| `std::unique` + `erase`, `std::binary_search` | `v.dedup()`, `v.binary_search(&x)` (a `Result`) |
+| `v.reserve(n)` (room for `n` in total) | `v.reserve(extra)` (room for `extra` more than `len()`) |
+| `std::span<const int>`, `std::span<int>` | `&[i32]`, `&mut [i32]` |
+| `std::array<int, 4>`, `int a[4]` | `[i32; 4]` |
+
+`std::vector<int> b = a` copies the whole vector. `let b = v` in Rust moves it, and `v.clone()` is the copy.
+
+<ForLang only="c">
+
+A C array passed to a function becomes a bare pointer and loses its length. A Rust array or `Vec` becomes a `&[T]` that keeps it:
+
+<Snippet file="decay.c" />
+
+And in C, `v[i]` is not checked:
+
+<Snippet file="oob.crash.asan.c" />
+
+In safe Rust it is a panic.
+
+</ForLang>
+
+<ForLang only="cpp">
+
+`std::vector`'s `[]` does not check by default; `at()` does. Under AddressSanitizer the unchecked read is reported (libstdc++ also aborts with `-D_GLIBCXX_ASSERTIONS`; libc++ has a hardening mode):
+
+<Snippet file="oob.crash.asan.cpp" />
+
+<Snippet file="at.cpp" />
+
+In safe Rust it is a panic. The "undefined on empty" cells are from cppreference ([`pop_back`](https://en.cppreference.com/w/cpp/container/vector/pop_back), [`back`](https://en.cppreference.com/w/cpp/container/vector/back)); C++26 lets an implementation be hardened, and then a contract violation occurs instead.
+
+</ForLang>
+
+</ForLang>
+
+<p class="lr-layer">Going deeper</p>
+
+## Where the bytes live
+
+An array's items are in the variable. A `Vec` is a small header on the stack and the items on the heap. A slice is a pointer and a length, and can point into either. (The order of the header's fields is not promised; the pictures use a convenient one.)
+
+<Memory
+  title="let arr = [10, 20, 30, 40];   let v = vec![10, 20, 30, 40];"
+  stack={[
+    { name: 'arr', type: '[i32; 4]', cells: ['10', '20', '30', '40'] },
+    { name: 'a', type: '&[i32]', cells: ['ptr', 'len 2'], toVar: 'arr', note: 'a = &arr[1..3]: starts 4 bytes into arr' },
+    { name: 'v', type: 'Vec<i32>', cells: ['ptr', 'len 4', 'cap 4'], to: 'buf' },
+    { name: 'b', type: '&[i32]', cells: ['ptr', 'len 2'], to: 'buf', note: 'b = &v[1..3]: starts 4 bytes into the buffer' },
+  ]}
+  heap={[{ id: 'buf', label: "v's buffer", cells: ['10', '20', '30', '40'] }]}
+  caption="The slices `a` and `b` have the same type and size, whether they look at the stack or the heap. Neither owns the items."
+/>
+
+<Snippet file="memory-kinds.rs" />
+
+On this 64-bit machine a slice is 16 bytes (address and length), a `Vec` header 24 (adding the capacity), and an array is just its items.
+
+## Capacity and growth
+
+<ForLang only="python typescript java">
+
+Skip to the last paragraph here if you like. Python lists, JavaScript arrays and `ArrayList` also reallocate when full, but hide the capacity.
+
+</ForLang>
+
+A `Vec` has a **length** (items held) and a **capacity** (items that fit in its block before it needs a bigger one). Watch both while pushing:
+
+<Snippet file="growth.rs" />
+
+- An empty `Vec` has capacity 0 and no buffer. The first push creates it.
+- Here the capacity went 4, 8, 16, 32, 64. **Rust does not promise that**: the docs say `Vec` "does not guarantee any particular growth strategy when reallocating when full", only that `push` is amortised O(1). The first size depends on the item size:
+
+<Snippet file="first-push.rs" />
+
+- Whether the items **move** depends on the allocator, the part of the system that hands out heap blocks. It can sometimes make a block longer where it stands. On the runner (Linux) no push moved an existing buffer (`same address`); on another system you may see `buffer moved` on every line. When a block cannot be extended, the items are copied into a new one and the old one is freed:
+
+<Memory
+  title="v.push(5);   // v: Vec<u32> is full, len 4, cap 4"
+  stack={[
+    { name: 'v', type: 'Vec<u32>', cells: ['ptr', 'len 5', 'cap 8'], to: 'new' },
+  ]}
+  heap={[
+    { id: 'new', label: "v's new buffer, room for 8", cells: ['1', '2', '3', '4', '5', '', '', ''] },
+    { id: 'old', label: 'old buffer, room for 4', freed: true, cells: ['1', '2', '3', '4'] },
+  ]}
+  caption="The four items were copied across, the fifth was written, and three cells of spare room remain. If the allocator could extend the block in place, `old` and `new` would be the same address and nothing would be freed."
+/>
+
+`with_capacity(40)` never moves, because the room was reserved first (the docs recommend it when you know the size). `truncate` and `clear` keep the memory; `shrink_to_fit` asks for capacity to match the length, and the docs say the result depends on the allocator. `reserve(extra)` makes room for `extra` items beyond the length: `vec![1, 2, 3]` with `reserve(5)` has capacity 8, not 5.
+
+The compiler cannot know whether a push will move the items, so it treats every push as one that might. That is why a reference into a `Vec` cannot survive a `push`: [Mutable borrows](/learn/mutable-borrows/#a-reference-into-a-list-that-moves) draws the dangling reference this would leave.
+
+<ForLang only="go">
+
+Go's growth depends on the item type. For `[]int` on this runner's Go the numbers match `Vec<u32>`'s, but `[]string` starts at 2 and `[]byte` at 32. The spec promises no rule, so other Go versions may differ. The header is 24 bytes, the same three words as a `Vec`:
+
+<Snippet file="growth.go" />
+
+</ForLang>
+
+<ForLang only="cpp">
+
+`std::vector` grows with its own numbers, and C++'s `reserve(n)` is a total where Rust's `reserve(extra)` is relative:
+
+<Snippet file="growth.cpp" />
+
+Also: `std::vector` always gets a new block when it grows (`std::allocator` cannot extend one), where Rust's allocator may extend in place, and a Rust move is a plain byte copy with no move constructor to throw. And Rust rejects a `push` even when it would fit, while a reference is alive, though in C++ "reserve, take pointers, `push_back` up to the reserve" is legal:
+
+<Snippet file="reserve-borrowed.fail.rs" />
+
+</ForLang>
+
+## A Vec of Strings
+
+A `Vec<String>` is two levels of heap: the buffer holds the `String` headers, and each points at its own text.
+
+<Memory
+  title={'let names = vec![String::from("ana"), String::from("bo")];'}
+  stack={[
+    { name: 'names', type: 'Vec<String>', cells: ['ptr', 'len 2', 'cap 2'], to: 'list' },
+  ]}
+  heap={[
+    { id: 'list', label: 'the list buffer: 2 × String, 24 bytes each', cells: ['ptr, len 3, cap 3', 'ptr, len 2, cap 2'], links: [{ cell: 0, to: 't0' }, { cell: 1, to: 't1' }] },
+    { id: 't0', label: '3 bytes', cells: ['a', 'n', 'a'] },
+    { id: 't1', label: '2 bytes', cells: ['b', 'o'] },
+  ]}
+  caption="The order of the three fields inside a `String` is not promised, so it is drawn as `ptr, len, cap`."
+/>
+
+<Snippet file="memory-strings.rs" />
+
+This is why `names[0]` cannot be taken out: the list owns the header, and dropping the list drops every header and its text. `clone()` copies both levels. `remove` and `swap_remove` hand the header to you and fix up the list.
+
+<ForLang only="cpp">
+
+A short C++ string is stored inside the `std::string` object itself, so the second level of the picture exists only for longer text ([Strings](/learn/strings/) shows it).
+
+</ForLang>
+
+## Changing a list you are reading
+
+Any call that needs `&mut self` is a writer: `push`, `clear`, `remove`, `sort`. A slice, a reference to one item and a loop over `&v` are readers, and readers and a writer cannot overlap ([Mutable borrows](/learn/mutable-borrows/)):
+
+<Snippet file="slice-then-clear.fail.rs" />
+
+Take the slice after the change, or copy the part you need with `to_vec()` first. [Mutable borrows](/learn/mutable-borrows/#changing-a-list-while-looping-over-it) shows the loop version and other languages. This is the biggest idea Rust adds to lists: the view and the list cannot both be live when the list changes.
+
+<ForLang only="c cpp">
+
+C++ calls the hazard **iterator invalidation**: `push_back` (everything, if it reallocates; the end iterator even if it does not, which is why a range-for that pushes is undefined behaviour), `erase` (from the erase point on) and `clear` (everything) invalidate iterators, references and `span`s into a vector. Using one afterwards is undefined behaviour, and nothing stops you. [Mutable borrows](/learn/mutable-borrows/#changing-a-list-while-looping-over-it) runs a `push_back` in a loop under AddressSanitizer. Rust makes it a compile error.
+
+</ForLang>
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Each exercise has checks in `main`. Open it in the Playground, replace the `todo!()`, and run it until it prints `all checks passed`. Plain `for` loops are enough.
+
+<Exercise name="unique" title="Remove repeats, keep the order">
+Write `unique`: the items of a slice without repeats, in the order they first appeared. `[3, 1, 3, 2, 1]` becomes `[3, 1, 2]`. `dedup` removes only neighbouring repeats and sorting changes the order, so build a new `Vec` and ask it with `contains` (slow on a long list; the [maps lesson](/learn/maps/) has the fast way).
+</Exercise>
+
+<Exercise name="window-sums" title="Sums of neighbouring numbers">
+Write `window_sums`: the sum of every run of `size` neighbouring numbers. A slice shorter than `size`, an empty slice and `size` 0 give an empty `Vec`.
+</Exercise>
+
+<Exercise name="reverse-in-place" title="Reverse a &mut slice">
+Write `reverse_in_place(xs: &mut [i32])` with `swap`, not `reverse`. The last check passes only the middle of a longer list: touch nothing outside the slice.
+</Exercise>
+
+<Exercise name="take-longest" title="Take a name out of the list">
+Write `take_longest(names: &mut Vec<String>) -> Option<String>`: remove the longest name and return it. The first wins a tie; an empty list gives `None`. `let name = names[i]` will not compile, and `names[i].clone()` leaves a copy in the list, which the checks catch.
+</Exercise>
+
+## Read more
+
+- [`Vec`](https://doc.rust-lang.org/std/vec/struct.Vec.html): every method, and the sections on [slicing](https://doc.rust-lang.org/std/vec/struct.Vec.html#slicing) and [capacity and reallocation](https://doc.rust-lang.org/std/vec/struct.Vec.html#capacity-and-reallocation).
+- [Slices](https://doc.rust-lang.org/std/primitive.slice.html) and [arrays](https://doc.rust-lang.org/std/primitive.array.html) in the standard library docs: `sort`, `binary_search`, `windows`, `chunks`, `concat` and the rest are slice methods.
+- [The Rust Book, chapter 8.1: Storing Lists of Values with Vectors](https://doc.rust-lang.org/book/ch08-01-vectors.html)
+- [Rust by Example: Vectors](https://doc.rust-lang.org/rust-by-example/std/vec.html) and [Arrays and Slices](https://doc.rust-lang.org/rust-by-example/primitives/array.html)

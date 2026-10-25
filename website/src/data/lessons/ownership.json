@@ -1,0 +1,282 @@
+{
+ "id": "ownership",
+ "title": "Ownership and Moves",
+ "part": "ownership",
+ "intro": "This is the big one. Every value in Rust has exactly one owner. When the owner goes away, the value is freed. Assigning a value to another variable moves it: the new variable becomes the owner, and the old one can't be used.",
+ "coming_from": {
+  "go": "In Go, `b := a` makes two slices share one array. In Rust, `let b = a;` moves the `Vec` to `b` and `a` can't be used any more, so if you want two you write `a.clone()`.",
+  "kotlin": "In Kotlin, `val b = a` gives two names for one list. In Rust it moves the list to `b`, `a` is no longer usable, and the list is freed when `b` goes out of scope instead of by a garbage collector.",
+  "python": "In Python, `b = a` gives two names for one list. In Rust it moves the list, `a` can't be used again, and `a.clone()` is how you get a real second copy.",
+  "typescript": "In TypeScript, `const b = a` makes two references to one array. In Rust it moves the array to `b`, `a` can't be used any more, and the memory is freed when `b` goes out of scope, with no garbage collector.",
+  "java": "Java lets two variables share one object, and the garbage collector frees it later. In Rust `let b = a;` moves the `Vec` to `b`, and `a` can't be used again; the value is freed when `b` goes out of scope, with no GC.",
+  "csharp": "In C#, `var b = a;` gives two references to one `List`. In Rust it moves the value, so `a` is no longer usable, and the memory is freed the moment its single owner goes out of scope instead of by a garbage collector.",
+  "c": "Ownership is your \"who calls `free`\" rule, written into the types. After `let b = a;` the compiler forbids touching `a`, so a double free or a use after free can't compile.",
+  "cpp": "`let b = a;` is `auto b = std::move(a);`, not `auto b = a;`: nothing is copied. And the compiler checks the move: using `a` afterwards is a compile error, not a read of a moved-from object. No destructor runs on the moved-from `a` either."
+ },
+ "notes": [
+  "A move does not copy the list. It copies the 24-byte header (pointer, length, capacity) and marks the old name as unusable. Moving a huge Vec is just as cheap as moving a tiny one.",
+  "Some types are copied instead of moved: numbers, bool, char, shared references `&T`, and tuples and arrays of those. They're called `Copy`. A plain copy of their bytes gives a complete, independent value, and there is nothing to free.",
+  "Why bother? Rust has no garbage collector. \"Exactly one owner\" is how it knows when to free memory, and that it frees it exactly once."
+ ],
+ "gotcha": {
+  "title": "Using a variable after assigning it to another",
+  "verdict": "fine-elsewhere",
+  "looks_fine": "In Go, `b := a` and then printing both is perfectly fine. They share one array.",
+  "rust_sees": "After `let b = a`, `b` owns the list. `a` is a name with nothing behind it.",
+  "why": "Rust has no garbage collector, so it frees the list when its owner goes away. That only works if there is exactly one owner. With two, C would free the list twice (see the C version), and a garbage-collected language gives you two names for one list, so a change through `b` shows up in `a`. Rust's rule is one owner, and assignment hands it over. If you only want to look at the list through a second name, borrow it with `&`. That is the next lesson. The compiler's `help:` suggests `a.clone()`, which makes a second list; borrowing costs nothing.",
+  "langs": {
+   "go": {
+    "status": "runs",
+    "says": "Go runs this and prints [1 2 3] twice. `a` and `b` share one array, so a change through `b` would show up in `a` too.",
+    "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\ta := []int{1, 2, 3}\n\tb := a\n\tfmt.Println(a, b)\n}\n",
+    "out": "[1 2 3] [1 2 3]\n"
+   },
+   "kotlin": {
+    "status": "runs",
+    "says": "Kotlin runs this and prints [1, 2, 3] twice. `a` and `b` are the same list, so a change through `b` would show up in `a` too.",
+    "code": "fun main() {\n    val a = mutableListOf(1, 2, 3)\n    val b = a\n    println(\"$a $b\")\n}\n",
+    "out": "[1, 2, 3] [1, 2, 3]\n"
+   },
+   "python": {
+    "status": "runs",
+    "says": "Python prints the list twice. `b = a` doesn't copy or move anything: both names point to the same list, so a change through `b` would show up in `a` too.",
+    "code": "a = [1, 2, 3]\nb = a\nprint(a, b)\n",
+    "out": "[1, 2, 3] [1, 2, 3]\n"
+   },
+   "typescript": {
+    "status": "runs",
+    "says": "Prints the array twice. `a` and `b` are two names for the same array, so a change through `b` would show up in `a` too.",
+    "code": "const a = [1, 2, 3];\nconst b = a;\nconsole.log(a, b);\n",
+    "out": "[ 1, 2, 3 ] [ 1, 2, 3 ]\n"
+   },
+   "java": {
+    "status": "runs",
+    "says": "Both names point at the same list, so it prints twice. A change through `b` would show up in `a` too, as the lesson program shows.",
+    "code": "import java.util.List;\n\npublic class Main {\n    public static void main(String[] args) {\n        var a = List.of(1, 2, 3);\n        var b = a;\n        System.out.println(a + \" \" + b);\n    }\n}\n",
+    "out": "[1, 2, 3] [1, 2, 3]\n"
+   },
+   "csharp": {
+    "status": "runs",
+    "says": "Both lines print [1, 2, 3] because a and b are the same list. A change made through b would show up in a too.",
+    "code": "List<int> a = [1, 2, 3];\nvar b = a;\nConsole.WriteLine($\"[{string.Join(\", \", a)}] [{string.Join(\", \", b)}]\");\n",
+    "out": "[1, 2, 3] [1, 2, 3]\n"
+   },
+   "c": {
+    "status": "crash",
+    "mode": "asan",
+    "says": "C copies the pointer, so `a` and `b` share one buffer and both get freed. gcc builds it without a warning, and AddressSanitizer reports the double free.",
+    "code": "#include <stdio.h>\n#include <stdlib.h>\n\nint main(void) {\n    int *a = malloc(3 * sizeof(int));\n    a[0] = 1; a[1] = 2; a[2] = 3;\n    int *b = a;\n    printf(\"[%d, %d, %d] [%d, %d, %d]\\n\", a[0], a[1], a[2], b[0], b[1], b[2]);\n\n    // clean up both variables\n    free(a);\n    free(b);\n    return 0;\n}\n",
+    "out": "[1, 2, 3] [1, 2, 3]\n=================================================================\n==1==ERROR: AddressSanitizer: attempting double-free on 0x············ in thread T0:\n    #0 0x············ in free ../../../../src/libsanitizer/asan/asan_malloc_linux.cpp:52\n    #1 0x············ in main main.c:12\n    #2 0x············  (/lib/aarch64-linux-gnu/libc.so.6+0x22258)\n    #3 0x············ in __libc_start_main (/lib/aarch64-linux-gnu/libc.so.6+0x22338)\n    #4 0x············ in _start (main+0xaac)\n\n0x············ is located 0 bytes inside of 12-byte region [0x············,0x············)\nfreed by thread T0 here:\n    #0 0x············ in free ../../../../src/libsanitizer/asan/asan_malloc_linux.cpp:52\n    #1 0x············ in main main.c:11\n    #2 0x············  (/lib/aarch64-linux-gnu/libc.so.6+0x22258)\n    #3 0x············ in __libc_start_main (/lib/aarch64-linux-gnu/libc.so.6+0x22338)\n    #4 0x············ in _start (main+0xaac)\n\npreviously allocated by thread T0 here:\n    #0 0x············ in malloc ../../../../src/libsanitizer/asan/asan_malloc_linux.cpp:69\n    #1 0x············ in main main.c:5\n    #2 0x············  (/lib/aarch64-linux-gnu/libc.so.6+0x22258)\n    #3 0x············ in __libc_start_main (/lib/aarch64-linux-gnu/libc.so.6+0x22338)\n    #4 0x············ in _start (main+0xaac)\n\nSUMMARY: AddressSanitizer: double-free ../../../../src/libsanitizer/asan/asan_malloc_linux.cpp:52 in free\n==1==ABORTING\n"
+   },
+   "cpp": {
+    "status": "runs",
+    "says": "`auto b = a;` copies the whole vector, so it prints [1, 2, 3] twice. That's correct, but it allocates a second buffer. `auto b = std::move(a);` is what Rust's `let b = a;` does. It leaves `a` empty, but nothing stops you from reading `a` afterwards. clang-tidy's `bugprone-use-after-move` check catches many of those reads, but a lint isn't a guarantee.",
+    "code": "#include <iostream>\n#include <vector>\n\nvoid print(const std::vector<int>& xs) {\n    std::cout << \"[\";\n    for (std::size_t i = 0; i < xs.size(); ++i) {\n        std::cout << (i ? \", \" : \"\") << xs[i];\n    }\n    std::cout << \"]\";\n}\n\nint main() {\n    std::vector<int> a{1, 2, 3};\n    auto b = a;  // copies the whole vector\n    print(a);\n    std::cout << \" \";\n    print(b);\n    std::cout << \"\\n\";\n}\n",
+    "out": "[1, 2, 3] [1, 2, 3]\n"
+   }
+  },
+  "code": "fn main() {\n    let a = vec![1, 2, 3];\n    let b = a;\n    println!(\"{a:?} {b:?}\");\n}\n",
+  "error": "error[E0382]: borrow of moved value: `a`\n --> src/main.rs:4:16\n  |\n2 |     let a = vec![1, 2, 3];\n  |         - move occurs because `a` has type `Vec<i32>`, which does not implement the `Copy` trait\n3 |     let b = a;\n  |             - value moved here\n4 |     println!(\"{a:?} {b:?}\");\n  |                ^ value borrowed here after move\n  |\nhelp: consider cloning the value if the performance cost is acceptable\n  |\n3 |     let b = a.clone();\n  |              ++++++++\n",
+  "error_code": "E0382",
+  "fixed": {
+   "code": "fn main() {\n    let a = vec![1, 2, 3];\n    let b = &a; // borrow: look at a, don't take it. No copy.\n    println!(\"{a:?} {b:?}\");\n}\n",
+   "out": "[1, 2, 3] [1, 2, 3]\n"
+  }
+ },
+ "order": 17,
+ "program": {
+  "rust": {
+   "code": "fn main() {\n    let a = vec![1, 2, 3];\n    let b = a;              // the Vec MOVES to b. a can no longer be used.\n    println!(\"{b:?}\");\n\n    let x = 5;\n    let y = x;              // small values like numbers are copied instead\n    println!(\"{x} {y}\");\n}\n",
+   "out": "[1, 2, 3]\n5 5\n"
+  },
+  "go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\ta := []int{1, 2, 3}\n\tb := a         // a and b now share the SAME array\n\tb[0] = 100     // change through b...\n\tfmt.Println(a) // ...and a changed too: [100 2 3]\n\tfmt.Println(b)\n\n\tx := 5\n\ty := x\n\tfmt.Println(x, y)\n}\n",
+   "out": "[100 2 3]\n[100 2 3]\n5 5\n"
+  },
+  "kotlin": {
+   "code": "fun main() {\n    val a = mutableListOf(1, 2, 3)\n    val b = a        // a and b point at the SAME list\n    b[0] = 100\n    println(a)       // [100, 2, 3]\n    println(b)\n\n    val x = 5\n    val y = x\n    println(\"$x $y\")\n}\n",
+   "out": "[100, 2, 3]\n[100, 2, 3]\n5 5\n"
+  },
+  "python": {
+   "code": "a = [1, 2, 3]\nb = a  # no move: a and b are two names for the SAME list\nprint(b)\n\nx = 5\ny = x\nprint(f\"{x} {y}\")\n",
+   "out": "[1, 2, 3]\n5 5\n"
+  },
+  "typescript": {
+   "code": "const a = [1, 2, 3];\nconst b = a;   // b and a now point at the SAME array. Nothing moves.\nconsole.log(b);\n\nconst x = 5;\nconst y = x;   // numbers are copied\nconsole.log(`${x} ${y}`);\n",
+   "out": "[ 1, 2, 3 ]\n5 5\n"
+  },
+  "java": {
+   "code": "import java.util.ArrayList;\nimport java.util.List;\n\npublic class Main {\n    public static void main(String[] args) {\n        var a = new ArrayList<>(List.of(1, 2, 3));\n        var b = a;                  // a and b point at the SAME list\n        b.set(0, 100);              // change through b...\n        System.out.println(a);      // ...and a changed too\n        System.out.println(b);\n\n        int x = 5;\n        int y = x;                  // primitives like int are copied\n        System.out.println(x + \" \" + y);\n    }\n}\n",
+   "out": "[100, 2, 3]\n[100, 2, 3]\n5 5\n"
+  },
+  "csharp": {
+   "code": "List<int> a = [1, 2, 3];\nvar b = a;              // b points at the SAME list. a still works too.\nConsole.WriteLine($\"[{string.Join(\", \", b)}]\");\n\nvar x = 5;\nvar y = x;              // numbers are copied\nConsole.WriteLine($\"{x} {y}\");\n",
+   "out": "[1, 2, 3]\n5 5\n"
+  },
+  "c": {
+   "code": "#include <stdio.h>\n#include <stdlib.h>\n\nvoid print_ints(const int *xs, size_t len) {\n    printf(\"[\");\n    for (size_t i = 0; i < len; i++) {\n        printf(i ? \", %d\" : \"%d\", xs[i]);\n    }\n    printf(\"]\\n\");\n}\n\nint main(void) {\n    int *a = malloc(3 * sizeof(int));\n    a[0] = 1; a[1] = 2; a[2] = 3;\n    // C has no moves: b is a copy of the pointer, so a and b share one buffer.\n    // By convention b is now the owner, and we stop using a.\n    int *b = a;\n    a = NULL;\n    print_ints(b, 3);\n\n    int x = 5;\n    int y = x;   // numbers are copied\n    printf(\"%d %d\\n\", x, y);\n\n    free(b);     // the owner frees it, exactly once\n    return 0;\n}\n",
+   "out": "[1, 2, 3]\n5 5\n"
+  },
+  "cpp": {
+   "code": "#include <iostream>\n#include <utility>\n#include <vector>\n\nvoid print(const std::vector<int>& xs) {\n    std::cout << \"[\";\n    for (std::size_t i = 0; i < xs.size(); ++i) {\n        std::cout << (i ? \", \" : \"\") << xs[i];\n    }\n    std::cout << \"]\\n\";\n}\n\nint main() {\n    std::vector<int> a{1, 2, 3};\n    std::vector<int> b = std::move(a);   // move the buffer to b. Don't use a after this.\n    print(b);\n\n    int x = 5;\n    int y = x;                           // plain copy\n    std::cout << x << \" \" << y << \"\\n\";\n}\n",
+   "out": "[1, 2, 3]\n5 5\n"
+  }
+ },
+ "faq": [],
+ "snippets": {
+  "boxed.rs": {
+   "code": "// A list where each node holds the next one. Without Box, Node would have to\n// contain itself, and its size would be infinite. A Box is one pointer.\nenum List {\n    Node(i32, Box<List>),\n    End,\n}\n\nfn sum(list: &List) -> i32 {\n    match list {\n        List::Node(value, next) => value + sum(next),\n        List::End => 0,\n    }\n}\n\nfn main() {\n    let b = Box::new(41); // one i32, on the heap\n    let n = *b + 1; // * reads the value inside\n    println!(\"b {b}, n {n}\");\n\n    let list = List::Node(1, Box::new(List::Node(2, Box::new(List::End))));\n    println!(\"sum of list: {}\", sum(&list));\n\n    let moved = list; // moves the outer node; the heap nodes stay where they are\n    println!(\"size_of List: {} bytes\", size_of_val(&moved));\n} // moved is dropped, and with it every Box down the chain\n",
+   "out": "b 41, n 42\nsum of list: 3\nsize_of List: 16 bytes\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "clone.rs": {
+   "code": "fn main() {\n    let a = vec![1, 2, 3];\n    let mut b = a.clone(); // a new heap buffer with copies of the elements\n\n    println!(\"different buffers: {}\", a.as_ptr() != b.as_ptr());\n\n    b.push(4); // changing b leaves a alone\n    println!(\"a: {a:?}\");\n    println!(\"b: {b:?}\");\n    println!(\"a capacity {}, b capacity {}\", a.capacity(), b.capacity());\n\n    // Cloning a Vec<String> clones each String too: String's clone copies its text.\n    let names = vec![String::from(\"ana\"), String::from(\"bo\")];\n    let copy = names.clone();\n    println!(\n        \"names[0] and copy[0] share text: {}\",\n        names[0].as_ptr() == copy[0].as_ptr()\n    );\n}\n",
+   "out": "different buffers: true\na: [1, 2, 3]\nb: [1, 2, 3, 4]\na capacity 3, b capacity 6\nnames[0] and copy[0] share text: false\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "copy-string.fail.rs": {
+   "code": "#[derive(Clone, Copy)]\nstruct User {\n    id: u32,\n    name: String,\n}\n\nfn main() {\n    let u = User {\n        id: 1,\n        name: String::from(\"ana\"),\n    };\n    println!(\"{} {}\", u.id, u.name);\n}\n",
+   "error": "error[E0204]: the trait `Copy` cannot be implemented for this type\n --> src/main.rs:2:8\n  |\n1 | #[derive(Clone, Copy)]\n  |                 ---- in this derive macro expansion\n2 | struct User {\n  |        ^^^^\n3 |     id: u32,\n4 |     name: String,\n  |     ------------ this field does not implement `Copy`\n",
+   "lang": "rust"
+  },
+  "copy.rs": {
+   "code": "// A small struct made only of Copy fields can be Copy too. Copy needs Clone.\n#[derive(Clone, Copy)]\nstruct Point {\n    x: i32,\n    y: i32,\n}\n\nfn main() {\n    // Numbers, bool and char are copied. Both names stay usable.\n    let n = 5;\n    let m = n;\n    let ok = true;\n    let ok2 = ok;\n    let c = 'é';\n    let c2 = c;\n    println!(\"n {n}, m {m}, ok {ok} {ok2}, c {c} {c2}\");\n\n    // Tuples and arrays are Copy when everything in them is.\n    let pair = (1, 2.5);\n    let pair2 = pair;\n    let grid = [0u8; 4];\n    let grid2 = grid;\n    println!(\"pair {pair:?} {pair2:?}, grid {grid:?} {grid2:?}\");\n\n    // Size doesn't matter: 1000 u64s is 8000 bytes, and still Copy.\n    let big = [7u64; 1000];\n    let big2 = big;\n    println!(\n        \"big[999] {}, big2[999] {}, size {} bytes\",\n        big[999],\n        big2[999],\n        size_of_val(&big)\n    );\n\n    // A shared reference is Copy: a second way to look, not a second value.\n    let text = String::from(\"shared\");\n    let r1 = &text;\n    let r2 = r1;\n    println!(\"r1 {r1}, r2 {r2}\");\n\n    // Your own type, thanks to #[derive(Clone, Copy)].\n    let p = Point { x: 1, y: 2 };\n    let mut q = p; // a copy\n    q.x = 10;\n    println!(\"p ({}, {}), q ({}, {})\", p.x, p.y, q.x, q.y);\n}\n",
+   "out": "n 5, m 5, ok true true, c é é\npair (1, 2.5) (1, 2.5), grid [0, 0, 0, 0] [0, 0, 0, 0]\nbig[999] 7, big2[999] 7, size 8000 bytes\nr1 shared, r2 shared\np (1, 2), q (10, 2)\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "drop-flag.rs": {
+   "code": "struct Noisy(&'static str);\n\nimpl Drop for Noisy {\n    fn drop(&mut self) {\n        println!(\"  drop {}\", self.0);\n    }\n}\n\nfn consume(n: Noisy) {\n    println!(\"consumed {}\", n.0);\n}\n\nfn run(give_away: bool) {\n    let n = Noisy(if give_away { \"given away\" } else { \"kept\" });\n    if give_away {\n        consume(n); // maybe moved...\n    }\n    println!(\"end of run({give_away})\");\n} // ...so Rust drops n here only if it is still here\n\nfn main() {\n    run(true);\n    run(false);\n}\n",
+   "out": "consumed given away\n  drop given away\nend of run(true)\nend of run(false)\n  drop kept\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "drop-order.rs": {
+   "code": "struct Noisy(&'static str);\n\nimpl Drop for Noisy {\n    fn drop(&mut self) {\n        println!(\"  drop {}\", self.0);\n    }\n}\n\nstruct Pair {\n    _first: Noisy,\n    _second: Noisy,\n}\n\nfn main() {\n    let _a = Noisy(\"a\");\n    let _b = Noisy(\"b\");\n    let c = Noisy(\"c\");\n\n    drop(c); // ends c now, not at the end of main\n    println!(\"after drop(c)\");\n\n    let mut d = Noisy(\"d (old)\");\n    println!(\"d is {}, reassigning\", d.0);\n    d = Noisy(\"d (new)\"); // the old value is dropped right here\n    println!(\"d is now {}\", d.0);\n\n    let _ = Noisy(\"unnamed\"); // a new value that `_` doesn't bind: dropped at once\n    let _kept = Noisy(\"_kept\"); // a name starting with _ does bind, and lives on\n    println!(\"after the two lets\");\n\n    let _pair = Pair {\n        _first: Noisy(\"pair.first\"),\n        _second: Noisy(\"pair.second\"),\n    };\n    let _list = vec![Noisy(\"list[0]\"), Noisy(\"list[1]\")];\n\n    println!(\"end of main\");\n}\n",
+   "out": "  drop c\nafter drop(c)\nd is d (old), reassigning\n  drop d (old)\nd is now d (new)\n  drop unnamed\nafter the two lets\nend of main\n  drop list[0]\n  drop list[1]\n  drop pair.first\n  drop pair.second\n  drop _kept\n  drop d (new)\n  drop b\n  drop a\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "drop-scope.rs": {
+   "code": "// A type that says when it is freed. `Drop` is Rust's destructor: `drop` runs\n// automatically when the owner goes away. You never call it yourself.\nstruct Noisy(&'static str);\n\nimpl Drop for Noisy {\n    fn drop(&mut self) {\n        println!(\"  drop {}\", self.0);\n    }\n}\n\nfn main() {\n    println!(\"start of main\");\n    let _outer = Noisy(\"outer\");\n\n    {\n        println!(\"start of block\");\n        let _inner = Noisy(\"inner\");\n        println!(\"end of block\");\n    } // _inner's scope ends here, so it is dropped here\n\n    println!(\"end of main\");\n} // _outer is dropped here\n",
+   "out": "start of main\nstart of block\nend of block\n  drop inner\nend of main\n  drop outer\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "fight-fixes.rs": {
+   "code": "#[derive(Debug)]\nstruct Player {\n    name: String,\n    score: u32,\n}\n\n// Return an index, not a reference, when the caller will change the Vec next.\nfn best_index(players: &[Player]) -> Option<usize> {\n    (0..players.len()).max_by_key(|&i| players[i].score)\n}\n\n// Return an owned value when you're building something new.\nfn label(p: &Player) -> String {\n    format!(\"{} ({})\", p.name, p.score)\n}\n\nfn main() {\n    let mut players = vec![\n        Player {\n            name: String::from(\"ana\"),\n            score: 30,\n        },\n        Player {\n            name: String::from(\"bo\"),\n            score: 50,\n        },\n    ];\n\n    let best = best_index(&players).unwrap(); // a plain number: no borrow is held\n    players.push(Player {\n        name: String::from(\"cy\"),\n        score: 10,\n    });\n    players[best].score += 5; // still the right player\n    println!(\"best: {}\", label(&players[best]));\n\n    // Copy out the small thing you need, then change the original freely.\n    let top_score = players[best].score;\n    players.retain(|p| p.score * 2 >= top_score);\n    println!(\"kept: {players:?}\");\n}\n",
+   "out": "best: bo (55)\nkept: [Player { name: \"ana\", score: 30 }, Player { name: \"bo\", score: 55 }]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "fight-index.fail.rs": {
+   "code": "fn main() {\n    let mut scores = vec![10, 20, 30];\n    let best = &scores[2]; // a reference into the Vec\n    scores.push(40); // pushing may move the Vec's buffer\n    println!(\"best: {best}\");\n}\n",
+   "error": "error[E0502]: cannot borrow `scores` as mutable because it is also borrowed as immutable\n --> src/main.rs:4:5\n  |\n3 |     let best = &scores[2]; // a reference into the Vec\n  |                 ------ immutable borrow occurs here\n4 |     scores.push(40); // pushing may move the Vec's buffer\n  |     ^^^^^^^^^^^^^^^ mutable borrow occurs here\n5 |     println!(\"best: {best}\");\n  |                      ---- immutable borrow later used here\n",
+   "lang": "rust"
+  },
+  "index-move.fail.rs": {
+   "code": "fn main() {\n    let names = vec![String::from(\"ana\"), String::from(\"bo\")];\n    let first = names[0]; // move a String out of the Vec?\n    println!(\"{first}\");\n}\n",
+   "error": "error[E0507]: cannot move out of index of `Vec<String>`\n --> src/main.rs:3:17\n  |\n3 |     let first = names[0]; // move a String out of the Vec?\n  |                 ^^^^^^^^ move occurs because value has type `String`, which does not implement the `Copy` trait\n  |\nhelp: consider borrowing here\n  |\n3 |     let first = &names[0]; // move a String out of the Vec?\n  |                 +\nhelp: consider cloning the value if the performance cost is acceptable\n  |\n3 |     let first = names[0].clone(); // move a String out of the Vec?\n  |                         ++++++++\n",
+   "lang": "rust"
+  },
+  "let-underscore.fail.rs": {
+   "code": "use std::sync::Mutex;\n\nfn main() {\n    let counter = Mutex::new(0);\n    // Meant to hold the lock for the rest of the function. It doesn't.\n    let _ = counter.lock().unwrap();\n    println!(\"working while holding the lock (or so it seems)\");\n}\n",
+   "error": "error: non-binding let on a synchronization lock\n --> src/main.rs:6:9\n  |\n6 |     let _ = counter.lock().unwrap();\n  |         ^ this lock is not assigned to a binding and is immediately dropped\n  |\n  = note: `#[deny(let_underscore_lock)]` (part of `#[deny(let_underscore)]`) on by default\nhelp: consider binding to an unused variable to avoid immediately dropping the value\n  |\n6 |     let _unused = counter.lock().unwrap();\n  |          ++++++\nhelp: consider immediately dropping the value\n  |\n6 -     let _ = counter.lock().unwrap();\n6 +     drop(counter.lock().unwrap());",
+   "lang": "rust"
+  },
+  "let-underscore.rs": {
+   "code": "struct Noisy(&'static str);\n\nimpl Drop for Noisy {\n    fn drop(&mut self) {\n        println!(\"  drop {}\", self.0);\n    }\n}\n\nfn main() {\n    println!(\"let _ = Noisy(…): a new value nobody holds\");\n    let _ = Noisy(\"temporary\"); // dropped right here, at the end of the statement\n\n    println!(\"let _ = x: an existing variable\");\n    let x = Noisy(\"x\");\n    let _ = x; // not a move and not a drop: x is untouched\n    println!(\"x is still usable: {}\", x.0);\n\n    println!(\"let _kept = …\");\n    let _kept = Noisy(\"kept\"); // a real variable: lives to the end of main\n    println!(\"end of main\");\n}\n",
+   "out": "let _ = Noisy(…): a new value nobody holds\n  drop temporary\nlet _ = x: an existing variable\nx is still usable: x\nlet _kept = …\nend of main\n  drop kept\n  drop x\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "move-in-loop.fail.rs": {
+   "code": "fn main() {\n    let name = String::from(\"ana\");\n    let mut guests = Vec::new();\n    for _ in 0..3 {\n        guests.push(name); // the first pass moves name away\n    }\n    println!(\"{guests:?}\");\n}\n",
+   "error": "error[E0382]: use of moved value: `name`\n --> src/main.rs:5:21\n  |\n2 |     let name = String::from(\"ana\");\n  |         ---- move occurs because `name` has type `String`, which does not implement the `Copy` trait\n3 |     let mut guests = Vec::new();\n4 |     for _ in 0..3 {\n  |     ------------- inside of this loop\n5 |         guests.push(name); // the first pass moves name away\n  |                     ^^^^ value moved here, in previous iteration of loop\n  |\nhelp: consider cloning the value if the performance cost is acceptable\n  |\n5 |         guests.push(name.clone()); // the first pass moves name away\n  |                         ++++++++\n",
+   "lang": "rust"
+  },
+  "move-into-fn.fail.rs": {
+   "code": "fn count_words(text: String) -> usize {\n    text.split_whitespace().count()\n}\n\nfn main() {\n    let title = String::from(\"Ownership and Moves\");\n    println!(\"words: {}\", count_words(title));\n    println!(\"title: {title}\");\n}\n",
+   "error": "error[E0382]: borrow of moved value: `title`\n --> src/main.rs:8:23\n  |\n6 |     let title = String::from(\"Ownership and Moves\");\n  |         ----- move occurs because `title` has type `String`, which does not implement the `Copy` trait\n7 |     println!(\"words: {}\", count_words(title));\n  |                                       ----- value moved here\n8 |     println!(\"title: {title}\");\n  |                       ^^^^^ value borrowed here after move\n  |\nnote: consider changing this parameter type in function `count_words` to borrow instead if owning the value isn't necessary\n --> src/main.rs:1:22\n  |\n1 | fn count_words(text: String) -> usize {\n  |    -----------       ^^^^^^ this parameter takes ownership of the value\n  |    |\n  |    in this function\nhelp: consider cloning the value if the performance cost is acceptable\n  |\n7 |     println!(\"words: {}\", count_words(title.clone()));\n  |                                            ++++++++\n",
+   "lang": "rust"
+  },
+  "move-out.rs": {
+   "code": "use std::mem;\n\nfn main() {\n    let mut names = vec![\n        String::from(\"ana\"),\n        String::from(\"bo\"),\n        String::from(\"cy\"),\n        String::from(\"di\"),\n    ];\n\n    // 1. Copy it. names is untouched.\n    let a = names[0].clone();\n    println!(\"clone: {a:?}, names {names:?}\");\n\n    // 2. Take it out. remove shifts the rest down; swap_remove fills the gap\n    // with the last item, which is faster.\n    let b = names.remove(0);\n    println!(\"remove(0): {b:?}, names {names:?}\");\n    let c = names.swap_remove(0);\n    println!(\"swap_remove: {c:?}, names {names:?}\");\n\n    // 3. Take it and leave an empty value in its place.\n    let d = mem::take(&mut names[0]);\n    println!(\"mem::take: {d:?}, names {names:?}\");\n\n    // 4. Take it and leave a value you choose in its place.\n    let e = mem::replace(&mut names[1], String::from(\"new\"));\n    println!(\"mem::replace: {e:?}, names {names:?}\");\n\n    // 5. Option::take: take what's inside and leave None.\n    let mut slot = Some(String::from(\"token\"));\n    let f = slot.take();\n    println!(\"Option::take: {f:?}, slot {slot:?}\");\n\n    // 6. Done with the whole Vec? Loop over it by value and own each item.\n    for name in names {\n        println!(\"owned: {name:?}\");\n    }\n}\n",
+   "out": "clone: \"ana\", names [\"ana\", \"bo\", \"cy\", \"di\"]\nremove(0): \"ana\", names [\"bo\", \"cy\", \"di\"]\nswap_remove: \"bo\", names [\"di\", \"cy\"]\nmem::take: \"di\", names [\"\", \"cy\"]\nmem::replace: \"cy\", names [\"\", \"new\"]\nOption::take: Some(\"token\"), slot None\nowned: \"\"\nowned: \"new\"\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "move-places.rs": {
+   "code": "struct Noisy(&'static str);\n\nimpl Drop for Noisy {\n    fn drop(&mut self) {\n        println!(\"  drop {}\", self.0);\n    }\n}\n\nstruct Order {\n    item: Noisy,\n}\n\n// Takes ownership. The value is dropped when this function ends,\n// unless the function hands it on.\nfn consume(n: Noisy) {\n    println!(\"consume got {}\", n.0);\n}\n\n// Takes ownership and gives it back to the caller.\nfn pass_back(n: Noisy) -> Noisy {\n    println!(\"pass_back got {}\", n.0);\n    n\n}\n\nfn make() -> Noisy {\n    Noisy(\"made\") // moves out to the caller; nothing is dropped\n}\n\nfn main() {\n    let a = Noisy(\"a\");\n    consume(a); // a moves into the function...\n    println!(\"back in main\"); // ...and was dropped before this line\n\n    let b = Noisy(\"b\");\n    let b2 = pass_back(b); // b moved in, and back out as b2\n    println!(\"main owns {} again\", b2.0);\n\n    let m = make();\n    println!(\"main owns {}\", m.0);\n\n    let mut list = Vec::new();\n    list.push(Noisy(\"in vec\")); // the Vec owns it now\n\n    let order = Order {\n        item: Noisy(\"in struct\"),\n    }; // the struct owns it\n    println!(\"order holds {}\", order.item.0);\n\n    println!(\"end of main\");\n}\n",
+   "out": "consume got a\n  drop a\nback in main\npass_back got b\nmain owns b again\nmain owns made\norder holds in struct\nend of main\n  drop in struct\n  drop in vec\n  drop made\n  drop b\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "move.rs": {
+   "code": "fn main() {\n    let a = vec![1, 2, 3];\n    let a_buffer = a.as_ptr(); // where a's numbers live on the heap\n\n    let b = a; // move: b is the owner now. a can't be used again.\n\n    println!(\"b: {b:?}\");\n    println!(\"b uses a's buffer: {}\", b.as_ptr() == a_buffer);\n}\n",
+   "out": "b: [1, 2, 3]\nb uses a's buffer: true\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "params.rs": {
+   "code": "// Only reads: borrow with &. The caller keeps the Vec.\nfn total(prices: &[u32]) -> u32 {\n    prices.iter().sum()\n}\n\n// Changes it in place: borrow mutably with &mut.\nfn add_tax(prices: &mut Vec<u32>) {\n    for p in prices.iter_mut() {\n        *p += *p / 10;\n    }\n}\n\n// Keeps it: take ownership. The caller hands the Vec over for good.\nstruct Basket {\n    prices: Vec<u32>,\n}\n\nfn into_basket(prices: Vec<u32>) -> Basket {\n    Basket { prices }\n}\n\nfn main() {\n    let mut prices = vec![100, 250, 40];\n\n    println!(\"total: {}\", total(&prices));\n    add_tax(&mut prices);\n    println!(\"after tax: {prices:?}\");\n\n    let basket = into_basket(prices); // prices moves; we're done with it\n    println!(\"basket: {:?}\", basket.prices);\n}\n",
+   "out": "total: 390\nafter tax: [110, 275, 44]\nbasket: [110, 275, 44]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "partial-move-drop.fail.rs": {
+   "code": "struct Session {\n    user: String,\n}\n\n// A type with its own Drop can't be taken apart field by field: its drop()\n// would run on a value with a hole in it.\nimpl Drop for Session {\n    fn drop(&mut self) {\n        println!(\"closing the session for {}\", self.user);\n    }\n}\n\nfn main() {\n    let session = Session {\n        user: String::from(\"ana\"),\n    };\n    let user = session.user;\n    println!(\"{user}\");\n}\n",
+   "error": "error[E0509]: cannot move out of type `Session`, which implements the `Drop` trait\n  --> src/main.rs:17:16\n   |\n17 |     let user = session.user;\n   |                ^^^^^^^^^^^^\n   |                |\n   |                cannot move out of here\n   |                move occurs because `session.user` has type `String`, which does not implement the `Copy` trait\n   |\nhelp: consider borrowing here\n   |\n17 |     let user = &session.user;\n   |                +\nhelp: consider cloning the value if the performance cost is acceptable\n   |\n17 |     let user = session.user.clone();\n   |                            ++++++++\n",
+   "lang": "rust"
+  },
+  "partial-move.rs": {
+   "code": "#[derive(Debug)]\nstruct User {\n    id: u32,\n    name: String,\n    email: String,\n}\n\nfn main() {\n    let user = User {\n        id: 7,\n        name: String::from(\"ana\"),\n        email: String::from(\"ana@example.com\"),\n    };\n\n    let name = user.name; // move one field out\n    println!(\"moved out: {name}\");\n\n    // The fields that weren't moved are still usable...\n    println!(\"still here: {} {}\", user.id, user.email);\n\n    // ...but user as a whole isn't: `println!(\"{user:?}\")` would not compile.\n\n    // Destructuring moves every field out at once, into new variables.\n    let other = User {\n        id: 8,\n        name: String::from(\"bo\"),\n        email: String::from(\"bo@example.com\"),\n    };\n    let User { id, email, .. } = other;\n    println!(\"destructured: {id} {email}\");\n}\n",
+   "out": "moved out: ana\nstill here: 7 ana@example.com\ndestructured: 8 bo@example.com\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "rc.rs": {
+   "code": "use std::rc::Rc;\n\nstruct Noisy(&'static str);\n\nimpl Drop for Noisy {\n    fn drop(&mut self) {\n        println!(\"  drop {}\", self.0);\n    }\n}\n\nfn main() {\n    let first = Rc::new(Noisy(\"config\"));\n    println!(\"owners: {}\", Rc::strong_count(&first));\n\n    let second = Rc::clone(&first); // a second owner. Nothing is copied but a pointer.\n    println!(\"owners: {}\", Rc::strong_count(&first));\n    println!(\"same value: {}\", Rc::ptr_eq(&first, &second));\n    println!(\"weak_count: {}\", Rc::weak_count(&first));\n    println!(\"size_of Rc<Noisy>: {} bytes\", size_of::<Rc<Noisy>>());\n\n    drop(first);\n    println!(\"dropped first, owners: {}\", Rc::strong_count(&second));\n\n    drop(second); // the last owner goes, so the value is freed\n    println!(\"end of main\");\n}\n",
+   "out": "owners: 1\nowners: 2\nsame value: true\nweak_count: 0\nsize_of Rc<Noisy>: 8 bytes\ndropped first, owners: 1\n  drop config\nend of main\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "stack-heap.rs": {
+   "code": "fn main() {\n    let n: u64 = 7;\n    let boxed: Box<[u8; 4096]> = Box::new([0; 4096]);\n    let big: Vec<u64> = vec![7; 1_000_000];\n\n    // size_of_val(&x) is the size of x itself: the part on the stack.\n    println!(\n        \"n:     {} bytes on the stack, nothing on the heap\",\n        size_of_val(&n)\n    );\n    println!(\n        \"big:   {} bytes on the stack, {} bytes on the heap\",\n        size_of_val(&big),\n        big.len() * size_of::<u64>()\n    );\n    println!(\n        \"boxed: {} bytes on the stack, {} bytes on the heap\",\n        size_of_val(&boxed),\n        size_of_val(&*boxed)\n    );\n\n    let heap_before = big.as_ptr();\n    let moved = big; // copies the 24-byte header, not the 8 MB\n    println!(\n        \"same heap data after the move: {}\",\n        moved.as_ptr() == heap_before\n    );\n    println!(\"len {}, capacity {}\", moved.len(), moved.capacity());\n}\n",
+   "out": "n:     8 bytes on the stack, nothing on the heap\nbig:   24 bytes on the stack, 8000000 bytes on the heap\nboxed: 8 bytes on the stack, 4096 bytes on the heap\nsame heap data after the move: true\nlen 1000000, capacity 1000000\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "use-after-move.fail.rs": {
+   "code": "fn main() {\n    let a = vec![1, 2, 3];\n    let b = a;\n    println!(\"b: {b:?}\");\n    println!(\"a: {a:?}\"); // a was moved into b\n}\n",
+   "error": "error[E0382]: borrow of moved value: `a`\n --> src/main.rs:5:19\n  |\n2 |     let a = vec![1, 2, 3];\n  |         - move occurs because `a` has type `Vec<i32>`, which does not implement the `Copy` trait\n3 |     let b = a;\n  |             - value moved here\n4 |     println!(\"b: {b:?}\");\n5 |     println!(\"a: {a:?}\"); // a was moved into b\n  |                   ^ value borrowed here after move\n  |\nhelp: consider cloning the value if the performance cost is acceptable\n  |\n3 |     let b = a.clone();\n  |              ++++++++\n",
+   "lang": "rust"
+  }
+ },
+ "exercises": {
+  "hand-over": {
+   "starter": "struct Player {\n    name: String,\n    item: Option<String>,\n}\n\n/// Move `from`'s item to `to`. Return what `to` was holding before, if anything.\n/// If `from` has no item, change nothing and return None.\nfn hand_over(from: &mut Player, to: &mut Player) -> Option<String> {\n    todo!(\"take the item out of from's Option, then swap it into to's\")\n}\n\nfn main() {\n    let mut ana = Player {\n        name: String::from(\"ana\"),\n        item: Some(String::from(\"sword\")),\n    };\n    let mut bo = Player {\n        name: String::from(\"bo\"),\n        item: None,\n    };\n    let sword_text = ana.item.as_ref().unwrap().as_ptr();\n\n    // ana gives bo her sword. bo had nothing, so nothing comes back.\n    assert_eq!(hand_over(&mut ana, &mut bo), None);\n    assert_eq!(ana.item, None);\n    assert_eq!(bo.item.as_deref(), Some(\"sword\"));\n    assert_eq!(\n        bo.item.as_ref().unwrap().as_ptr(),\n        sword_text,\n        \"move the item, don't clone it\"\n    );\n\n    // ana has nothing to give: bo keeps his sword.\n    assert_eq!(hand_over(&mut ana, &mut bo), None);\n    assert_eq!(bo.item.as_deref(), Some(\"sword\"));\n\n    // ana finds a shield and gives it to bo, who hands back what he was holding.\n    ana.item = Some(String::from(\"shield\"));\n    let returned = hand_over(&mut ana, &mut bo);\n    assert_eq!(returned.as_deref(), Some(\"sword\"));\n    assert_eq!(bo.item.as_deref(), Some(\"shield\"));\n    assert_eq!(ana.item, None);\n\n    println!(\"{} and {}: all checks passed\", ana.name, bo.name);\n}\n",
+   "solution": {
+    "code": "struct Player {\n    name: String,\n    item: Option<String>,\n}\n\n/// Move `from`'s item to `to`. Return what `to` was holding before, if anything.\n/// If `from` has no item, change nothing and return None.\nfn hand_over(from: &mut Player, to: &mut Player) -> Option<String> {\n    // take() moves the item out and leaves None. `?` returns early on None.\n    let item = from.item.take()?;\n    // replace() puts the new item in and gives back the old one.\n    to.item.replace(item)\n}\n\nfn main() {\n    let mut ana = Player {\n        name: String::from(\"ana\"),\n        item: Some(String::from(\"sword\")),\n    };\n    let mut bo = Player {\n        name: String::from(\"bo\"),\n        item: None,\n    };\n    let sword_text = ana.item.as_ref().unwrap().as_ptr();\n\n    // ana gives bo her sword. bo had nothing, so nothing comes back.\n    assert_eq!(hand_over(&mut ana, &mut bo), None);\n    assert_eq!(ana.item, None);\n    assert_eq!(bo.item.as_deref(), Some(\"sword\"));\n    assert_eq!(\n        bo.item.as_ref().unwrap().as_ptr(),\n        sword_text,\n        \"move the item, don't clone it\"\n    );\n\n    // ana has nothing to give: bo keeps his sword.\n    assert_eq!(hand_over(&mut ana, &mut bo), None);\n    assert_eq!(bo.item.as_deref(), Some(\"sword\"));\n\n    // ana finds a shield and gives it to bo, who hands back what he was holding.\n    ana.item = Some(String::from(\"shield\"));\n    let returned = hand_over(&mut ana, &mut bo);\n    assert_eq!(returned.as_deref(), Some(\"sword\"));\n    assert_eq!(bo.item.as_deref(), Some(\"shield\"));\n    assert_eq!(ana.item, None);\n\n    println!(\"{} and {}: all checks passed\", ana.name, bo.name);\n}\n",
+    "out": "ana and bo: all checks passed\n"
+   }
+  },
+  "inbox": {
+   "starter": "struct Inbox {\n    unread: Vec<String>,\n}\n\nimpl Inbox {\n    /// Remove and return the oldest (first) message, or None if there are none.\n    fn take_oldest(&mut self) -> Option<String> {\n        todo!(\"check is_empty, then remove(0)\")\n    }\n\n    /// Hand over every message at once, leaving the inbox empty but usable.\n    fn take_all(&mut self) -> Vec<String> {\n        todo!(\"std::mem::take the Vec out of self\")\n    }\n}\n\nfn main() {\n    let mut inbox = Inbox {\n        unread: vec![\n            String::from(\"hi\"),\n            String::from(\"lunch?\"),\n            String::from(\"bye\"),\n        ],\n    };\n\n    // Some checks compare heap addresses: the text should move, not be copied.\n    let hi_text = inbox.unread[0].as_ptr();\n    let oldest = inbox.take_oldest().unwrap();\n    assert_eq!(oldest, \"hi\");\n    assert_eq!(\n        oldest.as_ptr(),\n        hi_text,\n        \"take_oldest should move, not clone\"\n    );\n    assert_eq!(inbox.unread, [\"lunch?\", \"bye\"]);\n\n    let lunch_text = inbox.unread[0].as_ptr();\n    let all = inbox.take_all();\n    assert_eq!(all, [\"lunch?\", \"bye\"]);\n    assert_eq!(\n        all[0].as_ptr(),\n        lunch_text,\n        \"take_all should move, not clone\"\n    );\n    assert!(\n        inbox.unread.is_empty(),\n        \"take_all must leave the inbox empty\"\n    );\n\n    // An empty inbox has nothing to give, and doesn't panic.\n    assert_eq!(inbox.take_oldest(), None);\n    assert!(inbox.take_all().is_empty());\n\n    // And it still works afterwards.\n    inbox.unread.push(String::from(\"new\"));\n    assert_eq!(inbox.take_oldest(), Some(String::from(\"new\")));\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "struct Inbox {\n    unread: Vec<String>,\n}\n\nimpl Inbox {\n    /// Remove and return the oldest (first) message, or None if there are none.\n    fn take_oldest(&mut self) -> Option<String> {\n        if self.unread.is_empty() {\n            None\n        } else {\n            Some(self.unread.remove(0))\n        }\n    }\n\n    /// Hand over every message at once, leaving the inbox empty but usable.\n    fn take_all(&mut self) -> Vec<String> {\n        // You can't move a field out of `&mut self`. Take it, leaving an empty Vec.\n        std::mem::take(&mut self.unread)\n    }\n}\n\nfn main() {\n    let mut inbox = Inbox {\n        unread: vec![\n            String::from(\"hi\"),\n            String::from(\"lunch?\"),\n            String::from(\"bye\"),\n        ],\n    };\n\n    // Some checks compare heap addresses: the text should move, not be copied.\n    let hi_text = inbox.unread[0].as_ptr();\n    let oldest = inbox.take_oldest().unwrap();\n    assert_eq!(oldest, \"hi\");\n    assert_eq!(\n        oldest.as_ptr(),\n        hi_text,\n        \"take_oldest should move, not clone\"\n    );\n    assert_eq!(inbox.unread, [\"lunch?\", \"bye\"]);\n\n    let lunch_text = inbox.unread[0].as_ptr();\n    let all = inbox.take_all();\n    assert_eq!(all, [\"lunch?\", \"bye\"]);\n    assert_eq!(\n        all[0].as_ptr(),\n        lunch_text,\n        \"take_all should move, not clone\"\n    );\n    assert!(\n        inbox.unread.is_empty(),\n        \"take_all must leave the inbox empty\"\n    );\n\n    // An empty inbox has nothing to give, and doesn't panic.\n    assert_eq!(inbox.take_oldest(), None);\n    assert!(inbox.take_all().is_empty());\n\n    // And it still works afterwards.\n    inbox.unread.push(String::from(\"new\"));\n    assert_eq!(inbox.take_oldest(), Some(String::from(\"new\")));\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "split-by-length": {
+   "starter": "/// Move each word into `short` (at most `max` characters) or `long`,\n/// keeping their order. Don't clone: the caller has given you the words.\nfn split_by_length(words: Vec<String>, max: usize) -> (Vec<String>, Vec<String>) {\n    todo!(\"loop over words by value; count chars, not bytes\")\n}\n\nfn main() {\n    let words = vec![\n        String::from(\"ox\"),\n        String::from(\"crab\"),\n        String::from(\"café\"),\n        String::from(\"ferris\"),\n    ];\n    let crab_text = words[1].as_ptr();\n    let ferris_text = words[3].as_ptr();\n\n    let (short, long) = split_by_length(words, 4);\n    // \"café\" is 5 bytes but 4 characters, so it is short.\n    assert_eq!(short, [\"ox\", \"crab\", \"café\"]);\n    assert_eq!(long, [\"ferris\"]);\n    // Same heap text as before: each String moved, none was copied.\n    assert_eq!(\n        short[1].as_ptr(),\n        crab_text,\n        \"move the Strings, don't clone them\"\n    );\n    assert_eq!(\n        long[0].as_ptr(),\n        ferris_text,\n        \"move the Strings, don't clone them\"\n    );\n\n    let (short, long) = split_by_length(Vec::new(), 4);\n    assert!(short.is_empty() && long.is_empty());\n\n    let (short, long) = split_by_length(vec![String::new()], 0);\n    assert_eq!(short, [\"\"]);\n    assert!(long.is_empty());\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "/// Move each word into `short` (at most `max` characters) or `long`,\n/// keeping their order. Don't clone: the caller has given you the words.\nfn split_by_length(words: Vec<String>, max: usize) -> (Vec<String>, Vec<String>) {\n    let mut short = Vec::new();\n    let mut long = Vec::new();\n    // Looping over `words` by value hands us each String to own.\n    for word in words {\n        if word.chars().count() <= max {\n            short.push(word);\n        } else {\n            long.push(word);\n        }\n    }\n    (short, long)\n}\n\nfn main() {\n    let words = vec![\n        String::from(\"ox\"),\n        String::from(\"crab\"),\n        String::from(\"café\"),\n        String::from(\"ferris\"),\n    ];\n    let crab_text = words[1].as_ptr();\n    let ferris_text = words[3].as_ptr();\n\n    let (short, long) = split_by_length(words, 4);\n    // \"café\" is 5 bytes but 4 characters, so it is short.\n    assert_eq!(short, [\"ox\", \"crab\", \"café\"]);\n    assert_eq!(long, [\"ferris\"]);\n    // Same heap text as before: each String moved, none was copied.\n    assert_eq!(\n        short[1].as_ptr(),\n        crab_text,\n        \"move the Strings, don't clone them\"\n    );\n    assert_eq!(\n        long[0].as_ptr(),\n        ferris_text,\n        \"move the Strings, don't clone them\"\n    );\n\n    let (short, long) = split_by_length(Vec::new(), 4);\n    assert!(short.is_empty() && long.is_empty());\n\n    let (short, long) = split_by_length(vec![String::new()], 0);\n    assert_eq!(short, [\"\"]);\n    assert!(long.is_empty());\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}

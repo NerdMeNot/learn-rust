@@ -1,0 +1,307 @@
+{
+ "id": "borrowing",
+ "title": "Borrowing",
+ "part": "ownership",
+ "intro": "A reference `&value` lets a function look at a value without taking ownership. The caller keeps the value, nothing is copied, and the compiler checks that the reference never outlives what it points at.",
+ "coming_from": {
+  "go": "`&nums` is the Rust way to pass a slice: the function sees the same elements and nothing is copied. A Go `[]int` is closest to `&mut [i32]`, since the function can write to the elements. Rust's `&[i32]` is the read-only form, and the compiler also checks that the reference never outlives `nums`.",
+  "kotlin": "A `&[i32]` parameter is like Kotlin's read-only `List<Int>`: the function can read but not add or remove. In Kotlin that is only a read-only view, so whoever holds the `MutableList` can still change it. In Rust no other code can change it while the borrow lasts (for ordinary types).",
+  "python": "Python passes a reference to every argument, so a function can change the caller's list. In Rust you choose: `&nums` lends the list for reading, `&mut nums` lends it for changing, and plain `nums` gives it away for good. A function taking `&[i32]` can only read it.",
+  "typescript": "A `&[i32]` parameter is like `readonly number[]`, but stricter. `readonly` is only a compile-time check on that one name, and another name for the same array can still change it. In Rust no other code can change it while the borrow lasts (for ordinary types).",
+  "java": "Java hands every object to a method as a reference, so `total(nums)` looks the same. In Rust you write the `&` yourself, and a `&` reference can't change the list at all. Java has no read-only reference type: a `final` variable can't be reassigned, but the list it holds can still change. The compiler also checks the reference never outlives `nums`.",
+  "csharp": "A `List<int>` variable already holds a reference, so the callee sees the same list. The closest typed match for `&[i32]` is `IReadOnlyList<int>` or `ReadOnlySpan<int>`: the function can read but not add. Rust goes further: no other code can change the list while the borrow lasts (for ordinary types). A function that takes `Vec<i32>` by value takes ownership, and the caller loses it.",
+  "c": "`&[i32]` is `const int *` plus a length, in one value. What C leaves to convention, Rust checks: the function can't write through it, can't free the array, and can't keep it past the array's life. No other code can change or free the array while it's borrowed (in safe Rust, for ordinary types).",
+  "cpp": "`&[i32]` is `std::span<const int>`, and `&T` is `const T&`. Passing a `std::vector` by value copies it; a Rust `Vec<i32>` by value moves, so the caller's `nums` is gone, and a copy only happens if you write `.clone()`. Unlike a `const T&` or a `span`, a reference in safe Rust can't dangle: the compiler rejects code where it could outlive the value."
+ },
+ "notes": [
+  "A reference is an address. `&nums` for a `Vec` is 8 bytes on a 64-bit machine; handed to a function that takes `&[i32]` it becomes 16: an address and a length. The elements stay where they are on the heap (see [the stack and the heap](/learn/stack-heap/)), and the function never gets a copy.",
+  "A `&` reference lets you read, not change (for ordinary types). Any number of them can exist at once. Changing a value through a reference needs `&mut`, in the [next lesson](/learn/mutable-borrows/).",
+  "A borrow lasts until its last use, and the value must still exist then. The compiler rejects a reference that could outlive what it points to.",
+  "`&[i32]` (a slice: an address and a length) is the usual parameter type for a list. It accepts `&Vec<i32>`, an array, or part of either. In the same way, `&str` accepts `&String`.",
+  "The signature tells you what happens to your value: `fn f(x: T)` takes it, `fn f(x: &T)` borrows it to read, `fn f(x: &mut T)` borrows it to change."
+ ],
+ "gotcha": {
+  "title": "A function that takes the value instead of borrowing it",
+  "verdict": "rust-rule",
+  "looks_fine": "In Go, passing a slice to a function copies the small slice header. The caller still has its slice afterwards.",
+  "rust_sees": "`xs: Vec<i32>` means \"give me the Vec\". Calling `total(nums)` moves the list into the function. When `total` ends, it owns the list, so the list is freed there.",
+  "why": "Nothing is wrong with the idea of reading a list twice. Rust just makes the signature say what happens to the value: `Vec<i32>` means \"give me the list\", and the other languages hand over a reference or a copy without asking. By the time `println!` runs, the list was freed when `total` returned. The fix is not `.clone()`. It is to say what you meant: the function only needs to look, so it borrows. (The compiler's `note:` says the same thing. Its `help:` suggests the simplest fix, not always the best one: `.clone()` would compile, but it copies the list for no reason.)",
+  "langs": {
+   "go": {
+    "status": "runs",
+    "says": "Go runs this and prints 6 [1 2 3]. Passing a slice shares the same array, so the caller can keep using it. The function could also have written to it, and nothing in the signature says whether it will.",
+    "code": "package main\n\nimport \"fmt\"\n\nfunc total(xs []int) int {\n\tsum := 0\n\tfor _, x := range xs {\n\t\tsum += x\n\t}\n\treturn sum\n}\n\nfunc main() {\n\tnums := []int{1, 2, 3}\n\tt := total(nums)\n\tfmt.Println(t, nums)\n}\n",
+    "out": "6 [1 2 3]\n"
+   },
+   "kotlin": {
+    "status": "runs",
+    "says": "Kotlin runs this and prints 6 [1, 2, 3]. The function gets a reference to the same list, so the caller can keep using it.",
+    "code": "fun total(xs: List<Int>): Int {\n    var sum = 0\n    for (x in xs) sum += x\n    return sum\n}\n\nfun main() {\n    val nums = listOf(1, 2, 3)\n    val t = total(nums)\n    println(\"$t $nums\")\n}\n",
+    "out": "6 [1, 2, 3]\n"
+   },
+   "python": {
+    "status": "runs",
+    "says": "Python prints 6 [1, 2, 3]. Passing a list hands the function a reference to the same list, so the caller can keep using it. Nothing in the signature says whether `total` may change the list.",
+    "code": "def total(xs: list[int]) -> int:\n    result = 0\n    for x in xs:\n        result += x\n    return result\n\n\nnums = [1, 2, 3]\nt = total(nums)\nprint(t, nums)\n",
+    "out": "6 [1, 2, 3]\n"
+   },
+   "typescript": {
+    "status": "runs",
+    "says": "Prints 6 [ 1, 2, 3 ]. `total` gets a reference to the same array, and the caller keeps using it. Without `readonly` in the signature, nothing says whether `total` may change the array.",
+    "code": "function total(xs: number[]): number {\n  let sum = 0;\n  for (const x of xs) {\n    sum += x;\n  }\n  return sum;\n}\n\nconst nums = [1, 2, 3];\nconst t = total(nums);\nconsole.log(t, nums);\n",
+    "out": "6 [ 1, 2, 3 ]\n"
+   },
+   "java": {
+    "status": "runs",
+    "says": "Java passes a reference to the same list, and the garbage collector keeps it alive. So `nums` is still usable after the call.",
+    "code": "import java.util.List;\n\npublic class Main {\n    static int total(List<Integer> xs) {\n        int sum = 0;\n        for (int x : xs) {\n            sum += x;\n        }\n        return sum;\n    }\n\n    public static void main(String[] args) {\n        var nums = List.of(1, 2, 3);\n        int t = total(nums);\n        System.out.println(t + \" \" + nums);\n    }\n}\n",
+    "out": "6 [1, 2, 3]\n"
+   },
+   "csharp": {
+    "status": "runs",
+    "says": "Passing a List passes a reference, so nums is still usable after the call. The catch is that Total could also change it, and nothing in the signature says it won't.",
+    "code": "List<int> nums = [1, 2, 3];\nvar t = Total(nums);\nConsole.WriteLine($\"{t} [{string.Join(\", \", nums)}]\");\n\nstatic int Total(List<int> xs)\n{\n    var sum = 0;\n    foreach (var x in xs)\n    {\n        sum += x;\n    }\n    return sum;\n}\n",
+    "out": "6 [1, 2, 3]\n"
+   },
+   "c": {
+    "status": "runs",
+    "says": "C passes the array as a pointer, so `nums` stays usable. Nothing in the type says whether `total` may keep or free it.",
+    "code": "#include <stdio.h>\n\nint total(int *xs, size_t len) {\n    int sum = 0;\n    for (size_t i = 0; i < len; i++) {\n        sum += xs[i];\n    }\n    return sum;\n}\n\nint main(void) {\n    int nums[] = {1, 2, 3};\n    int t = total(nums, 3);\n    printf(\"%d [%d, %d, %d]\\n\", t, nums[0], nums[1], nums[2]);\n    return 0;\n}\n",
+    "out": "6 [1, 2, 3]\n"
+   },
+   "cpp": {
+    "status": "runs",
+    "says": "Taking `std::vector<int>` by value makes a full copy, so `nums` is still usable and this prints `6 [1, 2, 3]`. It works, but you pay for the copy.",
+    "code": "#include <iostream>\n#include <vector>\n\nint total(std::vector<int> xs) {\n    int sum = 0;\n    for (int x : xs) {\n        sum += x;\n    }\n    return sum;\n}\n\nint main() {\n    std::vector<int> nums{1, 2, 3};\n    int t = total(nums);\n    std::cout << t << \" [\" << nums[0] << \", \" << nums[1] << \", \" << nums[2] << \"]\\n\";\n}\n",
+    "out": "6 [1, 2, 3]\n"
+   }
+  },
+  "code": "fn total(xs: Vec<i32>) -> i32 {\n    let mut sum = 0;\n    for x in xs {\n        sum += x;\n    }\n    sum\n}\n\nfn main() {\n    let nums = vec![1, 2, 3];\n    let t = total(nums);\n    println!(\"{t} {nums:?}\");\n}\n",
+  "error": "error[E0382]: borrow of moved value: `nums`\n  --> src/main.rs:12:20\n   |\n10 |     let nums = vec![1, 2, 3];\n   |         ---- move occurs because `nums` has type `Vec<i32>`, which does not implement the `Copy` trait\n11 |     let t = total(nums);\n   |                   ---- value moved here\n12 |     println!(\"{t} {nums:?}\");\n   |                    ^^^^ value borrowed here after move\n   |\nnote: consider changing this parameter type in function `total` to borrow instead if owning the value isn't necessary\n  --> src/main.rs:1:14\n   |\n 1 | fn total(xs: Vec<i32>) -> i32 {\n   |    -----     ^^^^^^^^ this parameter takes ownership of the value\n   |    |\n   |    in this function\nhelp: consider cloning the value if the performance cost is acceptable\n   |\n11 |     let t = total(nums.clone());\n   |                       ++++++++\n",
+  "error_code": "E0382",
+  "fixed": {
+   "code": "fn total(xs: &[i32]) -> i32 {\n    let mut sum = 0;\n    for x in xs {\n        sum += x;\n    }\n    sum\n}\n\nfn main() {\n    let nums = vec![1, 2, 3];\n    let t = total(&nums);\n    println!(\"{t} {nums:?}\");\n}\n",
+   "out": "6 [1, 2, 3]\n"
+  }
+ },
+ "order": 18,
+ "program": {
+  "rust": {
+   "code": "fn total(xs: &[i32]) -> i32 {      // & means: borrow, don't take\n    let mut sum = 0;\n    for x in xs {\n        sum += x;\n    }\n    sum\n}\n\nfn main() {\n    let nums = vec![1, 2, 3];\n    let t = total(&nums);       // lend nums to total\n    println!(\"{t} {nums:?}\");   // nums is still ours\n}\n",
+   "out": "6 [1, 2, 3]\n"
+  },
+  "go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc total(xs []int) int {\n\tsum := 0\n\tfor _, x := range xs {\n\t\tsum += x\n\t}\n\treturn sum\n}\n\nfunc main() {\n\tnums := []int{1, 2, 3}\n\tt := total(nums)\n\tfmt.Println(t, nums)\n}\n",
+   "out": "6 [1 2 3]\n"
+  },
+  "kotlin": {
+   "code": "fun total(xs: List<Int>): Int {\n    var sum = 0\n    for (x in xs) {\n        sum += x\n    }\n    return sum\n}\n\nfun main() {\n    val nums = listOf(1, 2, 3)\n    val t = total(nums)\n    println(\"$t $nums\")\n}\n",
+   "out": "6 [1, 2, 3]\n"
+  },
+  "python": {
+   "code": "def total(xs: list[int]) -> int:  # gets a reference to the same list\n    return sum(xs)\n\n\nnums = [1, 2, 3]\nt = total(nums)\nprint(f\"{t} {nums}\")\n",
+   "out": "6 [1, 2, 3]\n"
+  },
+  "typescript": {
+   "code": "// readonly: total promises not to change the array\nfunction total(xs: readonly number[]): number {\n  let sum = 0;\n  for (const x of xs) {\n    sum += x;\n  }\n  return sum;\n}\n\nconst nums = [1, 2, 3];\nconst t = total(nums); // total gets a reference to the same array\nconsole.log(t, nums);\n",
+   "out": "6 [ 1, 2, 3 ]\n"
+  },
+  "java": {
+   "code": "import java.util.List;\n\npublic class Main {\n    static int total(List<Integer> xs) {\n        int sum = 0;\n        for (int x : xs) {\n            sum += x;\n        }\n        return sum;\n    }\n\n    public static void main(String[] args) {\n        var nums = List.of(1, 2, 3);\n        int t = total(nums);        // passes a reference to the same list\n        System.out.println(t + \" \" + nums);\n    }\n}\n",
+   "out": "6 [1, 2, 3]\n"
+  },
+  "csharp": {
+   "code": "List<int> nums = [1, 2, 3];\nvar t = Total(nums);        // pass the list in\nConsole.WriteLine($\"{t} [{string.Join(\", \", nums)}]\");   // nums is still ours\n\n// IReadOnlyList: a promise that Total won't change it\nstatic int Total(IReadOnlyList<int> xs)\n{\n    var sum = 0;\n    foreach (var x in xs)\n    {\n        sum += x;\n    }\n    return sum;\n}\n",
+   "out": "6 [1, 2, 3]\n"
+  },
+  "c": {
+   "code": "#include <stdio.h>\n\n// const int *: read through the pointer, don't change or free it\nint total(const int *xs, size_t len) {\n    int sum = 0;\n    for (size_t i = 0; i < len; i++) {\n        sum += xs[i];\n    }\n    return sum;\n}\n\nint main(void) {\n    int nums[] = {1, 2, 3};\n    int t = total(nums, 3);   // lend nums to total\n    printf(\"%d [%d, %d, %d]\\n\", t, nums[0], nums[1], nums[2]);   // still ours\n    return 0;\n}\n",
+   "out": "6 [1, 2, 3]\n"
+  },
+  "cpp": {
+   "code": "#include <iostream>\n#include <span>\n#include <vector>\n\nint total(std::span<const int> xs) {   // a read-only view: borrow, don't copy\n    int sum = 0;\n    for (int x : xs) {\n        sum += x;\n    }\n    return sum;\n}\n\nint main() {\n    std::vector<int> nums{1, 2, 3};\n    int t = total(nums);                // lend nums to total\n    std::cout << t << \" [\";             // nums is still ours\n    for (std::size_t i = 0; i < nums.size(); ++i) {\n        std::cout << (i ? \", \" : \"\") << nums[i];\n    }\n    std::cout << \"]\\n\";\n}\n",
+   "out": "6 [1, 2, 3]\n"
+  }
+ },
+ "faq": [],
+ "snippets": {
+  "borrow-ends.rs": {
+   "code": "fn main() {\n    let name = String::from(\"Ada\");\n\n    let r = &name; // the borrow starts\n    println!(\"r: {r}\"); // the last use of r: the borrow ends here\n\n    let moved = name; // moving name is fine: nothing borrows it any more\n    println!(\"moved: {moved}\");\n}\n",
+   "out": "r: Ada\nmoved: Ada\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "borrow-still-used.fail.rs": {
+   "code": "fn main() {\n    let name = String::from(\"Ada\");\n\n    let r = &name; // the borrow starts\n    println!(\"r: {r}\");\n\n    let moved = name; // name moves while r is still going to be used\n    println!(\"moved: {moved}\");\n\n    println!(\"r again: {r}\"); // the borrow is still alive here\n}\n",
+   "error": "error[E0505]: cannot move out of `name` because it is borrowed\n  --> src/main.rs:7:17\n   |\n 2 |     let name = String::from(\"Ada\");\n   |         ---- binding `name` declared here\n 3 |\n 4 |     let r = &name; // the borrow starts\n   |             ----- borrow of `name` occurs here\n...\n 7 |     let moved = name; // name moves while r is still going to be used\n   |                 ^^^^ move out of `name` occurs here\n...\n10 |     println!(\"r again: {r}\"); // the borrow is still alive here\n   |                         - borrow later used here\n   |\nhelp: consider cloning the value if the performance cost is acceptable\n   |\n 4 |     let r = &name.clone(); // the borrow starts\n   |                  ++++++++\n",
+   "lang": "rust"
+  },
+  "borrow-vs-clone.rs": {
+   "code": "// `original` is the address of the caller's buffer, so we can tell whether\n// `xs` is that same buffer or a copy of it.\nfn report(label: &str, xs: &[u8], original: *const u8) {\n    println!(\"{label}:\");\n    println!(\"  len: {}\", xs.len());\n    println!(\"  same buffer as the caller's: {}\", xs.as_ptr() == original);\n}\n\nfn main() {\n    let data = vec![1u8; 10_000_000];\n    let original = data.as_ptr();\n\n    // Borrow: the function gets an address and a length (16 bytes).\n    report(\"borrowed\", &data, original);\n\n    // Clone: allocate 10 MB more and copy every byte into it first.\n    let copy = data.clone();\n    report(\"cloned\", &copy, original);\n    println!(\"the copy has its own capacity: {}\", copy.capacity());\n\n    println!(\"a reference to the data: {} bytes\", size_of::<&[u8]>());\n    println!(\"data is still ours: {}\", data.len());\n}\n",
+   "out": "borrowed:\n  len: 10000000\n  same buffer as the caller's: true\ncloned:\n  len: 10000000\n  same buffer as the caller's: false\nthe copy has its own capacity: 10000000\na reference to the data: 16 bytes\ndata is still ours: 10000000\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "change-through-shared.fail.rs": {
+   "code": "fn add_bonus(scores: &Vec<i32>) {\n    scores.push(100);\n}\n\nfn main() {\n    let scores = vec![30, 95, 60];\n    add_bonus(&scores);\n    println!(\"{scores:?}\");\n}\n",
+   "error": "error[E0596]: cannot borrow `*scores` as mutable, as it is behind a `&` reference\n --> src/main.rs:2:5\n  |\n2 |     scores.push(100);\n  |     ^^^^^^ `scores` is a `&` reference, so it cannot be borrowed as mutable\n  |\nhelp: consider changing this to be a mutable reference\n  |\n1 | fn add_bonus(scores: &mut Vec<i32>) {\n  |                       +++\n",
+   "lang": "rust"
+  },
+  "coercion.rs": {
+   "code": "use std::any::type_name_of_val as type_of;\n\nfn show(text: &str) {\n    println!(\"show got {}: {text}\", type_of(&text));\n}\n\nfn main() {\n    let name = String::from(\"Ada\");\n    let r = &name;\n    println!(\"r is {}\", type_of(&r));\n\n    // The function wants &str and r is &String. The compiler converts for us.\n    show(r);\n\n    // Same for a let with a written type.\n    let text: &str = r;\n    println!(\"text is {}\", type_of(&text));\n    println!(\"same text, no copy: {}\", text.as_ptr() == name.as_ptr());\n\n    // A &Vec<i32> becomes a &[i32] the same way.\n    let v = vec![1, 2, 3];\n    let slice: &[i32] = &v;\n    println!(\"slice is {} with len {}\", type_of(&slice), slice.len());\n}\n",
+   "out": "r is &alloc::string::String\nshow got &str: Ada\ntext is &str\nsame text, no copy: true\nslice is &[i32] with len 3\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "compare-types.fail.rs": {
+   "code": "fn main() {\n    let n = 5;\n    let r = &n;\n\n    if r == 5 {\n        println!(\"five\");\n    }\n}\n",
+   "error": "error[E0277]: can't compare `&{integer}` with `{integer}`\n --> src/main.rs:5:10\n  |\n5 |     if r == 5 {\n  |          ^^ no implementation for `&{integer} == {integer}`\n  |\n  = help: the trait `PartialEq<{integer}>` is not implemented for `&{integer}`\nhelp: consider dereferencing here\n  |\n5 |     if *r == 5 {\n  |        +\n",
+   "lang": "rust"
+  },
+  "dangling.fail.rs": {
+   "code": "fn main() {\n    let r;\n    {\n        let x = 5;\n        r = &x;\n    }\n    println!(\"r: {r}\");\n}\n",
+   "error": "error[E0597]: `x` does not live long enough\n --> src/main.rs:5:13\n  |\n4 |         let x = 5;\n  |             - binding `x` declared here\n5 |         r = &x;\n  |             ^^ borrowed value does not live long enough\n6 |     }\n  |     - `x` dropped here while still borrowed\n7 |     println!(\"r: {r}\");\n  |                   - borrow later used here\n",
+   "lang": "rust"
+  },
+  "drop-uses-borrow.fail.rs": {
+   "code": "struct Guard<'a>(&'a String);\n\nimpl Drop for Guard<'_> {\n    fn drop(&mut self) {\n        println!(\"dropping a guard for {}\", self.0);\n    }\n}\n\nfn main() {\n    let name = String::from(\"Ada\");\n    let guard = Guard(&name);\n\n    let moved = name; // Guard::drop will still read the borrowed name\n    println!(\"moved: {moved}\");\n}\n",
+   "error": "error[E0505]: cannot move out of `name` because it is borrowed\n  --> src/main.rs:13:17\n   |\n10 |     let name = String::from(\"Ada\");\n   |         ---- binding `name` declared here\n11 |     let guard = Guard(&name);\n   |                       ----- borrow of `name` occurs here\n12 |\n13 |     let moved = name; // Guard::drop will still read the borrowed name\n   |                 ^^^^ move out of `name` occurs here\n14 |     println!(\"moved: {moved}\");\n15 | }\n   | - borrow might be used here, when `guard` is dropped and runs the `Drop` code for type `Guard`\n   |\nhelp: consider cloning the value if the performance cost is acceptable\n   |\n11 |     let guard = Guard(&name.clone());\n   |                            ++++++++",
+   "lang": "rust"
+  },
+  "many-readers.rs": {
+   "code": "fn total(xs: &[i32]) -> i32 {\n    let mut sum = 0;\n    for x in xs {\n        sum += x;\n    }\n    sum\n}\n\nfn largest(xs: &[i32]) -> i32 {\n    let mut best = xs[0];\n    for x in xs {\n        if *x > best {\n            best = *x;\n        }\n    }\n    best\n}\n\nfn main() {\n    let scores = vec![30, 95, 60];\n\n    // Three borrows, all alive at once.\n    let a = &scores;\n    let b = &scores;\n    let c = &scores[1..];\n    println!(\"a and b are the same Vec: {}\", std::ptr::eq(a, b));\n\n    println!(\"total(a): {}\", total(a));\n    println!(\"largest(b): {}\", largest(b));\n    println!(\"total(c): {}\", total(c));\n    println!(\"scores: {scores:?}\");\n}\n",
+   "out": "a and b are the same Vec: true\ntotal(a): 185\nlargest(b): 95\ntotal(c): 155\nscores: [30, 95, 60]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "push-while-borrowed.fail.rs": {
+   "code": "fn main() {\n    let mut a = vec![7, 8, 9];\n    let p = &a[0];\n    a.push(10); // may move the elements to a new buffer\n    println!(\"p: {p}\");\n}\n",
+   "error": "error[E0502]: cannot borrow `a` as mutable because it is also borrowed as immutable\n --> src/main.rs:4:5\n  |\n3 |     let p = &a[0];\n  |              - immutable borrow occurs here\n4 |     a.push(10); // may move the elements to a new buffer\n  |     ^^^^^^^^^^ mutable borrow occurs here\n5 |     println!(\"p: {p}\");\n  |                   - immutable borrow later used here\n",
+   "lang": "rust"
+  },
+  "reborrow.rs": {
+   "code": "fn main() {\n    let name = String::from(\"Ada\");\n    let a: &String = &name;\n\n    // *a is the String itself. &*a borrows it again: a new reference, same String.\n    let b: &String = &*a;\n    println!(\"b points at the same String as a: {}\", std::ptr::eq(a, b));\n\n    // *name is the str inside the String, so &*name is a &str. This is the\n    // conversion the compiler does for you when it turns a &String into a &str.\n    let text: &str = &*name;\n    println!(\"text is the same bytes: {}\", text.as_ptr() == name.as_ptr());\n    println!(\"text: {text}, len {}\", text.len());\n}\n",
+   "out": "b points at the same String as a: true\ntext is the same bytes: true\ntext: Ada, len 3\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "ref-copy.rs": {
+   "code": "fn show(text: &String) {\n    println!(\"show: {text}\");\n}\n\nfn main() {\n    let name = String::from(\"Ada\");\n    let r = &name;\n\n    // Passing r does not use it up: &String is Copy.\n    show(r);\n    show(r);\n\n    let r2 = r; // copies the reference; r is still usable\n    println!(\"r and r2 point at the same String: {}\", std::ptr::eq(r, r2));\n\n    // A String is not Copy: this moves it.\n    let moved = name;\n    println!(\"moved: {moved}\");\n}\n",
+   "out": "show: Ada\nshow: Ada\nr and r2 point at the same String: true\nmoved: Ada\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "reference.rs": {
+   "code": "fn main() {\n    let x: i32 = 42;\n    let r: &i32 = &x;\n\n    println!(\n        \"x is {} bytes, r is {} bytes\",\n        size_of::<i32>(),\n        size_of::<&i32>()\n    );\n    println!(\"*r: {}\", *r);\n    // ptr::eq asks whether two references hold the same address.\n    println!(\"r points at x itself: {}\", std::ptr::eq(r, &x));\n\n    // A Vec is a 24-byte header plus its elements on the heap.\n    // A reference to the Vec is one address, whatever the Vec holds.\n    let v: Vec<i32> = vec![1, 2, 3];\n    let rv: &Vec<i32> = &v;\n    println!(\"v: len {}, capacity {}\", v.len(), v.capacity());\n    println!(\n        \"v is {} bytes, rv is {} bytes\",\n        size_of::<Vec<i32>>(),\n        size_of::<&Vec<i32>>()\n    );\n    println!(\"rv points at v itself: {}\", std::ptr::eq(rv, &v));\n    println!(\"same elements on the heap: {}\", rv.as_ptr() == v.as_ptr());\n}\n",
+   "out": "x is 4 bytes, r is 8 bytes\n*r: 42\nr points at x itself: true\nv: len 3, capacity 3\nv is 24 bytes, rv is 8 bytes\nrv points at v itself: true\nsame elements on the heap: true\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "scope-extent.rs": {
+   "code": "struct Noisy(&'static str);\n\nimpl Drop for Noisy {\n    fn drop(&mut self) {\n        println!(\"  dropping {}\", self.0);\n    }\n}\n\nfn main() {\n    let outer = Noisy(\"outer\");\n    let r = &outer;\n    println!(\"r points at outer: {}\", std::ptr::eq(r, &outer));\n    println!(\"using r: {}\", r.0);\n    println!(\"the borrow of outer is over; outer lives on\");\n\n    {\n        let inner = Noisy(\"inner\");\n        let r2 = &inner;\n        println!(\"using r2: {}\", r2.0);\n        println!(\"end of the inner block\");\n    }\n    println!(\"after the inner block\");\n}\n",
+   "out": "r points at outer: true\nusing r: outer\nthe borrow of outer is over; outer lives on\nusing r2: inner\nend of the inner block\n  dropping inner\nafter the inner block\n  dropping outer\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "signatures.rs": {
+   "code": "fn largest(xs: &[i32]) -> i32 {\n    let mut best = xs[0];\n    for x in xs {\n        if *x > best {\n            best = *x;\n        }\n    }\n    best\n}\n\nfn is_greeting(text: &str) -> bool {\n    text.starts_with(\"hello\")\n}\n\n// This function makes something new, so it returns an owned String.\nfn shout(text: &str) -> String {\n    let mut out = text.to_uppercase();\n    out.push('!');\n    out\n}\n\nfn main() {\n    let list = vec![4, 9, 2];\n    let array = [7, 1, 8];\n    println!(\"largest(&list): {}\", largest(&list));\n    println!(\"largest(&array): {}\", largest(&array));\n    println!(\"largest(&list[1..]): {}\", largest(&list[1..]));\n\n    let owned = String::from(\"hello world\");\n    println!(\"is_greeting(&owned): {}\", is_greeting(&owned));\n    println!(\"is_greeting(\\\"goodbye\\\"): {}\", is_greeting(\"goodbye\"));\n    println!(\"is_greeting(&owned[..5]): {}\", is_greeting(&owned[..5]));\n\n    let loud = shout(\"hello\");\n    println!(\"shout(\\\"hello\\\"): {loud}\");\n    println!(\"owned is still ours: {owned}\");\n}\n",
+   "out": "largest(&list): 9\nlargest(&array): 8\nlargest(&list[1..]): 9\nis_greeting(&owned): true\nis_greeting(\"goodbye\"): false\nis_greeting(&owned[..5]): true\nshout(\"hello\"): HELLO!\nowned is still ours: hello world\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "slices-view.rs": {
+   "code": "fn main() {\n    let v = vec![10, 20, 30, 40];\n    let all: &[i32] = &v;\n    let tail: &[i32] = &v[1..];\n\n    println!(\"all: len {}\", all.len());\n    println!(\"tail: len {}\", tail.len());\n    println!(\n        \"tail starts {} bytes after all (one i32 is {} bytes)\",\n        tail.as_ptr() as usize - all.as_ptr() as usize,\n        size_of::<i32>()\n    );\n    println!(\n        \"each is {} bytes: an address and a length\",\n        size_of::<&[i32]>()\n    );\n    println!(\n        \"no copy: all starts where the Vec's elements start: {}\",\n        all.as_ptr() == v.as_ptr()\n    );\n}\n",
+   "out": "all: len 4\ntail: len 3\ntail starts 4 bytes after all (one i32 is 4 bytes)\neach is 16 bytes: an address and a length\nno copy: all starts where the Vec's elements start: true\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "string-param.fail.rs": {
+   "code": "fn is_greeting(text: &String) -> bool {\n    text.starts_with(\"hello\")\n}\n\nfn main() {\n    println!(\n        \"is_greeting(\\\"hello there\\\"): {}\",\n        is_greeting(\"hello there\")\n    );\n}\n",
+   "error": "error[E0308]: mismatched types\n --> src/main.rs:8:21\n  |\n8 |         is_greeting(\"hello there\")\n  |         ----------- ^^^^^^^^^^^^^ expected `&String`, found `&str`\n  |         |\n  |         arguments to this function are incorrect\n  |\n  = note: expected reference `&String`\n             found reference `&'static str`\nnote: function defined here\n --> src/main.rs:1:4\n  |\n1 | fn is_greeting(text: &String) -> bool {\n  |    ^^^^^^^^^^^ -------------\n",
+   "lang": "rust"
+  },
+  "through-ref.rs": {
+   "code": "fn main() {\n    let n = 5;\n    let r: &i32 = &n;\n\n    // Arithmetic works through one &.\n    println!(\"r + 1: {}\", r + 1);\n\n    // * follows the reference to the value. For a number that is a copy.\n    let copy: i32 = *r;\n    println!(\"*r: {copy}\");\n\n    // Comparing needs the same type on both sides.\n    println!(\"r == &5: {}\", r == &5);\n    println!(\"*r == 5: {}\", *r == 5);\n\n    // == on two references compares the values they point at, not the addresses.\n    let a = String::from(\"Ada\");\n    let b = String::from(\"Ada\");\n    println!(\"&a == &b: {}\", &a == &b);\n    println!(\"same address: {}\", std::ptr::eq(&a, &b));\n\n    // Printing shows the value, not the address.\n    println!(\"r printed: {r}\");\n\n    // Method calls follow the reference for you.\n    println!(\"r.pow(2): {}\", r.pow(2));\n    let rn: &String = &a;\n    println!(\"rn.len(): {}\", rn.len());\n}\n",
+   "out": "r + 1: 6\n*r: 5\nr == &5: true\n*r == 5: true\n&a == &b: true\nsame address: false\nr printed: 5\nr.pow(2): 25\nrn.len(): 3\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "vec-param.fail.rs": {
+   "code": "fn largest(xs: &Vec<i32>) -> i32 {\n    let mut best = xs[0];\n    for x in xs {\n        if *x > best {\n            best = *x;\n        }\n    }\n    best\n}\n\nfn main() {\n    let array = [7, 1, 8];\n    println!(\"largest(&array): {}\", largest(&array));\n}\n",
+   "error": "error[E0308]: mismatched types\n  --> src/main.rs:13:45\n   |\n13 |     println!(\"largest(&array): {}\", largest(&array));\n   |                                     ------- ^^^^^^ expected `&Vec<i32>`, found `&[{integer}; 3]`\n   |                                     |\n   |                                     arguments to this function are incorrect\n   |\n   = note: expected reference `&Vec<i32>`\n              found reference `&[{integer}; 3]`\nnote: function defined here\n  --> src/main.rs:1:4\n   |\n 1 | fn largest(xs: &Vec<i32>) -> i32 {\n   |    ^^^^^^^ -------------\n",
+   "lang": "rust"
+  },
+  "capacity-aliasing.go": {
+   "code": "package main\n\nimport \"fmt\"\n\n// grow appends and then writes to the first element.\nfunc grow(xs []int) {\n\txs = append(xs, 4)\n\txs[0] = 99\n}\n\nfunc main() {\n\tfull := make([]int, 3, 3)   // no spare room\n\troomy := make([]int, 3, 10) // room for more\n\tgrow(full)\n\tgrow(roomy)\n\tfmt.Println(\"full: \", full, \" cap\", cap(full))\n\tfmt.Println(\"roomy:\", roomy, \"cap\", cap(roomy))\n}\n",
+   "out": "full:  [0 0 0]  cap 3\nroomy: [99 0 0] cap 10\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "dangling.c": {
+   "code": "#include <stdio.h>\n\nint main(void) {\n    int *r;\n    {\n        int x = 5;\n        r = &x;\n    }\n    printf(\"*r = %d\\n\", *r); // x is out of scope here\n    return 0;\n}\n",
+   "warnings": "main.c: In function ‘main’:\nmain.c:9:5: warning: using dangling pointer ‘r’ to ‘x’ [-Wdangling-pointer=]\n    9 |     printf(\"*r = %d\\n\", *r); // x is out of scope here\n      |     ^~~~~~~~~~~~~~~~~~~~~~~\nmain.c:6:13: note: ‘x’ declared here\n    6 |         int x = 5;\n      |             ^",
+   "out": "*r = 5\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "escape.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc newCounter() *int {\n\tn := 0\n\treturn &n // n must outlive this call, so Go keeps it alive on the heap\n}\n\nfunc main() {\n\tp := newCounter()\n\t*p += 5\n\tfmt.Println(\"*p:\", *p)\n}\n",
+   "out": "*p: 5\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "nil-deref.crash.go": {
+   "code": "package main\n\nimport \"fmt\"\n\ntype Config struct{ Name string }\n\nfunc main() {\n\tvar p *Config // nil: it points at nothing\n\tfmt.Println(\"about to read p.Name\")\n\tfmt.Println(p.Name)\n}\n",
+   "out": "about to read p.Name\npanic: runtime error: invalid memory address or nil pointer dereference\n[signal SIGSEGV: segmentation violation code=0x1 addr=0x0 pc=0xa2024]\n\ngoroutine 1 [running]:\nmain.main()\n\tmain.go:10 +0x54\n",
+   "lang": "go",
+   "exit": 2
+  },
+  "readonly-alias.ts": {
+   "code": "const nums: number[] = [1, 2, 3];\nconst view: readonly number[] = nums; // view can't write...\nnums.push(4); // ...but another name for the same array can\nconsole.log(\"view:\", view);\n",
+   "out": "view: [ 1, 2, 3, 4 ]\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "span-escape.fail.cs": {
+   "code": "Span<int> Make()\n{\n    Span<int> s = stackalloc int[3];\n    return s; // points at memory that is gone when Make returns\n}\n\nConsole.WriteLine(Make().Length);\n",
+   "error": "Program.cs(4,12): error CS8352: Cannot use variable 's' in this context because it may expose referenced variables outside of their declaration scope",
+   "lang": "csharp"
+  },
+  "stale-pointer.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\ta := []int{7, 8, 9}\n\tp := &a[0]\n\ta = append(a, 10) // a is full, so append moves its data to a new array\n\t*p = 100          // ...but p still points into the old one\n\tfmt.Println(\"a[0] =\", a[0], \" *p =\", *p)\n}\n",
+   "out": "a[0] = 7  *p = 100\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "view-dangling.cpp": {
+   "code": "#include <iostream>\n#include <string>\n#include <string_view>\n\nint main() {\n    std::string_view view;\n    {\n        std::string name = \"Ada\";\n        view = name; // a view of name's characters\n    }\n    std::cout << \"view: \" << view << \"\\n\"; // name was destroyed above\n}\n",
+   "out": "view: Ada\n",
+   "lang": "cpp",
+   "exit": 0
+  }
+ },
+ "exercises": {
+  "count-matches": {
+   "starter": "/// How many items in `xs` equal `target`? Both are borrowed: the numbers are not copied\n/// into the function and nothing is used up.\nfn count_matches(xs: &[i32], target: &i32) -> usize {\n    todo!(\"for x in xs gives &i32 items; compare them with target, or compare *x with *target\")\n}\n\nfn main() {\n    let list = vec![4, 7, 4, 9, 4];\n\n    // A reference to a literal.\n    assert_eq!(count_matches(&list, &4), 3);\n    assert_eq!(count_matches(&list, &5), 0);\n\n    // A reference into the same Vec we are searching: two borrows alive at once.\n    assert_eq!(count_matches(&list, &list[1]), 1);\n    assert_eq!(count_matches(&list, &list[0]), 3);\n\n    // Part of the Vec, and an array.\n    assert_eq!(count_matches(&list[1..], &4), 2);\n    assert_eq!(count_matches(&[1, 1, 2], &1), 2);\n\n    // Nothing to search.\n    assert_eq!(count_matches(&[], &1), 0);\n\n    // The Vec was only borrowed.\n    assert_eq!(list.len(), 5);\n\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "/// How many items in `xs` equal `target`? Both are borrowed: the numbers are not copied\n/// into the function and nothing is used up.\nfn count_matches(xs: &[i32], target: &i32) -> usize {\n    let mut count = 0;\n    for x in xs {\n        if x == target {\n            count += 1;\n        }\n    }\n    count\n}\n\nfn main() {\n    let list = vec![4, 7, 4, 9, 4];\n\n    // A reference to a literal.\n    assert_eq!(count_matches(&list, &4), 3);\n    assert_eq!(count_matches(&list, &5), 0);\n\n    // A reference into the same Vec we are searching: two borrows alive at once.\n    assert_eq!(count_matches(&list, &list[1]), 1);\n    assert_eq!(count_matches(&list, &list[0]), 3);\n\n    // Part of the Vec, and an array.\n    assert_eq!(count_matches(&list[1..], &4), 2);\n    assert_eq!(count_matches(&[1, 1, 2], &1), 2);\n\n    // Nothing to search.\n    assert_eq!(count_matches(&[], &1), 0);\n\n    // The Vec was only borrowed.\n    assert_eq!(list.len(), 5);\n\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "count-words": {
+   "starter": "/// Count the words in `text`. Words are separated by any whitespace: spaces, tabs,\n/// newlines, or several in a row. The function only reads the text, so it must borrow it.\nfn count_words(text: &str) -> usize {\n    todo!(\"loop over text.split_whitespace() and count\")\n}\n\nfn main() {\n    // A &str literal works.\n    assert_eq!(count_words(\"the quick brown fox\"), 4);\n\n    // So does a borrowed String, and the String is still ours afterwards.\n    let line = String::from(\"  one \\t two\\nthree  \");\n    assert_eq!(count_words(&line), 3);\n    assert_eq!(line.len(), 19);\n\n    // So does part of a String.\n    assert_eq!(count_words(&line[6..]), 2);\n\n    // Nothing to count.\n    assert_eq!(count_words(\"\"), 0);\n    assert_eq!(count_words(\"   \\n\\t \"), 0);\n\n    // Not English: split_whitespace works on characters, not bytes.\n    assert_eq!(count_words(\"café crème 東京\"), 3);\n\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "/// Count the words in `text`. Words are separated by any whitespace: spaces, tabs,\n/// newlines, or several in a row. The function only reads the text, so it must borrow it.\nfn count_words(text: &str) -> usize {\n    let mut count = 0;\n    for _word in text.split_whitespace() {\n        count += 1;\n    }\n    count\n}\n\nfn main() {\n    // A &str literal works.\n    assert_eq!(count_words(\"the quick brown fox\"), 4);\n\n    // So does a borrowed String, and the String is still ours afterwards.\n    let line = String::from(\"  one \\t two\\nthree  \");\n    assert_eq!(count_words(&line), 3);\n    assert_eq!(line.len(), 19);\n\n    // So does part of a String.\n    assert_eq!(count_words(&line[6..]), 2);\n\n    // Nothing to count.\n    assert_eq!(count_words(\"\"), 0);\n    assert_eq!(count_words(\"   \\n\\t \"), 0);\n\n    // Not English: split_whitespace works on characters, not bytes.\n    assert_eq!(count_words(\"café crème 東京\"), 3);\n\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "report": {
+   "starter": "struct Player {\n    name: String,\n    scores: Vec<u32>,\n}\n\n/// The highest score, or 0 when there are none. Only reads the player.\nfn best(player: &Player) -> u32 {\n    todo!(\"loop over &player.scores and keep the largest\")\n}\n\n/// A line like \"ana: best 95 in 3 games\". Builds a new String and only reads the player.\nfn report(player: &Player) -> String {\n    todo!(\"call best(player), then format! the name, the best score and scores.len()\")\n}\n\nfn main() {\n    let ana = Player {\n        name: String::from(\"ana\"),\n        scores: vec![30, 95, 60],\n    };\n\n    // Reading the same player twice only works if report borrows it.\n    let first = report(&ana);\n    let second = report(&ana);\n    assert_eq!(first, \"ana: best 95 in 3 games\");\n    assert_eq!(first, second);\n\n    // And we can still use the player.\n    assert_eq!(ana.name, \"ana\");\n    assert_eq!(best(&ana), 95);\n\n    // A player with no scores.\n    let new = Player {\n        name: String::from(\"zoë\"),\n        scores: Vec::new(),\n    };\n    assert_eq!(best(&new), 0);\n    assert_eq!(report(&new), \"zoë: best 0 in 0 games\");\n\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "struct Player {\n    name: String,\n    scores: Vec<u32>,\n}\n\n/// The highest score, or 0 when there are none. Only reads the player.\nfn best(player: &Player) -> u32 {\n    let mut top = 0;\n    for score in &player.scores {\n        if *score > top {\n            top = *score;\n        }\n    }\n    top\n}\n\n/// A line like \"ana: best 95 in 3 games\". Builds a new String and only reads the player.\nfn report(player: &Player) -> String {\n    let top = best(player);\n    format!(\n        \"{}: best {} in {} games\",\n        player.name,\n        top,\n        player.scores.len()\n    )\n}\n\nfn main() {\n    let ana = Player {\n        name: String::from(\"ana\"),\n        scores: vec![30, 95, 60],\n    };\n\n    // Reading the same player twice only works if report borrows it.\n    let first = report(&ana);\n    let second = report(&ana);\n    assert_eq!(first, \"ana: best 95 in 3 games\");\n    assert_eq!(first, second);\n\n    // And we can still use the player.\n    assert_eq!(ana.name, \"ana\");\n    assert_eq!(best(&ana), 95);\n\n    // A player with no scores.\n    let new = Player {\n        name: String::from(\"zoë\"),\n        scores: Vec::new(),\n    };\n    assert_eq!(best(&new), 0);\n    assert_eq!(report(&new), \"zoë: best 0 in 0 games\");\n\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}

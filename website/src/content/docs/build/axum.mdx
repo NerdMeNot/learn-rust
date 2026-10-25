@@ -1,0 +1,115 @@
+---
+title: "An HTTP service with axum"
+description: "axum is a web framework for Rust, built on Tokio. You write plain async functions, and axum works out from their arguments what to pull out of each request."
+---
+
+import { Files, GuideGotcha, Remember, Session, Tree } from '../../../components/guide'
+
+axum is a web framework for Rust, built on Tokio. You write plain async functions, and axum works out from their arguments what to pull out of each request. On crates.io, on 25 October 2026, the "recent downloads" figure in its API was about 142 million for axum, against about 12 million for `actix-web`, 6.5 million for `warp` and 2.3 million for `rocket`. A download count includes every project that pulls the crate in indirectly, so it shows how often a framework is depended on, not how many people chose it.
+
+axum's [docs](https://docs.rs/axum/0.8.9/axum/) say it "is designed to work with tokio and hyper" (hyper is an HTTP library for Rust), and that runtime and transport layer independence "is not a goal, at least for the time being". The runtime is covered in [Async with Tokio](/build/tokio/), and futures themselves in [Async Basics](/learn/async-basics/). This page is about what axum adds.
+
+<Remember>A handler's arguments say what it needs from the request. Its return type says what goes back.</Remember>
+
+<Tree guide="axum" dir="rust" name="notes-api" title="Project layout" notes={{"src/bin/client.rs":"the client: cargo run --bin client","src/main.rs":"the server: cargo run","Cargo.lock":"created by Cargo","Cargo.toml":"dependencies go here"}} />
+
+Here's a small notes API with three routes, the kind you'd write on day one at work. It uses [serde](/build/serde/) for the JSON.
+
+<Files guide="axum" dir="rust" files={["Cargo.toml"]} />
+
+<Files guide="axum" dir="rust" files={["src/main.rs"]} />
+
+We started it and called it with `curl`. The port, 3000, is the number written in `main`. This is the real session:
+
+<Session guide="axum" run="server" />
+
+That last command is a second program in the same project, `src/bin/client.rs`. It calls the API with **reqwest**, whose [docs](https://docs.rs/reqwest/0.13.5/reqwest/) call it "a convenient, higher-level HTTP Client". Its `Client` is asynchronous and, the docs say, requires Tokio, so `client.rs` has its own `#[tokio::main]`:
+
+<Files guide="axum" dir="rust" files={["src/bin/client.rs"]} />
+
+- **Extractors** are the handler's arguments: `State` for shared data, `Path` for URL parts, `Json` for the body. The [docs](https://docs.rs/axum/0.8.9/axum/extract/index.html) define one as a type that implements `FromRequest` or `FromRequestParts`. They run from left to right, and when one fails axum answers for you. The typo request above got a `422` with a message naming the missing field. The Go version below saved an empty note for the same request.
+- **Return types** become responses: anything that implements `IntoResponse`. Here `Json<T>` is a 200 with JSON, `(StatusCode, Json<T>)` sets the status, and `Result<_, StatusCode>` lets you return errors like `404` (the next section shows each status). For an error type of your own, see [Errors in real apps](/build/app-errors/); for the `Result` and `?` basics, the [Errors](/learn/errors/) lesson.
+- **Shared state** is `Arc<Mutex<...>>` inside a struct that derives `Clone`. The docs say "State is cloned for every request. Wrapping your state in Arc makes those clones cheap." Every clone of the `Arc` points at the same notes. [Shared State](/learn/shared-state/) covers `Arc`, `Mutex` and why `lock()` returns a `Result` (the `.unwrap()`). The standard `Mutex` is fine here because no guard is held across an `.await`; [Async with Tokio](/build/tokio/#a-lock-held-across-an-await) shows what goes wrong when one is.
+- **Routes** use `{id}` for URL parameters, and `get(list).post(create)` puts two methods on one path.
+
+## What axum answers before your code runs
+
+Below is one fresh server and then nine `curl` calls to it, with `-w` printing the status and content type after the body. The first two show the success statuses. The rest are requests axum refuses itself:
+
+<Session guide="axum" run="status" />
+
+- `Path<u32>` could not parse `abc`: **400**.
+- The body was sent with no `application/json` content type: **415**. (curl labels a `-d` body as a form unless you pass `-H`; `man curl` says so under `-d`.)
+- Broken JSON is **400**, and valid JSON of the wrong shape is **422**. The [`Json` docs](https://docs.rs/axum/0.8.9/axum/struct.Json.html) list both cases, and the [`JsonRejection`](https://docs.rs/axum/0.8.9/axum/extract/rejection/enum.JsonRejection.html) type has a variant for each.
+- A method or path with no route gets **405** or **404**, with an empty body in this run. The `[405 ]` and `[404 ]` lines show a status and an empty content type: those responses carry no `Content-Type` header.
+- The final `GET` shows one note: the server kept the state between calls, and none of the refused requests got as far as `create`.
+
+These bodies are plain text. To answer differently, the extractor docs show how to take the extractor's `Result` yourself and handle the rejection.
+
+## The route syntax changed in 0.8
+
+axum 0.7 wrote `/notes/:id`. The [0.7.9 docs](https://docs.rs/axum/0.7.9/axum/struct.Router.html) show that form, and the 0.8.9 docs use `{id}`. If you copy a route from an older tutorial into this project, the program stops when it starts, before it serves anything. The number in parentheses is a thread id and can differ from run to run:
+
+<Session guide="axum" run="colon-route" />
+
+## Why does `list` call `.clone()`? Isn't cloning the thing to avoid?
+
+Cloning just to make the compiler stop complaining is a habit to avoid, so here is what the compiler is actually objecting to. The value `list` returns must not borrow from the lock guard, because the guard is dropped when `list` returns. This is the run with `Json(&*notes)` instead of `Json(notes.clone())`:
+
+<Session guide="axum" run="borrow-response" />
+
+There are two ways out. One is what `main.rs` does: clone the notes, so the response owns them, at the cost of a copy of every note on each call. The other is to turn the borrow into a `Response` before returning, with `Json(&*notes).into_response()`, which serializes the notes while the lock is still held and copies none. This is the run of that version, which compiles and answers the same way:
+
+<Session guide="axum" run="into-response" />
+
+Go's version holds its lock until `list` returns too, and that includes writing the response (`defer a.mu.Unlock()`).
+
+## The same service in Go
+
+<Files guide="axum" dir="go" files={["main.go","client/main.go"]} run="go" lang="go" />
+
+Go's standard library has the server and the client (`net/http`). The decoder leaves a missing field at its zero value, so the typo request returned `201` and saved a note with empty text. In Go you would write that check yourself, where axum's `Json<NewNote>` refuses the request before `create` runs.
+
+## When a handler will not compile
+
+For a function to be a handler, the [`Handler` docs](https://docs.rs/axum/0.8.9/axum/handler/index.html) list the rules: it is an `async fn`, takes at most 16 arguments that implement `Send`, all but the last argument implement `FromRequestParts` and the last implements `FromRequest`, it returns something that implements `IntoResponse`, and "Returns a future that is `Send`." The same page says the most common way to break the last rule is to hold a `!Send` type across an `.await` ([Send and Sync](/learn/send-sync/) explains the trait). Break a rule and you may get a long `Handler<_, _>` error like the one in the gotcha below; I ran only the argument-order case. The `macros` feature adds `#[axum::debug_handler]`, which generates better error messages for the function it is on. This is the gotcha's code with the attribute added, and the feature turned on in `Cargo.toml`:
+
+<Files guide="axum" dir="debug" files={["Cargo.toml"]} />
+
+<Session guide="axum" run="debug-handler" />
+
+The attribute's message is the first error, in plain words. The long `Handler` error still comes after it in this run.
+
+## The same job in your language
+
+Only the Go service was run on this page. The other rows name some options, with a link to each one's docs or site, and nothing in them was run.
+
+| Language | Web server | HTTP client | Ships with the language |
+| --- | --- | --- | --- |
+| Go | [`net/http`](https://pkg.go.dev/net/http) | `net/http` | both, in the standard library |
+| Python | [FastAPI](https://fastapi.tiangolo.com/), [Flask](https://flask.palletsprojects.com/) | [httpx](https://www.python-httpx.org/), [requests](https://requests.readthedocs.io/) | [`http.server`](https://docs.python.org/3/library/http.server.html), which its docs say is "not recommended for production", and [`urllib.request`](https://docs.python.org/3/library/urllib.request.html) |
+| TypeScript | [Express](https://expressjs.com/), [Fastify](https://fastify.dev/), [Hono](https://hono.dev/) | [`fetch`](https://nodejs.org/docs/latest-v24.x/api/globals.html) | Node's [`http`](https://nodejs.org/docs/latest-v24.x/api/http.html) module and its global `fetch` |
+| Java | [Spring Boot](https://spring.io/projects/spring-boot) | [`HttpClient`](https://docs.oracle.com/en/java/javase/25/docs/api/java.net.http/java/net/http/HttpClient.html) | the client, and a [small server](https://docs.oracle.com/en/java/javase/25/docs/api/jdk.httpserver/com/sun/net/httpserver/package-summary.html) in the JDK |
+| Kotlin | [Ktor](https://ktor.io/docs/welcome.html), [Spring Boot](https://spring.io/projects/spring-boot) | [Ktor client](https://ktor.io/docs/client-create-and-configure.html) | on the JVM, the JDK ones in the Java row |
+| C# | [ASP.NET Core](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/minimal-apis/overview) | [`HttpClient`](https://learn.microsoft.com/en-us/dotnet/fundamentals/networking/http/httpclient) | `HttpClient` is in .NET; ASP.NET Core is Microsoft's web framework for .NET |
+| C | [libmicrohttpd](https://www.gnu.org/software/libmicrohttpd/) | [libcurl](https://curl.se/libcurl/) | neither |
+| C++ | [Drogon](https://github.com/drogonframework/drogon), [Crow](https://github.com/CrowCpp/Crow) | [cpr](https://github.com/libcpr/cpr), [libcurl](https://curl.se/libcurl/) | neither |
+| Rust | [axum](https://docs.rs/axum/0.8.9/axum/) | [reqwest](https://docs.rs/reqwest/0.13.5/reqwest/) | neither: both are crates |
+
+## Try it yourself
+
+I did all three in the image behind this page. The third one used the gotcha's smaller project, which has one route.
+
+1. **Break the id.** `curl localhost:3000/notes/abc` answers `400` with "Cannot parse `abc` to a `u32`" and a plain-text body, as the status session shows. `get_one` never ran: `Path<u32>` refused the request first.
+2. **Use the old route syntax.** Change `{id}` to `:id` in `main.rs` and run it. The program panics at startup with a message that tells you to use `{capture}`.
+3. **Ask for a clearer error.** In the gotcha's one-route project (the body is first there), add `features = ["macros"]` to the `axum` line and `#[axum::debug_handler]` above `create`. The first error now says the body extractor must be last.
+
+## Read more
+
+- [axum on docs.rs](https://docs.rs/axum/0.8.9/axum/): the overview, with routing, handlers, extractors, responses and state in one page.
+- [Extractors, and the order they run in](https://docs.rs/axum/0.8.9/axum/extract/index.html#the-order-of-extractors), and [how to handle a rejection yourself](https://docs.rs/axum/0.8.9/axum/extract/index.html#handling-extractor-rejections).
+- [Sharing state with handlers](https://docs.rs/axum/0.8.9/axum/#sharing-state-with-handlers) and the [`State` extractor](https://docs.rs/axum/0.8.9/axum/extract/struct.State.html).
+- [`#[debug_handler]`](https://docs.rs/axum/0.8.9/axum/attr.debug_handler.html) and [`Router::route`](https://docs.rs/axum/0.8.9/axum/struct.Router.html) (captures and wildcards).
+- [axum's examples](https://github.com/tokio-rs/axum/tree/main/examples) in its repository.
+
+<GuideGotcha guide="axum" />

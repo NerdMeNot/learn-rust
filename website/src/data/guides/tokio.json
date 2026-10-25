@@ -1,0 +1,209 @@
+{
+ "id": "tokio",
+ "files": {
+  "go": {
+   "go.mod": "module async-basics\n\ngo 1.27\n",
+   "main.go": "package main\n\nimport (\n\t\"context\"\n\t\"fmt\"\n\t\"time\"\n)\n\nfunc fetch(ctx context.Context, name string, ms int) (string, error) {\n\tselect {\n\tcase <-time.After(time.Duration(ms) * time.Millisecond):\n\t\treturn fmt.Sprintf(\"%s done after %dms\", name, ms), nil\n\tcase <-ctx.Done():\n\t\treturn \"\", ctx.Err()\n\t}\n}\n\nfunc main() {\n\tctx := context.Background()\n\n\tusers := make(chan string, 1)\n\torders := make(chan string, 1)\n\tgo func() { r, _ := fetch(ctx, \"users\", 30); users <- r }()\n\tgo func() { r, _ := fetch(ctx, \"orders\", 10); orders <- r }()\n\tfmt.Println(<-users)\n\tfmt.Println(<-orders)\n\n\tleft := make(chan string, 1)\n\tright := make(chan string, 1)\n\tgo func() { r, _ := fetch(ctx, \"left\", 20); left <- r }()\n\tgo func() { r, _ := fetch(ctx, \"right\", 20); right <- r }()\n\tfmt.Println(<-left, \"/\", <-right)\n\n\ttctx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)\n\tdefer cancel()\n\tif r, err := fetch(tctx, \"slow\", 500); err != nil {\n\t\tfmt.Println(\"slow call timed out\")\n\t} else {\n\t\tfmt.Println(r)\n\t}\n}\n"
+  },
+  "gotcha": {
+   "fixed.rs": "use std::sync::{Arc, Mutex};\nuse std::time::Duration;\n\n#[tokio::main]\nasync fn main() {\n    let hits = Arc::new(Mutex::new(0));\n    let h = Arc::clone(&hits);\n    tokio::spawn(async move {\n        tokio::time::sleep(Duration::from_millis(10)).await; // wait first\n        *h.lock().unwrap() += 1; // then lock, change, unlock, all on one line\n    })\n    .await\n    .unwrap();\n    println!(\"{}\", hits.lock().unwrap());\n}\n",
+   "main.rs": "use std::sync::{Arc, Mutex};\nuse std::time::Duration;\n\n#[tokio::main]\nasync fn main() {\n    let hits = Arc::new(Mutex::new(0));\n    let h = Arc::clone(&hits);\n    tokio::spawn(async move {\n        let mut n = h.lock().unwrap();\n        tokio::time::sleep(Duration::from_millis(10)).await; // still holding the lock\n        *n += 1;\n    })\n    .await\n    .unwrap();\n    println!(\"{}\", hits.lock().unwrap());\n}\n"
+  },
+  "gotcha-cs": {
+   "Program.cs": "using System;\nusing System.Threading.Tasks;\n\nvar gate = new object();\nvar hits = 0;\nawait Task.Run(async () =>\n{\n    lock (gate)\n    {\n        await Task.Delay(10); // still holding the lock\n        hits++;\n    }\n});\nConsole.WriteLine(hits);\n",
+   "cs.sh": "#!/bin/bash\n# build one C# file the way the lessons do (inside the image's restored project), and run it\nrm -rf /tmp/cs && cp -r /opt/templates/csharp /tmp/cs && cp \"$1\" /tmp/cs/Program.cs\ncd /tmp/cs\nif ! out=$(dotnet build --no-restore -v q -nologo -clp:NoSummary 2>&1); then\n  echo \"$out\" | grep ' error ' | sed -e 's# \\[/tmp/cs/[^]]*\\]##' -e 's#/tmp/cs/##' | sort -u\n  exit 1\nfi\ndotnet bin/Debug/net10.0/Program.dll\n"
+  },
+  "gotcha-go": {
+   "go.mod": "module lock-across-sleep\n\ngo 1.27\n",
+   "main.go": "package main\n\nimport (\n\t\"fmt\"\n\t\"sync\"\n\t\"time\"\n)\n\nfunc main() {\n\tvar mu sync.Mutex\n\thits := 0\n\tdone := make(chan bool)\n\tgo func() {\n\t\tmu.Lock()\n\t\ttime.Sleep(10 * time.Millisecond) // still holding the lock\n\t\thits++\n\t\tmu.Unlock()\n\t\tdone <- true\n\t}()\n\t<-done\n\tfmt.Println(hits)\n}\n"
+  },
+  "langs": {
+   "cs/cs.sh": "#!/bin/bash\n# build one C# file the way the lessons do (inside the image's restored project), and run it\nrm -rf /tmp/cs && cp -r /opt/templates/csharp /tmp/cs && cp \"$1\" /tmp/cs/Program.cs\ncd /tmp/cs\nif ! out=$(dotnet build --no-restore -v q -nologo -clp:NoSummary 2>&1); then\n  echo \"$out\" | grep ' error ' | sed -e 's# \\[/tmp/cs/[^]]*\\]##' -e 's#/tmp/cs/##' | sort -u\n  exit 1\nfi\ndotnet bin/Debug/net10.0/Program.dll\n",
+   "cs/fetch.cs": "using System;\nusing System.Threading.Tasks;\n\nstatic async Task<string> Fetch(string name, int ms)\n{\n    await Task.Delay(ms);\n    return $\"{name} done after {ms}ms\";\n}\n\n// a Task is already running when you get it\nvar users = Fetch(\"users\", 30);\nvar orders = Fetch(\"orders\", 10);\nConsole.WriteLine(await users);\nConsole.WriteLine(await orders);\n\nvar both = await Task.WhenAll(Fetch(\"left\", 20), Fetch(\"right\", 20));\nConsole.WriteLine($\"{both[0]} / {both[1]}\");\n\ntry\n{\n    Console.WriteLine(await Fetch(\"slow\", 500).WaitAsync(TimeSpan.FromMilliseconds(50)));\n}\ncatch (TimeoutException)\n{\n    Console.WriteLine(\"slow call timed out\");\n}\n",
+   "java/Main.java": "import java.util.concurrent.CompletableFuture;\nimport java.util.concurrent.ExecutionException;\nimport java.util.concurrent.TimeUnit;\nimport java.util.concurrent.TimeoutException;\n\npublic class Main {\n    static String fetch(String name, int ms) {\n        try {\n            Thread.sleep(ms);\n        } catch (InterruptedException e) {\n            throw new RuntimeException(e);\n        }\n        return name + \" done after \" + ms + \"ms\";\n    }\n\n    public static void main(String[] args) throws Exception {\n        var users = CompletableFuture.supplyAsync(() -> fetch(\"users\", 30));\n        var orders = CompletableFuture.supplyAsync(() -> fetch(\"orders\", 10));\n        System.out.println(users.get());\n        System.out.println(orders.get());\n\n        var left = CompletableFuture.supplyAsync(() -> fetch(\"left\", 20));\n        var right = CompletableFuture.supplyAsync(() -> fetch(\"right\", 20));\n        System.out.println(left.get() + \" / \" + right.get());\n\n        try {\n            var slow = CompletableFuture.supplyAsync(() -> fetch(\"slow\", 500))\n                    .orTimeout(50, TimeUnit.MILLISECONDS);\n            System.out.println(slow.get());\n        } catch (ExecutionException e) {\n            if (e.getCause() instanceof TimeoutException) {\n                System.out.println(\"slow call timed out\");\n            } else {\n                throw e;\n            }\n        }\n    }\n}\n",
+   "kt/fetch.kt": "import kotlinx.coroutines.*\n\nsuspend fun fetch(name: String, ms: Long): String {\n    delay(ms)\n    return \"$name done after ${ms}ms\"\n}\n\nfun main() = runBlocking {\n    val users = async { fetch(\"users\", 30) }\n    val orders = async { fetch(\"orders\", 10) }\n    println(users.await())\n    println(orders.await())\n\n    val (left, right) = listOf(async { fetch(\"left\", 20) }, async { fetch(\"right\", 20) }).awaitAll()\n    println(\"$left / $right\")\n\n    println(withTimeoutOrNull(50) { fetch(\"slow\", 500) } ?: \"slow call timed out\")\n}\n",
+   "py/fetch.py": "import asyncio\n\n\nasync def fetch(name, ms):\n    try:\n        await asyncio.sleep(ms / 1000)\n    except asyncio.CancelledError:\n        print(f\"({name} was cancelled)\")\n        raise\n    return f\"{name} done after {ms}ms\"\n\n\nasync def main():\n    users = asyncio.create_task(fetch(\"users\", 30))\n    orders = asyncio.create_task(fetch(\"orders\", 10))\n    print(await users)\n    print(await orders)\n\n    left, right = await asyncio.gather(fetch(\"left\", 20), fetch(\"right\", 20))\n    print(left, \"/\", right)\n\n    try:\n        print(await asyncio.wait_for(fetch(\"slow\", 500), timeout=0.05))\n    except TimeoutError:\n        print(\"slow call timed out\")\n\n\nasyncio.run(main())\n",
+   "ts/fetch.ts": "const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));\n\nasync function fetchData(name: string, ms: number): Promise<string> {\n  await sleep(ms);\n  if (ms >= 500) console.log(\"(slow finished anyway, nobody was waiting)\");\n  return `${name} done after ${ms}ms`;\n}\n\nasync function main() {\n  // a promise is already running when you get it\n  const users = fetchData(\"users\", 30);\n  const orders = fetchData(\"orders\", 10);\n  console.log(await users);\n  console.log(await orders);\n\n  const [left, right] = await Promise.all([fetchData(\"left\", 20), fetchData(\"right\", 20)]);\n  console.log(left, \"/\", right);\n\n  const deadline = new Promise<string>((resolve) => setTimeout(() => resolve(\"slow call timed out\"), 50));\n  console.log(await Promise.race([fetchData(\"slow\", 500), deadline]));\n}\n\nmain();\n"
+  },
+  "rust": {
+   "Cargo.lock": "# This file is automatically @generated by Cargo.\n# It is not intended for manual editing.\nversion = 4\n\n[[package]]\nname = \"async-basics\"\nversion = \"0.1.0\"\ndependencies = [\n \"tokio\",\n]\n\n[[package]]\nname = \"bitflags\"\nversion = \"2.13.2\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06\"\n\n[[package]]\nname = \"bytes\"\nversion = \"1.12.1\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04\"\n\n[[package]]\nname = \"cfg-if\"\nversion = \"1.0.5\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600\"\n\n[[package]]\nname = \"errno\"\nversion = \"0.3.14\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb\"\ndependencies = [\n \"libc\",\n \"windows-sys\",\n]\n\n[[package]]\nname = \"libc\"\nversion = \"0.2.191\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a\"\n\n[[package]]\nname = \"lock_api\"\nversion = \"0.4.14\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"224399e74b87b5f3557511d98dff8b14089b3dadafcab6bb93eab67d3aace965\"\ndependencies = [\n \"scopeguard\",\n]\n\n[[package]]\nname = \"mio\"\nversion = \"1.2.4\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"1788edb87fdc09c7e26304471e2f5be8cdefb1b6930d6e3985fc02ff53bf86ee\"\ndependencies = [\n \"libc\",\n \"wasi\",\n \"windows-sys\",\n]\n\n[[package]]\nname = \"parking_lot\"\nversion = \"0.12.5\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"93857453250e3077bd71ff98b6a65ea6621a19bb0f559a85248955ac12c45a1a\"\ndependencies = [\n \"lock_api\",\n \"parking_lot_core\",\n]\n\n[[package]]\nname = \"parking_lot_core\"\nversion = \"0.9.12\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"2621685985a2ebf1c516881c026032ac7deafcda1a2c9b7850dc81e3dfcb64c1\"\ndependencies = [\n \"cfg-if\",\n \"libc\",\n \"redox_syscall\",\n \"smallvec\",\n \"windows-link\",\n]\n\n[[package]]\nname = \"pin-project-lite\"\nversion = \"0.2.17\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd\"\n\n[[package]]\nname = \"proc-macro2\"\nversion = \"1.0.107\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9\"\ndependencies = [\n \"unicode-ident\",\n]\n\n[[package]]\nname = \"quote\"\nversion = \"1.0.47\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"1fbf4db142a473a8d80c26bbf18454ed458bf8d26c8219c331daecfdbd079001\"\ndependencies = [\n \"proc-macro2\",\n]\n\n[[package]]\nname = \"redox_syscall\"\nversion = \"0.5.18\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"ed2bf2547551a7053d6fdfafda3f938979645c44812fbfcda098faae3f1a362d\"\ndependencies = [\n \"bitflags\",\n]\n\n[[package]]\nname = \"scopeguard\"\nversion = \"1.2.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49\"\n\n[[package]]\nname = \"signal-hook-registry\"\nversion = \"1.4.8\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"c4db69cba1110affc0e9f7bcd48bbf87b3f4fc7c61fc9155afd4c469eb3d6c1b\"\ndependencies = [\n \"errno\",\n \"libc\",\n]\n\n[[package]]\nname = \"smallvec\"\nversion = \"1.16.4\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"d0d5d4b1981b8bbbb7aed204cae5726d683d5d6ac7e74ec54122ea28f315e7c8\"\n\n[[package]]\nname = \"socket2\"\nversion = \"0.6.5\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4\"\ndependencies = [\n \"libc\",\n \"windows-sys\",\n]\n\n[[package]]\nname = \"syn\"\nversion = \"3.0.9\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"d78c8dee4c7bf0e14673097256fed6142ce9d3b85a408189d07482442145823b\"\ndependencies = [\n \"proc-macro2\",\n \"quote\",\n \"unicode-ident\",\n]\n\n[[package]]\nname = \"tokio\"\nversion = \"1.54.1\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"b52fd3255258d26fac7264ab5a76b53c13367136dc011d3d6ad4f8ed070396a3\"\ndependencies = [\n \"bytes\",\n \"libc\",\n \"mio\",\n \"parking_lot\",\n \"pin-project-lite\",\n \"signal-hook-registry\",\n \"socket2\",\n \"tokio-macros\",\n \"windows-sys\",\n]\n\n[[package]]\nname = \"tokio-macros\"\nversion = \"2.7.2\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"78773a2a397f451582ce068015985c33193cf6dea8b74d2a639fe457b2f07b0e\"\ndependencies = [\n \"proc-macro2\",\n \"quote\",\n \"syn\",\n]\n\n[[package]]\nname = \"unicode-ident\"\nversion = \"1.0.27\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563\"\n\n[[package]]\nname = \"wasi\"\nversion = \"0.11.1+wasi-snapshot-preview1\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"ccf3ec651a847eb01de73ccad15eb7d99f80485de043efb2f370cd654f4ea44b\"\n\n[[package]]\nname = \"windows-link\"\nversion = \"0.2.1\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"f0805222e57f7521d6a62e36fa9163bc891acd422f971defe97d64e70d0a4fe5\"\n\n[[package]]\nname = \"windows-sys\"\nversion = \"0.61.2\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"ae137229bcbd6cdf0f7b80a31df61766145077ddf49416a728b02cb3921ff3fc\"\ndependencies = [\n \"windows-link\",\n]\n",
+   "Cargo.toml": "[package]\nname = \"async-basics\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\ntokio = { version = \"1.54.1\", features = [\"full\"] }\n",
+   "src/main.rs": "use std::time::Duration;\nuse tokio::time::{sleep, timeout};\n\nasync fn fetch(name: &str, ms: u64) -> String {\n    sleep(Duration::from_millis(ms)).await; // pretend this is network work\n    format!(\"{name} done after {ms}ms\")\n}\n\n#[tokio::main]\nasync fn main() {\n    // run two tasks at the same time, then wait for each\n    let users = tokio::spawn(fetch(\"users\", 30));\n    let orders = tokio::spawn(fetch(\"orders\", 10));\n    println!(\"{}\", users.await.unwrap());\n    println!(\"{}\", orders.await.unwrap());\n\n    // join! runs both at once without spawning tasks\n    let (left, right) = tokio::join!(fetch(\"left\", 20), fetch(\"right\", 20));\n    println!(\"{left} / {right}\");\n\n    // give up after a deadline, like context.WithTimeout in Go\n    match timeout(Duration::from_millis(50), fetch(\"slow\", 500)).await {\n        Ok(result) => println!(\"{result}\"),\n        Err(_) => println!(\"slow call timed out\"),\n    }\n}\n"
+  },
+  "snippet-handles": {
+   "src/main.rs": "use std::num::ParseIntError;\nuse std::time::Duration;\nuse tokio::sync::oneshot;\nuse tokio::time::sleep;\n\n// `?` works in an async fn that returns a Result, as in any other fn.\nasync fn double(text: &str) -> Result<u32, ParseIntError> {\n    let n: u32 = text.parse()?;\n    sleep(Duration::from_millis(5)).await;\n    Ok(n * 2)\n}\n\n#[tokio::main]\nasync fn main() {\n    // A JoinHandle gives back Result<T, JoinError>. Here T is itself a Result.\n    let good = tokio::spawn(double(\"21\"));\n    let bad = tokio::spawn(double(\"x21\"));\n    println!(\"good: {:?}\", good.await);\n    println!(\"bad:  {:?}\", bad.await);\n\n    // A panic inside a task ends that task, not the program.\n    let crash = tokio::spawn(async {\n        let nothing: Option<u32> = None;\n        nothing.unwrap()\n    });\n    let error = crash.await.unwrap_err();\n    println!(\"panicked: {}, cancelled: {}\", error.is_panic(), error.is_cancelled());\n\n    // abort() cancels a task from outside.\n    let sleeper = tokio::spawn(sleep(Duration::from_secs(3600)));\n    sleeper.abort();\n    let error = sleeper.await.unwrap_err();\n    println!(\"panicked: {}, cancelled: {}\", error.is_panic(), error.is_cancelled());\n\n    // Dropping the handle does not stop the task.\n    let (done, finished) = oneshot::channel();\n    drop(tokio::spawn(async move {\n        println!(\"task: still running after its handle was dropped\");\n        done.send(()).unwrap();\n    }));\n    finished.await.unwrap();\n}\n"
+  },
+  "snippet-mutex-hang": {
+   "src/main.rs": "use std::sync::Mutex;\nuse std::time::Duration;\nuse tokio::time::sleep;\n\n// One thread runs everything, so there is no `spawn` and no `Send` check.\n#[tokio::main(flavor = \"current_thread\")]\nasync fn main() {\n    let lock = Mutex::new(0);\n\n    let holder = async {\n        let mut n = lock.lock().unwrap();\n        println!(\"holder: has the lock, now waits\");\n        sleep(Duration::from_millis(10)).await;\n        *n += 1;\n        println!(\"holder: done\");\n    };\n    let asker = async {\n        println!(\"asker: asks for the lock\");\n        let n = lock.lock().unwrap(); // blocks the only thread\n        println!(\"asker: got it, value {}\", *n);\n    };\n\n    tokio::join!(holder, asker);\n}\n"
+  },
+  "snippet-select": {
+   "src/main.rs": "use std::time::Duration;\nuse tokio::sync::{mpsc, oneshot};\nuse tokio::time::sleep;\n\n// Takes an item off the channel, then waits before handing it over.\nasync fn slow_next(rx: &mut mpsc::Receiver<u32>) -> Option<u32> {\n    let item = rx.recv().await?;\n    sleep(Duration::from_millis(20)).await;\n    Some(item)\n}\n\n// A channel already holding 1, 2 and 3.\nfn filled() -> mpsc::Receiver<u32> {\n    let (tx, rx) = mpsc::channel(3);\n    for n in 1..=3 {\n        tx.try_send(n).unwrap();\n    }\n    rx\n}\n\n// A stop signal that is already sent.\nfn stop_now() -> oneshot::Receiver<()> {\n    let (stop, stopped) = oneshot::channel();\n    stop.send(()).unwrap();\n    stopped\n}\n\n#[tokio::main]\nasync fn main() {\n    // `biased;` polls the branches in the order written, so the result is the same every run.\n    let mut rx = filled();\n    tokio::select! {\n        biased;\n        item = slow_next(&mut rx) => println!(\"slow_next gave {item:?}\"),\n        _ = stop_now() => println!(\"stop won, slow_next was dropped\"),\n    }\n    let mut left = Vec::new();\n    while let Ok(n) = rx.try_recv() {\n        left.push(n);\n    }\n    println!(\"left in the channel: {left:?}\");\n\n    // The same race with `recv` itself, which Tokio documents as cancellation safe.\n    let (tx, mut rx) = mpsc::channel::<u32>(1);\n    tokio::select! {\n        biased;\n        item = rx.recv() => println!(\"recv gave {item:?}\"),\n        _ = stop_now() => println!(\"stop won, recv was dropped\"),\n    }\n    tx.send(7).await.unwrap();\n    println!(\"the next recv gives {:?}\", rx.recv().await);\n}\n"
+  },
+  "snippet-tokio-mutex": {
+   "src/main.rs": "use std::sync::Arc;\nuse std::time::Duration;\nuse tokio::sync::Mutex;\nuse tokio::time::sleep;\n\n#[tokio::main]\nasync fn main() {\n    // The program from the gotcha, with Tokio's Mutex: this one compiles, even with `spawn`.\n    let hits = Arc::new(Mutex::new(0));\n    let h = Arc::clone(&hits);\n    tokio::spawn(async move {\n        let mut n = h.lock().await;\n        sleep(Duration::from_millis(10)).await; // holding the lock across an await is what it is for\n        *n += 1;\n    })\n    .await\n    .unwrap();\n    println!(\"hits: {}\", hits.lock().await);\n\n    // The holder/asker from the previous run: the asker waits its turn and nothing hangs.\n    let lock = Mutex::new(0);\n    let holder = async {\n        let mut n = lock.lock().await;\n        println!(\"holder: has the lock, now waits\");\n        sleep(Duration::from_millis(10)).await;\n        *n += 1;\n        println!(\"holder: done\");\n    };\n    let asker = async {\n        println!(\"asker: asks for the lock\");\n        let n = lock.lock().await;\n        println!(\"asker: got it, value {}\", *n);\n    };\n    tokio::join!(holder, asker);\n}\n"
+  }
+ },
+ "sessions": {
+  "run": [
+   {
+    "show": "$ cargo run",
+    "out": "users done after 30ms\norders done after 10ms\nleft done after 20ms / right done after 20ms\nslow call timed out\n",
+    "exit": 0
+   }
+  ],
+  "go": [
+   {
+    "show": "$ go run .",
+    "out": "users done after 30ms\norders done after 10ms\nleft done after 20ms / right done after 20ms\nslow call timed out\n",
+    "exit": 0
+   }
+  ],
+  "lock-across-await": [
+   {
+    "show": "$ cargo build",
+    "out": "error: future cannot be sent between threads safely\n   --> src/main.rs:8:5\n    |\n  8 | /     tokio::spawn(async move {\n  9 | |         let mut n = h.lock().unwrap();\n 10 | |         tokio::time::sleep(Duration::from_millis(10)).await; // still holding the lock\n 11 | |         *n += 1;\n 12 | |     })\n    | |______^ future created by async block is not `Send`\n    |\n    = help: within `{async block@src/main.rs:8:18: 8:28}`, the trait `Send` is not implemented for `std::sync::MutexGuard<'_, i32>`\nnote: future is not `Send` as this value is used across an await\n   --> src/main.rs:10:55\n    |\n  9 |         let mut n = h.lock().unwrap();\n    |             ----- has type `std::sync::MutexGuard<'_, i32>` which is not `Send`\n 10 |         tokio::time::sleep(Duration::from_millis(10)).await; // still holding the lock\n    |                                                       ^^^^^ await occurs here, with `mut n` maybe used later\n  ... (notes pointing into library source code trimmed)\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "lock-after-await": [
+   {
+    "show": "$ cargo run",
+    "out": "1\n",
+    "exit": 0
+   }
+  ],
+  "go-lock": [
+   {
+    "show": "$ go run .",
+    "out": "1\n",
+    "exit": 0
+   }
+  ],
+  "handles": [
+   {
+    "show": "$ cargo run 2>/dev/null",
+    "out": "good: Ok(Ok(42))\nbad:  Ok(Err(ParseIntError { kind: InvalidDigit }))\npanicked: true, cancelled: false\npanicked: false, cancelled: true\ntask: still running after its handle was dropped\n",
+    "exit": 0
+   }
+  ],
+  "select": [
+   {
+    "show": "$ cargo run",
+    "out": "stop won, slow_next was dropped\nleft in the channel: [2, 3]\nstop won, recv was dropped\nthe next recv gives Some(7)\n",
+    "exit": 0
+   }
+  ],
+  "mutex-hang": [
+   {
+    "show": "$ cargo build",
+    "out": "",
+    "exit": 0
+   },
+   {
+    "show": "$ timeout 3 target/debug/async-basics; echo \"exit code $?\"",
+    "out": "holder: has the lock, now waits\nasker: asks for the lock\nexit code 124\n",
+    "exit": 0
+   }
+  ],
+  "tokio-mutex": [
+   {
+    "show": "$ cargo run",
+    "out": "hits: 1\nholder: has the lock, now waits\nasker: asks for the lock\nholder: done\nasker: got it, value 1\n",
+    "exit": 0
+   }
+  ],
+  "try": [
+   {
+    "show": "$ sed -i 's/from_millis(50)/from_millis(600)/' src/main.rs",
+    "out": "",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo run",
+    "out": "users done after 30ms\norders done after 10ms\nleft done after 20ms / right done after 20ms\nslow done after 500ms\n",
+    "exit": 0
+   }
+  ],
+  "try-one-thread": [
+   {
+    "show": "$ sed -i 's/#\\[tokio::main\\]/#[tokio::main(flavor = \"current_thread\")]/' src/main.rs",
+    "out": "",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo run",
+    "out": "users done after 30ms\norders done after 10ms\nleft done after 20ms / right done after 20ms\nslow call timed out\n",
+    "exit": 0
+   }
+  ],
+  "langs": [
+   {
+    "show": "$ python3 fetch.py   # Python, asyncio",
+    "out": "users done after 30ms\norders done after 10ms\nleft done after 20ms / right done after 20ms\n(slow was cancelled)\nslow call timed out\n",
+    "exit": 0
+   },
+   {
+    "show": "$ node fetch.ts   # TypeScript, Promises",
+    "out": "users done after 30ms\norders done after 10ms\nleft done after 20ms / right done after 20ms\nslow call timed out\n(slow finished anyway, nobody was waiting)\n",
+    "exit": 0
+   },
+   {
+    "show": "$ java Main   # Java, CompletableFuture",
+    "out": "users done after 30ms\norders done after 10ms\nleft done after 20ms / right done after 20ms\nslow call timed out\n",
+    "exit": 0
+   },
+   {
+    "show": "$ java -cp fetch.jar:kotlinx-coroutines-core-jvm.jar FetchKt   # Kotlin, kotlinx.coroutines",
+    "out": "users done after 30ms\norders done after 10ms\nleft done after 20ms / right done after 20ms\nslow call timed out\n",
+    "exit": 0
+   },
+   {
+    "show": "$ dotnet run   # C#, Task",
+    "out": "users done after 30ms\norders done after 10ms\nleft done after 20ms / right done after 20ms\nslow call timed out\n",
+    "exit": 0
+   }
+  ],
+  "go-lock-cs": [
+   {
+    "show": "$ dotnet build",
+    "out": "Program.cs(10,9): error CS1996: Cannot await in the body of a lock statement\n",
+    "exit": 1,
+    "error": true
+   }
+  ]
+ },
+ "gotcha": {
+  "kind": "compile",
+  "title": "Holding a lock across an `.await`",
+  "verdict": "rust-rule",
+  "looks_fine": "Taking a lock, waiting, then changing the data and unlocking is ordinary code. Go's `sync` docs even say a locked `Mutex` \"is not associated with a particular goroutine\".",
+  "rust_sees": "`tokio::spawn` asks for a future that is `Send`, because the default runtime can resume a task on a different worker thread after any `.await`. The guard from a standard `Mutex` is not `Send`: the standard library docs say that on platforms that use POSIX threads a lock must be released on the thread that acquired it, so the guard may not travel with the task.",
+  "why": "The Tokio docs say it is \"ok and often preferred\" to use the standard `Mutex` in async code. The rule is to drop the guard before the next `.await`: lock, change and unlock in one statement, as the fix does. If the lock has to stay held across an `.await` (the docs' example is a database connection), use `tokio::sync::Mutex`, whose guard is designed for it. The compiler is not the only protection you need: the section above shows the same mistake, without `spawn`, compiling and then hanging, so for the one-thread case it is a real Rust bug and not only a rule.",
+  "code": "use std::sync::{Arc, Mutex};\nuse std::time::Duration;\n\n#[tokio::main]\nasync fn main() {\n    let hits = Arc::new(Mutex::new(0));\n    let h = Arc::clone(&hits);\n    tokio::spawn(async move {\n        let mut n = h.lock().unwrap();\n        tokio::time::sleep(Duration::from_millis(10)).await; // still holding the lock\n        *n += 1;\n    })\n    .await\n    .unwrap();\n    println!(\"{}\", hits.lock().unwrap());\n}\n",
+  "session": "lock-across-await",
+  "fixed": {
+   "code": "use std::sync::{Arc, Mutex};\nuse std::time::Duration;\n\n#[tokio::main]\nasync fn main() {\n    let hits = Arc::new(Mutex::new(0));\n    let h = Arc::clone(&hits);\n    tokio::spawn(async move {\n        tokio::time::sleep(Duration::from_millis(10)).await; // wait first\n        *h.lock().unwrap() += 1; // then lock, change, unlock, all on one line\n    })\n    .await\n    .unwrap();\n    println!(\"{}\", hits.lock().unwrap());\n}\n",
+   "name": "src/main.rs",
+   "out": "1\n",
+   "cmd": "$ cargo run"
+  },
+  "langs": {
+   "go": {
+    "status": "runs",
+    "says": "Go compiles and runs this. A `sync.Mutex` is not tied to a goroutine or a thread (the sync docs), so holding it while the goroutine sleeps is allowed.",
+    "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"sync\"\n\t\"time\"\n)\n\nfunc main() {\n\tvar mu sync.Mutex\n\thits := 0\n\tdone := make(chan bool)\n\tgo func() {\n\t\tmu.Lock()\n\t\ttime.Sleep(10 * time.Millisecond) // still holding the lock\n\t\thits++\n\t\tmu.Unlock()\n\t\tdone <- true\n\t}()\n\t<-done\n\tfmt.Println(hits)\n}\n",
+    "out": "1\n"
+   },
+   "csharp": {
+    "status": "refuses",
+    "says": "C# rejects an `await` inside a `lock` statement. The C# docs say \"You can't use the await expression in the body of a lock statement.\"",
+    "code": "using System;\nusing System.Threading.Tasks;\n\nvar gate = new object();\nvar hits = 0;\nawait Task.Run(async () =>\n{\n    lock (gate)\n    {\n        await Task.Delay(10); // still holding the lock\n        hits++;\n    }\n});\nConsole.WriteLine(hits);\n",
+    "out": "Program.cs(10,9): error CS1996: Cannot await in the body of a lock statement\n"
+   }
+  },
+  "code_name": "src/main.rs",
+  "error": "error: future cannot be sent between threads safely\n   --> src/main.rs:8:5\n    |\n  8 | /     tokio::spawn(async move {\n  9 | |         let mut n = h.lock().unwrap();\n 10 | |         tokio::time::sleep(Duration::from_millis(10)).await; // still holding the lock\n 11 | |         *n += 1;\n 12 | |     })\n    | |______^ future created by async block is not `Send`\n    |\n    = help: within `{async block@src/main.rs:8:18: 8:28}`, the trait `Send` is not implemented for `std::sync::MutexGuard<'_, i32>`\nnote: future is not `Send` as this value is used across an await\n   --> src/main.rs:10:55\n    |\n  9 |         let mut n = h.lock().unwrap();\n    |             ----- has type `std::sync::MutexGuard<'_, i32>` which is not `Send`\n 10 |         tokio::time::sleep(Duration::from_millis(10)).await; // still holding the lock\n    |                                                       ^^^^^ await occurs here, with `mut n` maybe used later\n  ... (notes pointing into library source code trimmed)",
+  "error_cmd": "$ cargo build"
+ }
+}

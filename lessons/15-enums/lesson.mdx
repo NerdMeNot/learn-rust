@@ -1,0 +1,552 @@
+<p class="lr-layer">The toolkit</p>
+
+## An enum is one of a fixed list
+
+An `enum` (short for enumeration) is a type whose value is exactly one of a list of names, called **variants**. You write the list once. The compiler then knows every value the type can hold, which is what lets it check your code.
+
+<Snippet file="plain.rs" />
+
+- A variant is written `Direction::North`: the enum's name, `::`, the variant's name.
+- `match` takes a value apart by variant ([match lesson](/learn/match/)).
+- `#[derive(Debug)]` lets `{:?}` print the value. More on `derive` [below](#derive-on-enums).
+
+## Variants that carry data
+
+This is where Rust enums go further than the enums in most languages. Each variant can hold its own data, and different variants can hold different things.
+
+<Snippet file="data-variants.rs" />
+
+There are three shapes of variant, and one enum can mix them:
+
+| Shape | Written | Fields are reached by |
+|---|---|---|
+| No data | `Quit` | nothing to reach |
+| Tuple-like | `Paint(u8, u8, u8)` | position: `Command::Paint(r, g, b)` |
+| Struct-like | `Move { x: i32, y: i32 }` | name: `Command::Move { x, y }` |
+
+A value is exactly one variant at a time. A `Command` is never a `Say` and a `Move` together, and you cannot read `x` from a `Say`. `match` is how you ask which one you have, and it hands you the data in the same step.
+
+### A variant is not a type
+
+`Command::Say` is a value, not a type. A function can take a `Command`, but it cannot ask for "only a `Say`":
+
+<Snippet file="variant-not-type.fail.rs" />
+
+<ForLang only="java">
+
+In Java each case is a record of its own, so a method can take just that one:
+
+<Snippet file="variant-type.java" />
+
+</ForLang>
+
+<ForLang only="kotlin">
+
+In Kotlin each case is a class of its own, so a function can take just that one:
+
+<Snippet file="variant-type.kt" />
+
+</ForLang>
+
+<ForLang only="csharp">
+
+In C# each case is a record of its own, so a method can take just that one:
+
+<Snippet file="variant-type.cs" />
+
+</ForLang>
+
+<ForLang only="typescript">
+
+In TypeScript each member of the union can be a named type, so a function can take just that one:
+
+<Snippet file="named-members.ts" />
+
+</ForLang>
+
+If you want a function that accepts only circles, make `Circle` a small struct and let the variant hold it: `Shape::Circle(Circle)`. Then `fn radius(c: &Circle)` works, and `Shape` still lists every case.
+
+## Methods on enums
+
+An enum takes an `impl` block like a struct does (see [Methods](/learn/methods/)). Putting the `match` inside a method keeps the case analysis in one place.
+
+<Snippet file="impl-enum.rs" />
+
+`Shape::square(2.0)` is an associated function: it has no `self`, and it builds a value. `Shape::Circle { .. }` in `name` means "a circle, whatever its fields".
+
+## `match` must cover every variant
+
+Leave a variant out and the program does not compile:
+
+<Snippet file="missing-variant.fail.rs" />
+
+The error is E0004. It names the missing case, points at the variant, and suggests an arm. When you add a variant to an enum later, every `match` that forgot it fails the same way. The compiler gives you a to-do list of places to update.
+
+Patterns can look inside variants:
+
+<Snippet file="patterns.rs" />
+
+- A guard (`if radius == 0.0`) adds a condition to an arm. Arms are tried from the top, so put the specific ones first.
+- `height: 1.0` inside a pattern requires that field to equal the value.
+- `..` ignores the fields you do not name.
+
+### Matching through a reference
+
+The functions above take `&Shape`, so `match` gives you **references to the fields**. In `Shape::Circle(r)` below, `r` is a `&f64`, which is why `patterns.rs` wrote `*radius == 0.0` in a guard. Arithmetic and comparing two references work as they are, and `*` follows a reference to the number when you need the number itself.
+
+<Snippet file="match-ref.rs" />
+
+Matching a value you only borrow, and trying to take something out of it, is the most common first error with enums:
+
+<Snippet file="move-out.fail.rs" />
+
+`match self.job` tries to move the `String` out of a `&self`, and E0507 refuses. Match on `&self.job` and clone what you need (`msg.clone()`), or take `self` by value as the state machine below does.
+
+### The `_` arm turns the check off
+
+`_` matches anything left over. That is handy, but it also matches variants you add next month:
+
+<Snippet file="wildcard-hides.rs" />
+
+`area` compiled and printed 0 for the triangle. `perimeter` had no `_`, so adding `Triangle` forced an arm. Use `_` when "everything else" really is one case. When you want the compiler to flag new variants, list them.
+
+<ForLang only="go">
+
+The Go version of this hole is a `default:` or a `return 0` after the switch, which is what the gotcha at the top ran.
+
+</ForLang>
+
+<ForLang only="kotlin">
+
+`else ->` in a `when` over a sealed class does the same, and silences the exhaustiveness check:
+
+<Snippet file="else-hides.kt" />
+
+</ForLang>
+
+<ForLang only="java">
+
+`default ->` in a switch over a sealed type does the same:
+
+<Snippet file="default-hides.java" />
+
+</ForLang>
+
+<ForLang only="csharp">
+
+A discard arm (`_ =>`) in a switch expression does the same.
+
+</ForLang>
+
+<ForLang only="typescript">
+
+`_` is your `default:` without the `never` check, and it does the same:
+
+<Snippet file="default-hides.ts" />
+
+</ForLang>
+
+<ForLang only="python">
+
+`case _:` does the same.
+
+</ForLang>
+
+## `if let`, `let else` and `matches!`
+
+When you care about one variant, a full `match` is a lot of text.
+
+<Snippet file="if-let.rs" />
+
+- `if let PATTERN = value { … }` runs the block only if the pattern fits. `else` is optional.
+- `let PATTERN = value else { … };` binds the names for the rest of the block. The `else` block must leave (`return`, `break`, `continue` or a panic), so the happy path stays unindented.
+- `matches!(value, PATTERN)` is a `bool`. It binds nothing.
+
+These do not check that you covered everything, so use `match` when every case matters.
+
+## State machines: make illegal states hard to write
+
+Many programs track a thing that moves through stages: a job, an order, a connection. A common first model is one struct whose fields cover every stage:
+
+<Snippet file="job-record.rs" />
+
+Nothing stops "running and done" or a `percent` of 250 on a job that failed. Every function that reads the struct has to guard against nonsense. An enum lists only the states that exist, and each state holds only its own data:
+
+<Snippet file="state-machine.rs" />
+
+- A `Waiting` job has no `percent`, because the field does not exist in that variant. A `Failed` job has its reason and nothing else. (A `percent` above 100 is still possible. A smaller type or a checked constructor would fix that.)
+- Add a `Cancelled` variant later, and every `match` on `Job` fails to compile until it says what `Cancelled` means.
+- `next` takes `self` **by value**: it consumes the old state and returns the new one, so nobody keeps using a stale state ([Ownership](/learn/ownership/)). It is the `(state, event) -> state` shape of a reducer.
+- Matching on the pair `(self, event)` makes the legal moves a table, one arm per row. The last arm ignores any other move: the first `Progress(50)` in the output, on a job that has not started, changed nothing. So the *states* cannot be wrong, but the *moves* are checked only by that arm. A later lesson shows returning a `Result` instead.
+
+This is called "making illegal states unrepresentable".
+
+## Enums with no data are numbers underneath
+
+An enum whose variants hold no data is called C-like. Each variant has a number (its **discriminant**), starting at 0 and counting up, or the value you give it. `as` turns a variant into that number. Only enums where no variant holds data can be cast this way.
+
+<Snippet file="c-like.rs" />
+
+`Thu` follows `Wed = 10`, so it is 11. The reverse does not exist. Even 10, which is a real `Level`, cannot be cast, because Rust does not check numbers at run time:
+
+<Snippet file="int-to-enum.fail.rs" />
+
+Write a function like `from_number` above. It returns an `Option`, a value that is either `Some(thing)` or `None` ([Option](/learn/option/), next lesson). A number attached to each constant is the discriminant (`Mid = 5`). Other per-constant data goes in a `match` method.
+
+### Variant names as text
+
+`{:?}` is for programmers ([Structs](/learn/structs/#derive-asking-the-compiler-for-standard-behaviour)). The text users see comes from `Display`, which you write yourself. Text coming in needs a function like `from_number`:
+
+<Snippet file="text.rs" />
+
+Writing trait impls such as `Display` is covered in [Traits](/learn/traits/); for now copy the shape. For JSON, the `serde` crate generates both directions.
+
+## `derive` on enums
+
+[Structs](/learn/structs/#derive-asking-the-compiler-for-standard-behaviour) explains `derive`. Nothing is derived unless you ask, so a bare enum can be neither compared nor printed (there is no `data class` magic):
+
+<Snippet file="no-derive.fail.rs" />
+
+What the derives mean for an enum:
+
+<Snippet file="derive.rs" />
+
+| Derive | On an enum |
+|---|---|
+| `PartialEq`, `Eq` | `==` is true for the same variant with equal fields |
+| `PartialOrd`, `Ord` | `<` and `sort` compare discriminants first (declaration order, unless you give numbers), then fields |
+| `Hash` | usable as a map or set key, together with `Eq` ([Maps](/learn/maps/)) |
+| `Copy` | possible only if every field is `Copy`, so any `String` variant rules it out |
+| `Default` | one unit variant is marked `#[default]` |
+
+## `use Enum::*`
+
+Typing `Direction::` in every arm gets long. A `use` brings the variant names into scope. Keep it inside the function, so the names do not leak into the rest of the file:
+
+<Snippet file="use-variants.rs" />
+
+Forget the `use`, and a bare name in a pattern is read as a **new variable** that matches everything. When the name is one of the enum's variants, Rust catches it:
+
+<Snippet file="bare-variant.fail.rs" />
+
+## `Option` and `Result` are enums
+
+`Option` and `Result` are not special syntax. They are enums defined in the standard library, and you match them like yours:
+
+<Snippet file="std-enums.rs" />
+
+`Option<T>` is `Some(value)` or `None`: a value that may be missing. `Result<T, E>` is `Ok(value)` or `Err(error)`: an operation that may fail. `Maybe<T>` above is the same idea written by hand (`<T>` means "any type", covered in [Generics](/learn/generics/)). The next two lessons are [Option](/learn/option/) and [Errors](/learn/errors/).
+
+## Your enums in Rust
+
+<ForLang only="go">
+
+| You write in Go | In Rust |
+|---|---|
+| `type Color int` with `const ( Red Color = iota … )` | `enum Color { Red, Green, Blue }`; `Color::Green as i32` is 1 |
+| `Color(n)` for any `n` | a `from_number` function that returns an `Option` |
+| `var c Color` is the first constant | no implicit zero value; `Default` is opt-in and you pick the variant |
+| an interface, a struct per case, `switch v := s.(type)` | one `enum` with a variant per case, and `match` |
+| `default:` or `return 0` after the switch | no fallback needed, unless you write `_` |
+| `String()` method | `impl Display` for users, `{:?}` for debugging |
+| `if c, ok := s.(Circle); ok` | `if let Shape::Circle(r) = s` |
+
+</ForLang>
+
+<ForLang only="java">
+
+| You write in Java | In Rust |
+|---|---|
+| `sealed interface` plus records | an `enum` whose variants carry data |
+| `enum Level { LOW(1) }` with fields | an enum with no data. A number is the discriminant; other data goes in a `match` method |
+| `switch` expression | `match` |
+| `if (s instanceof Circle c)` | `if let Shape::Circle(r) = s` |
+| `case Rect r when r.w() == r.h()` | `Shape::Rect { width, height } if width == height` |
+| `default ->` | `_` |
+| `ordinal()` | `level as i32`: the number you chose, not a position |
+| `values()`, `valueOf("MID")` | nothing built in: write the array, or a function that returns an `Option` |
+| a record's `toString`, `equals`, `hashCode` | `#[derive(Debug, PartialEq, Eq, Hash)]`, opt in |
+| `Optional<T>` | `Option<T>` (next lesson) |
+
+</ForLang>
+
+<ForLang only="kotlin">
+
+| You write in Kotlin | In Rust |
+|---|---|
+| `sealed class` or `sealed interface` with `data class` and `data object` | an `enum`; `data object Quit` is a unit variant `Quit` |
+| `enum class Level(val code: Int)` | an enum with no data. A number is the discriminant; other data goes in a `match` method |
+| `when (s) { is Circle -> s.r }` | `match s { Shape::Circle(r) => … }` |
+| `else ->` | `_` |
+| `.ordinal` | `level as i32`: the number you chose, not a position |
+| `Level.entries`, `Level.valueOf("MID")` | nothing built in: write the array, or a function that returns an `Option` |
+| a `data class`'s `toString`, `equals`, `hashCode` | `#[derive(Debug, PartialEq, Eq, Hash)]`, opt in |
+| `T?` | `Option<T>` (next lesson) |
+
+</ForLang>
+
+<ForLang only="csharp">
+
+| You write in C# | In Rust |
+|---|---|
+| `abstract record` plus one record per case | an `enum` whose variants carry data |
+| `enum Level { Low = 1 }` | an enum with no data; `level as i32` |
+| `switch` expression with `_ =>` | `match`; the `_` arm turns the check off |
+| `s is Circle c` | `if let Shape::Circle(r) = s` |
+| `(Level)42`, `Enum.IsDefined` | no cast; write a function that returns an `Option` |
+| a record's `Equals`, `ToString` | `#[derive(PartialEq, Debug)]`, opt in |
+| `T?` | `Option<T>` (next lesson) |
+
+</ForLang>
+
+<ForLang only="python">
+
+| You write in Python | In Rust |
+|---|---|
+| `class Color(Enum)` | an enum with no data |
+| a `@dataclass` per case with `match` | an enum whose variants carry data |
+| `case Circle(r):`, `case _:` | `Shape::Circle(r) =>`, `_ =>` |
+| `isinstance(s, Circle)` | `if let Shape::Circle(r) = s` |
+| `Color(7)` raises `ValueError` | no cast; write a function that returns an `Option` |
+| `None` | `Option<T>` (next lesson) |
+
+</ForLang>
+
+<ForLang only="typescript">
+
+| You write in TypeScript | In Rust |
+|---|---|
+| `{ kind: "circle"; r: number }` union members | an enum whose variants carry data; the tag is not a field you write |
+| `"north"` or `"south"` as a union of string literals | an enum; text in and out through `Display` and a parse function (see "Variant names as text") |
+| a named member type, `Circle` | a struct that a variant holds: `Shape::Circle(Circle)` |
+| `default:` without `never` | `_` |
+| `s.kind === "circle"` | `if let Shape::Circle(r) = s` |
+| numeric `enum Color` | an enum with no data; no `number` is a `Color` |
+| `undefined` | `Option<T>` (next lesson) |
+
+</ForLang>
+
+<ForLang only="c cpp">
+
+| You write | In Rust |
+|---|---|
+| `enum Color { RED, GREEN }` | `enum Color { Red, Green }`: its own type, so there is no implicit conversion to or from `int` |
+| a struct holding an `enum` tag and a `union` | one `enum`. The compiler stores the tag and checks it for you |
+| `std::variant<A, B>` and `std::visit` | an `enum` and `match` |
+| `std::get<B>(v)`, which throws on the wrong alternative | `match` or `if let`: safe code cannot read the wrong variant |
+| `switch` with `default:` | `match` with `_`, which turns the check off |
+
+</ForLang>
+
+<p class="lr-layer">Going deeper</p>
+
+## What an enum looks like in memory
+
+Sizes on this page come from Linux on 64-bit ARM with Rust 1.99.1 (C is GCC 14, C++ is g++ 14). They depend on the machine: on a 32-bit target a `String` is 12 bytes. Where the language promises a size, the text says so.
+
+A variable of an enum type has room for the biggest variant's data and, usually, a **tag** that says which variant is stored. The tag is the variant's discriminant, stored in the value. Every `Shape` is the same size, whether it holds a circle or a rectangle, because the type has to fit the biggest one.
+
+<Snippet file="layout.rs" />
+
+On this machine `Shape` is 24 bytes: a circle needs one `f64` (8 bytes), a rectangle two (16), and the tag is padded out to 8 so the `f64`s start at multiples of 8. `Plain`, with three variants and no data, is a single byte: only the tag. These are rustc's choices, because the [Reference](https://doc.rust-lang.org/reference/type-layout.html) leaves the default layout open. For a picture we ask for a fixed layout with `#[repr(u8)]`: a one-byte tag first, then the variant's fields. We can read the bytes:
+
+<Snippet file="peek-tag.rs" />
+
+([`unsafe`](/learn/unsafe/) means "the compiler cannot check this, I promise it is fine". Here it is needed only because we read raw bytes.)
+
+<Memory
+  title="let circle = Shape::Circle(1.0);   let rect = Shape::Rect(2.0, 3.0);   (#[repr(u8)])"
+  stack={[
+    { name: 'circle', type: 'Shape, 24 bytes', cells: ['tag 0 (1 byte)', 'padding (7 bytes)', '1.0 (8 bytes)', 'not used (8 bytes)'] },
+    { name: 'rect', type: 'Shape, 24 bytes', cells: ['tag 1 (1 byte)', 'padding (7 bytes)', '2.0 (8 bytes)', '3.0 (8 bytes)'] },
+  ]}
+  caption="Both values are 24 bytes on this machine. The tag is at byte 0 and the first f64 at byte 8. The last 8 bytes are used only by Rect. Which bytes are padding is promised only for `repr(u8)`, not for a plain `enum`."
+/>
+
+`Command` holds a `String`, which is 24 bytes on its own, and `Command` is also 24 bytes on this machine. A `String` has no padding, so here the tag must live inside the `String`'s own bytes, in values a real `String` never has. That works only because the other variants (three `u8`s) fit in the remaining bytes. `Big`, with three `u64`s, is 32. Nothing in the language promises either result: the only sizes the standard library guarantees are the `Option` cases below.
+
+<ForLang only="java kotlin csharp python typescript">
+
+In your language a `Shape` variable holds a reference to an object (a record, class or dict), and an array of shapes is an array of references. A Rust `[Shape; N]` holds the shapes themselves, one after another in one block, with no object per element.
+
+</ForLang>
+
+<ForLang only="go">
+
+A Go `[]Shape` holds interface values, which refer to the shapes. A Rust `[Shape; N]` holds the shapes themselves, one after another in one block.
+
+</ForLang>
+
+<ForLang only="c cpp">
+
+This is the layout you write by hand for a tagged union. The C struct from the first program is the same size:
+
+<Snippet file="tagged-size.c" />
+
+The C++ `std::variant` is also 24 bytes. It keeps a tag too, and `std::get` checks it at run time:
+
+<Snippet file="variant-get.cpp" />
+
+In C, nothing checks the tag. If the code changes it, or forgets to, you read bytes as the wrong type:
+
+<Snippet file="wrong-tag.c" />
+
+`gcc -Wall -Wextra` is silent, and the `int` is the bit pattern of `1.0f`. Safe Rust cannot write this: the tag and the data change together, and pattern matching is the only way in (the raw reads above needed `unsafe`). In C++, `std::visit` is the checked way in, and `std::get` fails at run time.
+
+</ForLang>
+
+## Niches: why `Option` is often free
+
+A `u32` has no spare value to mean "none", so `Option<u32>` is 8 bytes. A reference is never null, so the value 0 is free to mean `None`. The compiler uses it, and the tag disappears. A free bit pattern like this is a **niche**.
+
+<Snippet file="niche.rs" />
+
+<Memory
+  title="let value = 7u8;   let some = Some(&value);   let none: Option<&u8> = None;"
+  stack={[
+    { name: 'value', type: 'u8', cells: ['7'] },
+    { name: 'some', type: 'Option<&u8>', cells: ['address of value'], toVar: 'value', note: 'a non-zero address means Some' },
+    { name: 'none', type: 'Option<&u8>', cells: ['0'], note: 'zero means None' },
+  ]}
+  caption="`Option<&u8>` is 8 bytes, the same as `&u8`. There is no separate tag. The program above printed it: `None` reads as 0 and `Some` as non-zero."
+/>
+
+The standard library [guarantees](https://doc.rust-lang.org/std/option/index.html#representation) this for `Option` of `Box<T>`, `&T`, `&mut T` (with `T` of known size), function pointers and the `NonZero` number types. Other types, such as `bool` and `String`, have niches too, as the output shows, but only the types in the docs are promised. `Option<&T>` is the safe replacement for a pointer that might be null, and it is the same size as the pointer.
+
+<ForLang only="java kotlin">
+
+On the JVM a `String?` or `Optional<String>` is already about as cheap as a reference, but an `Int?` or `Optional<Integer>` is an object. Rust's `Option<u32>` is a flat 8 bytes (printed above).
+
+</ForLang>
+
+## Recursive enums need `Box`
+
+A tree is an enum that contains itself: an expression is a number, or two expressions added together. Written directly, the size has no end, because `Expr` would hold two `Expr`s, each holding two more:
+
+<Snippet file="recursive.fail.rs" />
+
+The fix is `Box<Expr>`. A `Box` is a pointer to a value on the heap (the pool of memory from [Stack and heap](/learn/stack-heap/)). The pointer has a fixed size, whatever it points at, so `Expr` has a size again. Boxes get a full lesson in [Smart pointers](/learn/smart-pointers/#boxt-one-owner-on-the-heap). For now you only need `Box::new(value)` to make one. A `&Box<Expr>` can be passed where a `&Expr` is expected, which is why `eval(a)` works below.
+
+<Snippet file="recursive.rs" />
+
+<ForLang only="java kotlin csharp python typescript">
+
+In your language `record Add(Expr a, Expr b)` just works, because every object field is already a reference. Rust fields hold the value inline unless you add the `Box`.
+
+</ForLang>
+
+<ForLang only="go">
+
+In Go you would write `*Expr` or an interface field. Rust fields hold the value inline unless you add the `Box`.
+
+</ForLang>
+
+## How other languages handle this
+
+<ForLang only="go">
+
+Go has no sum types, so you build one from pieces. `iota` constants give you the names, but they are only integers. Any `int` is a `Color`, and the zero value of a `Color` is the first constant:
+
+<Snippet file="iota.go" />
+
+For data, Go's usual answer is a method on the interface. The compiler then checks every type you put in a `[]Shape`:
+
+<Snippet file="interface-method.fail.go" />
+
+The trade-off is open versus closed. With methods, a new shape is cheap, but a new operation touches every type. With an enum it is the other way round: a new operation is one new `match`, and a new variant makes the compiler list every `match` to update. Pick the enum when you control the whole list of cases and want that check. A type switch on an interface has neither benefit, as the gotcha at the top showed (an unexported method can close the interface to your package, but the switch is still unchecked).
+
+</ForLang>
+
+<ForLang only="python">
+
+Python's `Enum` rejects a bad value at run time, which Go and C# do not:
+
+<Snippet file="color-enum.py" />
+
+Members can carry data, but every member has the same shape. For different data per case you use dataclasses and `match`, as in the first program. Python itself checks neither that the cases are complete nor the types of what a case holds. Type checkers can check some of it.
+
+</ForLang>
+
+<ForLang only="typescript">
+
+A TypeScript numeric `enum` is a number, and a `number` is accepted where the enum is expected, so `42` becomes a `Color`. The usual alternative is a union of string literals or a discriminated union with a `kind` field ([narrowing](https://www.typescriptlang.org/docs/handbook/2/narrowing.html), including the `never` check):
+
+<Snippet file="number-enum.ts" />
+
+The `kind` tag is an ordinary string property that exists only at compile time. Data from `JSON.parse` or a cast can say `kind: "rect"` and lack the fields, and nothing complains:
+
+<Snippet file="json-tag.ts" />
+
+In Rust the tag and the data are made together, so they cannot disagree. Turning JSON into an enum is a job for the `serde` crate, which checks the fields as it reads.
+
+</ForLang>
+
+<ForLang only="java">
+
+A Java `enum` is a class with a fixed set of instances, which can have fields. A `switch` expression over it needs no `default`, and the compiler checks it. For data that differs per case you use [sealed types](https://openjdk.org/jeps/409) with records, as in the first program.
+
+<Snippet file="enum-switch.java" />
+
+Java's check has one gap Rust does not: it happens when the switch is compiled. If a new permitted type shows up in separately compiled code, the old switch throws a `MatchException` at run time ([JEP 441](https://openjdk.org/jeps/441) describes this). A Rust program is compiled from source together, so a stale `match` cannot exist.
+
+</ForLang>
+
+<ForLang only="kotlin">
+
+A Kotlin `enum class` is mostly for named constants, and a `sealed class` is for cases that carry different data. Rust uses one construct for both. A `when` over a [sealed class](https://kotlinlang.org/docs/sealed-classes.html) is checked, like `match`, as the gotcha at the top showed. Each subclass is its own type (the program under "A variant is not a type" shows it), which a Rust variant is not.
+
+</ForLang>
+
+<ForLang only="csharp">
+
+A C# `enum` is an integer in disguise. Any `int` can be cast to it, and nothing complains:
+
+<Snippet file="enum-cast.cs" />
+
+For data you use records, which the .NET 10 compiler cannot treat as a closed list. C# 15 adds [`union`](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/builtin-types/union) types and [`closed`](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/keywords/closed) hierarchies for this ([What's new in C# 15](https://learn.microsoft.com/en-us/dotnet/csharp/whats-new/csharp-15) says which SDK and runtime you need). This site's runner has .NET 10, and the compiler there does not accept `union`:
+
+<Snippet file="union.fail.cs" />
+
+(The messages complain about a missing name because C# 14 reads `union` as the start of something else. They only tell you this is not a C# 14 construct.)
+
+</ForLang>
+
+| | Closed list with data | Missing case is |
+|---|---|---|
+| Rust | `enum` | a compile error |
+| Kotlin | `sealed class` | a compile error for `when` (not with `else ->`) |
+| Java | `sealed interface` and records | a compile error for `switch` (not with `default ->`) |
+| C# on .NET 10 | records (not closed) | a warning (CS8509) and a run-time exception |
+| TypeScript | union with a `kind` field | an error with the `never` check, or under `strict` if a return is missing |
+| Go | interface and type switch | nothing: it falls through |
+| Python | dataclasses and `match` | nothing: it falls through |
+| C | tag and `union` | a warning from `gcc -Wall` |
+| C++ | `std::variant` | a compile error with `std::visit` |
+
+Most of these rows are runs you can see in the gotcha at the top of the page, under each language's tab.
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Each exercise is a small program with checks in `main`. Open it in the Playground, replace the `todo!()`, and run it until it prints `all checks passed`.
+
+<Exercise name="shape-area" title="Areas of shapes">
+Fill in `area` for a circle, a rectangle and a triangle given by its three sides (Heron's formula). A set of sides that cannot make a triangle must give 0, not NaN.
+</Exercise>
+
+<Exercise name="door" title="A door with a lock">
+Write the `apply` function for a door that is open, closed or locked with a code. Moves the rules do not allow, such as locking an open door or unlocking with the wrong code, leave the door as it is. `apply` takes the old door by value, so a `match` on the pair can hand it back.
+</Exercise>
+
+<Exercise name="expr" title="Evaluate and print an expression">
+`Expr` is a tree of numbers, negations, sums and products. Write `eval`, which computes it, and `show`, which prints it with brackets. Both call themselves on the `Box`ed parts: pass `a` as it is, because a `&Box<Expr>` converts to `&Expr` by itself.
+</Exercise>
+
+## Read more
+
+- [The Rust Book, chapter 6: Enums and Pattern Matching](https://doc.rust-lang.org/book/ch06-00-enums.html), with [defining an enum](https://doc.rust-lang.org/book/ch06-01-defining-an-enum.html), [`match`](https://doc.rust-lang.org/book/ch06-02-match.html) and [`if let` and `let…else`](https://doc.rust-lang.org/book/ch06-03-if-let.html).
+- [The Rust Book: using `Box<T>`](https://doc.rust-lang.org/book/ch15-01-box.html), which covers recursive types.
+- [Rust by Example: Enums](https://doc.rust-lang.org/rust-by-example/custom_types/enum.html), including [`use`](https://doc.rust-lang.org/rust-by-example/custom_types/enum/enum_use.html) and [C-like enums](https://doc.rust-lang.org/rust-by-example/custom_types/enum/c_like.html).
+- [The Reference: Enumerations](https://doc.rust-lang.org/reference/items/enumerations.html) and [Type layout](https://doc.rust-lang.org/reference/type-layout.html).
+- [`std::option`](https://doc.rust-lang.org/std/option/index.html) (see "Representation"), [`Result`](https://doc.rust-lang.org/std/result/enum.Result.html), [`std::mem::size_of`](https://doc.rust-lang.org/std/mem/fn.size_of.html) and the [`matches!`](https://doc.rust-lang.org/std/macro.matches.html) macro.

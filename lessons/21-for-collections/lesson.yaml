@@ -1,0 +1,117 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Looping Over a Collection"
+part: "collections"
+intro: >-
+  Rust has three ways to write `for x in …` over a list, and they differ in who owns the
+  items afterwards. One borrows the list, one borrows it to change it, and one uses it
+  up.
+coming_from:
+  go: >-
+    `for n in &names` is `for _, n := range names`, and `v.iter().enumerate()` gives
+    `i, n`. In Go `n` is a copy of the item, so you change items through the index. In
+    Rust `for n in &mut nums` gives you a `&mut` reference to the item in the list
+    (`*n *= 10` writes through it). `for n in names` (no `&`) has no Go counterpart: for a
+    `Vec` it moves the items out, and `names` is gone.
+  kotlin: >-
+    `for n in &names` is `for (n in names)`, and `v.iter().enumerate()` is
+    `withIndex()`. The loop variable in Kotlin is a `val` you cannot assign to; in Rust
+    `for n in &mut nums` gives you a `&mut` reference to change the item through. Leave off
+    the `&` and the loop takes ownership of a `Vec`, so you can't use it afterwards.
+  python: >-
+    `for n in &names` is Python's `for n in names`, and `v.iter().enumerate()` is
+    `enumerate(names)`. In Python `n *= 10` only rebinds the name `n`; in Rust
+    `for n in &mut nums` gives you a `&mut` reference to the item (`*n *= 10` writes
+    through it). Leaving off the `&` moves the list into the loop, and `names` can no
+    longer be used.
+  typescript: >-
+    `for n in &names` is `for (const n of names)`, and `v.iter().enumerate()` is
+    `names.entries()`. In `for...of` a number `n` is a copy, so you assign through the
+    index; in Rust `for n in &mut nums` gives you a `&mut` reference to the item (`*n *= 10`
+    writes through it). Without the `&` the loop moves the list in, and it can't be used
+    afterwards.
+  java: >-
+    `for n in &names` is your for-each: it reads each item and leaves the list alone.
+    `for n in names` (no `&`) consumes the list, which a for-each never does. For
+    numbers a Java loop variable is a copy, so you call `set(i, …)`; in Rust
+    `for n in &mut nums` gives you a `&mut` reference to the item. Changing the objects in
+    a list (`p.age++`) needs that `&mut` form too: `&names` is read-only.
+  csharp: >-
+    `for n in &names` is `foreach`, and `for n in &mut nums` changes items in place,
+    where `foreach` does not let you assign to the loop variable. Writing
+    `for n in names` without `&` uses a `Vec` up, so `names` is gone after the loop.
+  c: >-
+    Instead of an index loop, `for n in &nums` reads each item and `for n in &mut nums`
+    hands you a `&mut` reference to change it in place. The length travels with the
+    list, so there is no separate count to get wrong. Without the `&` the loop takes
+    ownership of a `Vec`, and it can't be used afterwards.
+  cpp: >-
+    `for n in &v` is `for (const auto& n : v)`, and `for n in &mut v` is
+    `for (auto& n : v)`. `for n in v` is the odd one: for a `Vec` it moves the items
+    out and consumes `v`, rather than copying each one like `for (auto n : v)`.
+notes:
+  - >-
+    `for x in v` takes each item out of `v`; a `Vec` is used up (an array of numbers is
+    copied, so it stays). `for x in &v` borrows each item; `v` stays. `for x in &mut v`
+    borrows each item so you can change it.
+  - >-
+    `&v` is the same as `v.iter()`, and `&mut v` is the same as `v.iter_mut()`. With the
+    borrowing forms `x` is a reference, so you may need `*x` to get the value.
+  - >-
+    Use the first form when you are done with the list and want to move its items
+    somewhere else without copying them.
+  - >-
+    Do not add to or remove from a list inside a `for` over it: Rust refuses to compile
+    it, and `retain` or a list of positions are the usual fixes.
+gotcha:
+  title: "Looping, then using the list again"
+  verdict: "rust-rule"
+  looks_fine: >-
+    In the other languages, a `for` loop over a list reads its items and the list is still
+    there afterwards.
+  rust_sees: >-
+    `for n in names` (no `&`) hands the whole list to the loop. Each pass moves one
+    `String` out into `n`, and the list's buffer is freed when the loop ends, so `names`
+    cannot be used afterwards.
+  why: >-
+    This is the same move as in the Ownership lesson, hidden inside a loop. Rust makes you
+    choose: add one `&` and the loop borrows, or leave it off to give the list away.
+  langs:
+    go:
+      status: "runs"
+      says: >-
+        Go runs this and prints both names, then 2 names. `range` leaves the slice alone,
+        so it is still there afterwards.
+    kotlin:
+      status: "runs"
+      says: >-
+        Kotlin runs this and prints both names, then 2 names. A `for` loop does not take the list away, so it is still there afterwards.
+    python:
+      status: "runs"
+      says: >-
+        Python prints both names and then 2 names. A `for` loop does not take the list away, so
+        it is still there afterwards.
+    typescript:
+      status: "runs"
+      says: >-
+        Prints both names, then 2 names. `for...of` does not take the array away, so it is
+        still there afterwards.
+    java:
+      status: "runs"
+      says: >-
+        A for-each loop in Java does not take the list away, so `names` is still
+        there afterwards. Rust's `for n in names` uses the list up instead.
+    csharp:
+      status: "runs"
+      says: >-
+        `foreach` does not take the list away, so `names` is still there afterwards and
+        this prints 2 names.
+    c:
+      status: "runs"
+      says: >-
+        A C index loop reads the array and nothing about it makes `names` unusable, so
+        the length is still 2 afterwards.
+    cpp:
+      status: "runs"
+      says: >-
+        `for (auto n : names)` copies each string, so `names` is untouched and still has
+        2 items. Rust's `for n in names` moves them out instead.

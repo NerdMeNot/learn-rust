@@ -1,0 +1,351 @@
+{
+ "id": "errors",
+ "title": "Errors and Result",
+ "part": "data",
+ "intro": "A function that can fail returns `Result<T, E>`: either `Ok(value)` or `Err(error)`. The `?` operator means \"if this failed, return the error right now\", in one character.",
+ "coming_from": {
+  "go": "`Result<T, E>` replaces `(T, error)`, and `?` does what `if err != nil { return err }` does. Go is the closest cousin: errors are plain values that you return and check. The difference is that Rust won't hand you the value until you have dealt with the `Err` case, and warns when you ignore a `Result` altogether.",
+  "kotlin": "Expected failures are return values, not exceptions: `Result<T, E>` is a bit like Kotlin's `Result` from `runCatching`, but the error type is spelled out (Kotlin's is always a `Throwable`). `?` passes the error up to the caller, and there is no `try`/`catch` for expected failures. Rust keeps panics for bugs.",
+  "python": "There is no `try`/`except` for normal failures: the function returns `Result<T, E>`, either `Ok(value)` or `Err(error)`. `?` passes the error up the way an exception you don't catch would, but the possibility of failure shows in the function's type.",
+  "typescript": "There is no `throw`/`catch` for normal failures. A `Result<T, E>` is like returning a union of `{ ok: true, value }` and `{ ok: false, error }`, but it is built in, so the standard library and crates share the same one. The error type is in the signature (in strict mode a `catch` variable is `unknown`), and `?` passes it up.",
+  "java": "`Result<T, E>` is a return value, not an exception, so the error shows up in the signature like a checked exception but travels like normal data. `?` means \"return the error to my caller now\", which is what an uncaught checked exception does when your method declares `throws`.",
+  "csharp": "Rust has no exceptions for normal errors: a function returns `Result<T, E>`, either `Ok` or `Err`. It's like the `TryParse` pattern built into the type system, and `?` passes the error up to the caller in one character.",
+  "c": "`Result<T, E>` is C's \"return an error code and write the value through a pointer\", packed into one value. The compiler won't let you use the value without dealing with the error, and `?` is the `if (err) return err;` line.",
+  "cpp": "`Result<T, E>` replaces throwing: the error is part of the return type, and `?` returns it early instead of unwinding. C++20's standard library has no equivalent; C++23's `std::expected` is the same idea."
+ },
+ "notes": [
+  "Expected failures are ordinary return values, not exceptions, and the compiler won't let you use the value without dealing with the error. A `panic!` is the other kind of failure: it is for bugs, and it ends the thread it happens on (on the main thread, the program).",
+  "`?` only works inside a function whose return type can carry the error: `Result` for a `Result`, `Option` for an `Option`. In `main`, write `-> Result<(), Box<dyn Error>>` to use it.",
+  "In real projects, the `thiserror` and `anyhow` crates (add-on libraries) remove most of the boilerplate: see [Errors in real apps](/build/app-errors/)."
+ ],
+ "gotcha": {
+  "title": "A Result is not the value",
+  "verdict": "rust-rule",
+  "looks_fine": "Most languages let you use the number right away: `int(\"42\") + 1` in Python, `Integer.parseInt(\"42\") + 1` in Java, or in Go `n, _ := strconv.Atoi(\"42\")`, which names the error and throws it away. For the text \"42\" that is fine, because you can see it is a number.",
+  "rust_sees": "`parse` returns `Result<u32, ...>`, not a `u32`. The compiler does not look at the text \"42\". It only knows that parsing text can fail.",
+  "why": "The same line with a user's input could get \"abc\". Rust makes you choose what happens on failure. `.unwrap_or(0)` means \"use 0 if it fails\" on purpose (the same as Go's `_`), `?` means \"pass the error to my caller\", and `.unwrap()` means \"stop if wrong\", which is what an uncaught exception does elsewhere, minus the stack trace.",
+  "langs": {
+   "go": {
+    "status": "runs",
+    "says": "Go runs this and prints 43. The `_` is written out, so ignoring the error is a visible choice, and for \"42\" it does no harm. With \"abc\" the error is thrown away, `n` is 0, and the program quietly prints 1.",
+    "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"strconv\"\n)\n\nfunc main() {\n\tn, _ := strconv.Atoi(\"42\")\n\tfmt.Println(n + 1)\n}\n",
+    "out": "43\n"
+   },
+   "kotlin": {
+    "status": "runs",
+    "says": "Kotlin runs this and prints 43. With \"abc\", `toInt()` would throw a NumberFormatException, and nothing in the code warns you.",
+    "code": "fun main() {\n    val n: Int = \"42\".toInt()   // throws if the text isn't a number\n    println(n + 1)\n}\n",
+    "out": "43\n"
+   },
+   "python": {
+    "status": "runs",
+    "says": "Python prints 43. `int(\"42\")` works, and if the text were \"abc\" it would raise a ValueError you didn't catch.",
+    "code": "n = int(\"42\")\nprint(n + 1)\n",
+    "out": "43\n"
+   },
+   "typescript": {
+    "status": "runs",
+    "says": "Prints 43. `parseInt` never throws: bad input like \"abc\" gives `NaN`, and the math carries on with it.",
+    "code": "const n: number = parseInt(\"42\");\nconsole.log(n + 1);\n",
+    "out": "43\n"
+   },
+   "java": {
+    "status": "runs",
+    "says": "This prints 43. NumberFormatException is unchecked, so nothing makes you handle it; with \"abc\" the same line would throw at runtime.",
+    "code": "public class Main {\n    public static void main(String[] args) {\n        int n = Integer.parseInt(\"42\");\n        System.out.println(n + 1);\n    }\n}\n",
+    "out": "43\n"
+   },
+   "csharp": {
+    "status": "runs",
+    "says": "`uint.Parse` hands back the number directly and prints 43. A bad string would throw a FormatException, which nothing here catches.",
+    "code": "var n = uint.Parse(\"42\");\nConsole.WriteLine(n + 1);\n",
+    "out": "43\n"
+   },
+   "c": {
+    "status": "wrong",
+    "says": "`atoi` has no way to report an error. It gives 42 for \"42\", but it also turns \"abc\" into 0, so the second number is a wrong 1.",
+    "code": "#include <stdio.h>\n#include <stdlib.h>\n\nint main(void) {\n    int n = atoi(\"42\");\n    int bad = atoi(\"abc\");\n    printf(\"%d %d\\n\", n + 1, bad + 1);\n    return 0;\n}\n",
+    "out": "43 1\n"
+   },
+   "cpp": {
+    "status": "runs",
+    "says": "`std::stoi` hands back the number directly and prints 43. A bad input would throw an exception, but nothing in the types makes you handle it.",
+    "code": "#include <iostream>\n#include <string>\n\nint main() {\n    int n = std::stoi(\"42\");\n    std::cout << n + 1 << \"\\n\";\n}\n",
+    "out": "43\n"
+   }
+  },
+  "code": "fn main() {\n    let n: u32 = \"42\".parse();\n    println!(\"{}\", n + 1);\n}\n",
+  "error": "error[E0308]: mismatched types\n --> src/main.rs:2:18\n  |\n2 |     let n: u32 = \"42\".parse();\n  |            ---   ^^^^^^^^^^^^ expected `u32`, found `Result<_, _>`\n  |            |\n  |            expected due to this\n  |\n  = note: expected type `u32`\n             found enum `Result<_, _>`\nhelp: consider using `Result::expect` to unwrap the `Result<_, _>` value, panicking if the value is a `Result::Err`\n  |\n2 |     let n: u32 = \"42\".parse().expect(\"REASON\");\n  |                              +++++++++++++++++\n",
+  "error_code": "E0308",
+  "fixed": {
+   "code": "fn main() {\n    let n: u32 = \"42\".parse().unwrap_or(0); // 0 if it fails, chosen on purpose\n    println!(\"{}\", n + 1);\n}\n",
+   "out": "43\n"
+  }
+ },
+ "order": 24,
+ "program": {
+  "rust": {
+   "code": "use std::num::ParseIntError;\n\nfn parse_age(s: &str) -> Result<u32, ParseIntError> {\n    let n: u32 = s.parse()?;   // ? = if this failed, return the error now\n    Ok(n)\n}\n\nfn main() {\n    match parse_age(\"42\") {\n        Ok(n) => println!(\"age {n}\"),\n        Err(e) => println!(\"error: {e}\"),\n    }\n    match parse_age(\"abc\") {\n        Ok(n) => println!(\"age {n}\"),\n        Err(e) => println!(\"error: {e}\"),\n    }\n}\n",
+   "out": "age 42\nerror: invalid digit found in string\n"
+  },
+  "go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"strconv\"\n)\n\nfunc parseAge(s string) (int, error) {\n\tn, err := strconv.Atoi(s)\n\tif err != nil {\n\t\treturn 0, err\n\t}\n\treturn n, nil\n}\n\nfunc main() {\n\tfor _, s := range []string{\"42\", \"abc\"} {\n\t\tif n, err := parseAge(s); err != nil {\n\t\t\tfmt.Println(\"error:\", err)\n\t\t} else {\n\t\t\tfmt.Println(\"age\", n)\n\t\t}\n\t}\n}\n",
+   "out": "age 42\nerror: strconv.Atoi: parsing \"abc\": invalid syntax\n"
+  },
+  "kotlin": {
+   "code": "fun parseAge(s: String): Int {\n    return s.toInt()       // throws NumberFormatException on bad input\n}\n\nfun main() {\n    for (s in listOf(\"42\", \"abc\")) {\n        try {\n            println(\"age ${parseAge(s)}\")\n        } catch (e: NumberFormatException) {\n            println(\"error: ${e.message}\")\n        }\n    }\n}\n",
+   "out": "age 42\nerror: For input string: \"abc\"\n"
+  },
+  "python": {
+   "code": "def parse_age(s: str) -> int:\n    return int(s)  # raises ValueError on bad input; no ? needed\n\n\nfor text in [\"42\", \"abc\"]:\n    try:\n        print(f\"age {parse_age(text)}\")\n    except ValueError as e:\n        print(f\"error: {e}\")\n",
+   "out": "age 42\nerror: invalid literal for int() with base 10: 'abc'\n"
+  },
+  "typescript": {
+   "code": "function parseAge(s: string): number {\n  if (!/^\\d+$/.test(s)) {\n    throw new Error(\"invalid digit found in string\");\n  }\n  return Number(s);\n}\n\nfor (const input of [\"42\", \"abc\"]) {\n  try {\n    console.log(`age ${parseAge(input)}`);\n  } catch (e) {\n    console.log(`error: ${(e as Error).message}`);\n  }\n}\n",
+   "out": "age 42\nerror: invalid digit found in string\n"
+  },
+  "java": {
+   "code": "import java.util.List;\n\npublic class Main {\n    static int parseAge(String s) {\n        return Integer.parseInt(s);   // throws NumberFormatException on bad input\n    }\n\n    public static void main(String[] args) {\n        for (var s : List.of(\"42\", \"abc\")) {\n            try {\n                System.out.println(\"age \" + parseAge(s));\n            } catch (NumberFormatException e) {\n                System.out.println(\"error: \" + e.getMessage());\n            }\n        }\n    }\n}\n",
+   "out": "age 42\nerror: For input string: \"abc\"\n"
+  },
+  "csharp": {
+   "code": "foreach (var input in new[] { \"42\", \"abc\" })\n{\n    try\n    {\n        Console.WriteLine($\"age {ParseAge(input)}\");\n    }\n    catch (FormatException e)\n    {\n        Console.WriteLine($\"error: {e.Message}\");\n    }\n}\n\n// a bad string throws, and the exception flies up to the caller\nstatic uint ParseAge(string s) => uint.Parse(s);\n",
+   "out": "age 42\nerror: The input string 'abc' was not in a correct format.\n"
+  },
+  "c": {
+   "code": "#include <ctype.h>\n#include <stdio.h>\n\n// C has no Result: return an error message (NULL means success)\n// and write the value through a pointer\nconst char *parse_age(const char *s, unsigned *out) {\n    if (*s == '\\0') return \"cannot parse integer from empty string\";\n    unsigned n = 0;\n    for (; *s; s++) {\n        if (!isdigit((unsigned char)*s)) return \"invalid digit found in string\";\n        n = n * 10 + (unsigned)(*s - '0');\n    }\n    *out = n;\n    return NULL;\n}\n\nint main(void) {\n    const char *inputs[] = {\"42\", \"abc\"};\n    for (int i = 0; i < 2; i++) {\n        unsigned n;\n        const char *err = parse_age(inputs[i], &n);\n        if (err == NULL) {\n            printf(\"age %u\\n\", n);\n        } else {\n            printf(\"error: %s\\n\", err);\n        }\n    }\n    return 0;\n}\n",
+   "out": "age 42\nerror: invalid digit found in string\n"
+  },
+  "cpp": {
+   "code": "#include <charconv>\n#include <iostream>\n#include <stdexcept>\n#include <string_view>\n\nunsigned parse_age(std::string_view s) {\n    unsigned n = 0;\n    auto [end, ec] = std::from_chars(s.data(), s.data() + s.size(), n);\n    if (ec != std::errc{} || end != s.data() + s.size()) {\n        throw std::invalid_argument(\"invalid digit found in string\");\n    }\n    return n;\n}\n\nint main() {\n    for (std::string_view input : {\"42\", \"abc\"}) {\n        try {\n            unsigned n = parse_age(input);   // a failure throws and jumps to catch\n            std::cout << \"age \" << n << \"\\n\";\n        } catch (const std::invalid_argument& e) {\n            std::cout << \"error: \" << e.what() << \"\\n\";\n        }\n    }\n}\n",
+   "out": "age 42\nerror: invalid digit found in string\n"
+  }
+ },
+ "faq": [],
+ "snippets": {
+  "boxed.rs": {
+   "code": "use std::error::Error;\nuse std::fmt;\nuse std::num::ParseIntError;\n\n#[derive(Debug)]\nstruct TooBig(u32);\n\nimpl fmt::Display for TooBig {\n    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {\n        write!(f, \"{} is too big\", self.0)\n    }\n}\n\nimpl Error for TooBig {}\n\n// Box<dyn Error> holds any error. ? converts into it, whatever the type.\nfn check(text: &str) -> Result<u32, Box<dyn Error>> {\n    if text.is_empty() {\n        return Err(\"nothing to check\".into()); // a &str becomes an error\n    }\n    let n: u32 = text.parse()?; // a ParseIntError\n    if n > 100 {\n        return Err(Box::new(TooBig(n))); // our own error type\n    }\n    Ok(n)\n}\n\nfn main() {\n    for text in [\"42\", \"\", \"x\", \"500\"] {\n        match check(text) {\n            Ok(n) => println!(\"{text:?} -> ok {n}\"),\n            Err(e) => {\n                // The concrete type is hidden, but you can ask for it back.\n                let is_parse = e.downcast_ref::<ParseIntError>().is_some();\n                println!(\"{text:?} -> {e} (a ParseIntError: {is_parse})\");\n            }\n        }\n    }\n}\n",
+   "out": "\"42\" -> ok 42\n\"\" -> nothing to check (a ParseIntError: false)\n\"x\" -> invalid digit found in string (a ParseIntError: true)\n\"500\" -> 500 is too big (a ParseIntError: false)\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "chain.rs": {
+   "code": "use std::error::Error;\nuse std::fmt;\nuse std::num::ParseIntError;\n\n#[derive(Debug)]\nstruct SettingError {\n    key: String,\n    cause: ParseIntError,\n}\n\nimpl fmt::Display for SettingError {\n    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {\n        write!(f, \"bad value for {}\", self.key)\n    }\n}\n\nimpl Error for SettingError {\n    fn source(&self) -> Option<&(dyn Error + 'static)> {\n        Some(&self.cause)\n    }\n}\n\n#[derive(Debug)]\nstruct LoadError {\n    file: String,\n    cause: SettingError,\n}\n\nimpl fmt::Display for LoadError {\n    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {\n        write!(f, \"could not load {}\", self.file)\n    }\n}\n\nimpl Error for LoadError {\n    fn source(&self) -> Option<&(dyn Error + 'static)> {\n        Some(&self.cause)\n    }\n}\n\n// Rust's version of Go's errors.As: walk the chain and test each error.\n// (Copy the signature as written; Box<dyn Error> is explained above.)\nfn find_parse_error<'a>(err: &'a (dyn Error + 'static)) -> Option<&'a ParseIntError> {\n    let mut current = Some(err);\n    while let Some(e) = current {\n        if let Some(found) = e.downcast_ref::<ParseIntError>() {\n            return Some(found);\n        }\n        current = e.source();\n    }\n    None\n}\n\nfn main() {\n    let err = LoadError {\n        file: \"limits.txt\".to_string(),\n        cause: SettingError {\n            key: \"threads\".to_string(),\n            cause: \"12k\".parse::<u32>().unwrap_err(),\n        },\n    };\n\n    println!(\"top: {err}\");\n    let mut current = err.source();\n    let mut depth = 1;\n    while let Some(cause) = current {\n        println!(\"{depth} level down: {cause}\");\n        current = cause.source();\n        depth += 1;\n    }\n\n    println!(\n        \"top level is a ParseIntError: {}\",\n        (&err as &dyn Error)\n            .downcast_ref::<ParseIntError>()\n            .is_some()\n    );\n    println!(\"found one in the chain: {:?}\", find_parse_error(&err));\n}\n",
+   "out": "top: could not load limits.txt\n1 level down: bad value for threads\n2 level down: invalid digit found in string\ntop level is a ParseIntError: false\nfound one in the chain: Some(ParseIntError { kind: InvalidDigit })\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-methods.rs": {
+   "code": "// Backs the table of Result methods in the lesson.\nfn main() {\n    let ok: Result<i32, String> = Ok(4);\n    let err: Result<i32, String> = Err(\"bad\".to_string());\n\n    assert_eq!(ok.clone().map(|n| n * 10), Ok(40));\n    assert_eq!(err.clone().map(|n| n * 10), Err(\"bad\".to_string()));\n    assert_eq!(ok.clone().map_err(|e| e.len()), Ok(4));\n    assert_eq!(err.clone().map_err(|e| e.len()), Err(3));\n    assert_eq!(\n        ok.clone().and_then(|n| if n > 5 {\n            Ok(n)\n        } else {\n            Err(\"small\".to_string())\n        }),\n        Err(\"small\".to_string())\n    );\n    assert_eq!(\n        err.clone().and_then(|n| Ok::<i32, String>(n + 1)),\n        Err(\"bad\".to_string())\n    );\n    assert_eq!(ok.clone().unwrap_or(0), 4);\n    assert_eq!(err.clone().unwrap_or(0), 0);\n    assert_eq!(err.clone().unwrap_or_else(|e| e.len() as i32), 3);\n    assert_eq!(err.clone().unwrap_or_default(), 0);\n    assert_eq!(ok.clone().ok(), Some(4));\n    assert_eq!(err.clone().ok(), None);\n    assert_eq!(err.clone().err(), Some(\"bad\".to_string()));\n    assert_eq!(Some(4).ok_or(\"none\"), Ok(4));\n    assert_eq!(None::<i32>.ok_or(\"none\"), Err(\"none\"));\n    assert_eq!(ok.clone().unwrap_or_else(|e| e.len() as i32), 4);\n    assert_eq!(ok.clone().unwrap_or_default(), 4);\n    assert_eq!(ok.clone().err(), None);\n    assert!(ok.is_ok() && !ok.is_err());\n    assert!(err.is_err() && !err.is_ok());\n    println!(\"all checks passed\");\n}\n",
+   "out": "all checks passed\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "cleanup.rs": {
+   "code": "use std::num::ParseIntError;\n\n// Drop is code that runs when a value goes out of scope (the Traits lesson\n// covers it). It plays the part of finally, a destructor, or a deferred call.\nstruct Guard(&'static str);\n\nimpl Drop for Guard {\n    fn drop(&mut self) {\n        println!(\"cleanup: {}\", self.0);\n    }\n}\n\nfn work(text: &str) -> Result<u32, ParseIntError> {\n    let _guard = Guard(\"work\");\n    let n: u32 = text.parse()?; // on an Err, the function returns from here\n    println!(\"parsed {n}\");\n    Ok(n)\n}\n\nfn main() {\n    println!(\"work(\\\"7\\\"): {:?}\", work(\"7\"));\n    println!(\"work(\\\"x\\\"): {:?}\", work(\"x\"));\n}\n",
+   "out": "parsed 7\ncleanup: work\nwork(\"7\"): Ok(7)\ncleanup: work\nwork(\"x\"): Err(ParseIntError { kind: InvalidDigit })\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "collect.rs": {
+   "code": "use std::num::ParseIntError;\n\n// Parse every piece, or stop at the first bad one. A for loop with ? does it.\nfn parse_all(text: &str) -> Result<Vec<i32>, ParseIntError> {\n    let mut numbers = Vec::new();\n    for piece in text.split(',') {\n        numbers.push(piece.trim().parse()?);\n    }\n    Ok(numbers)\n}\n\n// The same, as one expression. collect can build a Result<Vec<_>, _> from\n// an iterator of Results: the Vec if all are Ok, or the first Err.\nfn parse_all_collect(text: &str) -> Result<Vec<i32>, ParseIntError> {\n    text.split(',').map(|piece| piece.trim().parse()).collect()\n}\n\nfn main() {\n    for text in [\"1, 2, 3\", \"1, two, 3\", \"\"] {\n        println!(\"loop    {text:?}: {:?}\", parse_all(text));\n        println!(\"collect {text:?}: {:?}\", parse_all_collect(text));\n    }\n}\n",
+   "out": "loop    \"1, 2, 3\": Ok([1, 2, 3])\ncollect \"1, 2, 3\": Ok([1, 2, 3])\nloop    \"1, two, 3\": Err(ParseIntError { kind: InvalidDigit })\ncollect \"1, two, 3\": Err(ParseIntError { kind: InvalidDigit })\nloop    \"\": Err(ParseIntError { kind: Empty })\ncollect \"\": Err(ParseIntError { kind: Empty })\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "combinators.rs": {
+   "code": "use std::collections::HashMap;\n\n// A HashMap is Rust's map type (Maps is a later lesson). get returns an Option.\nfn port_from(settings: &HashMap<&str, &str>) -> Result<u16, String> {\n    let text = settings\n        .get(\"port\")\n        .ok_or_else(|| \"no 'port' setting\".to_string())?; // Option -> Result\n    let port: u16 = text.parse().map_err(|e| format!(\"port {text:?}: {e}\"))?; // change the error\n    if port < 1024 {\n        return Err(format!(\"port {port} needs special rights\"));\n    }\n    Ok(port)\n}\n\n// and_then: run a second step that can also fail, only if the first worked.\nfn half(n: u32) -> Result<u32, String> {\n    if n % 2 == 0 {\n        Ok(n / 2)\n    } else {\n        Err(format!(\"{n} is odd\"))\n    }\n}\n\nfn main() {\n    let mut settings = HashMap::new();\n    println!(\"empty: {:?}\", port_from(&settings));\n    settings.insert(\"port\", \"http\");\n    println!(\"http: {:?}\", port_from(&settings));\n    settings.insert(\"port\", \"80\");\n    println!(\"80: {:?}\", port_from(&settings));\n    settings.insert(\"port\", \"8080\");\n    println!(\"8080: {:?}\", port_from(&settings));\n\n    println!(\"half(8): {:?}\", half(8));\n    println!(\"half(8) then half: {:?}\", half(8).and_then(half));\n    println!(\"half(6) then half: {:?}\", half(6).and_then(half));\n    println!(\"half(7) then half: {:?}\", half(7).and_then(half));\n}\n",
+   "out": "empty: Err(\"no 'port' setting\")\nhttp: Err(\"port \\\"http\\\": invalid digit found in string\")\n80: Err(\"port 80 needs special rights\")\n8080: Ok(8080)\nhalf(8): Ok(4)\nhalf(8) then half: Ok(2)\nhalf(6) then half: Err(\"3 is odd\")\nhalf(7) then half: Err(\"7 is odd\")\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "custom-error.rs": {
+   "code": "use std::error::Error;\nuse std::fmt;\nuse std::num::ParseIntError;\n\n// One enum lists every way reading the setting can fail.\n#[derive(Debug)]\nenum ConfigError {\n    Missing,\n    NotANumber(ParseIntError),\n    OutOfRange { value: u32, max: u32 },\n}\n\n// Display is the message a person reads. It describes this level only.\nimpl fmt::Display for ConfigError {\n    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {\n        match self {\n            ConfigError::Missing => write!(f, \"the threads setting is missing\"),\n            ConfigError::NotANumber(_) => write!(f, \"the threads setting is not a number\"),\n            ConfigError::OutOfRange { value, max } => {\n                write!(f, \"threads is {value}, but the most allowed is {max}\")\n            }\n        }\n    }\n}\n\n// Error needs Debug and Display. source says which error caused this one.\nimpl Error for ConfigError {\n    fn source(&self) -> Option<&(dyn Error + 'static)> {\n        match self {\n            ConfigError::NotANumber(cause) => Some(cause),\n            _ => None,\n        }\n    }\n}\n\n// This is the conversion that ? calls when it finds a ParseIntError in a\n// function that returns ConfigError.\nimpl From<ParseIntError> for ConfigError {\n    fn from(e: ParseIntError) -> ConfigError {\n        ConfigError::NotANumber(e)\n    }\n}\n\nfn threads(setting: Option<&str>) -> Result<u32, ConfigError> {\n    let text = setting.ok_or(ConfigError::Missing)?;\n    let n: u32 = text.parse()?;\n    if n > 64 {\n        return Err(ConfigError::OutOfRange { value: n, max: 64 });\n    }\n    Ok(n)\n}\n\nfn main() {\n    for setting in [Some(\"8\"), None, Some(\"many\"), Some(\"500\")] {\n        match threads(setting) {\n            Ok(n) => println!(\"ok: {n} threads\"),\n            Err(e) => {\n                println!(\"Display: {e}\");\n                println!(\"Debug:   {e:?}\");\n                if let Some(cause) = e.source() {\n                    println!(\"cause:   {cause}\");\n                }\n            }\n        }\n    }\n}\n",
+   "out": "ok: 8 threads\nDisplay: the threads setting is missing\nDebug:   Missing\nDisplay: the threads setting is not a number\nDebug:   NotANumber(ParseIntError { kind: InvalidDigit })\ncause:   invalid digit found in string\nDisplay: threads is 500, but the most allowed is 64\nDebug:   OutOfRange { value: 500, max: 64 }\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "exit-codes.rs": {
+   "code": "use std::error::Error;\nuse std::process::{Command, exit};\n\n// This program starts copies of itself and prints how each one ended.\nfn main() -> Result<(), Box<dyn Error>> {\n    let args: Vec<String> = std::env::args().collect();\n    match args.get(1).map(String::as_str) {\n        Some(\"ok\") => println!(\"fine\"),\n        Some(\"panic\") => panic!(\"a bug\"),\n        Some(\"exit\") => exit(2),\n        Some(\"return-err\") => {\n            let n: u32 = \"x\".parse()?;\n            println!(\"unreachable {n}\");\n        }\n        _ => {\n            // No argument: this is the parent. Start one child per mode.\n            for mode in [\"ok\", \"panic\", \"exit\", \"return-err\"] {\n                let me = std::env::current_exe()?;\n                let status = Command::new(me).arg(mode).output()?.status;\n                println!(\"{mode}: exit code {:?}\", status.code());\n            }\n        }\n    }\n    Ok(())\n}\n",
+   "out": "ok: exit code Some(0)\npanic: exit code Some(101)\nexit: exit code Some(2)\nreturn-err: exit code Some(1)\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "expect-err.panic.rs": {
+   "code": "fn main() {\n    let text = \"forty\";\n    // expect is unwrap with your own message in front of the error.\n    let age: u32 = text.parse().expect(\"age should be a whole number\");\n    println!(\"age: {age}\");\n}\n",
+   "out": "\nthread 'main' (1) panicked at src/main.rs:4:33:\nage should be a whole number: ParseIntError { kind: InvalidDigit }\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+   "lang": "rust",
+   "exit": 101
+  },
+  "ignored.fail.rs": {
+   "code": "// By default an ignored Result is a warning. This line turns it into an error,\n// so the page can show the message.\n#![deny(unused_must_use)]\n\nfn save(name: &str) -> Result<(), String> {\n    if name.is_empty() {\n        Err(\"empty name\".to_string())\n    } else {\n        Ok(())\n    }\n}\n\nfn main() {\n    save(\"\");\n    // Ignoring on purpose is allowed. Say so with let _ =.\n    let _ = save(\"\");\n    println!(\"done\");\n}\n",
+   "error": "error: unused `Result` that must be used\n  --> src/main.rs:14:5\n   |\n14 |     save(\"\");\n   |     ^^^^^^^^\n   |\n   = note: this `Result` may be an `Err` variant, which should be handled\nnote: the lint level is defined here\n  --> src/main.rs:3:9\n   |\n 3 | #![deny(unused_must_use)]\n   |         ^^^^^^^^^^^^^^^\nhelp: use `let _ = ...` to ignore the resulting value\n   |\n14 |     let _ = save(\"\");\n   |     +++++++",
+   "lang": "rust"
+  },
+  "layout.rs": {
+   "code": "use std::error::Error;\nuse std::mem::{size_of, size_of_val};\nuse std::num::ParseIntError;\n\nfn main() {\n    println!(\"size_of u32: {}\", size_of::<u32>());\n    println!(\"size_of ParseIntError: {}\", size_of::<ParseIntError>());\n    println!(\n        \"size_of Result<u32, ParseIntError>: {}\",\n        size_of::<Result<u32, ParseIntError>>()\n    );\n    println!(\"size_of &dyn Error: {}\", size_of::<&dyn Error>());\n    println!(\"size_of Box<dyn Error>: {}\", size_of::<Box<dyn Error>>());\n    println!(\n        \"size_of Result<(), Box<dyn Error>>: {}\",\n        size_of::<Result<(), Box<dyn Error>>>()\n    );\n\n    // The box holds the error value somewhere else. This is how big that value is.\n    let boxed: Box<dyn Error> = Box::new(\"x\".parse::<u32>().unwrap_err());\n    println!(\n        \"size of the ParseIntError inside the box: {}\",\n        size_of_val(&*boxed)\n    );\n}\n",
+   "out": "size_of u32: 4\nsize_of ParseIntError: 1\nsize_of Result<u32, ParseIntError>: 8\nsize_of &dyn Error: 16\nsize_of Box<dyn Error>: 16\nsize_of Result<(), Box<dyn Error>>: 16\nsize of the ParseIntError inside the box: 1\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "main-err.panic.rs": {
+   "code": "use std::error::Error;\n\nfn main() -> Result<(), Box<dyn Error>> {\n    println!(\"starting\");\n    let port: u16 = \"http\".parse()?;\n    println!(\"port: {port}\");\n    Ok(())\n}\n",
+   "out": "starting\nError: ParseIntError { kind: InvalidDigit }\n",
+   "lang": "rust",
+   "exit": 1
+  },
+  "main-result.rs": {
+   "code": "use std::error::Error;\n\nfn parse_port(text: &str) -> Result<u16, std::num::ParseIntError> {\n    text.parse()\n}\n\n// main may return a Result. An Err ends the program with a message and a\n// non-zero exit code. Here every step works, so it prints and returns Ok.\nfn main() -> Result<(), Box<dyn Error>> {\n    let port = parse_port(\"8080\")?;\n    println!(\"port: {port}\");\n    Ok(())\n}\n",
+   "out": "port: 8080\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "matching.rs": {
+   "code": "fn main() {\n    // parse returns a Result: Ok(the number) or Err(what went wrong).\n    let good = \"42\".parse::<u32>();\n    let bad = \"4x2\".parse::<u32>();\n    println!(\"good: {good:?}\");\n    println!(\"bad: {bad:?}\");\n    println!(\"good.is_ok(): {}\", good.is_ok());\n    println!(\"bad.is_err(): {}\", bad.is_err());\n\n    // match opens a Result. The compiler checks that both cases are handled.\n    for text in [\"42\", \"4x2\", \"\", \"-7\", \"99999999999\"] {\n        match text.parse::<u32>() {\n            Ok(n) => println!(\"{text:?} -> number {n}\"),\n            Err(e) => println!(\"{text:?} -> error: {e}\"),\n        }\n    }\n}\n",
+   "out": "good: Ok(42)\nbad: Err(ParseIntError { kind: InvalidDigit })\ngood.is_ok(): true\nbad.is_err(): true\n\"42\" -> number 42\n\"4x2\" -> error: invalid digit found in string\n\"\" -> error: cannot parse integer from empty string\n\"-7\" -> error: invalid digit found in string\n\"99999999999\" -> error: number too large to fit in target type\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "mismatch.fail.rs": {
+   "code": "// The function says its error is a String, but parse gives a ParseIntError.\nfn double(text: &str) -> Result<u32, String> {\n    let n: u32 = text.parse()?;\n    Ok(n * 2)\n}\n\nfn main() {\n    println!(\"{:?}\", double(\"21\"));\n}\n",
+   "error": "error[E0277]: `?` couldn't convert the error to `String`\n --> src/main.rs:3:30\n  |\n2 | fn double(text: &str) -> Result<u32, String> {\n  |                          ------------------- expected `String` because of this\n3 |     let n: u32 = text.parse()?;\n  |                       -------^ the trait `From<ParseIntError>` is not implemented for `String`\n  |                       |\n  |                       this can't be annotated with `?` because it has type `Result<_, ParseIntError>`\n  |\n  = note: the question mark operation (`?`) implicitly performs a conversion on the error value using the `From` trait\n  = help: `String` implements trait `From<T>`:\n            From<&String>\n            From<&mut str>\n            From<&str>\n            From<Box<str>>\n            From<Cow<'_, str>>\n            From<char>\n",
+   "lang": "rust"
+  },
+  "panic-bug.panic.rs": {
+   "code": "// The caller must pass a non-empty slice. An empty one is a bug in the caller,\n// not bad input to recover from, so the function stops loudly.\nfn average(scores: &[u32]) -> u32 {\n    assert!(!scores.is_empty(), \"average needs at least one score\");\n    scores.iter().sum::<u32>() / scores.len() as u32\n}\n\nfn main() {\n    println!(\"average: {}\", average(&[70, 80, 90]));\n    println!(\"average: {}\", average(&[]));\n}\n",
+   "out": "average: 80\n\nthread 'main' (1) panicked at src/main.rs:4:5:\naverage needs at least one score\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+   "lang": "rust",
+   "exit": 101
+  },
+  "question-expanded.rs": {
+   "code": "use std::num::ParseIntError;\n\n// The version with ?\nfn short(text: &str) -> Result<u32, ParseIntError> {\n    let n: u32 = text.parse()?;\n    Ok(n + 1)\n}\n\n// What ? does, written out. The Err arm calls From::from on the error:\n// when the types already match, that changes nothing.\nfn long(text: &str) -> Result<u32, ParseIntError> {\n    let n: u32 = match text.parse() {\n        Ok(value) => value,\n        Err(e) => return Err(From::from(e)),\n    };\n    Ok(n + 1)\n}\n\nfn main() {\n    for text in [\"41\", \"forty-one\"] {\n        println!(\"short({text:?}): {:?}\", short(text));\n        println!(\"long({text:?}): {:?}\", long(text));\n    }\n}\n",
+   "out": "short(\"41\"): Ok(42)\nlong(\"41\"): Ok(42)\nshort(\"forty-one\"): Err(ParseIntError { kind: InvalidDigit })\nlong(\"forty-one\"): Err(ParseIntError { kind: InvalidDigit })\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "question-in-main.fail.rs": {
+   "code": "fn main() {\n    let n: u32 = \"42\".parse()?;\n    println!(\"n: {n}\");\n}\n",
+   "error": "error[E0277]: the `?` operator can only be used in a function that returns `Result` or `Option` (or another type that implements `FromResidual`)\n --> src/main.rs:2:30\n  |\n1 | fn main() {\n  | --------- this function should return `Result` or `Option` to accept `?`\n2 |     let n: u32 = \"42\".parse()?;\n  |                              ^ cannot use the `?` operator in a function that returns `()`\n  |\nhelp: consider adding return type\n  |\n1 ~ fn main() -> Result<(), Box<dyn std::error::Error>> {\n2 |     let n: u32 = \"42\".parse()?;\n3 |     println!(\"n: {n}\");\n4 +     Ok(())",
+   "lang": "rust"
+  },
+  "question-mark.rs": {
+   "code": "use std::num::ParseIntError;\n\n// Each ? means: if this is an Err, return that Err from the whole function now.\n// If it is Ok, take the value out and carry on.\nfn total_cents(dollars: &str, cents: &str) -> Result<u32, ParseIntError> {\n    let d: u32 = dollars.parse()?;\n    let c: u32 = cents.parse()?;\n    Ok(d * 100 + c)\n}\n\nfn main() {\n    println!(\"total_cents(\\\"12\\\", \\\"50\\\"): {:?}\", total_cents(\"12\", \"50\"));\n    println!(\"total_cents(\\\"x\\\", \\\"50\\\"): {:?}\", total_cents(\"x\", \"50\"));\n    println!(\"total_cents(\\\"12\\\", \\\"\\\"): {:?}\", total_cents(\"12\", \"\"));\n}\n",
+   "out": "total_cents(\"12\", \"50\"): Ok(1250)\ntotal_cents(\"x\", \"50\"): Err(ParseIntError { kind: InvalidDigit })\ntotal_cents(\"12\", \"\"): Err(ParseIntError { kind: Empty })\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "thread-panic.rs": {
+   "code": "use std::thread;\n\n// A thread is a second line of execution (a later lesson). Read the closure\n// as \"run this on another thread\".\nfn main() {\n    let worker = thread::spawn(|| {\n        panic!(\"the worker hit a bug\");\n    });\n    let outcome = worker.join();\n    println!(\"the worker panicked: {}\", outcome.is_err());\n    println!(\"main is still running\");\n}\n",
+   "out": "\nthread '<unnamed>' (1) panicked at src/main.rs:7:9:\nthe worker hit a bug\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nthe worker panicked: true\nmain is still running\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "unwrap-err.panic.rs": {
+   "code": "fn main() {\n    println!(\"before\");\n    let age: u32 = \"forty\".parse().unwrap();\n    println!(\"age: {age}\");\n}\n",
+   "out": "before\n\nthread 'main' (1) panicked at src/main.rs:3:36:\ncalled `Result::unwrap()` on an `Err` value: ParseIntError { kind: InvalidDigit }\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+   "lang": "rust",
+   "exit": 101
+  },
+  "unwrap-fine.rs": {
+   "code": "use std::net::Ipv4Addr;\n\nfn main() {\n    // The text is a literal in this file, and a valid address. If someone mistypes\n    // it later, the program stops at once and the message says what was meant.\n    let home: Ipv4Addr = \"127.0.0.1\".parse().expect(\"the literal is a valid address\");\n    println!(\"home: {home}\");\n\n    // A fallback chosen on purpose is not a crash waiting to happen.\n    let width: u32 = \"wide\".parse().unwrap_or(80);\n    println!(\"width: {width}\");\n}\n",
+   "out": "home: 127.0.0.1\nwidth: 80\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "eafp.py": {
+   "code": "class ConfigError(Exception):\n    pass\n\n\ndef threads(data):\n    try:\n        return int(data[\"threads\"])\n    except KeyError as e:\n        raise ConfigError(\"the threads setting is missing\") from e\n    except ValueError as e:\n        raise ConfigError(\"the threads setting is not a number\") from e\n\n\nfor data in [{\"threads\": \"8\"}, {}, {\"threads\": \"many\"}]:\n    try:\n        print(\"threads:\", threads(data))\n    except ConfigError as e:\n        print(\"error:\", e, \"| cause:\", repr(e.__cause__))\n",
+   "out": "threads: 8\nerror: the threads setting is missing | cause: KeyError('threads')\nerror: the threads setting is not a number | cause: ValueError(\"invalid literal for int() with base 10: 'many'\")\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "errno.c": {
+   "code": "#include <errno.h>\n#include <stdio.h>\n#include <stdlib.h>\n\n// strtol reports trouble three ways: errno, the end pointer, and the value.\n// A caller has to check all of them, and nothing forces it to.\nint parse(const char *s, long *out) {\n    char *end;\n    errno = 0;\n    long n = strtol(s, &end, 10);\n    if (errno == ERANGE) return -1;      // too big\n    if (end == s || *end != '\\0') return -2;  // no digits, or junk after them\n    *out = n;\n    return 0;\n}\n\nint main(void) {\n    const char *inputs[] = {\"42\", \"abc\", \"\", \"99999999999999999999\"};\n    for (int i = 0; i < 4; i++) {\n        long n = 0;\n        int code = parse(inputs[i], &n);\n        printf(\"parse(\\\"%s\\\"): code %d, value %ld\\n\", inputs[i], code, n);\n    }\n    return 0;\n}\n",
+   "out": "parse(\"42\"): code 0, value 42\nparse(\"abc\"): code -2, value 0\nparse(\"\"): code -2, value 0\nparse(\"99999999999999999999\"): code -1, value 0\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "nochecked.crash.cs": {
+   "code": "using System.IO;\n\n// C# has no checked exceptions: this compiles with no try and no throws.\nConsole.WriteLine(File.ReadAllText(\"missing.txt\"));\n",
+   "out": "Unhandled exception. System.IO.FileNotFoundException: Could not find file 'missing.txt'.\nFile name: 'missing.txt'\n   at Interop.ThrowExceptionForIoErrno(ErrorInfo errorInfo, String path, Boolean isDirError)\n   at Microsoft.Win32.SafeHandles.SafeFileHandle.Open(String path, OpenFlags flags, Int32 mode, Boolean failForSymlink, Boolean& wasSymlink, Func`4 createOpenException)\n   at Microsoft.Win32.SafeHandles.SafeFileHandle.Open(String fullPath, FileMode mode, FileAccess access, FileShare share, FileOptions options, Int64 preallocationSize, UnixFileMode openPermissions, Int64& fileLength, UnixFileMode& filePermissions, Boolean failForSymlink, Boolean& wasSymlink, Func`4 createOpenException)\n   at System.IO.Strategies.OSFileStreamStrategy..ctor(String path, FileMode mode, FileAccess access, FileShare share, FileOptions options, Int64 preallocationSize, Nullable`1 unixCreateMode)\n   at System.IO.StreamReader.ValidateArgsAndOpenPath(String path, Int32 bufferSize)\n   at System.IO.File.ReadAllText(String path, Encoding encoding)\n   at Program.<Main>$(String[] args) in Program.cs:line 4\n",
+   "lang": "csharp",
+   "exit": -6
+  },
+  "nochecked.crash.kt": {
+   "code": "import java.io.File\n\n// Kotlin has no checked exceptions: this compiles with no try and no throws.\nfun main() {\n    println(File(\"missing.txt\").readText())\n}\n",
+   "out": "Exception in thread \"main\" java.io.FileNotFoundException: missing.txt (No such file or directory)\n\tat java.base/java.io.FileInputStream.open0(Native Method)\n\tat java.base/java.io.FileInputStream.open(FileInputStream.java:185)\n\tat java.base/java.io.FileInputStream.<init>(FileInputStream.java:139)\n\tat kotlin.io.FilesKt__FileReadWriteKt.readText(FileReadWrite.kt:135)\n\tat kotlin.io.FilesKt__FileReadWriteKt.readText$default(FileReadWrite.kt:135)\n\tat MainKt.main(Main.kt:5)\n\tat MainKt.main(Main.kt)\n",
+   "lang": "kotlin",
+   "exit": 1
+  },
+  "nodiscard.cpp": {
+   "code": "#include <iostream>\n\n// On a function: only this function warns.\n[[nodiscard]] int load(int id) {\n    return id > 0 ? 0 : -1;\n}\n\n// On a type: every function that returns a Status warns.\nstruct [[nodiscard]] Status {\n    int code;\n};\n\nStatus save(int id) {\n    return {id > 0 ? 0 : -1};\n}\n\nint main() {\n    load(-5);  // the failure code is thrown away\n    save(-5);  // so is this one\n    std::cout << \"done\\n\";\n}\n",
+   "warnings": "main.cpp: In function ‘int main()’:\nmain.cpp:18:9: warning: ignoring return value of ‘int load(int)’, declared with attribute ‘nodiscard’ [-Wunused-result]\n   18 |     load(-5);  // the failure code is thrown away\n      |     ~~~~^~~~\nmain.cpp:4:19: note: declared here\n    4 | [[nodiscard]] int load(int id) {\n      |                   ^~~~\nmain.cpp:19:9: warning: ignoring returned value of type ‘Status’, declared with attribute ‘nodiscard’ [-Wunused-result]\n   19 |     save(-5);  // so is this one\n      |     ~~~~^~~~\nmain.cpp:13:8: note: in call to ‘Status save(int)’, declared here\n   13 | Status save(int id) {\n      |        ^~~~\nmain.cpp:9:22: note: ‘Status’ declared here\n    9 | struct [[nodiscard]] Status {\n      |                      ^~~~~~",
+   "out": "done\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "result.ts": {
+   "code": "// A Result you write yourself: a union the compiler narrows.\ntype Result<T, E> = { ok: true; value: T } | { ok: false; error: E };\n\nfunction parseAge(s: string): Result<number, string> {\n  if (!/^\\d+$/.test(s)) return { ok: false, error: `not a number: ${s}` };\n  return { ok: true, value: Number(s) };\n}\n\nfor (const text of [\"36\", \"abc\"]) {\n  const r = parseAge(text);\n  if (r.ok) {\n    console.log(\"ok\", r.value);\n  } else {\n    console.log(\"error\", r.error); // r.value does not exist on this branch\n  }\n}\n",
+   "out": "ok 36\nerror not a number: abc\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "uncaught.crash.cpp": {
+   "code": "#include <iostream>\n#include <string>\n\n// Nothing in this signature says it can throw.\nint parse_age(const std::string& s) {\n    return std::stoi(s);\n}\n\nint main() {\n    std::cout << parse_age(\"abc\") << \"\\n\";\n}\n",
+   "out": "terminate called after throwing an instance of 'std::invalid_argument'\n  what():  stoi\n",
+   "lang": "cpp",
+   "exit": -6
+  },
+  "uncaught.crash.java": {
+   "code": "public class Main {\n    static int parseAge(String s) {\n        return Integer.parseInt(s); // unchecked: no throws clause needed\n    }\n\n    static int load() {\n        return parseAge(\"abc\");\n    }\n\n    public static void main(String[] args) {\n        System.out.println(load());\n    }\n}\n",
+   "out": "Exception in thread \"main\" java.lang.NumberFormatException: For input string: \"abc\"\n\tat java.base/java.lang.NumberFormatException.forInputString(NumberFormatException.java:67)\n\tat java.base/java.lang.Integer.parseInt(Integer.java:565)\n\tat java.base/java.lang.Integer.parseInt(Integer.java:662)\n\tat Main.parseAge(Main.java:3)\n\tat Main.load(Main.java:7)\n\tat Main.main(Main.java:11)\n",
+   "lang": "java",
+   "exit": 1
+  },
+  "uncaught.fail.py": {
+   "code": "def parse_age(s):\n    return int(s)\n\n\ndef load():\n    return parse_age(\"abc\")\n\n\nprint(load())\n",
+   "out": "Traceback (most recent call last):\n  File \"main.py\", line 9, in <module>\n    print(load())\n          ~~~~^^\n  File \"main.py\", line 6, in load\n    return parse_age(\"abc\")\n  File \"main.py\", line 2, in parse_age\n    return int(s)\nValueError: invalid literal for int() with base 10: 'abc'\n",
+   "lang": "python",
+   "exit": 1
+  },
+  "unhandled.fail.java": {
+   "code": "import java.io.IOException;\n\npublic class Main {\n    // The signature says this method can fail with an IOException.\n    static String read(String path) throws IOException {\n        throw new IOException(\"disk error\");\n    }\n\n    public static void main(String[] args) {\n        System.out.println(read(\"settings.txt\")); // not caught, not declared\n    }\n}\n",
+   "error": "Main.java:10: error: unreported exception IOException; must be caught or declared to be thrown\n        System.out.println(read(\"settings.txt\")); // not caught, not declared\n                               ^\n1 error",
+   "lang": "java"
+  },
+  "unknown-catch.fail.ts": {
+   "code": "try {\n  JSON.parse(\"{\");\n} catch (e) {\n  console.log(e.message);\n}\n",
+   "error": "main.ts(4,15): error TS18046: 'e' is of type 'unknown'.",
+   "lang": "typescript"
+  },
+  "wrap.go": {
+   "code": "package main\n\nimport (\n\t\"errors\"\n\t\"fmt\"\n\t\"strconv\"\n)\n\nvar ErrMissing = errors.New(\"missing\")\n\nfunc threads(settings map[string]string) (int, error) {\n\ttext, ok := settings[\"threads\"]\n\tif !ok {\n\t\treturn 0, fmt.Errorf(\"setting %q: %w\", \"threads\", ErrMissing)\n\t}\n\tn, err := strconv.Atoi(text)\n\tif err != nil {\n\t\treturn 0, fmt.Errorf(\"setting %q: %w\", \"threads\", err) // wrap, keep the cause\n\t}\n\treturn n, nil\n}\n\nfunc main() {\n\tfor _, settings := range []map[string]string{{}, {\"threads\": \"many\"}, {\"threads\": \"8\"}} {\n\t\tn, err := threads(settings)\n\t\tvar numErr *strconv.NumError\n\t\tswitch {\n\t\tcase errors.Is(err, ErrMissing): // is it this error, anywhere in the chain?\n\t\t\tfmt.Println(\"missing:\", err)\n\t\tcase errors.As(err, &numErr): // is there a *NumError in the chain? get it\n\t\t\tfmt.Println(\"bad number:\", numErr.Num, \"->\", numErr.Err)\n\t\tcase err != nil:\n\t\t\tfmt.Println(\"other:\", err)\n\t\tdefault:\n\t\t\tfmt.Println(\"threads:\", n)\n\t\t}\n\t}\n}\n",
+   "out": "missing: setting \"threads\": missing\nbad number: many -> invalid syntax\nthreads: 8\n",
+   "lang": "go",
+   "exit": 0
+  }
+ },
+ "exercises": {
+  "parse-range": {
+   "starter": "/// Turn \"3-7\" into Ok((3, 7)). Spaces around either number are fine.\n/// (Hint: ok_or(\"message\")? works because a &str converts into a String error.)\n/// Return Err with a short message when:\n///   - there is no '-'                      (\"missing '-'\")\n///   - either side is not a whole number    (a message starting \"bad start\" or \"bad end\")\n///   - the start is bigger than the end     (\"start is after end\")\nfn parse_range(text: &str) -> Result<(u32, u32), String> {\n    todo!(\"split_once, then ok_or and map_err with ?, then compare\")\n}\n\nfn main() {\n    assert_eq!(parse_range(\"3-7\"), Ok((3, 7)));\n    assert_eq!(parse_range(\" 3 - 7 \"), Ok((3, 7)));\n    assert_eq!(parse_range(\"5-5\"), Ok((5, 5)));\n    assert_eq!(parse_range(\"7\"), Err(\"missing '-'\".to_string()));\n    assert_eq!(parse_range(\"7-3\"), Err(\"start is after end\".to_string()));\n    assert_eq!(parse_range(\"\"), Err(\"missing '-'\".to_string()));\n    // \"-7\" has an empty start, and \"3-4-5\" has \"4-5\" as the end. The Arabic-Indic\n    // digits in the last one are numbers to people, but not to parse.\n    for bad in [\"3-\", \"-7\", \"a-b\", \"3-4-5\", \"٣-٥\"] {\n        let message = parse_range(bad).unwrap_err();\n        assert!(message.starts_with(\"bad \"), \"{bad:?} gave {message:?}\");\n    }\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "/// Turn \"3-7\" into Ok((3, 7)). Spaces around either number are fine.\n/// (Hint: ok_or(\"message\")? works because a &str converts into a String error.)\n/// Return Err with a short message when:\n///   - there is no '-'                      (\"missing '-'\")\n///   - either side is not a whole number    (a message starting \"bad start\" or \"bad end\")\n///   - the start is bigger than the end     (\"start is after end\")\nfn parse_range(text: &str) -> Result<(u32, u32), String> {\n    let (left, right) = text.split_once('-').ok_or(\"missing '-'\")?;\n    let start: u32 = left\n        .trim()\n        .parse()\n        .map_err(|e| format!(\"bad start {left:?}: {e}\"))?;\n    let end: u32 = right\n        .trim()\n        .parse()\n        .map_err(|e| format!(\"bad end {right:?}: {e}\"))?;\n    if start > end {\n        return Err(\"start is after end\".to_string());\n    }\n    Ok((start, end))\n}\n\nfn main() {\n    assert_eq!(parse_range(\"3-7\"), Ok((3, 7)));\n    assert_eq!(parse_range(\" 3 - 7 \"), Ok((3, 7)));\n    assert_eq!(parse_range(\"5-5\"), Ok((5, 5)));\n    assert_eq!(parse_range(\"7\"), Err(\"missing '-'\".to_string()));\n    assert_eq!(parse_range(\"7-3\"), Err(\"start is after end\".to_string()));\n    assert_eq!(parse_range(\"\"), Err(\"missing '-'\".to_string()));\n    // \"-7\" has an empty start, and \"3-4-5\" has \"4-5\" as the end. The Arabic-Indic\n    // digits in the last one are numbers to people, but not to parse.\n    for bad in [\"3-\", \"-7\", \"a-b\", \"3-4-5\", \"٣-٥\"] {\n        let message = parse_range(bad).unwrap_err();\n        assert!(message.starts_with(\"bad \"), \"{bad:?} gave {message:?}\");\n    }\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "sum-numbers": {
+   "starter": "use std::error::Error;\n\n/// Add up numbers written like \"1, 2, 3\". Return Err for a piece that is not a\n/// number (including an empty piece, as in \"1,,2\") and for a sum that does not fit\n/// in an i32. Text with only spaces has no numbers: its sum is 0.\nfn sum_numbers(text: &str) -> Result<i32, Box<dyn Error>> {\n    todo!(\"split on commas, parse each piece with ?, add with checked_add\")\n}\n\nfn main() {\n    assert_eq!(sum_numbers(\"1, 2, 3\").unwrap(), 6);\n    assert_eq!(sum_numbers(\"-5, 5\").unwrap(), 0);\n    assert_eq!(sum_numbers(\"\").unwrap(), 0);\n    assert_eq!(sum_numbers(\"   \").unwrap(), 0);\n    assert!(sum_numbers(\"1,,2\").is_err());\n    assert!(sum_numbers(\"1, 2,\").is_err());\n    let message = sum_numbers(\"1, x\").unwrap_err().to_string();\n    assert!(message.contains(\"invalid digit\"), \"{message}\");\n    let message = sum_numbers(\"2147483647, 1\").unwrap_err().to_string();\n    assert!(message.contains(\"does not fit\"), \"{message}\");\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "use std::error::Error;\n\n/// Add up numbers written like \"1, 2, 3\". Return Err for a piece that is not a\n/// number (including an empty piece, as in \"1,,2\") and for a sum that does not fit\n/// in an i32. Text with only spaces has no numbers: its sum is 0.\nfn sum_numbers(text: &str) -> Result<i32, Box<dyn Error>> {\n    if text.trim().is_empty() {\n        return Ok(0);\n    }\n    let mut total: i32 = 0;\n    for piece in text.split(',') {\n        let n: i32 = piece.trim().parse()?;\n        total = total\n            .checked_add(n)\n            .ok_or(\"the sum does not fit in an i32\")?;\n    }\n    Ok(total)\n}\n\nfn main() {\n    assert_eq!(sum_numbers(\"1, 2, 3\").unwrap(), 6);\n    assert_eq!(sum_numbers(\"-5, 5\").unwrap(), 0);\n    assert_eq!(sum_numbers(\"\").unwrap(), 0);\n    assert_eq!(sum_numbers(\"   \").unwrap(), 0);\n    assert!(sum_numbers(\"1,,2\").is_err());\n    assert!(sum_numbers(\"1, 2,\").is_err());\n    let message = sum_numbers(\"1, x\").unwrap_err().to_string();\n    assert!(message.contains(\"invalid digit\"), \"{message}\");\n    let message = sum_numbers(\"2147483647, 1\").unwrap_err().to_string();\n    assert!(message.contains(\"does not fit\"), \"{message}\");\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "username": {
+   "starter": "use std::error::Error;\nuse std::fmt;\n\n#[derive(Debug, PartialEq)]\nenum UsernameError {\n    Empty,\n    TooLong(usize),\n    BadChar(char),\n}\n\n// Write the messages: \"username is empty\", \"username has 13 characters, the\n// most allowed is 12\", and \"username contains '!'\" (with the character).\nimpl fmt::Display for UsernameError {\n    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {\n        todo!(\"match on self and write! a message into f\")\n    }\n}\n\nimpl Error for UsernameError {}\n\n/// A username has 1 to 12 characters, and each one is alphanumeric (letters and\n/// numbers of any script count) or '_'.\n/// Count characters, not bytes. Check for an empty name first, then the length,\n/// then the characters.\nfn check_username(name: &str) -> Result<&str, UsernameError> {\n    todo!(\"check empty, then the character count, then each character\")\n}\n\nfn main() {\n    assert_eq!(check_username(\"ada_99\"), Ok(\"ada_99\"));\n    assert_eq!(check_username(\"\"), Err(UsernameError::Empty));\n    assert_eq!(check_username(\"a b\"), Err(UsernameError::BadChar(' ')));\n    // 12 characters but 24 bytes: fine. 13 characters: too long.\n    assert_eq!(check_username(\"éééééééééééé\"), Ok(\"éééééééééééé\"));\n    assert_eq!(\n        check_username(\"ééééééééééééé\"),\n        Err(UsernameError::TooLong(13))\n    );\n    assert_eq!(check_username(\"josé!\"), Err(UsernameError::BadChar('!')));\n\n    assert_eq!(UsernameError::Empty.to_string(), \"username is empty\");\n    assert_eq!(\n        UsernameError::TooLong(13).to_string(),\n        \"username has 13 characters, the most allowed is 12\"\n    );\n    assert_eq!(\n        UsernameError::BadChar('!').to_string(),\n        \"username contains '!'\"\n    );\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "use std::error::Error;\nuse std::fmt;\n\n#[derive(Debug, PartialEq)]\nenum UsernameError {\n    Empty,\n    TooLong(usize),\n    BadChar(char),\n}\n\n// Write the messages: \"username is empty\", \"username has 13 characters, the\n// most allowed is 12\", and \"username contains '!'\" (with the character).\nimpl fmt::Display for UsernameError {\n    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {\n        match self {\n            UsernameError::Empty => write!(f, \"username is empty\"),\n            UsernameError::TooLong(n) => {\n                write!(f, \"username has {n} characters, the most allowed is 12\")\n            }\n            UsernameError::BadChar(c) => write!(f, \"username contains {c:?}\"),\n        }\n    }\n}\n\nimpl Error for UsernameError {}\n\n/// A username has 1 to 12 characters, and each one is alphanumeric (letters and\n/// numbers of any script count) or '_'.\n/// Count characters, not bytes. Check for an empty name first, then the length,\n/// then the characters.\nfn check_username(name: &str) -> Result<&str, UsernameError> {\n    if name.is_empty() {\n        return Err(UsernameError::Empty);\n    }\n    let length = name.chars().count();\n    if length > 12 {\n        return Err(UsernameError::TooLong(length));\n    }\n    for c in name.chars() {\n        if !(c.is_alphanumeric() || c == '_') {\n            return Err(UsernameError::BadChar(c));\n        }\n    }\n    Ok(name)\n}\n\nfn main() {\n    assert_eq!(check_username(\"ada_99\"), Ok(\"ada_99\"));\n    assert_eq!(check_username(\"\"), Err(UsernameError::Empty));\n    assert_eq!(check_username(\"a b\"), Err(UsernameError::BadChar(' ')));\n    // 12 characters but 24 bytes: fine. 13 characters: too long.\n    assert_eq!(check_username(\"éééééééééééé\"), Ok(\"éééééééééééé\"));\n    assert_eq!(\n        check_username(\"ééééééééééééé\"),\n        Err(UsernameError::TooLong(13))\n    );\n    assert_eq!(check_username(\"josé!\"), Err(UsernameError::BadChar('!')));\n\n    assert_eq!(UsernameError::Empty.to_string(), \"username is empty\");\n    assert_eq!(\n        UsernameError::TooLong(13).to_string(),\n        \"username has 13 characters, the most allowed is 12\"\n    );\n    assert_eq!(\n        UsernameError::BadChar('!').to_string(),\n        \"username contains '!'\"\n    );\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}

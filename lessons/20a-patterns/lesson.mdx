@@ -1,0 +1,323 @@
+<p class="lr-layer">The toolkit</p>
+
+A **pattern** is a shape a value can have, with names where you want to keep a part. Matching a value against it either fails or gives each name its part, and taking a value apart this way is called **destructuring**. [Match](/learn/match/) is where you met patterns (literals, ranges, guards, slices) and this page does not repeat it. It covers the other places a pattern can stand, what a pattern does to ownership, and the small rules (`_` against `_name`, `&`) that trip people up. Outputs come from Linux on 64-bit ARM with Rust 1.99.1.
+
+## Patterns stand in many places
+
+Wherever Rust introduces a variable it accepts a pattern. Each line of this program takes something apart in a different place:
+
+<Snippet file="places.rs" />
+
+| Place | Example | Must the pattern always fit? |
+|---|---|---|
+| `let` | `let (a, b) = pair;` | yes |
+| function parameter | `fn f((a, b): (i32, i32))` | yes |
+| closure parameter | <code>\|(a, b)\| a + b</code> | yes |
+| `for` | `for (i, c) in …` | yes |
+| `match` arm | `Some(n) => …` | no, but together the arms must cover every value |
+| `if let` | `if let Some(n) = o { … }` | no |
+| `while let` | `while let Some(n) = it.next() { … }` | no |
+| `let … else` | `let Some(n) = o else { return };` | no, and the `else` must leave |
+| `matches!` | `matches!(o, Some(1 \| 2))` | no |
+
+A closure is a small unnamed function ([Closures](/learn/closures/)). `Some(..)` and `Ok(..)` come from [Option](/learn/option/) and [Errors](/learn/errors/).
+
+## Patterns that must always fit
+
+A pattern that fits every value of its type is **irrefutable**: `(a, b)` for a pair, `Point { x, y }`, `_`. One that can fail is **refutable**: `Some(n)`, `Ok(n)`, `1..=5`. The last column of the table is the rule. [Declarations and types](/learn/declarations-types/#patterns-in-let-and-shadowing) showed the error for `let` and its fix, `let ... else`. The other places that need a pattern which always fits say the same, and none of them has an `else` to add:
+
+<Snippet file="refutable-places.fail.rs" />
+
+Take the whole value and look inside it with `match` or `if let`. For arrays the compiler also checks the length, which is part of the type:
+
+<Snippet file="array-length.fail.rs" />
+
+Whether a pattern can fail depends on the type, not on how it looks. `Ok(x)` cannot fail against a `Result` whose error type has no values (`std::convert::Infallible`), so `let Ok(x) = r;` compiles there.
+
+## Taking things apart
+
+A struct pattern names fields, in any order. `x: px` renames, `y: 0` tests, and `..` skips what you do not name. A tuple or tuple struct pattern goes by position, and `..` skips items in the middle or at the end. Patterns nest as deep as the data does:
+
+<Snippet file="destructure.rs" />
+
+A struct pattern has to mention every field or end in `..`. Leaving one out is an error:
+
+<Snippet file="missing-field.fail.rs" />
+
+A slice pattern fits an array or a slice, not a `Vec` ([Match](/learn/match/#lists-slice-patterns) has the shapes). Slice the `Vec` first, with `as_slice()` or `[..]`; the `rest` you get is a borrowed slice, not a new list. The RPN exercise below reads its stack with `stack[..]`:
+
+<Snippet file="vec-slice.rs" />
+
+## Alternatives and `@`
+
+[Match](/learn/match/) showed `|` and `@` at the top of a pattern. Both also work inside another pattern, so `Some(1 | 2)` is shorter than two arms. Every alternative must bind the same names with the same types, or the compiler says which one is missing:
+
+<Snippet file="or-at.rs" />
+
+<Snippet file="or-binding.fail.rs" />
+
+## A name always binds
+
+A name in a pattern is a new variable, not a comparison; the exception is a `const`, which is compared ([Match](/learn/match/#a-name-in-a-pattern-binds-it-does-not-compare)). That includes the name of an enum variant written without its path, which the compiler catches (E0170, shown in [Enums](/learn/enums/#use-enum)). A `static` is not compared either. A name that matches a `static` would be read as a new binding, and the compiler refuses it (E0530):
+
+<Snippet file="static-pattern.fail.rs" />
+
+## `_` ignores, `_name` binds
+
+`_` is a pattern that fits anything and binds nothing. A name that starts with an underscore is a normal variable that only tells the compiler not to warn when it is unused. The difference shows when the value is not `Copy`: `_` leaves it where it is, and `_name` moves it. Inside a pattern, `let (_, right) = pair;` moves only the right half.
+
+<Snippet file="underscore.rs" />
+
+<Snippet file="underscore-name.fail.rs" />
+
+## References in patterns
+
+When you match a reference against a pattern that is not a reference, Rust looks through the reference and makes each name a reference too. The name's type follows the value: a copy for a value, `&T` for `&value`, `&mut T` for `&mut value`. These are called the **default binding modes**, also known as **match ergonomics**. This program prints the type of each name:
+
+<Snippet file="binding-modes.rs" />
+
+| You match | The names are | Use it to |
+|---|---|---|
+| `value` | copies, or moved parts | take the value apart and use it up |
+| `&value` | `&T` into the value | read parts and keep the value |
+| `&mut value` | `&mut T` into the value | change parts in place |
+
+A `&` in a pattern goes the other way: it removes one reference by hand, so the name is the value behind it. That is handy for a `Copy` part such as a number. `for x in &v` and `for &x in &v` differ in just this way ([Looping Over a Collection](/learn/for-collections/) explains the loop forms):
+
+<Snippet file="amp-pattern.rs" />
+
+A related surprise: a `&i32` cannot be compared with `60`.
+
+<Snippet file="ref-compare.fail.rs" />
+
+Write `*score > 60`, or `for &score in &scores`. Closure parameters are patterns too, which is why `|&x|` and `|&&x|` appear in iterator chains ([Iterators](/learn/iterators/) explains the references being taken off). For a part that is not `Copy`, a `&` pattern cannot work, because it would move the part out of a borrowed value:
+
+<Snippet file="amp-move.fail.rs" />
+
+## Does a pattern move, copy or borrow?
+
+Matching a value by value moves each part that is not `Copy` into its name, and the value can no longer be used whole. A struct can be partly moved. (The compiler suggests `ref name`, the older spelling of "borrow this part", explained below.)
+
+<Snippet file="partial-move.fail.rs" />
+
+A frequent case is an `Option<String>` in an `if let`:
+
+<Snippet file="option-move.fail.rs" />
+
+Match a reference instead: `&nick`, or `nick.as_ref()`, which makes an `Option<&String>` ([`Option::as_ref`](https://doc.rust-lang.org/std/option/enum.Option.html#method.as_ref)). Either way `n` is a `&String`, and `&mut nick` lets the arm change the text in place:
+
+<Snippet file="option-borrow.rs" />
+
+To compare text inside an `Option<String>` with string literals, `as_deref()` makes an `Option<&str>` without moving anything ([`Option::as_deref`](https://doc.rust-lang.org/std/option/enum.Option.html#method.as_deref)):
+
+<Snippet file="as-deref.rs" />
+
+Before default binding modes, the way to borrow a part was `ref` (and `ref mut`) in front of the name, as the compiler's hint in the first error shows. It still works on a value that is not behind a reference:
+
+<Snippet file="move-or-borrow.rs" />
+
+`&p` borrows the same way without `ref`, but every name, `age` too, is then a reference.
+
+## When the compiler complains
+
+| Error | What happened | Fix |
+|---|---|---|
+| E0005 | a pattern that can fail stands where it must always fit | `if let`, `let ... else` or `match` |
+| E0027 | a struct pattern left a field out | name it, or end with `..` |
+| E0527 | an array pattern has the wrong number of items | match the length, or use `..` |
+| E0408 | the sides of a `\|` bind different names | bind the same names on every side |
+| E0170 | a bare name that looks like a variant binds instead | write the path, or `use` the variants |
+| E0530 | a `static` used as a pattern | use a `const`, or a guard |
+| E0382 | a pattern moved a part out, then the whole value was used | match a reference, or `ref` |
+| E0507 | a `&` pattern tried to move out of a borrow | drop the `&`, or clone |
+| E0308 | `&i32` met `i32` | `*x`, or a `&` pattern |
+
+<ForLang only="go">
+
+| In Go | In Rust |
+|---|---|
+| `x, y := p.x, p.y` | `let Point { x, y } = p;` |
+| `a, b = b, a` | `(a, b) = (b, a);` |
+| `for i, v := range xs` | `for (i, v) in xs.iter().enumerate()` |
+| `for i, c := range s` | `for (i, c) in s.char_indices()` |
+| `key, value, found := strings.Cut(s, "=")` | `let Some((key, value)) = s.split_once('=') else { … };` |
+| `v, ok := m[k]; if ok { … }` | `if let Some(v) = m.get(&k) { … }` |
+| `switch v := x.(type) { … }` | `match` on an enum ([Enums](/learn/enums/)), a closed list of variants |
+
+Go has no pattern for a struct or an array, only multiple values and assignment. `x, y := p` is read as two names for one value:
+
+<Snippet file="unpack.fail.go" />
+
+`range` over a string and `char_indices` give the same pair, a byte offset and a character. Go's `found` and `ok` are separate variables that you can ignore (the gotcha at the top); in Rust the check and the unpacking are one pattern.
+
+<Snippet file="range-index.go" />
+
+</ForLang>
+
+<ForLang only="go c cpp">
+
+In an expression, `&x` takes an address. In a pattern it goes the other way: `let &x = r;` is the pattern form of `x = *r`, and `ref x` is the pattern spelling of taking an address.
+
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+
+| Task | Java 21 | Kotlin | C# | Rust |
+|---|---|---|---|---|
+| Take a value apart | no pattern: `p.x()` | `val (x, y) = p` | `var (x, y) = p;` | `let Point { x, y } = p;` |
+| Test, then take apart | `o instanceof Circle(var r)` | `if (o is Circle) { val (r) = o }` | `o is Circle(var r)` | `if let Shape::Circle(r) = o` ([Enums](/learn/enums/)) |
+| Test, or leave | `if (!(o instanceof Circle c)) return;` | `val r = (o as? Circle)?.r ?: return` | `if (o is not Circle c) return;` | `let Shape::Circle(r) = o else { return };` |
+| Loop over a map | no pattern: `e.getKey()` | `for ((k, v) in m)` | `foreach (var (k, v) in d)` | `for (k, v) in &m` |
+| Match fields | by position | by position (today) | by position, or by property `{ X: 0 }` | by name: `Point { y, x }` |
+
+A Rust struct pattern goes by field name, so reordering the fields of the struct does not change which value a name holds. A tuple pattern is positional, like the three languages above. A pattern names fields and variants: there is no `componentN` or `Deconstruct` to write, so a guard tests anything computed.
+
+</ForLang>
+
+<ForLang only="java">
+
+Java 21's record patterns nest and combine with a `when` guard in a `switch`, the same idea as Rust's patterns on structs and enums. A Rust pattern fits the shape of a value of a known type and has no type test: `case Integer n` has no counterpart, and the closed list of cases is an enum ([Enums](/learn/enums/)).
+
+<Snippet file="records.java" />
+
+<Snippet file="type-pattern.fail.rs" />
+
+</ForLang>
+
+<ForLang only="kotlin">
+
+By default (Kotlin 2.4) a destructuring declaration goes by position, through `component1()`, `component2()`, so `val (y, x) = Point(1, 2)` gives `y = 1`. Kotlin is moving to names: the opt-in option `-Xname-based-destructuring` changes the meaning, and its `name-mismatch` mode already warns that `val (y, x)` will change ([Kotlin blog](https://blog.jetbrains.com/kotlin/2026/05/the-road-to-name-based-destructuring/), [docs](https://kotlinlang.org/docs/destructuring-declarations.html)). Rust's `let Point { y, x } = p;` binds by name. A destructuring declaration leaves its source whole, where matching by value in Rust moves the parts that are not `Copy`:
+
+<Snippet file="position.kt" />
+
+</ForLang>
+
+<ForLang only="csharp">
+
+C# patterns include positional, property, relational and list forms, combined with `and`, `or` and `not`. Rust has `|` and ranges but no `and` or `not`; a guard covers the rest. The list pattern `is [var key, var value]` is the form closest to `let ... else`:
+
+<Snippet file="patterns.cs" />
+
+</ForLang>
+
+<ForLang only="python typescript">
+
+| Python | TypeScript | Rust |
+|---|---|---|
+| `a, b = pair` | `const [a, b] = pair;` | `let (a, b) = pair;` |
+| `a, b = b, a` | `[a, b] = [b, a];` | `(a, b) = (b, a);` |
+| `first, *rest = xs` | `const [first, ...rest] = xs;` | `if let [first, rest @ ..] = xs.as_slice()` |
+| `for k, v in d.items():` | `for (const [k, v] of map)` | `for (k, v) in &map` |
+| `x, y = p` (a `NamedTuple`) | `const { x, y } = p;` | `let Point { x, y } = p;` |
+| `px = p.x` | `const { x: px } = p;` | `let Point { x: px, .. } = p;` |
+| `def f(p): x, y = p` | `function f({ x, y }: Point)` | `fn f(Point { x, y }: &Point)` |
+| `x = d.get("x", 0)` (a dict) | `const { x = 0 } = p;` | no default in a pattern: call `unwrap_or` on an `Option` |
+
+Unpacking in Python and TypeScript never consumes anything: it gives the same objects second names, and `pair` stays whole. In Rust, matching by value moves each part that is not `Copy` into its name (the E0382 above). Python raises `ValueError` when the count is wrong, and TypeScript fills in `undefined` for an array and for an optional property. Rust checks an array's length when the program is built (E0527 above), and a slice pattern can fail, so it needs `if let` or `let ... else`. A struct pattern must name every field or end in `..`, and `..` cannot name the rest, so there is no `{ x, ...rest }`.
+
+<Snippet file="object-rest.fail.rs" />
+
+Python 3.10's `match` has patterns of its own, which [Match](/learn/match/) compares with Rust's, including the bare-name trap that Python's compiler also refuses.
+
+</ForLang>
+
+<ForLang only="python">
+
+<Snippet file="unpack.py" />
+
+In Python `_` is an ordinary variable, so unpacking into it binds it, and a later `_ = ...` replaces it. In Rust `_` binds nothing, which is what makes `let (_, right) = pair;` leave `pair.0` alone:
+
+<Snippet file="underscore.py" />
+
+</ForLang>
+
+<ForLang only="typescript">
+
+<Snippet file="destructure.ts" />
+
+</ForLang>
+
+<ForLang only="c cpp">
+
+C has no destructuring: `int x = p.x, y = p.y;` is `let Point { x, y } = p;`. C++17 structured bindings are the nearest thing, but a Rust pattern through a reference gives references:
+
+| C++ | Rust |
+|---|---|
+| `auto [x, y] = p;` (copies every member) | `let Point { x, y } = p;` (copies the `Copy` fields and moves the rest) |
+| `const auto& [x, y] = p;` | `let Point { x, y } = &p;` (`x` and `y` are `&i32`) |
+| `auto& [x, y] = p;`, then `x += 10;` | `let Point { x, y } = &mut p;`, then `*x += 10;` |
+| `for (const auto& [k, v] : m)` | `for (k, v) in &m` |
+| `if (auto it = m.find(k); it != m.end())` | `if let Some(v) = m.get(&k)` |
+
+<Snippet file="bindings.cpp" />
+
+In C++ `rx += 10` changes `p.x`. In Rust `x += 10` is an error, because `x` is a `&mut i32`:
+
+<Snippet file="ref-binding.fail.rs" />
+
+A structured binding goes by position, never tests anything, and does not nest:
+
+<Snippet file="nested.fail.cpp" />
+
+</ForLang>
+
+<p class="lr-layer">Going deeper</p>
+
+## What a binding does in memory
+
+A pattern by value and a pattern through a reference build different things. The program prints what the two diagrams show:
+
+<Snippet file="memory.rs" />
+
+<Memory
+  title="let Person { name, age } = p;"
+  stack={[
+    { name: 'p', type: 'Person', cells: ['name: ptr, len 3, cap 3', 'age 30'], to: 'text', gone: 'name moved out', note: 'p.age can still be read, because a number is copied' },
+    { name: 'name', type: 'String', cells: ['ptr', 'len 3', 'cap 3'], to: 'text' },
+    { name: 'age', type: 'u32', cells: ['30'] },
+  ]}
+  heap={[{ id: 'text', label: '3 bytes of UTF-8', cells: ['A', 'n', 'a'] }]}
+  caption="The text did not move: name holds the same heap address (the program prints true). Only the String's three words were handed over, and p can no longer be used whole."
+/>
+
+<Memory
+  title="let Person { name, age } = &q;"
+  stack={[
+    { name: 'q', type: 'Person', cells: ['name: ptr, len 2, cap 2', 'age 25'], to: 'text' },
+    { name: 'name', type: '&String', cells: ['&q.name'], toVar: 'q' },
+    { name: 'age', type: '&u32', cells: ['&q.age'], toVar: 'q' },
+  ]}
+  heap={[{ id: 'text', label: '2 bytes of UTF-8', cells: ['B', 'o'] }]}
+  caption="Both names point into q, not at copies (the program prints true for each). q is untouched and whole."
+/>
+
+## Two rules that live elsewhere
+
+When a value that nothing holds is dropped, and why `let _ = lock.lock()` is refused, are in [Ownership](/learn/ownership/#scopes-drop-order-and-let-_). Some pattern rules depend on the edition set in `Cargo.toml`: a let chain (`if let Some(n) = v && n > 5`) needs edition 2024 ([If / else](/learn/if-else/#let-chains) runs it under both), and the [Edition Guide](https://doc.rust-lang.org/edition-guide/rust-2024/match-ergonomics.html) lists where edition 2024 reserves `ref`, `mut` and `&` under a default binding mode.
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Each exercise has checks in `main`. Open it in the Playground, replace the `todo!()`, and run it until it prints `all checks passed`.
+
+<Exercise name="describe" title="Describe a shape">
+Take a `Shape` apart: a circle, a rectangle given by two corners, and a tag that owns a `String`. `describe` takes `&Shape`, so the names your patterns bind are references; `grow` takes `&mut Shape`, so they need a `*`. The checks include corners in either order, empty shapes, and the shapes afterwards.
+</Exercise>
+
+<Exercise name="nicknames" title="Borrow the nickname">
+`Person` has an `Option<String>` nickname. Return the nickname, or the name, borrowed from the person. `match person.nick` would move the `String` out of a borrow, so match a reference (`as_deref` also works). The checks include non-ASCII text, a tie, and an answer that must point into the person, not at a copy.
+</Exercise>
+
+<Exercise name="rpn" title="Reverse Polish">
+Evaluate `[Num(3), Num(4), Op('+')]`: numbers go on a stack, and an operator pops two. The token slice is borrowed, so the names your pattern binds are references (`*n` gets the number). Use `let (Some(right), Some(left)) = (stack.pop(), stack.pop()) else { … }` (two `?` also work), and `match stack[..]` at the end, as in the slice example above. The checks include the order of the operands, too few operands, a division by zero and leftover values; ignore overflow.
+</Exercise>
+
+## Read more
+
+- [The Rust Book, chapter 19: Patterns and Matching](https://doc.rust-lang.org/book/ch19-00-patterns.html): [places](https://doc.rust-lang.org/book/ch19-01-all-the-places-for-patterns.html), [refutability](https://doc.rust-lang.org/book/ch19-02-refutability.html) and [syntax](https://doc.rust-lang.org/book/ch19-03-pattern-syntax.html).
+- [The Rust Reference: Patterns](https://doc.rust-lang.org/reference/patterns.html), with the exact rules for [binding modes](https://doc.rust-lang.org/reference/patterns.html#binding-modes) and [or-patterns](https://doc.rust-lang.org/reference/patterns.html#or-patterns).
+- [Rust by Example: destructuring](https://doc.rust-lang.org/rust-by-example/flow_control/match/destructuring.html), [`if let`](https://doc.rust-lang.org/rust-by-example/flow_control/if_let.html), [`let ... else`](https://doc.rust-lang.org/rust-by-example/flow_control/let_else.html) and [`while let`](https://doc.rust-lang.org/rust-by-example/flow_control/while_let.html).
+- [The Edition Guide: match ergonomics reservations](https://doc.rust-lang.org/edition-guide/rust-2024/match-ergonomics.html) and [let chains](https://doc.rust-lang.org/edition-guide/rust-2024/let-chains.html).
+- [`matches!`](https://doc.rust-lang.org/std/macro.matches.html) in the standard library docs.
+- [Reading compiler errors](/errors/): E0005, E0027, E0382, E0507, E0527 and E0408 from this page.

@@ -1,0 +1,10 @@
+[package]
+name = "bridge"
+version = "0.1.0"
+edition = "2024"
+
+# staticlib: libbridge.a, one archive that a C linker copies into the program.
+# cdylib:    libbridge.so, a shared library that is loaded when the program starts.
+# rlib:      what other Rust crates (and `cargo run --bin`) link against.
+[lib]
+crate-type = ["staticlib", "cdylib", "rlib"]

@@ -1,0 +1,417 @@
+{
+ "id": "maps",
+ "title": "Maps",
+ "part": "data",
+ "intro": "`HashMap<K, V>` stores values by key. Looking up a key gives back an Option, because the key might be missing.",
+ "coming_from": {
+  "go": "`HashMap<K, V>` is your `map[K]V`, and its iteration order is also arbitrary, but you import it with `use std::collections::HashMap`. `get` returns an `Option` instead of a zero value, and `*counts.entry(k).or_insert(0) += 1` does what `counts[k]++` does.",
+  "kotlin": "`HashMap<K, V>` is like `hashMapOf`, and `get` returns an `Option` where Kotlin gives `Int?`. Kotlin's `mutableMapOf` remembers insertion order, but a Rust `HashMap` does not, and its order can differ from one run to the next.",
+  "python": "`HashMap<K, V>` is your `dict`, and `get` returns an `Option` like `dict.get` returns `None`. `map[\"zed\"]` on a missing key panics like a KeyError, and the iteration order is arbitrary, not insertion order.",
+  "typescript": "`HashMap<K, V>` is your `Map<K, V>`, with `insert` for `set`. `get` returns an `Option` instead of `undefined`, and the order you get when you loop over it is arbitrary, not insertion order.",
+  "java": "`HashMap<K, V>` is Java's `HashMap`, but `get` returns `Option<&V>` instead of a value that may be null, so a missing key can't slip through as a `null`. `entry(k).or_insert(0)` does the job of `merge` and `computeIfAbsent`.",
+  "csharp": "`HashMap<K, V>` is `Dictionary<K, V>`, and `get` returns an `Option` like `TryGetValue` does, just as one value. `map[&k]` reads like the indexer and panics on a missing key, but it only reads: you can't assign through it.",
+  "c": "The C standard library has no map; `HashMap<K, V>` is a full hash table in Rust's standard library. `get` returns an `Option`, so the \"pointer or NULL\" check you would write by hand is required by the compiler.",
+  "cpp": "`HashMap<K, V>` is `std::unordered_map`, and `get` is `find` with an `Option` instead of comparing with `end()`. Unlike `operator[]`, Rust's `map[&k]` only reads and panics on a missing key; `entry(k).or_insert(0)` is how you insert on purpose."
+ },
+ "notes": [
+  "`get` hands back `&u32`, a reference to the number inside the map. `.copied()` turns it into a plain `u32`, which is cheap for a small number.",
+  "`counts[\"a\"]` reads a value, but panics if the key is missing. Prefer `get` when you are not sure.",
+  "`insert` moves the key and the value into the map. A `String` you inserted is the map's now, and you can't use it afterwards.",
+  "Use `BTreeMap` when you want the keys kept in sorted order."
+ ],
+ "gotcha": {
+  "title": "Treating a lookup as if the key is always there",
+  "verdict": "fine-elsewhere",
+  "looks_fine": "In several languages, `ages[\"ana\"]` just hands you the value. You inserted \"ana\" one line earlier, so it is obviously there.",
+  "rust_sees": "`get` returns an `Option<&u32>`, because the map might not hold the key. The compiler does not track which keys you inserted, so it asks you to say what happens when the key is missing. (Rust's `ages[\"ana\"]` would compile too, and panic on a missing key; `get` is the one that makes you decide.)",
+  "why": "Some languages answer a missing key with something that can look like a value: a 0, a null, a crash, or undefined behaviour. A typo in a key then turns into a wrong number or a crash far from the typo. Rust makes you say what a missing key means: handle `None`, use `.unwrap_or(0)` for a default on purpose, or write `ages[\"ana\"]` or `unwrap` and accept a panic.",
+  "langs": {
+   "go": {
+    "status": "runs",
+    "says": "Go runs this and prints 30. A missing key would quietly give 0, unless you write the comma-ok form, `age, ok := ages[\"ana\"]`, and check `ok`.",
+    "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tages := map[string]int{\"ana\": 30}\n\tage := ages[\"ana\"]\n\tfmt.Println(age)\n}\n",
+    "out": "30\n"
+   },
+   "kotlin": {
+    "status": "refuses",
+    "says": "Kotlin refuses this too: `ages[\"ana\"]` is an `Int?`, so `val age: Int = ages[\"ana\"]` doesn't compile until you add a null check, `?:` or `!!`.",
+    "code": "fun main() {\n    val ages = mutableMapOf<String, Int>()\n    ages[\"ana\"] = 30\n    val age: Int = ages[\"ana\"]\n    println(age)\n}\n",
+    "error": "Main.kt:4:18: error: initializer type mismatch: expected 'Int', actual 'Int?'.\n    val age: Int = ages[\"ana\"]\n                 ^"
+   },
+   "python": {
+    "status": "runs",
+    "says": "Python prints 30 because the key is there. With a missing key, `ages[\"zed\"]` raises KeyError, and `ages.get(\"zed\")` gives None, an optional value that nothing forces you to check at run time.",
+    "code": "ages: dict[str, int] = {}\nages[\"ana\"] = 30\nage = ages[\"ana\"]\nprint(age)\n",
+    "out": "30\n"
+   },
+   "typescript": {
+    "status": "refuses",
+    "says": "TypeScript refuses this too, under `strict` (which the runner uses): `Map.get` returns `number | undefined`, which does not fit in a `number` until you handle the missing case.",
+    "code": "const ages = new Map<string, number>();\nages.set(\"ana\", 30);\nconst age: number = ages.get(\"ana\");\nconsole.log(age);\n",
+    "error": "main.ts(3,7): error TS2322: Type 'number | undefined' is not assignable to type 'number'.\n  Type 'undefined' is not assignable to type 'number'."
+   },
+   "java": {
+    "status": "runs",
+    "says": "This prints 30 because `get` returns an Integer that Java unboxes for you. With a missing key, `get` returns null and that same line throws a NullPointerException.",
+    "code": "import java.util.HashMap;\nimport java.util.Map;\n\npublic class Main {\n    public static void main(String[] args) {\n        Map<String, Integer> ages = new HashMap<>();\n        ages.put(\"ana\", 30);\n        int age = ages.get(\"ana\");\n        System.out.println(age);\n    }\n}\n",
+    "out": "30\n"
+   },
+   "csharp": {
+    "status": "runs",
+    "says": "The indexer returns the value directly and prints 30. If the key were missing it would throw a KeyNotFoundException, so use TryGetValue when you are not sure.",
+    "code": "var ages = new Dictionary<string, uint>();\nages[\"ana\"] = 30;\nuint age = ages[\"ana\"];\nConsole.WriteLine(age);\n",
+    "out": "30\n"
+   },
+   "c": {
+    "status": "runs",
+    "says": "C lets you use `*get(...)` without checking for NULL. It works because \"ana\" is there; with a missing key it would dereference NULL, which is undefined behaviour.",
+    "code": "#include <stdio.h>\n#include <string.h>\n\nstruct Entry {\n    const char *key;\n    unsigned value;\n};\n\n// returns a pointer to the value, or NULL when the key is missing\nunsigned *get(struct Entry *items, int len, const char *key) {\n    for (int i = 0; i < len; i++) {\n        if (strcmp(items[i].key, key) == 0) return &items[i].value;\n    }\n    return NULL;\n}\n\nint main(void) {\n    struct Entry ages[] = {{\"ana\", 30}};\n    unsigned age = *get(ages, 1, \"ana\");\n    printf(\"%u\\n\", age);\n    return 0;\n}\n",
+    "out": "30\n"
+   },
+   "cpp": {
+    "status": "runs",
+    "says": "`ages[\"ana\"]` gives the value directly and prints 30. For a missing key it would quietly insert a 0 into the map. Rust's `ages[\"ana\"]` is closer to `at`: it only reads, and panics on a missing key.",
+    "code": "#include <iostream>\n#include <string>\n#include <unordered_map>\n\nint main() {\n    std::unordered_map<std::string, unsigned> ages{{\"ana\", 30}};\n    unsigned age = ages[\"ana\"];\n    std::cout << age << \"\\n\";\n}\n",
+    "out": "30\n"
+   }
+  },
+  "code": "use std::collections::HashMap;\n\nfn main() {\n    let mut ages: HashMap<&str, u32> = HashMap::new();\n    ages.insert(\"ana\", 30);\n    let age: u32 = ages.get(\"ana\");\n    println!(\"{age}\");\n}\n",
+  "error": "error[E0308]: mismatched types\n --> src/main.rs:6:20\n  |\n6 |     let age: u32 = ages.get(\"ana\");\n  |              ---   ^^^^^^^^^^^^^^^ expected `u32`, found `Option<&u32>`\n  |              |\n  |              expected due to this\n  |\n  = note: expected type `u32`\n             found enum `Option<&u32>`\n",
+  "error_code": "E0308",
+  "fixed": {
+   "code": "use std::collections::HashMap;\n\nfn main() {\n    let mut ages: HashMap<&str, u32> = HashMap::new();\n    ages.insert(\"ana\", 30);\n    let age: u32 = ages.get(\"ana\").copied().unwrap_or(0);\n    println!(\"{age}\");\n}\n",
+   "out": "30\n"
+  }
+ },
+ "order": 27,
+ "program": {
+  "rust": {
+   "code": "use std::collections::HashMap;\n\nfn main() {\n    let mut ages: HashMap<String, u32> = HashMap::new();\n    ages.insert(String::from(\"ana\"), 30);\n    ages.insert(String::from(\"bo\"), 25);\n\n    // get returns Option: Some(&value) or None\n    match ages.get(\"ana\") {\n        Some(age) => println!(\"ana is {age}\"),\n        None => println!(\"no ana\"),\n    }\n\n    // a default on purpose: 0 when the key is missing\n    let zed = ages.get(\"zed\").copied().unwrap_or(0);\n    println!(\"zed is {zed}\");\n\n    // count words: entry() means \"get it, or insert it first\"\n    let mut counts: HashMap<&str, u32> = HashMap::new();\n    for word in \"a b a c a\".split(' ') {\n        *counts.entry(word).or_insert(0) += 1;\n    }\n    println!(\"a appears {} times\", counts[\"a\"]);\n}\n",
+   "out": "ana is 30\nzed is 0\na appears 3 times\n"
+  },
+  "go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"strings\"\n)\n\nfunc main() {\n\tages := map[string]int{}\n\tages[\"ana\"] = 30\n\tages[\"bo\"] = 25\n\n\tif age, ok := ages[\"ana\"]; ok {\n\t\tfmt.Println(\"ana is\", age)\n\t} else {\n\t\tfmt.Println(\"no ana\")\n\t}\n\n\tzed := ages[\"zed\"] // 0 when missing\n\tfmt.Println(\"zed is\", zed)\n\n\tcounts := map[string]int{}\n\tfor _, word := range strings.Split(\"a b a c a\", \" \") {\n\t\tcounts[word]++\n\t}\n\tfmt.Println(\"a appears\", counts[\"a\"], \"times\")\n}\n",
+   "out": "ana is 30\nzed is 0\na appears 3 times\n"
+  },
+  "kotlin": {
+   "code": "fun main() {\n    val ages = mutableMapOf<String, Int>()\n    ages[\"ana\"] = 30\n    ages[\"bo\"] = 25\n\n    val ana = ages[\"ana\"]           // Int? : null when missing\n    println(if (ana != null) \"ana is $ana\" else \"no ana\")\n\n    val zed = ages[\"zed\"] ?: 0\n    println(\"zed is $zed\")\n\n    val counts = mutableMapOf<String, Int>()\n    for (word in \"a b a c a\".split(\" \")) {\n        counts[word] = (counts[word] ?: 0) + 1\n    }\n    println(\"a appears ${counts[\"a\"]} times\")\n}\n",
+   "out": "ana is 30\nzed is 0\na appears 3 times\n"
+  },
+  "python": {
+   "code": "from collections import Counter\n\nages: dict[str, int] = {}\nages[\"ana\"] = 30\nages[\"bo\"] = 25\n\n# get returns None when the key is missing\nage = ages.get(\"ana\")\nif age is not None:\n    print(f\"ana is {age}\")\nelse:\n    print(\"no ana\")\n\n# a default on purpose: 0 when the key is missing\nzed = ages.get(\"zed\", 0)\nprint(f\"zed is {zed}\")\n\ncounts = Counter(\"a b a c a\".split(\" \"))\nprint(f\"a appears {counts['a']} times\")\n",
+   "out": "ana is 30\nzed is 0\na appears 3 times\n"
+  },
+  "typescript": {
+   "code": "const ages = new Map<string, number>();\nages.set(\"ana\", 30);\nages.set(\"bo\", 25);\n\n// get returns number | undefined\nconst ana = ages.get(\"ana\");\nif (ana !== undefined) {\n  console.log(`ana is ${ana}`);\n} else {\n  console.log(\"no ana\");\n}\n\n// a default on purpose: 0 when the key is missing\nconst zed = ages.get(\"zed\") ?? 0;\nconsole.log(`zed is ${zed}`);\n\n// count words: read the old count (or 0) and store the new one\nconst counts = new Map<string, number>();\nfor (const word of \"a b a c a\".split(\" \")) {\n  counts.set(word, (counts.get(word) ?? 0) + 1);\n}\nconsole.log(`a appears ${counts.get(\"a\")} times`);\n",
+   "out": "ana is 30\nzed is 0\na appears 3 times\n"
+  },
+  "java": {
+   "code": "import java.util.HashMap;\nimport java.util.Map;\n\npublic class Main {\n    public static void main(String[] args) {\n        Map<String, Integer> ages = new HashMap<>();\n        ages.put(\"ana\", 30);\n        ages.put(\"bo\", 25);\n\n        // get returns null when the key is missing\n        Integer ana = ages.get(\"ana\");\n        System.out.println(ana != null ? \"ana is \" + ana : \"no ana\");\n\n        int zed = ages.getOrDefault(\"zed\", 0);\n        System.out.println(\"zed is \" + zed);\n\n        // count words: merge adds 1, or inserts 1 the first time\n        Map<String, Integer> counts = new HashMap<>();\n        for (var word : \"a b a c a\".split(\" \")) {\n            counts.merge(word, 1, Integer::sum);\n        }\n        System.out.println(\"a appears \" + counts.get(\"a\") + \" times\");\n    }\n}\n",
+   "out": "ana is 30\nzed is 0\na appears 3 times\n"
+  },
+  "csharp": {
+   "code": "var ages = new Dictionary<string, uint>\n{\n    [\"ana\"] = 30,\n    [\"bo\"] = 25,\n};\n\nif (ages.TryGetValue(\"ana\", out var age))\n{\n    Console.WriteLine($\"ana is {age}\");\n}\nelse\n{\n    Console.WriteLine(\"no ana\");\n}\n\n// 0 when the key is missing\nvar zed = ages.GetValueOrDefault(\"zed\");\nConsole.WriteLine($\"zed is {zed}\");\n\n// count words\nvar counts = new Dictionary<string, uint>();\nforeach (var word in \"a b a c a\".Split(' '))\n{\n    counts[word] = counts.GetValueOrDefault(word) + 1;\n}\nConsole.WriteLine($\"a appears {counts[\"a\"]} times\");\n",
+   "out": "ana is 30\nzed is 0\na appears 3 times\n"
+  },
+  "c": {
+   "code": "#include <stdio.h>\n#include <string.h>\n\n// C has no map: a small array of key/value pairs, searched in order\nstruct Entry {\n    const char *key;\n    unsigned value;\n};\n\nstruct Map {\n    struct Entry items[16];\n    int len;\n};\n\n// returns a pointer to the value, or NULL when the key is missing\nunsigned *get(struct Map *m, const char *key) {\n    for (int i = 0; i < m->len; i++) {\n        if (strcmp(m->items[i].key, key) == 0) return &m->items[i].value;\n    }\n    return NULL;\n}\n\nvoid insert(struct Map *m, const char *key, unsigned value) {\n    unsigned *v = get(m, key);\n    if (v) {\n        *v = value;\n    } else {\n        m->items[m->len++] = (struct Entry){key, value};\n    }\n}\n\nint main(void) {\n    struct Map ages = {0};\n    insert(&ages, \"ana\", 30);\n    insert(&ages, \"bo\", 25);\n\n    unsigned *age = get(&ages, \"ana\");\n    if (age) {\n        printf(\"ana is %u\\n\", *age);\n    } else {\n        printf(\"no ana\\n\");\n    }\n\n    // a default on purpose: 0 when the key is missing\n    unsigned *z = get(&ages, \"zed\");\n    printf(\"zed is %u\\n\", z ? *z : 0);\n\n    // count words: get it, or insert it first\n    struct Map counts = {0};\n    const char *words[] = {\"a\", \"b\", \"a\", \"c\", \"a\"};\n    for (int i = 0; i < 5; i++) {\n        if (!get(&counts, words[i])) insert(&counts, words[i], 0);\n        *get(&counts, words[i]) += 1;\n    }\n    printf(\"a appears %u times\\n\", *get(&counts, \"a\"));\n    return 0;\n}\n",
+   "out": "ana is 30\nzed is 0\na appears 3 times\n"
+  },
+  "cpp": {
+   "code": "#include <iostream>\n#include <ranges>\n#include <string>\n#include <string_view>\n#include <unordered_map>\n\nint main() {\n    std::unordered_map<std::string, unsigned> ages;\n    ages[\"ana\"] = 30;\n    ages[\"bo\"] = 25;\n\n    // find gives an iterator: end() means \"not there\"\n    if (auto it = ages.find(\"ana\"); it != ages.end()) {\n        std::cout << \"ana is \" << it->second << \"\\n\";\n    } else {\n        std::cout << \"no ana\\n\";\n    }\n\n    // a default on purpose: 0 when the key is missing (without inserting it)\n    auto it = ages.find(\"zed\");\n    unsigned zed = it != ages.end() ? it->second : 0;\n    std::cout << \"zed is \" << zed << \"\\n\";\n\n    // count words: operator[] inserts 0 first when the key is new\n    std::unordered_map<std::string_view, unsigned> counts;\n    for (auto word : std::string_view(\"a b a c a\") | std::views::split(' ')) {\n        counts[std::string_view(word.begin(), word.end())] += 1;\n    }\n    std::cout << \"a appears \" << counts.at(\"a\") << \" times\\n\";\n}\n",
+   "out": "ana is 30\nzed is 0\na appears 3 times\n"
+  }
+ },
+ "faq": [],
+ "snippets": {
+  "basics.rs": {
+   "code": "use std::collections::HashMap;\n\nfn main() {\n    let mut stock: HashMap<String, u32> = HashMap::new();\n    println!(\"insert apple 3: {:?}\", stock.insert(\"apple\".to_string(), 3));\n    println!(\"insert pear 5: {:?}\", stock.insert(\"pear\".to_string(), 5));\n    println!(\"insert apple 4: {:?}\", stock.insert(\"apple\".to_string(), 4));\n    println!(\"len: {}\", stock.len());\n\n    println!(\"get apple: {:?}\", stock.get(\"apple\"));\n    println!(\"get plum: {:?}\", stock.get(\"plum\"));\n    println!(\"contains_key pear: {}\", stock.contains_key(\"pear\"));\n\n    if let Some(n) = stock.get_mut(\"pear\") {\n        *n += 10;\n    }\n    println!(\"pear after get_mut: {:?}\", stock.get(\"pear\"));\n\n    println!(\"remove pear: {:?}\", stock.remove(\"pear\"));\n    println!(\"remove pear again: {:?}\", stock.remove(\"pear\"));\n    println!(\"len: {}\", stock.len());\n\n    let prices = HashMap::from([(\"tea\", 3), (\"milk\", 2)]);\n    println!(\"prices[\\\"tea\\\"]: {}\", prices[\"tea\"]);\n}\n",
+   "out": "insert apple 3: None\ninsert pear 5: None\ninsert apple 4: Some(3)\nlen: 2\nget apple: Some(4)\nget plum: None\ncontains_key pear: true\npear after get_mut: Some(15)\nremove pear: Some(15)\nremove pear again: None\nlen: 1\nprices[\"tea\"]: 3\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "bits-key.rs": {
+   "code": "use std::collections::HashMap;\n\nfn main() {\n    // Key on the float's bits: equal bit patterns are equal keys.\n    let mut m: HashMap<u64, &str> = HashMap::new();\n    m.insert(f64::NAN.to_bits(), \"first\");\n    m.insert(f64::NAN.to_bits(), \"second\");\n    println!(\n        \"NaN twice: len {}, found: {:?}\",\n        m.len(),\n        m.get(&f64::NAN.to_bits())\n    );\n\n    let mut zeros: HashMap<u64, &str> = HashMap::new();\n    zeros.insert(0.0_f64.to_bits(), \"zero\");\n    zeros.insert((-0.0_f64).to_bits(), \"minus zero\");\n    println!(\"0.0 and -0.0: len {}\", zeros.len());\n}\n",
+   "out": "NaN twice: len 1, found: Some(\"second\")\n0.0 and -0.0: len 2\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "btree.rs": {
+   "code": "use std::collections::BTreeMap;\n\nfn main() {\n    let mut scores = BTreeMap::new();\n    scores.insert(\"cy\", 70);\n    scores.insert(\"ana\", 91);\n    scores.insert(\"dee\", 60);\n    scores.insert(\"bo\", 85);\n\n    println!(\"all: {scores:?}\");\n    println!(\"first: {:?}\", scores.first_key_value());\n    println!(\"last: {:?}\", scores.last_key_value());\n    for (name, score) in scores.range(\"b\"..\"d\") {\n        println!(\"from b up to (not including) d: {name} {score}\");\n    }\n    // Like Java's floorKey and ceilingKey:\n    println!(\n        \"last key at or below \\\"c\\\": {:?}\",\n        scores.range(..=\"c\").next_back()\n    );\n    println!(\n        \"first key at or after \\\"c\\\": {:?}\",\n        scores.range(\"c\"..).next()\n    );\n}\n",
+   "out": "all: {\"ana\": 91, \"bo\": 85, \"cy\": 70, \"dee\": 60}\nfirst: Some((\"ana\", 91))\nlast: Some((\"dee\", 60))\nfrom b up to (not including) d: bo 85\nfrom b up to (not including) d: cy 70\nlast key at or below \"c\": Some((\"bo\", 85))\nfirst key at or after \"c\": Some((\"cy\", 70))\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "capacity.rs": {
+   "code": "use std::collections::HashMap;\n\nfn main() {\n    let mut scores: HashMap<u32, u32> = HashMap::new();\n    println!(\"new: len {}, capacity {}\", scores.len(), scores.capacity());\n\n    let mut last = scores.capacity();\n    for i in 0..40 {\n        scores.insert(i, i * i);\n        if scores.capacity() != last {\n            println!(\n                \"len {}: capacity {} -> {}\",\n                scores.len(),\n                last,\n                scores.capacity()\n            );\n            last = scores.capacity();\n        }\n    }\n\n    let roomy: HashMap<u32, u32> = HashMap::with_capacity(100);\n    println!(\n        \"with_capacity(100): len {}, capacity >= 100: {}\",\n        roomy.len(),\n        roomy.capacity() >= 100\n    );\n}\n",
+   "out": "new: len 0, capacity 0\nlen 1: capacity 0 -> 3\nlen 4: capacity 3 -> 7\nlen 8: capacity 7 -> 14\nlen 15: capacity 14 -> 28\nlen 29: capacity 28 -> 56\nwith_capacity(100): len 0, capacity >= 100: true\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-methods.rs": {
+   "code": "use std::collections::HashMap;\n\n// Backs the \"example -> result\" cells of the method table on the page.\n// `m` starts as {\"a\": 1}.\nfn fresh() -> HashMap<&'static str, i32> {\n    HashMap::from([(\"a\", 1)])\n}\n\nfn main() {\n    let mut m = fresh();\n    assert_eq!(m.insert(\"b\", 2), None);\n    assert_eq!(m.len(), 2);\n\n    let mut m = fresh();\n    assert_eq!(m.insert(\"a\", 5), Some(1));\n    assert_eq!(m.get(\"a\"), Some(&5));\n\n    let mut m = fresh();\n    assert_eq!(m.get(\"a\"), Some(&1));\n    assert_eq!(m.get(\"z\"), None);\n    assert_eq!(m.contains_key(\"a\"), true);\n    assert_eq!(m.contains_key(\"z\"), false);\n    assert_eq!(m[\"a\"], 1);\n\n    if let Some(v) = m.get_mut(\"a\") {\n        *v += 1;\n    }\n    assert_eq!(m[\"a\"], 2);\n    assert_eq!(m.get_mut(\"z\"), None);\n\n    assert_eq!(m.remove(\"a\"), Some(2));\n    assert_eq!(m.remove(\"a\"), None);\n    assert!(m.is_empty());\n\n    let mut m = fresh();\n    *m.entry(\"a\").or_insert(0) += 1;\n    *m.entry(\"z\").or_insert(0) += 1;\n    assert_eq!((m[\"a\"], m[\"z\"]), (2, 1));\n    m.clear();\n    assert_eq!(m.len(), 0);\n\n    // the \"default if missing\" and bulk cells of the language tables\n    let mut m = fresh();\n    assert_eq!(m.get(\"a\").copied().unwrap_or(0), 1);\n    assert_eq!(m.get(\"z\").copied().unwrap_or(0), 0);\n    assert_eq!(m.get(\"z\").copied().unwrap_or_default(), 0);\n    m.extend([(\"a\", 7), (\"b\", 8)]);\n    assert_eq!((m[\"a\"], m[\"b\"], m.len()), (7, 8, 2));\n}\n",
+   "out": "",
+   "lang": "rust",
+   "exit": 0
+  },
+  "default-needs-type.fail.rs": {
+   "code": "use std::collections::HashMap;\n\nfn main() {\n    let mut by_length = HashMap::new();\n    by_length.entry(3).or_default().push(\"fig\");\n    println!(\"{}\", by_length.len());\n}\n",
+   "error": "error[E0282]: type annotations needed for `HashMap<{integer}, _>`\n --> src/main.rs:4:9\n  |\n4 |     let mut by_length = HashMap::new();\n  |         ^^^^^^^^^^^^^\n5 |     by_length.entry(3).or_default().push(\"fig\");\n  |     ------------------------------- type must be known at this point\n  |\nhelp: consider giving `by_length` an explicit type, where the type for type parameter `V` is specified\n  |\n4 |     let mut by_length: HashMap<{integer}, V> = HashMap::new();\n  |                      +++++++++++++++++++++++\n",
+   "lang": "rust"
+  },
+  "entry.rs": {
+   "code": "use std::collections::HashMap;\n\nfn main() {\n    let mut stock: HashMap<&str, u32> = HashMap::new();\n\n    // or_insert: add 10 if the key is missing. Either way you get a &mut to the value.\n    *stock.entry(\"apple\").or_insert(10) += 1;\n    *stock.entry(\"apple\").or_insert(99) += 1;\n    println!(\"apple: {:?}\", stock.get(\"apple\"));\n\n    // or_insert_with: build the value only if the key is missing.\n    stock.entry(\"pear\").or_insert_with(|| {\n        println!(\"building the pear value\");\n        7\n    });\n    stock.entry(\"pear\").or_insert_with(|| {\n        println!(\"building the pear value again\");\n        7\n    });\n\n    // or_default: the type's default value (0 for a number).\n    *stock.entry(\"fig\").or_default() += 1;\n\n    // and_modify: change the value if the key is there, otherwise insert.\n    stock.entry(\"fig\").and_modify(|n| *n *= 10).or_insert(0);\n    stock.entry(\"kiwi\").and_modify(|n| *n *= 10).or_insert(0);\n\n    let mut pairs: Vec<_> = stock.iter().collect();\n    pairs.sort();\n    println!(\"{pairs:?}\");\n}\n",
+   "out": "apple: Some(12)\nbuilding the pear value\n[(\"apple\", 12), (\"fig\", 10), (\"kiwi\", 0), (\"pear\", 7)]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "float-key.fail.rs": {
+   "code": "use std::collections::HashMap;\n\nfn main() {\n    let mut readings: HashMap<f64, &str> = HashMap::new();\n    readings.insert(20.5, \"warm\");\n    println!(\"{}\", readings.len());\n}\n",
+   "error": "error[E0599]: the method `insert` exists for struct `HashMap<f64, &str>`, but its trait bounds were not satisfied\n --> src/main.rs:5:14\n  |\n5 |     readings.insert(20.5, \"warm\");\n  |              ^^^^^^\n  |\n  = note: the following trait bounds were not satisfied:\n          `f64: Eq`\n          `f64: Hash`\n",
+   "lang": "rust"
+  },
+  "grouping.rs": {
+   "code": "use std::collections::HashMap;\n\nfn main() {\n    let words = [\"fig\", \"apple\", \"kiwi\", \"pear\", \"plum\", \"lime\", \"nut\"];\n\n    let mut by_length: HashMap<usize, Vec<&str>> = HashMap::new();\n    for word in words {\n        by_length.entry(word.len()).or_default().push(word);\n    }\n\n    let mut lengths: Vec<_> = by_length.keys().collect();\n    lengths.sort();\n    for length in lengths {\n        println!(\"{length}: {:?}\", by_length[length]);\n    }\n}\n",
+   "out": "3: [\"fig\", \"nut\"]\n4: [\"kiwi\", \"pear\", \"plum\", \"lime\"]\n5: [\"apple\"]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "hasher.rs": {
+   "code": "use std::collections::hash_map::RandomState;\n// BuildHasher is the trait that provides hash_one: \"hash this key with my seed\".\nuse std::hash::BuildHasher;\n\nfn main() {\n    let first = RandomState::new();\n    let second = RandomState::new();\n\n    println!(\n        \"same state, same key: {}\",\n        first.hash_one(\"ana\") == first.hash_one(\"ana\")\n    );\n    println!(\n        \"same state, other key: {}\",\n        first.hash_one(\"ana\") == first.hash_one(\"bo\")\n    );\n    println!(\n        \"other state, same key: {}\",\n        first.hash_one(\"ana\") == second.hash_one(\"ana\")\n    );\n}\n",
+   "out": "same state, same key: true\nsame state, other key: false\nother state, same key: false\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "hold-and-insert.fail.rs": {
+   "code": "use std::collections::HashMap;\n\nfn main() {\n    let mut stock: HashMap<&str, u32> = HashMap::from([(\"apple\", 3)]);\n    let apples = stock.get(\"apple\");\n    stock.insert(\"pear\", 5);\n    println!(\"apples: {apples:?}\");\n}\n",
+   "error": "error[E0502]: cannot borrow `stock` as mutable because it is also borrowed as immutable\n --> src/main.rs:6:5\n  |\n5 |     let apples = stock.get(\"apple\");\n  |                  ----- immutable borrow occurs here\n6 |     stock.insert(\"pear\", 5);\n  |     ^^^^^^^^^^^^^^^^^^^^^^^ mutable borrow occurs here\n7 |     println!(\"apples: {apples:?}\");\n  |                        ------ immutable borrow later used here\n",
+   "lang": "rust"
+  },
+  "housekeeping.rs": {
+   "code": "use std::collections::HashMap;\n\nfn main() {\n    let mut stock = HashMap::from([(\"apple\", 3), (\"pear\", 0)]);\n\n    // extend inserts every pair; a key that is already there gets the new value.\n    stock.extend([(\"apple\", 9), (\"fig\", 2), (\"kiwi\", 0)]);\n    println!(\n        \"after extend: len {}, apple {:?}\",\n        stock.len(),\n        stock.get(\"apple\")\n    );\n\n    // retain keeps the pairs for which the function returns true.\n    stock.retain(|_name, count| *count > 0);\n    println!(\"after retain: len {}\", stock.len());\n\n    // drain hands out every pair and leaves the map empty.\n    let mut taken: Vec<_> = stock.drain().collect();\n    taken.sort();\n    println!(\"drained: {taken:?}\");\n    println!(\"after drain: len {}\", stock.len());\n}\n",
+   "out": "after extend: len 4, apple Some(9)\nafter retain: len 2\ndrained: [(\"apple\", 9), (\"fig\", 2)]\nafter drain: len 0\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "index-panics.panic.rs": {
+   "code": "use std::collections::HashMap;\n\nfn main() {\n    let prices = HashMap::from([(\"tea\", 3), (\"milk\", 2)]);\n    println!(\"tea: {}\", prices[\"tea\"]);\n    println!(\"coffee: {}\", prices[\"coffee\"]);\n}\n",
+   "out": "tea: 3\n\nthread 'main' (1) panicked at src/main.rs:6:34:\nno entry found for key\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+   "lang": "rust",
+   "exit": 101
+  },
+  "insert-while-looping.fail.rs": {
+   "code": "use std::collections::HashMap;\n\nfn main() {\n    let mut stock = HashMap::from([(\"apple\", 3), (\"pear\", 5)]);\n    for name in stock.keys() {\n        stock.insert(\"fig\", name.len());\n    }\n}\n",
+   "error": "error[E0502]: cannot borrow `stock` as mutable because it is also borrowed as immutable\n --> src/main.rs:6:9\n  |\n5 |       for name in stock.keys() {\n  |       -           ------------\n  |       |           |\n  |       |           immutable borrow occurs here\n  |  _____|           immutable borrow later used here\n  | |\n6 | |         stock.insert(\"fig\", name.len());\n  | |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable borrow occurs here\n7 | |     }\n  | |_____- this for loop borrows `stock` immutably, preventing mutation within its body\n  |\n  = help: consider using an index-based loop instead, or collecting modifications into a separate collection\n",
+   "lang": "rust"
+  },
+  "iterate.rs": {
+   "code": "use std::collections::HashMap;\n\nfn main() {\n    let mut stock = HashMap::from([(\"apple\", 3), (\"pear\", 5), (\"fig\", 1)]);\n\n    let mut total = 0;\n    for (_name, count) in &stock {\n        total += count;\n    }\n    println!(\"total: {total}\");\n\n    for count in stock.values_mut() {\n        *count *= 2;\n    }\n    for (_name, count) in &mut stock {\n        *count += 1;\n    }\n\n    // The order of a HashMap is arbitrary, so sort the keys to print in a fixed order.\n    let mut names: Vec<_> = stock.keys().collect();\n    names.sort();\n    for name in names {\n        println!(\"{name}: {}\", stock[name]);\n    }\n}\n",
+   "out": "total: 9\napple: 7\nfig: 3\npear: 11\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "key-kinds.rs": {
+   "code": "use std::collections::HashMap;\n\nfn main() {\n    let text = String::from(\"red green red\");\n\n    // &str keys point into `text`: nothing is copied, but `text` must outlive the map.\n    let mut borrowed: HashMap<&str, u32> = HashMap::new();\n    for word in text.split(' ') {\n        *borrowed.entry(word).or_insert(0) += 1;\n    }\n\n    // String keys are copies: the map owns them.\n    let mut owned: HashMap<String, u32> = HashMap::new();\n    for word in text.split(' ') {\n        *owned.entry(word.to_string()).or_insert(0) += 1;\n    }\n\n    println!(\"borrowed red: {:?}\", borrowed.get(\"red\"));\n    println!(\"owned red: {:?}\", owned.get(\"red\"));\n}\n",
+   "out": "borrowed red: Some(2)\nowned red: Some(2)\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "key-types.rs": {
+   "code": "use std::collections::HashMap;\n\n#[derive(Debug, Hash, PartialEq, Eq)]\nstruct Point {\n    x: i32,\n    y: i32,\n}\n\nfn main() {\n    // A struct key: derive Hash, PartialEq and Eq. Keys are compared by value.\n    let mut names: HashMap<Point, &str> = HashMap::new();\n    names.insert(Point { x: 0, y: 0 }, \"origin\");\n    println!(\"Point 0,0: {:?}\", names.get(&Point { x: 0, y: 0 }));\n    println!(\"Point 1,0: {:?}\", names.get(&Point { x: 1, y: 0 }));\n\n    // A tuple is a key if all its parts are.\n    let mut grid: HashMap<(i32, i32), char> = HashMap::new();\n    grid.insert((1, 2), '#');\n    println!(\"(1, 2): {:?}\", grid.get(&(1, 2)));\n\n    // So is a Vec, if its items are.\n    let mut visits: HashMap<Vec<&str>, u32> = HashMap::new();\n    visits.insert(vec![\"usr\", \"bin\"], 3);\n    println!(\"[usr, bin]: {:?}\", visits.get(&vec![\"usr\", \"bin\"]));\n\n    // Option works as a key, so \"no key\" can be one of the keys.\n    let mut by_owner: HashMap<Option<&str>, u32> = HashMap::new();\n    by_owner.insert(None, 1);\n    by_owner.insert(Some(\"ana\"), 2);\n    println!(\"None: {:?}\", by_owner.get(&None));\n}\n",
+   "out": "Point 0,0: Some(\"origin\")\nPoint 1,0: None\n(1, 2): Some('#')\n[usr, bin]: Some(3)\nNone: Some(1)\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "memory.rs": {
+   "code": "use std::collections::HashMap;\nuse std::collections::hash_map::RandomState;\nuse std::mem::size_of;\n\nfn main() {\n    let name = String::from(\"ana\");\n    let name_bytes = name.as_ptr();\n    println!(\n        \"name before: len {}, capacity {}\",\n        name.len(),\n        name.capacity()\n    );\n\n    let mut ages: HashMap<String, u32> = HashMap::new();\n    ages.insert(name, 30);\n\n    let (key, value) = ages.iter().next().unwrap();\n    println!(\n        \"key in the map: {key}, len {}, capacity {}\",\n        key.len(),\n        key.capacity()\n    );\n    println!(\n        \"key bytes at the same address as name's bytes: {}\",\n        key.as_ptr() == name_bytes\n    );\n    println!(\"value in the map: {value}\");\n\n    println!(\"size_of String: {}\", size_of::<String>());\n    println!(\"size_of (String, u32): {}\", size_of::<(String, u32)>());\n    println!(\n        \"size_of RandomState (the hasher): {}\",\n        size_of::<RandomState>()\n    );\n    println!(\n        \"size_of HashMap<String, u32>: {}\",\n        size_of::<HashMap<String, u32>>()\n    );\n}\n",
+   "out": "name before: len 3, capacity 3\nkey in the map: ana, len 3, capacity 3\nkey bytes at the same address as name's bytes: true\nvalue in the map: 30\nsize_of String: 24\nsize_of (String, u32): 32\nsize_of RandomState (the hasher): 16\nsize_of HashMap<String, u32>: 48\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "moved-key.fail.rs": {
+   "code": "use std::collections::HashMap;\n\nfn main() {\n    let name = String::from(\"ana\");\n    let mut ages: HashMap<String, u32> = HashMap::new();\n    ages.insert(name, 30);\n    println!(\"inserted {name}\");\n}\n",
+   "error": "error[E0382]: borrow of moved value: `name`\n --> src/main.rs:7:25\n  |\n4 |     let name = String::from(\"ana\");\n  |         ---- move occurs because `name` has type `String`, which does not implement the `Copy` trait\n5 |     let mut ages: HashMap<String, u32> = HashMap::new();\n6 |     ages.insert(name, 30);\n  |                 ---- value moved here\n7 |     println!(\"inserted {name}\");\n  |                         ^^^^ value borrowed here after move\n  |\nhelp: consider cloning the value if the performance cost is acceptable\n  |\n6 |     ages.insert(name.clone(), 30);\n  |                     ++++++++\n",
+   "lang": "rust"
+  },
+  "nan.rs": {
+   "code": "fn main() {\n    let nan = f64::NAN;\n    println!(\"NAN == NAN: {}\", nan == nan);\n    println!(\"1.5 == 1.5: {}\", 1.5_f64 == 1.5_f64);\n}\n",
+   "out": "NAN == NAN: false\n1.5 == 1.5: true\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "no-index-assign.fail.rs": {
+   "code": "use std::collections::HashMap;\n\nfn main() {\n    let mut stock: HashMap<&str, u32> = HashMap::new();\n    stock[\"apple\"] = 3;\n    println!(\"{}\", stock.len());\n}\n",
+   "error": "error[E0594]: cannot assign to data in an index of `HashMap<&str, u32>`\n --> src/main.rs:5:5\n  |\n5 |     stock[\"apple\"] = 3;\n  |     ^^^^^^^^^^^^^^^^^^ cannot assign\n  |\n  = help: trait `IndexMut` is required to modify indexed content, but it is not implemented for `HashMap<&str, u32>`\nhelp: use `.insert()` to insert a value into a `HashMap<&str, u32>`\n  |\n5 -     stock[\"apple\"] = 3;\n5 +     stock.insert(\"apple\", 3);\n  |\nhelp: use the entry API to modify a `HashMap<&str, u32>` for more flexibility\n  |\n5 -     stock[\"apple\"] = 3;\n5 +     let val = stock.entry(\"apple\").insert_entry(3);\n  |\nhelp: use `.get_mut()` to modify an existing key in a `HashMap<&str, u32>`\n  |\n5 -     stock[\"apple\"] = 3;\n5 +     if let Some(val) = stock.get_mut(\"apple\") { *val = 3; };",
+   "lang": "rust"
+  },
+  "order.rs": {
+   "code": "use std::collections::HashMap;\n\nfn main() {\n    // Four maps with exactly the same pairs, built one after another in one run.\n    for n in 1..=4 {\n        let map = HashMap::from([\n            (\"one\", 1),\n            (\"two\", 2),\n            (\"three\", 3),\n            (\"four\", 4),\n            (\"five\", 5),\n            (\"six\", 6),\n        ]);\n        let keys: Vec<_> = map.keys().collect();\n        let again: Vec<_> = map.keys().collect();\n        println!(\n            \"map {n}: {keys:?}, same map looped again gives the same order: {}\",\n            keys == again\n        );\n    }\n}\n",
+   "out": "map 1: [\"five\", \"one\", \"three\", \"four\", \"six\", \"two\"], same map looped again gives the same order: true\nmap 2: [\"five\", \"three\", \"two\", \"one\", \"four\", \"six\"], same map looped again gives the same order: true\nmap 3: [\"three\", \"two\", \"four\", \"six\", \"one\", \"five\"], same map looped again gives the same order: true\nmap 4: [\"five\", \"six\", \"one\", \"two\", \"three\", \"four\"], same map looped again gives the same order: true\n",
+   "varies": true,
+   "lang": "rust",
+   "exit": 0
+  },
+  "outlives.fail.rs": {
+   "code": "use std::collections::HashMap;\n\nfn main() {\n    let mut counts: HashMap<&str, u32> = HashMap::new();\n    {\n        let text = String::from(\"red green red\");\n        for word in text.split(' ') {\n            *counts.entry(word).or_insert(0) += 1;\n        }\n    }\n    println!(\"{}\", counts.len());\n}\n",
+   "error": "error[E0597]: `text` does not live long enough\n  --> src/main.rs:7:21\n   |\n 6 |         let text = String::from(\"red green red\");\n   |             ---- binding `text` declared here\n 7 |         for word in text.split(' ') {\n   |                     ^^^^ borrowed value does not live long enough\n...\n10 |     }\n   |     - `text` dropped here while still borrowed\n11 |     println!(\"{}\", counts.len());\n   |                    ------ borrow later used here\n",
+   "lang": "rust"
+  },
+  "sets.rs": {
+   "code": "use std::collections::{BTreeSet, HashSet};\n\nfn main() {\n    let mut seen: HashSet<&str> = HashSet::new();\n    println!(\"insert ana: {}\", seen.insert(\"ana\"));\n    println!(\"insert ana again: {}\", seen.insert(\"ana\"));\n    println!(\"contains bo: {}\", seen.contains(\"bo\"));\n\n    let mine = BTreeSet::from([1, 2, 3, 4]);\n    let yours = BTreeSet::from([3, 4, 5]);\n    let both: Vec<_> = mine.intersection(&yours).collect();\n    let either: Vec<_> = mine.union(&yours).collect();\n    let only_mine: Vec<_> = mine.difference(&yours).collect();\n    println!(\"both: {both:?}\");\n    println!(\"either: {either:?}\");\n    println!(\"only mine: {only_mine:?}\");\n}\n",
+   "out": "insert ana: true\ninsert ana again: false\ncontains bo: false\nboth: [3, 4]\neither: [1, 2, 3, 4, 5]\nonly mine: [1, 2]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "share-across-threads.fail.rs": {
+   "code": "use std::collections::HashMap;\nuse std::thread;\n\nfn main() {\n    let mut counts: HashMap<u32, u32> = HashMap::new();\n    thread::scope(|s| {\n        s.spawn(|| counts.insert(1, 1));\n        s.spawn(|| counts.insert(2, 2));\n    });\n}\n",
+   "error": "error[E0499]: cannot borrow `counts` as mutable more than once at a time\n --> src/main.rs:8:17\n  |\n6 |     thread::scope(|s| {\n  |                    - has type `&'1 Scope<'1, '_>`\n7 |         s.spawn(|| counts.insert(1, 1));\n  |         -------------------------------\n  |         |       |  |\n  |         |       |  first borrow occurs due to use of `counts` in closure\n  |         |       first mutable borrow occurs here\n  |         argument requires that `counts` is borrowed for `'1`\n8 |         s.spawn(|| counts.insert(2, 2));\n  |                 ^^ ------ second borrow occurs due to use of `counts` in closure\n  |                 |\n  |                 second mutable borrow occurs here\n  ... (notes pointing into the standard library trimmed)",
+   "lang": "rust"
+  },
+  "tally.rs": {
+   "code": "use std::collections::HashMap;\n\nfn main() {\n    let votes = [\"ana\", \"bo\", \"ana\", \"cy\", \"ana\", \"bo\"];\n\n    let mut tally: HashMap<&str, u32> = HashMap::new();\n    for name in votes {\n        *tally.entry(name).or_insert(0) += 1;\n    }\n\n    // `iter()` yields the pairs one at a time. `collect()` gathers them into a Vec,\n    // and a Vec of pairs can be sorted.\n    let mut results: Vec<_> = tally.iter().collect();\n    results.sort();\n    for (name, count) in results {\n        println!(\"{name}: {count}\");\n    }\n}\n",
+   "out": "ana: 3\nbo: 2\ncy: 1\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "concurrent.crash.go": {
+   "code": "package main\n\nimport \"sync\"\n\nfunc main() {\n\tm := map[int]int{}\n\tvar wg sync.WaitGroup\n\tfor g := 0; g < 4; g++ {\n\t\twg.Add(1)\n\t\tgo func() {\n\t\t\tdefer wg.Done()\n\t\t\tfor i := 0; i < 100000; i++ {\n\t\t\t\tm[i] = i\n\t\t\t}\n\t\t}()\n\t}\n\twg.Wait()\n}\n",
+   "out": "fatal error: concurrent map writes\n\ngoroutine 18 [running]:\ninternal/runtime/maps.fatal({0x927e8?, 0x0?})\n\t/opt/go/src/runtime/panic.go:1195 +0x20\nmain.main.func1()\n\tmain.go:13 +0x60\ncreated by main.main in goroutine 1\n\tmain.go:10 +0x48\n",
+   "varies": true,
+   "lang": "go",
+   "exit": 2
+  },
+  "defaults.py": {
+   "code": "from collections import Counter, defaultdict\n\nwords = [\"fig\", \"apple\", \"kiwi\", \"pear\", \"fig\"]\n\nby_length = {}\nfor w in words:\n    by_length.setdefault(len(w), []).append(w)\nprint(\"setdefault:\", by_length)\n\ngrouped = defaultdict(list)\nfor w in words:\n    grouped[len(w)].append(w)\nprint(\"defaultdict:\", dict(grouped))\n\nprint(\"Counter:\", Counter(words))\n",
+   "out": "setdefault: {3: ['fig', 'fig'], 5: ['apple'], 4: ['kiwi', 'pear']}\ndefaultdict: {3: ['fig', 'fig'], 5: ['apple'], 4: ['kiwi', 'pear']}\nCounter: Counter({'fig': 2, 'apple': 1, 'kiwi': 1, 'pear': 1})\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "dictionary.cs": {
+   "code": "var d = new Dictionary<string, int> { [\"one\"] = 1, [\"two\"] = 2, [\"three\"] = 3 };\nd.Remove(\"one\");\nd[\"four\"] = 4;\nConsole.WriteLine(\"Dictionary: \" + string.Join(\", \", d.Keys));\nConsole.WriteLine(\"SortedDictionary: \" + string.Join(\", \", new SortedDictionary<string, int>(d).Keys));\n\ntry\n{\n    d[null!] = 0;\n}\ncatch (ArgumentNullException)\n{\n    Console.WriteLine(\"null key: ArgumentNullException\");\n}\n",
+   "out": "Dictionary: four, two, three\nSortedDictionary: four, three, two\nnull key: ArgumentNullException\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "float-key.py": {
+   "code": "d = {1.5: \"a float\", float(\"nan\"): \"NaN\"}\nprint(\"keys:\", list(d))\nprint(\"d[1.5]:\", d[1.5])\n",
+   "out": "keys: [1.5, nan]\nd[1.5]: a float\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "hsearch.c": {
+   "code": "#include <search.h>\n#include <stdio.h>\n\n// POSIX hsearch: one global table, string keys, void* values.\nint main(void) {\n    hcreate(16);\n    int ana = 30;\n    ENTRY put = {\"ana\", &ana};\n    hsearch(put, ENTER);\n\n    ENTRY find = {\"ana\", NULL};\n    ENTRY *hit = hsearch(find, FIND);\n    printf(\"ana: %d\\n\", hit ? *(int *)hit->data : -1);\n\n    ENTRY other = {\"zed\", NULL};\n    printf(\"zed found: %s\\n\", hsearch(other, FIND) ? \"yes\" : \"no\");\n    hdestroy();\n    return 0;\n}\n",
+   "out": "ana: 30\nzed found: no\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "map-vs-object.ts": {
+   "code": "const keys = [\"b\", \"2\", \"a\", \"1\"];\n\nconst obj: Record<string, number> = {};\nconst map = new Map<string, number>();\nfor (const k of keys) {\n  obj[k] = 0;\n  map.set(k, 0);\n}\nconsole.log(\"object keys:\", Object.keys(obj));\nconsole.log(\"Map keys:\", [...map.keys()]);\n\nconst id = { n: 1 };\nconst byObject = new Map([[id, \"found\"]]);\nconsole.log(\"same object:\", byObject.get(id));\nconsole.log(\"equal-looking object:\", byObject.get({ n: 1 }));\n",
+   "out": "object keys: [ '1', '2', 'b', 'a' ]\nMap keys: [ 'b', '2', 'a', '1' ]\nsame object: found\nequal-looking object: undefined\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "modify-while-iterating.crash.java": {
+   "code": "import java.util.HashMap;\nimport java.util.Map;\n\npublic class Main {\n    public static void main(String[] args) {\n        Map<String, Integer> stock = new HashMap<>();\n        stock.put(\"apple\", 3);\n        stock.put(\"pear\", 5);\n        for (String name : stock.keySet()) {\n            stock.put(name + \"2\", 1);\n        }\n        System.out.println(\"not reached\");\n    }\n}\n",
+   "out": "Exception in thread \"main\" java.util.ConcurrentModificationException\n\tat java.base/java.util.HashMap$HashIterator.nextNode(HashMap.java:1606)\n\tat java.base/java.util.HashMap$KeyIterator.next(HashMap.java:1629)\n\tat Main.main(Main.java:9)\n",
+   "lang": "java",
+   "exit": 1
+  },
+  "nan-key.go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"math\"\n)\n\nfunc main() {\n\tm := map[float64]string{}\n\tm[math.NaN()] = \"first\"\n\tm[math.NaN()] = \"second\"\n\t_, found := m[math.NaN()]\n\tfmt.Println(\"len:\", len(m), \"found:\", found)\n}\n",
+   "out": "len: 2 found: false\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "nan-key.java": {
+   "code": "import java.util.HashMap;\nimport java.util.Map;\n\npublic class Main {\n    public static void main(String[] args) {\n        Map<Double, String> m = new HashMap<>();\n        m.put(Double.NaN, \"first\");\n        m.put(Double.NaN, \"second\");\n        System.out.println(\"NaN twice: size \" + m.size() + \", get(NaN) = \" + m.get(Double.NaN));\n\n        Map<Double, String> zeros = new HashMap<>();\n        zeros.put(0.0, \"zero\");\n        zeros.put(-0.0, \"minus zero\");\n        System.out.println(\"0.0 and -0.0: size \" + zeros.size());\n    }\n}\n",
+   "out": "NaN twice: size 1, get(NaN) = second\n0.0 and -0.0: size 2\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "nil-map.crash.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tvar m map[string]int // nil: declared, never made\n\tfmt.Println(\"read:\", m[\"a\"], \"len:\", len(m))\n\tm[\"a\"] = 1\n\tfmt.Println(\"not reached\")\n}\n",
+   "out": "read: 0 len: 0\npanic: assignment to entry in nil map\n\ngoroutine 1 [running]:\nmain.main()\n\tmain.go:8 +0xd8\n",
+   "lang": "go",
+   "exit": 2
+  },
+  "order.go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"maps\"\n\t\"slices\"\n)\n\nfunc main() {\n\tm := map[string]int{}\n\tfor i, k := range []string{\"a\", \"b\", \"c\", \"d\", \"e\", \"f\", \"g\", \"h\", \"i\", \"j\", \"k\", \"l\"} {\n\t\tm[k] = i\n\t}\n\n\t// The same map, looped over three times in one run.\n\tfor round := 1; round <= 3; round++ {\n\t\tfmt.Printf(\"loop %d:\", round)\n\t\tfor k := range m {\n\t\t\tfmt.Printf(\" %s\", k)\n\t\t}\n\t\tfmt.Println()\n\t}\n\n\tfmt.Println(\"sorted:\", slices.Sorted(maps.Keys(m)))\n}\n",
+   "out": "loop 1: e g h i j c f k l a b d\nloop 2: h i j c f k l a b d e g\nloop 3: g h i j c f k l a b d e\nsorted: [a b c d e f g h i j k l]\n",
+   "varies": true,
+   "lang": "go",
+   "exit": 0
+  },
+  "order.kt": {
+   "code": "fun main() {\n    val m = mutableMapOf(\"one\" to 1, \"two\" to 2, \"three\" to 3, \"four\" to 4, \"five\" to 5, \"six\" to 6)\n    println(\"mutableMapOf: ${m.keys} is a ${m::class.java.name}\")\n\n    val h = hashMapOf(\"one\" to 1, \"two\" to 2, \"three\" to 3, \"four\" to 4, \"five\" to 5, \"six\" to 6)\n    println(\"hashMapOf: ${h.keys} is a ${h::class.java.name}\")\n\n    val counts = mutableMapOf<String, Int>()\n    for (word in \"a b a\".split(\" \")) {\n        counts.merge(word, 1, Int::plus)\n    }\n    println(\"counts: $counts\")\n}\n",
+   "out": "mutableMapOf: [one, two, three, four, five, six] is a java.util.LinkedHashMap\nhashMapOf: [six, four, one, two, three, five] is a java.util.HashMap\ncounts: {a=2, b=1}\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "order.py": {
+   "code": "d = {\"one\": 1, \"two\": 2, \"three\": 3, \"four\": 4, \"five\": 5, \"six\": 6}\nprint(\"keys:\", list(d))\n\ndel d[\"one\"]\nd[\"one\"] = 1\nprint(\"after deleting and adding 'one':\", list(d))\n",
+   "out": "keys: ['one', 'two', 'three', 'four', 'five', 'six']\nafter deleting and adding 'one': ['two', 'three', 'four', 'five', 'six', 'one']\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "orders.java": {
+   "code": "import java.util.HashMap;\nimport java.util.LinkedHashMap;\nimport java.util.Map;\nimport java.util.TreeMap;\n\npublic class Main {\n    public static void main(String[] args) {\n        Map<String, Integer> hash = new HashMap<>();\n        Map<String, Integer> linked = new LinkedHashMap<>();\n        Map<String, Integer> tree = new TreeMap<>();\n        String[] keys = {\"one\", \"two\", \"three\", \"four\", \"five\", \"six\"};\n        for (int i = 0; i < keys.length; i++) {\n            hash.put(keys[i], i + 1);\n            linked.put(keys[i], i + 1);\n            tree.put(keys[i], i + 1);\n        }\n        System.out.println(\"HashMap:       \" + hash.keySet());\n        System.out.println(\"LinkedHashMap: \" + linked.keySet());\n        System.out.println(\"TreeMap:       \" + tree.keySet());\n\n        hash.put(null, 0);\n        System.out.println(\"HashMap null key: \" + hash.get(null));\n        try {\n            tree.put(null, 0);\n        } catch (NullPointerException e) {\n            System.out.println(\"TreeMap null key: NullPointerException\");\n        }\n\n        // merge is the entry API: add 1, or store 1 the first time\n        Map<String, Integer> counts = new HashMap<>();\n        for (var word : \"a b a\".split(\" \")) {\n            counts.merge(word, 1, Integer::sum);\n        }\n        System.out.println(\"counts: \" + counts);\n    }\n}\n",
+   "out": "HashMap:       [six, four, one, two, three, five]\nLinkedHashMap: [one, two, three, four, five, six]\nTreeMap:       [five, four, one, six, three, two]\nHashMap null key: 0\nTreeMap null key: NullPointerException\ncounts: {a=2, b=1}\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "rehash-keeps-refs.cpp": {
+   "code": "#include <iostream>\n#include <unordered_map>\n\nint main() {\n    std::unordered_map<int, int> m;\n    m[0] = 1;\n    int *before = &m[0];\n    for (int i = 1; i < 10000; i++) m[i] = i;  // plenty of rehashing\n    std::cout << \"element still at the same address: \" << (before == &m[0]) << \"\\n\";\n}\n",
+   "out": "element still at the same address: 1\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "set-order.py": {
+   "code": "# A set of strings, like a Rust HashMap, has no insertion order.\n# Python seeds its string hashes randomly for each process.\nprint({\"one\", \"two\", \"three\", \"four\", \"five\", \"six\"})\n",
+   "out": "{'three', 'two', 'one', 'five', 'six', 'four'}\n",
+   "varies": true,
+   "lang": "python",
+   "exit": 0
+  },
+  "subscript-inserts.cpp": {
+   "code": "#include <iostream>\n#include <map>\n#include <string>\n#include <unordered_map>\n\nint main() {\n    std::unordered_map<std::string, int> stock;\n    std::cout << \"size before: \" << stock.size() << \"\\n\";\n    int zed = stock[\"zed\"];  // only reading, or so it looks\n    std::cout << \"after stock[\\\"zed\\\"]: size \" << stock.size() << \", value \" << zed << \"\\n\";\n\n    std::cout << \"contains(\\\"zed\\\"): \" << stock.contains(\"zed\") << \"\\n\";\n\n    try {\n        stock.at(\"nope\");\n    } catch (const std::out_of_range &) {\n        std::cout << \"at(\\\"nope\\\"): std::out_of_range\\n\";\n    }\n\n    std::unordered_map<std::string, int> hashed{{\"one\", 1}, {\"two\", 2}, {\"three\", 3}, {\"four\", 4}};\n    std::map<std::string, int> sorted(hashed.begin(), hashed.end());\n    std::cout << \"unordered_map:\";\n    for (const auto &[k, v] : hashed) std::cout << \" \" << k;\n    std::cout << \"\\nmap:\";\n    for (const auto &[k, v] : sorted) std::cout << \" \" << k;\n    std::cout << \"\\n\";\n}\n",
+   "out": "size before: 0\nafter stock[\"zed\"]: size 1, value 0\ncontains(\"zed\"): 1\nat(\"nope\"): std::out_of_range\nunordered_map: four three two one\nmap: four one three two\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "unaddressable.fail.go": {
+   "code": "package main\n\nimport \"fmt\"\n\ntype Stats struct{ count int }\n\nfunc main() {\n\tm := map[string]Stats{\"a\": {}}\n\tm[\"a\"].count++\n\tfmt.Println(m)\n}\n",
+   "error": "# command-line-arguments\n./main.go:9:2: cannot assign to struct field m[\"a\"].count in map",
+   "lang": "go"
+  },
+  "unhashable.fail.py": {
+   "code": "d = {}\nd[[1, 2]] = \"a list\"\n",
+   "out": "Traceback (most recent call last):\n  File \"main.py\", line 2, in <module>\n    d[[1, 2]] = \"a list\"\n    ~^^^^^^^^\nTypeError: unhashable type: 'list'\n",
+   "lang": "python",
+   "exit": 1
+  }
+ },
+ "exercises": {
+  "group-by-initial": {
+   "starter": "use std::collections::HashMap;\n\n/// Group names by their first character. Names keep their order inside a group,\n/// and an empty name belongs to no group.\nfn group_by_initial(names: &[&str]) -> HashMap<char, Vec<String>> {\n    todo!(\"name.chars().next() is an Option<char>; group with entry(first).or_default()\")\n}\n\nfn main() {\n    assert!(group_by_initial(&[]).is_empty());\n\n    let groups = group_by_initial(&[\"ana\", \"al\", \"bo\", \"\", \"élan\", \"ed\"]);\n    assert_eq!(groups.len(), 4);\n    assert_eq!(groups[&'a'], vec![\"ana\", \"al\"]);\n    assert_eq!(groups[&'b'], vec![\"bo\"]);\n    assert_eq!(groups[&'é'], vec![\"élan\"]);\n    assert_eq!(groups[&'e'], vec![\"ed\"]);\n    assert_eq!(groups.get(&'x'), None);\n\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "use std::collections::HashMap;\n\n/// Group names by their first character. Names keep their order inside a group,\n/// and an empty name belongs to no group.\nfn group_by_initial(names: &[&str]) -> HashMap<char, Vec<String>> {\n    let mut groups: HashMap<char, Vec<String>> = HashMap::new();\n    for name in names {\n        let Some(first) = name.chars().next() else {\n            continue;\n        };\n        groups.entry(first).or_default().push(name.to_string());\n    }\n    groups\n}\n\nfn main() {\n    assert!(group_by_initial(&[]).is_empty());\n\n    let groups = group_by_initial(&[\"ana\", \"al\", \"bo\", \"\", \"élan\", \"ed\"]);\n    assert_eq!(groups.len(), 4);\n    assert_eq!(groups[&'a'], vec![\"ana\", \"al\"]);\n    assert_eq!(groups[&'b'], vec![\"bo\"]);\n    assert_eq!(groups[&'é'], vec![\"élan\"]);\n    assert_eq!(groups[&'e'], vec![\"ed\"]);\n    assert_eq!(groups.get(&'x'), None);\n\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "invert": {
+   "starter": "use std::collections::{BTreeMap, HashMap};\n\n/// Turn name -> score into score -> names, with the scores in increasing order.\n/// Two names can share a score, so each score maps to a list. Every list is sorted.\nfn invert(scores: &HashMap<String, u32>) -> BTreeMap<u32, Vec<String>> {\n    todo!(\"use entry(score).or_default() to collect names, and sort each list afterwards\")\n}\n\nfn main() {\n    assert!(invert(&HashMap::new()).is_empty());\n\n    let scores = HashMap::from([\n        (\"cy\".to_string(), 7),\n        (\"ana\".to_string(), 7),\n        (\"bo\".to_string(), 2),\n        (\"dee\".to_string(), 90),\n    ]);\n    let inverted = invert(&scores);\n    assert_eq!(inverted.len(), 3);\n    assert_eq!(inverted[&7], vec![\"ana\", \"cy\"]);\n    assert_eq!(inverted[&2], vec![\"bo\"]);\n    assert_eq!(inverted.get(&3), None);\n\n    // A BTreeMap loops in key order, so this is the same on every run.\n    let order: Vec<u32> = inverted.keys().copied().collect();\n    assert_eq!(order, vec![2, 7, 90]);\n    assert_eq!(inverted.last_key_value().map(|(score, _)| *score), Some(90));\n\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "use std::collections::{BTreeMap, HashMap};\n\n/// Turn name -> score into score -> names, with the scores in increasing order.\n/// Two names can share a score, so each score maps to a list. Every list is sorted.\nfn invert(scores: &HashMap<String, u32>) -> BTreeMap<u32, Vec<String>> {\n    let mut inverted: BTreeMap<u32, Vec<String>> = BTreeMap::new();\n    for (name, score) in scores {\n        inverted.entry(*score).or_default().push(name.clone());\n    }\n    for names in inverted.values_mut() {\n        names.sort();\n    }\n    inverted\n}\n\nfn main() {\n    assert!(invert(&HashMap::new()).is_empty());\n\n    let scores = HashMap::from([\n        (\"cy\".to_string(), 7),\n        (\"ana\".to_string(), 7),\n        (\"bo\".to_string(), 2),\n        (\"dee\".to_string(), 90),\n    ]);\n    let inverted = invert(&scores);\n    assert_eq!(inverted.len(), 3);\n    assert_eq!(inverted[&7], vec![\"ana\", \"cy\"]);\n    assert_eq!(inverted[&2], vec![\"bo\"]);\n    assert_eq!(inverted.get(&3), None);\n\n    // A BTreeMap loops in key order, so this is the same on every run.\n    let order: Vec<u32> = inverted.keys().copied().collect();\n    assert_eq!(order, vec![2, 7, 90]);\n    assert_eq!(inverted.last_key_value().map(|(score, _)| *score), Some(90));\n\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "word-frequency": {
+   "starter": "use std::collections::HashMap;\n\n/// Count how many times each word appears. Words are separated by whitespace,\n/// and \"The\" and \"the\" are the same word.\nfn word_counts(text: &str) -> HashMap<String, u32> {\n    todo!(\"loop over text.split_whitespace(), lowercase each word, and count with entry\")\n}\n\nfn main() {\n    assert!(word_counts(\"\").is_empty());\n\n    let counts = word_counts(\"the Cat saw THE dog\");\n    assert_eq!(counts.len(), 4);\n    assert_eq!(counts[\"the\"], 2);\n    assert_eq!(counts[\"cat\"], 1);\n    assert_eq!(counts.get(\"fish\"), None);\n\n    let counts = word_counts(\"École école ÉCOLE\");\n    assert_eq!(counts.len(), 1);\n    assert_eq!(counts[\"école\"], 3);\n\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "use std::collections::HashMap;\n\n/// Count how many times each word appears. Words are separated by whitespace,\n/// and \"The\" and \"the\" are the same word.\nfn word_counts(text: &str) -> HashMap<String, u32> {\n    let mut counts = HashMap::new();\n    for word in text.split_whitespace() {\n        *counts.entry(word.to_lowercase()).or_insert(0) += 1;\n    }\n    counts\n}\n\nfn main() {\n    assert!(word_counts(\"\").is_empty());\n\n    let counts = word_counts(\"the Cat saw THE dog\");\n    assert_eq!(counts.len(), 4);\n    assert_eq!(counts[\"the\"], 2);\n    assert_eq!(counts[\"cat\"], 1);\n    assert_eq!(counts.get(\"fish\"), None);\n\n    let counts = word_counts(\"École école ÉCOLE\");\n    assert_eq!(counts.len(), 1);\n    assert_eq!(counts[\"école\"], 3);\n\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}

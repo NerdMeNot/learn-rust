@@ -1,0 +1,410 @@
+{
+ "id": "loops",
+ "title": "Loops",
+ "part": "basics",
+ "intro": "Rust has three loops: `for` over a range or collection, `while`, and `loop` (forever, until `break`).",
+ "coming_from": {
+  "go": "`for i in 1..4` counts 1, 2, 3 like `for i := 1; i < 4; i++`, `while n > 0` is `for n > 0`, and `loop` is `for {}`. There is no three-part `for` and no `n++`, but `break` can hand back a value from a `loop`.",
+  "kotlin": "Watch the ranges: Rust's `1..4` stops before 4 like Kotlin's `1 until 4`, and Rust's `1..=4` is Kotlin's `1..4`. There is no `n++` (write `n += 1`), and `loop` is `while (true)` where `break` can give back a value.",
+  "python": "`for i in 1..4` is `for i in range(1, 4)` and `loop` is `while True`. The one new thing is that `break tries * 10` can hand a value back out of a `loop`.",
+  "typescript": "Rust has no C-style `for (let i = 1; i < 4; i++)` and no `++`. You loop over a range instead (`for i in 1..4`), and `loop` is `while (true)` where `break` can hand back a value.",
+  "java": "`for i in 1..4` is `for (int i = 1; i < 4; i++)`; Rust has no C-style three-part `for` and no `++`, so you write `n += 1`. `loop` is `while (true)`, except `break` can hand back a value.",
+  "csharp": "`for i in 1..4` is like `foreach (var i in Enumerable.Range(1, 3))`, except that `1..4` gives start and end (4 excluded) where `Range` gives start and count. Rust has no three-part `for` or `++`. `loop` is `while (true)` where `break value` returns a result, so the result can be an ordinary `let` instead of a variable set inside the loop.",
+  "c": "Rust has no three-part `for (init; test; step)`: you loop over a range like `1..4` instead, and `n++` is gone, so write `n += 1`. `loop` is `for (;;)`, and `break` can carry a value out of it.",
+  "cpp": "`for i in 1..4` is a range-based `for` over a half-open range, like `for (int i : std::views::iota(1, 4))` in C++20, and there is no classic three-part `for` or `++`. `loop` is `while (true)` with a `break` that returns a value, so you don't need the lambda trick."
+ },
+ "notes": [
+  "`1..4` is 1, 2, 3: the end is left out. `1..=4` includes the 4.",
+  "There is no C-style `for i := 0; i < n; i++`. Use `for i in 0..n`.",
+  "`(0..10).rev()` counts down. `(0..10).step_by(2)` skips. A range that starts above its end, like `4..0`, is empty: it does not count down."
+ ],
+ "faq": [
+  {
+   "q": "Can a `for` loop give back a value with `break value`, like `loop` does?",
+   "a": "No. Only `loop` can hand back a value with `break value`. A `for` or `while` loop has the value `()`, and the compiler stops you if you write `break value` in one.\n\nThe reason: a `for` loop can finish without ever reaching `break`, for example on an empty list. Then there would be no value to assign. A `loop` can only end through `break`, so a value always comes out.\n\nIn practice you rarely need either. When you want a value from a loop, use an iterator method. Each one is an expression and says what you mean:\n\n- `find`: the first item that matches. It returns an [Option](/learn/option/), because there might be none.\n- `position`: the index of the first match, also an Option.\n- `sum`, `count`, `max`, `any`, `all`: one value from the list.\n- `map(...).collect()`: a new list.",
+   "bad": {
+    "code": "fn main() {\n    let nums = vec![3, 8, 12, 5];\n    let found = for n in &nums {\n        if *n > 10 { break *n; }\n    };\n}\n",
+    "error": "error[E0571]: `break` with value from a `for` loop\n --> src/main.rs:4:22\n  |\n3 |     let found = for n in &nums {\n  |                 -------------- you can't `break` with a value in a `for` loop\n4 |         if *n > 10 { break *n; }\n  |                      ^^^^^^^^ can only break with a value inside `loop` or breakable block\n  |\nhelp: use `break` on its own without a value inside this `for` loop\n  |\n4 -         if *n > 10 { break *n; }\n4 +         if *n > 10 { break; }"
+   },
+   "good": {
+    "code": "fn main() {\n    let nums = vec![3, 8, 12, 5];\n\n    // only `loop` can hand back a value with break\n    let mut i = 0;\n    let idx = loop {\n        if nums[i] > 10 { break i; }\n        i += 1;\n    };\n\n    // what people usually write: iterator methods are expressions\n    let first_big = nums.iter().find(|&&n| n > 10);\n    let position = nums.iter().position(|&n| n > 10);\n    let total: i32 = nums.iter().sum();\n    let squares: Vec<i32> = nums.iter().map(|n| n * n).collect();\n    println!(\"{idx} {first_big:?} {position:?} {total} {squares:?}\");\n}\n",
+    "out": "2 Some(12) Some(2) 28 [9, 64, 144, 25]\n"
+   }
+  }
+ ],
+ "gotcha": {
+  "title": "Using n++",
+  "verdict": "rust-rule",
+  "looks_fine": "`n++` is normal in most languages you know.",
+  "rust_sees": "Rust has no `++` or `--`. Write `n += 1`.",
+  "why": "Rust has no `++` or `--`; `+= 1` is the one way to add one. `++` inside other expressions (like `a[i++] = i`) is a classic source of confusion about what happens first. Go keeps `n++` but only as a statement; Rust drops it.",
+  "langs": {
+   "go": {
+    "status": "runs",
+    "says": "Go runs this and prints 1. `n++` is fine in Go as a statement on its own.",
+    "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tn := 0\n\tn++\n\tfmt.Println(n)\n}\n",
+    "out": "1\n"
+   },
+   "kotlin": {
+    "status": "runs",
+    "says": "Kotlin runs this and prints 1. In Rust you write the same thing as `n += 1`.",
+    "code": "fun main() {\n    var n = 0\n    n++\n    println(n)\n}\n",
+    "out": "1\n"
+   },
+   "python": {
+    "status": "wrong",
+    "says": "`n++` is a syntax error in Python, but `++n` runs and prints 0. It is read as two unary pluses, so `n` never changes.",
+    "code": "n = 0\n++n  # n++ is a syntax error; ++n is two unary pluses\nprint(n)\n",
+    "out": "0\n"
+   },
+   "typescript": {
+    "status": "runs",
+    "says": "Prints 1. `n++` is normal TypeScript; Rust has no `++` and wants `n += 1`.",
+    "code": "let n = 0;\nn++;\nconsole.log(n);\n",
+    "out": "1\n"
+   },
+   "java": {
+    "status": "runs",
+    "says": "Java has `++`, so this prints 1. Rust has no `++`; write `n += 1` instead.",
+    "code": "public class Main {\n    public static void main(String[] args) {\n        int n = 0;\n        n++;\n        System.out.println(n);\n    }\n}\n",
+    "out": "1\n"
+   },
+   "csharp": {
+    "status": "runs",
+    "says": "`n++` is everyday C# and prints 1. Rust has no `++` and asks for `n += 1`.",
+    "code": "var n = 0;\nn++;\nConsole.WriteLine(n);\n",
+    "out": "1\n"
+   },
+   "c": {
+    "status": "runs",
+    "says": "C has `n++`, so this prints 1. In Rust you write `n += 1`.",
+    "code": "#include <stdio.h>\n\nint main(void) {\n    int n = 0;\n    n++;\n    printf(\"%d\\n\", n);\n    return 0;\n}\n",
+    "out": "1\n"
+   },
+   "cpp": {
+    "status": "runs",
+    "says": "C++ has `++`, so this prints 1. In Rust you write `n += 1`.",
+    "code": "#include <iostream>\n\nint main() {\n    int n = 0;\n    n++;\n    std::cout << n << \"\\n\";\n}\n",
+    "out": "1\n"
+   }
+  },
+  "code": "fn main() {\n    let mut n = 0;\n    n++;\n    println!(\"{n}\");\n}\n",
+  "error": "error: Rust has no postfix increment operator\n --> src/main.rs:3:6\n  |\n3 |     n++;\n  |      ^^ not a valid postfix operator\n  |\nhelp: use `+= 1` instead\n  |\n3 -     n++;\n3 +     n += 1;",
+  "fixed": {
+   "code": "fn main() {\n    let mut n = 0;\n    n += 1;\n    println!(\"{n}\");\n}\n",
+   "out": "1\n"
+  }
+ },
+ "order": 11,
+ "program": {
+  "rust": {
+   "code": "fn main() {\n    // 1, 2, 3 (the end is not included)\n    for i in 1..4 {\n        println!(\"for {i}\");\n    }\n\n    let mut n = 3;\n    while n > 0 {\n        n -= 1;\n    }\n\n    // loop runs until break. break can hand back a value.\n    let mut tries = 0;\n    let found = loop {\n        tries += 1;\n        if tries == 3 {\n            break tries * 10;\n        }\n    };\n    println!(\"n={n} found={found}\");\n}\n",
+   "out": "for 1\nfor 2\nfor 3\nn=0 found=30\n"
+  },
+  "go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfor i := 1; i < 4; i++ {\n\t\tfmt.Println(\"for\", i)\n\t}\n\n\tn := 3\n\tfor n > 0 {\n\t\tn--\n\t}\n\n\ttries, found := 0, 0\n\tfor {\n\t\ttries++\n\t\tif tries == 3 {\n\t\t\tfound = tries * 10\n\t\t\tbreak\n\t\t}\n\t}\n\tfmt.Printf(\"n=%d found=%d\\n\", n, found)\n}\n",
+   "out": "for 1\nfor 2\nfor 3\nn=0 found=30\n"
+  },
+  "kotlin": {
+   "code": "fun main() {\n    for (i in 1 until 4) {\n        println(\"for $i\")\n    }\n\n    var n = 3\n    while (n > 0) {\n        n--\n    }\n\n    var tries = 0\n    var found = 0\n    while (true) {\n        tries++\n        if (tries == 3) {\n            found = tries * 10\n            break\n        }\n    }\n    println(\"n=$n found=$found\")\n}\n",
+   "out": "for 1\nfor 2\nfor 3\nn=0 found=30\n"
+  },
+  "python": {
+   "code": "# 1, 2, 3 (the end is not included)\nfor i in range(1, 4):\n    print(f\"for {i}\")\n\nn = 3\nwhile n > 0:\n    n -= 1\n\n# no loop-with-value in Python: use while True and set a variable\ntries = 0\nwhile True:\n    tries += 1\n    if tries == 3:\n        found = tries * 10\n        break\nprint(f\"n={n} found={found}\")\n",
+   "out": "for 1\nfor 2\nfor 3\nn=0 found=30\n"
+  },
+  "typescript": {
+   "code": "// 1, 2, 3 (the end is not included)\nfor (let i = 1; i < 4; i++) {\n  console.log(`for ${i}`);\n}\n\nlet n = 3;\nwhile (n > 0) {\n  n -= 1;\n}\n\n// break can't hand back a value, so set a variable before breaking\nlet tries = 0;\nlet found: number;\nwhile (true) {\n  tries += 1;\n  if (tries === 3) {\n    found = tries * 10;\n    break;\n  }\n}\nconsole.log(`n=${n} found=${found}`);\n",
+   "out": "for 1\nfor 2\nfor 3\nn=0 found=30\n"
+  },
+  "java": {
+   "code": "public class Main {\n    public static void main(String[] args) {\n        // 1, 2, 3 (the end is not included)\n        for (int i = 1; i < 4; i++) {\n            System.out.println(\"for \" + i);\n        }\n\n        int n = 3;\n        while (n > 0) {\n            n--;\n        }\n\n        // break can't hand back a value, so set a variable first\n        int tries = 0;\n        int found;\n        while (true) {\n            tries++;\n            if (tries == 3) {\n                found = tries * 10;\n                break;\n            }\n        }\n        System.out.println(\"n=\" + n + \" found=\" + found);\n    }\n}\n",
+   "out": "for 1\nfor 2\nfor 3\nn=0 found=30\n"
+  },
+  "csharp": {
+   "code": "// 1, 2, 3\nfor (var i = 1; i < 4; i++)\n{\n    Console.WriteLine($\"for {i}\");\n}\n\nvar n = 3;\nwhile (n > 0)\n{\n    n--;\n}\n\n// C# break can't hand back a value, so keep it in a variable\nvar tries = 0;\nint found;\nwhile (true)\n{\n    tries++;\n    if (tries == 3)\n    {\n        found = tries * 10;\n        break;\n    }\n}\nConsole.WriteLine($\"n={n} found={found}\");\n",
+   "out": "for 1\nfor 2\nfor 3\nn=0 found=30\n"
+  },
+  "c": {
+   "code": "#include <stdio.h>\n\nint main(void) {\n    // 1, 2, 3 (the end is not included)\n    for (int i = 1; i < 4; i++) {\n        printf(\"for %d\\n\", i);\n    }\n\n    int n = 3;\n    while (n > 0) {\n        n -= 1;\n    }\n\n    // C's break cannot hand back a value, so set a variable first\n    int tries = 0;\n    int found;\n    for (;;) {\n        tries += 1;\n        if (tries == 3) {\n            found = tries * 10;\n            break;\n        }\n    }\n    printf(\"n=%d found=%d\\n\", n, found);\n    return 0;\n}\n",
+   "out": "for 1\nfor 2\nfor 3\nn=0 found=30\n"
+  },
+  "cpp": {
+   "code": "#include <iostream>\n\nint main() {\n    // 1, 2, 3 (the end is not included)\n    for (int i = 1; i < 4; ++i) {\n        std::cout << \"for \" << i << \"\\n\";\n    }\n\n    int n = 3;\n    while (n > 0) {\n        n -= 1;\n    }\n\n    // break can't hand back a value, so a lambda that returns does the job\n    int tries = 0;\n    const int found = [&] {\n        while (true) {\n            tries += 1;\n            if (tries == 3) {\n                return tries * 10;\n            }\n        }\n    }();\n    std::cout << \"n=\" << n << \" found=\" << found << \"\\n\";\n}\n",
+   "out": "for 1\nfor 2\nfor 3\nn=0 found=30\n"
+  }
+ },
+ "snippets": {
+  "break-in-match.rs": {
+   "code": "fn main() {\n    // `match` is not a loop and not a switch: `break` here leaves the `for`\n    for n in 1..=5 {\n        match n {\n            3 => break,\n            _ => println!(\"n: {n}\"),\n        }\n    }\n    println!(\"after the loop\");\n}\n",
+   "out": "n: 1\nn: 2\nafter the loop\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "break-value.rs": {
+   "code": "fn main() {\n    // loop is the only loop that gives back a value: break carries it out\n    let mut guess = 1;\n    let first_over_100 = loop {\n        guess *= 3;\n        if guess > 100 {\n            break guess;\n        }\n    };\n    println!(\"first power of 3 over 100: {first_over_100}\");\n\n    // a do-while: run the body once, then decide\n    let mut n = 0;\n    loop {\n        n += 5;\n        if n >= 3 {\n            break;\n        }\n    }\n    println!(\"n after the body ran once: {n}\");\n}\n",
+   "out": "first power of 3 over 100: 243\nn after the body ran once: 5\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-ranges.rs": {
+   "code": "fn v<I: Iterator<Item = i32>>(it: I) -> Vec<i32> {\n    it.collect()\n}\n\nfn main() {\n    assert_eq!(v(0..4), vec![0, 1, 2, 3]);\n    assert_eq!(v(0..=4), vec![0, 1, 2, 3, 4]);\n    assert_eq!(v((0..4).rev()), vec![3, 2, 1, 0]);\n    assert_eq!(v((0..=4).rev()), vec![4, 3, 2, 1, 0]);\n    assert_eq!(v((0..10).step_by(3)), vec![0, 3, 6, 9]);\n    assert_eq!(v((0..=9).rev().step_by(3)), vec![9, 6, 3, 0]);\n    assert_eq!(v((0..10).step_by(3).rev()), vec![9, 6, 3, 0]);\n    assert_eq!(v((1..=9).rev().step_by(3)), vec![9, 6, 3]);\n    assert_eq!(v((1..10).rev().step_by(3)), vec![9, 6, 3]);\n    assert_eq!(v((1..10).step_by(3).rev()), vec![7, 4, 1]);\n    assert_eq!(v(5..5), Vec::<i32>::new());\n    assert_eq!(v(4..0), Vec::<i32>::new());\n    assert_eq!(('a'..='e').collect::<String>(), \"abcde\");\n    println!(\"ok\");\n}\n",
+   "out": "ok\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "continue-skips.rs": {
+   "code": "fn main() {\n    // a step that is not +1 is a `while` with the step written by hand\n    print!(\"doubling:\");\n    let mut i = 1;\n    while i < 100 {\n        print!(\" {i}\");\n        i *= 2;\n    }\n    println!();\n\n    // `continue` skips the rest of the pass, including a step written at the end\n    let mut j = 0;\n    let mut passes = 0;\n    while j < 3 && passes < 6 {\n        // (the `passes` guard only stops this demo)\n        passes += 1;\n        if j == 1 {\n            continue;\n        }\n        j += 1;\n    }\n    println!(\"while: j = {j}, passes = {passes}\");\n\n    // the same goes for the test at the end of a `loop` that stands in for `do ... while`\n    let mut k = 0;\n    let mut passes = 0;\n    loop {\n        k += 1;\n        passes += 1;\n        if passes == 6 {\n            break; // guard, only for this demo\n        }\n        if k >= 3 {\n            continue; // in C, `continue` in a do-while goes on to the test\n        }\n        if !(k < 3) {\n            break;\n        }\n    }\n    println!(\"loop: k = {k}, passes = {passes}\");\n}\n",
+   "out": "doubling: 1 2 4 8 16 32 64\nwhile: j = 1, passes = 6\nloop: k = 6, passes = 6\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "countdown.rs": {
+   "code": "fn show(items: &[i32]) {\n    // (0..len).rev() counts len-1, ..., 0 and never subtracts below zero\n    for i in (0..items.len()).rev() {\n        println!(\"items[{i}] = {}\", items[i]);\n    }\n    println!(\"done, {} items\", items.len());\n}\n\nfn main() {\n    show(&[5, 6, 7]);\n    show(&[]);\n}\n",
+   "out": "items[2] = 7\nitems[1] = 6\nitems[0] = 5\ndone, 3 items\ndone, 0 items\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "desugar.rs": {
+   "code": "fn main() {\n    // what `for i in 0..3 { ... }` does: ask for the next item until there is none\n    let mut it = 0..3;\n    loop {\n        match it.next() {\n            Some(i) => println!(\"manual: {i}\"),\n            None => break,\n        }\n    }\n\n    // a range is an ordinary value with fields and methods\n    let r = 2..5;\n    println!(\"start: {}, end: {}\", r.start, r.end);\n    println!(\"len: {}\", r.len());\n    println!(\"contains 4: {}\", r.contains(&4));\n    println!(\"contains 5: {}\", r.contains(&5));\n}\n",
+   "out": "manual: 0\nmanual: 1\nmanual: 2\nstart: 2, end: 5\nlen: 3\ncontains 4: true\ncontains 5: false\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "float-range.fail.rs": {
+   "code": "fn main() {\n    for x in 0.0..1.0 {\n        println!(\"{x}\");\n    }\n}\n",
+   "error": "error[E0277]: `std::ops::Range<{float}>` is not an iterator\n --> src/main.rs:2:14\n  |\n2 |     for x in 0.0..1.0 {\n  |              ^^^^^^^^ `Range<{float}>` is not an iterator\n  |\n  = help: the nightly-only, unstable trait `Step` is not implemented for `{float}`\n  = note: `Range` only implements `Iterator` for select types in the standard library, particularly integers; to see the full list of types, see the documentation for the unstable `Step` trait\n  = help: the following other types implement trait `Step`:\n            i128\n            i16\n            i32\n            i64\n            i8\n            isize\n            u128\n            u16\n          and 4 others\n  = note: required for `std::ops::Range<{float}>` to implement `Iterator`\n  = note: required for `std::ops::Range<{float}>` to implement `IntoIterator`\n",
+   "lang": "rust"
+  },
+  "float-steps.rs": {
+   "code": "fn main() {\n    // count with an integer, then scale\n    for i in 0..5 {\n        let x = i as f64 * 0.25;\n        println!(\"x: {x}\");\n    }\n}\n",
+   "out": "x: 0\nx: 0.25\nx: 0.5\nx: 0.75\nx: 1\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "for-array.rs": {
+   "code": "fn main() {\n    let scores = [10, 20, 30];\n\n    // an array can be looped over directly\n    for s in scores {\n        println!(\"score: {s}\");\n    }\n\n    // enumerate pairs each item with its position\n    let names = [\"ann\", \"bo\"];\n    for (i, name) in names.iter().enumerate() {\n        println!(\"name {i}: {name}\");\n    }\n}\n",
+   "out": "score: 10\nscore: 20\nscore: 30\nname 0: ann\nname 1: bo\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "for-else.rs": {
+   "code": "fn first_negative(xs: &[i32]) -> &str {\n    // a labelled block gives a value, like Python's for/else\n    'search: {\n        // `&x` takes the number out of the reference\n        for &x in xs {\n            if x < 0 {\n                break 'search \"found a negative\";\n            }\n        }\n        \"none\"\n    }\n}\n\nfn main() {\n    println!(\"[3, -1, 4]: {}\", first_negative(&[3, -1, 4]));\n    println!(\"[3, 1, 4]: {}\", first_negative(&[3, 1, 4]));\n}\n",
+   "out": "[3, -1, 4]: found a negative\n[3, 1, 4]: none\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "for-push.fail.rs": {
+   "code": "fn main() {\n    let mut work = vec![1, 2];\n    for n in &work {\n        work.push(n * 2);\n    }\n}\n",
+   "error": "error[E0502]: cannot borrow `work` as mutable because it is also borrowed as immutable\n --> src/main.rs:4:9\n  |\n3 |       for n in &work {\n  |       -        -----\n  |       |        |\n  |       |        immutable borrow occurs here\n  |  _____|        immutable borrow later used here\n  | |\n4 | |         work.push(n * 2);\n  | |         ^^^^^^^^^^^^^^^^ mutable borrow occurs here\n5 | |     }\n  | |_____- this for loop borrows `work` immutably, preventing mutation within its body\n  |\n  = help: consider using an index-based loop instead, or collecting modifications into a separate collection\n",
+   "lang": "rust"
+  },
+  "index-i32.fail.rs": {
+   "code": "fn main() {\n    let items = [5, 6, 7];\n    let i: i32 = 2;\n    println!(\"items[i] = {}\", items[i]);\n}\n",
+   "error": "error[E0277]: the type `[{integer}]` cannot be indexed by `i32`\n --> src/main.rs:4:37\n  |\n4 |     println!(\"items[i] = {}\", items[i]);\n  |                                     ^ slice indices are of type `usize` or ranges of `usize`\n  |\n  = help: the trait `SliceIndex<[{integer}]>` is not implemented for `i32`\n  ... (notes pointing into the standard library trimmed)",
+   "lang": "rust"
+  },
+  "labels.rs": {
+   "code": "fn main() {\n    // continue 'outer skips to the next n as soon as one divisor is found\n    'outer: for n in 2..20 {\n        for d in 2..n {\n            if n % d == 0 {\n                continue 'outer;\n            }\n        }\n        println!(\"prime: {n}\");\n    }\n\n    // break 'label value leaves a labelled loop and gives back a value\n    let pair = 'search: loop {\n        for a in 1..10 {\n            for b in a..10 {\n                if a * b == 24 && a + b == 10 {\n                    break 'search (a, b);\n                }\n            }\n        }\n        break (0, 0);\n    };\n    println!(\"pair: {pair:?}\");\n}\n",
+   "out": "prime: 2\nprime: 3\nprime: 5\nprime: 7\nprime: 11\nprime: 13\nprime: 17\nprime: 19\npair: (4, 6)\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "loop-var-assign.fail.rs": {
+   "code": "fn main() {\n    for i in 0..3 {\n        i += 1;\n        println!(\"{i}\");\n    }\n}\n",
+   "error": "error[E0384]: cannot assign twice to immutable variable `i`\n --> src/main.rs:3:9\n  |\n2 |     for i in 0..3 {\n  |         - first assignment to `i`\n3 |         i += 1;\n  |         ^^^^^^ cannot assign twice to immutable variable\n  |\nhelp: consider making this binding mutable\n  |\n2 |     for mut i in 0..3 {\n  |         +++\n",
+   "lang": "rust"
+  },
+  "ranges.rs": {
+   "code": "fn main() {\n    // a..b stops before b; a..=b includes b\n    for i in 1..4 {\n        println!(\"1..4: {i}\");\n    }\n    for i in 1..=4 {\n        println!(\"1..=4: {i}\");\n    }\n\n    // ranges of char work too\n    for c in 'a'..='c' {\n        println!(\"'a'..='c': {c}\");\n    }\n\n    // counting down: reverse a range\n    for i in (1..=3).rev() {\n        println!(\"rev: {i}\");\n    }\n\n    // every third number\n    for i in (0..10).step_by(3) {\n        println!(\"step_by(3): {i}\");\n    }\n\n    // a range that starts above its end is empty: no error, no countdown\n    let mut runs = 0;\n    for _ in 4..0 {\n        runs += 1;\n    }\n    println!(\"runs of 4..0: {runs}\");\n\n    // the end is read once, when the loop starts\n    let mut n = 3;\n    let mut passes = 0;\n    for _ in 0..n {\n        n = 5;\n        passes += 1;\n    }\n    println!(\"n is now {n}, passes: {passes}\");\n}\n",
+   "out": "1..4: 1\n1..4: 2\n1..4: 3\n1..=4: 1\n1..=4: 2\n1..=4: 3\n1..=4: 4\n'a'..='c': a\n'a'..='c': b\n'a'..='c': c\nrev: 3\nrev: 2\nrev: 1\nstep_by(3): 0\nstep_by(3): 3\nstep_by(3): 6\nstep_by(3): 9\nruns of 4..0: 0\nn is now 5, passes: 3\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "rev-step.rs": {
+   "code": "fn main() {\n    // the order matters: step_by counts from the front of whatever it is given\n    print!(\"rev then step_by(3):\");\n    for i in (1..10).rev().step_by(3) {\n        print!(\" {i}\");\n    }\n    println!();\n\n    print!(\"step_by(3) then rev:\");\n    for i in (1..10).step_by(3).rev() {\n        print!(\" {i}\");\n    }\n    println!();\n}\n",
+   "out": "rev then step_by(3): 9 6 3\nstep_by(3) then rev: 7 4 1\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "scope.fail.rs": {
+   "code": "fn main() {\n    for i in 0..3 {\n        println!(\"inside: {i}\");\n    }\n    println!(\"after: {i}\");\n}\n",
+   "error": "error[E0425]: cannot find value `i` in this scope\n --> src/main.rs:5:23\n  |\n5 |     println!(\"after: {i}\");\n  |                       ^ not found in this scope\n",
+   "lang": "rust"
+  },
+  "skip-by-hand.rs": {
+   "code": "fn main() {\n    let mut passes = 0;\n    // `mut i` is allowed, but it is a copy for this pass only\n    for mut i in 0..5 {\n        if i == 1 {\n            i += 2;\n        }\n        passes += 1;\n        println!(\"i: {i}\");\n    }\n    println!(\"passes: {passes}\");\n}\n",
+   "out": "i: 0\ni: 3\ni: 2\ni: 3\ni: 4\npasses: 5\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "u8-range.rs": {
+   "code": "fn main() {\n    let mut inclusive = 0;\n    for _ in 0..=255u8 {\n        inclusive += 1;\n    }\n    let mut exclusive = 0;\n    for _ in 0..255u8 {\n        exclusive += 1;\n    }\n    println!(\"0..=255u8 runs: {inclusive}\");\n    println!(\"0..255u8 runs: {exclusive}\");\n}\n",
+   "out": "0..=255u8 runs: 256\n0..255u8 runs: 255\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "underflow-warning.fail.rs": {
+   "code": "#![deny(unused_comparisons)] // this lint is a warning by default; deny makes it an error\n\nfn main() {\n    let items = [5, 6, 7];\n    let mut i = items.len() - 1;\n    while i >= 0 {\n        println!(\"items[{i}] = {}\", items[i]);\n        i -= 1;\n    }\n}\n",
+   "error": "error: comparison is useless due to type limits\n --> src/main.rs:6:11\n  |\n6 |     while i >= 0 {\n  |           ^^^^^^\n  |\nnote: the lint level is defined here\n --> src/main.rs:1:9\n  |\n1 | #![deny(unused_comparisons)] // this lint is a warning by default; deny makes it an error\n  |         ^^^^^^^^^^^^^^^^^^",
+   "lang": "rust"
+  },
+  "underflow.panic.rs": {
+   "code": "#![allow(unused_comparisons)] // silences the compiler's \"this is always true\" warning\n\nfn main() {\n    let items = [5, 6, 7];\n    let mut i = items.len() - 1;\n    // a usize is never below 0, so `i >= 0` is always true\n    while i >= 0 {\n        println!(\"items[{i}] = {}\", items[i]);\n        i -= 1;\n    }\n}\n",
+   "out": "items[2] = 7\nitems[1] = 6\nitems[0] = 5\n\nthread 'main' (1) panicked at src/main.rs:9:9:\nattempt to subtract with overflow\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+   "lang": "rust",
+   "exit": 101
+  },
+  "while-let.rs": {
+   "code": "fn main() {\n    // a worklist: each pass may add more work, which `for x in &work` would not allow\n    let mut work = vec![1];\n    let mut order = Vec::new();\n    while let Some(n) = work.pop() {\n        order.push(n);\n        if n * 2 <= 7 {\n            work.push(n * 2);\n            work.push(n * 2 + 1);\n        }\n    }\n    println!(\"visited: {order:?}\");\n    println!(\"work left: {work:?}\");\n}\n",
+   "out": "visited: [1, 3, 7, 6, 2, 5, 4]\nwork left: []\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "wrapped-index.panic.rs": {
+   "code": "fn main() {\n    let items = [5, 6, 7];\n    // what `i -= 1` gives at 0 when overflow checks are off: wrapping_sub always wraps\n    let i = std::hint::black_box(0usize).wrapping_sub(1);\n    println!(\"i: {i}\");\n    println!(\"items[i] = {}\", items[i]);\n}\n",
+   "out": "i: 18446744073709551615\n\nthread 'main' (1) panicked at src/main.rs:6:31:\nindex out of bounds: the len is 3 but the index is 18446744073709551615\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+   "lang": "rust",
+   "exit": 101
+  },
+  "check-c.c": {
+   "code": "#include <assert.h>\n#include <stdio.h>\n\nint main(void) {\n    int n = 0;\n    do {\n        n += 5;\n    } while (n < 3);\n    assert(n == 5); /* a do-while runs the body once before testing */\n\n    int count = 0;\n    for (;;) {\n        count++;\n        if (count == 3) {\n            break;\n        }\n    }\n    assert(count == 3);\n\n    /* the bound in i < n is read again on every pass */\n    int n2 = 3, runs = 0;\n    for (int i = 0; i < n2; i++) {\n        if (i == 0) {\n            n2 = 5;\n        }\n        runs++;\n    }\n    assert(runs == 5);\n\n    /* continue in a for goes on to the step */\n    int steps = 0;\n    for (int i = 0; i < 3; i++) {\n        if (i == 1) {\n            continue;\n        }\n        steps++;\n    }\n    assert(steps == 2);\n\n    /* continue in a do-while goes on to the test, which ends the loop */\n    int k = 0, passes = 0;\n    do {\n        k++;\n        passes++;\n        if (k >= 3) {\n            continue;\n        }\n    } while (k < 3);\n    assert(k == 3 && passes == 3);\n    puts(\"ok\");\n    return 0;\n}\n",
+   "out": "ok\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "check-cpp.cpp": {
+   "code": "#include <cassert>\n#include <cstddef>\n#include <cstdint>\n#include <iostream>\n#include <ranges>\n#include <vector>\n\nint main() {\n    // views::iota(1, 4) is the half-open range 1, 2, 3\n    int sum = 0;\n    for (int i : std::views::iota(1, 4)) {\n        sum += i;\n    }\n    assert(sum == 6);\n\n    std::vector<int> xs{1, 2, 3};\n    int total = 0;\n    for (auto x : xs) {\n        total += x;\n    }\n    assert(total == 6);\n\n    // auto x copies each element: changing x leaves xs alone\n    for (auto x : xs) {\n        x *= 2;\n    }\n    assert(xs[0] == 1);\n    for (auto& x : xs) {\n        x *= 2;\n    }\n    assert(xs[0] == 2);\n\n    // unsigned arithmetic wraps, so size_t i >= 0 never fails\n    std::size_t i = 0;\n    i--;\n    assert(i == SIZE_MAX);\n    std::cout << \"ok\\n\";\n}\n",
+   "out": "ok\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "check-cs.cs": {
+   "code": "using System.Linq;\n\nvoid Must(bool ok, string what)\n{\n    if (!ok) throw new Exception(what);\n}\n\nvar sum = 0;\nforeach (var x in new[] { 1, 2, 3 }) sum += x;\nMust(sum == 6, \"foreach\");\n\n// Enumerable.Range takes a start and a COUNT\nMust(string.Join(\",\", Enumerable.Range(1, 3)) == \"1,2,3\", \"Range(1, 3)\");\n\nvar n = 0;\ndo { n += 5; } while (n < 3);\nMust(n == 5, \"do-while runs once\");\n\n// break inside a switch leaves the switch only\nvar printed = 0;\nfor (var v = 1; v <= 5; v++)\n{\n    switch (v)\n    {\n        case 3:\n            break;\n        default:\n            printed++;\n            break;\n    }\n}\nMust(printed == 4, \"break in switch\");\n\n// continue in a for runs the step; in a do-while it goes to the test\nvar steps = 0;\nfor (var i = 0; i < 3; i++)\n{\n    if (i == 1) continue;\n    steps++;\n}\nMust(steps == 2, \"continue runs i++\");\nvar k = 0;\nvar passes = 0;\ndo\n{\n    k++;\n    passes++;\n    if (k >= 3) continue;\n} while (k < 3);\nMust(k == 3 && passes == 3, \"continue in do-while\");\nConsole.WriteLine(\"ok\");\n",
+   "out": "ok\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "check-go.go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"math\"\n)\n\nfunc must(ok bool, what string) {\n\tif !ok {\n\t\tpanic(what)\n\t}\n}\n\nfunc main() {\n\tsum := 0\n\tfor i := range 4 { // Go 1.22 and later\n\t\tsum += i\n\t}\n\tmust(sum == 6, \"range over an int\")\n\n\tn := 3\n\tfor n > 0 {\n\t\tn--\n\t}\n\tmust(n == 0, \"for cond\")\n\n\tcount := 0\n\tfor {\n\t\tcount++\n\t\tif count == 3 {\n\t\t\tbreak\n\t\t}\n\t}\n\tmust(count == 3, \"for {}\")\n\n\thits := 0\nouter:\n\tfor a := 0; a < 3; a++ {\n\t\tfor b := 0; b < 3; b++ {\n\t\t\tif b == 1 {\n\t\t\t\tcontinue outer\n\t\t\t}\n\t\t\tif a == 2 {\n\t\t\t\tbreak outer\n\t\t\t}\n\t\t\thits++\n\t\t}\n\t}\n\tmust(hits == 2, \"labels\")\n\n\tfor i, v := range []string{\"a\", \"b\"} {\n\t\tmust(v == []string{\"a\", \"b\"}[i], \"range with index\")\n\t}\n\t// range over an int: each pass has its own i, so changing it lasts one pass (like Rust)\n\tseen := []int{}\n\tfor i := range 5 {\n\t\tif i == 1 {\n\t\t\ti += 2\n\t\t}\n\t\tseen = append(seen, i)\n\t}\n\tmust(fmt.Sprint(seen) == \"[0 3 2 3 4]\", \"range n copy\")\n\n\t// three-clause for: the body's change carries into the next pass\n\tseen = nil\n\tfor i := 0; i < 5; i++ {\n\t\tif i == 1 {\n\t\t\ti += 2\n\t\t}\n\t\tseen = append(seen, i)\n\t}\n\tmust(fmt.Sprint(seen) == \"[0 3 4]\", \"three-clause counter\")\n\n\t// continue still runs the post statement\n\tsteps := 0\n\tfor i := 0; i < 3; i++ {\n\t\tif i == 1 {\n\t\t\tcontinue\n\t\t}\n\t\tsteps++\n\t}\n\tmust(steps == 2, \"continue runs i++\")\n\n\t// len is a signed int, so counting down with i >= 0 ends\n\txs := []int{}\n\tdown := 0\n\tfor i := len(xs) - 1; i >= 0; i-- {\n\t\tdown++\n\t}\n\tmust(down == 0, \"signed countdown on an empty slice\")\n\txs = []int{5, 6, 7}\n\tfor i := len(xs) - 1; i >= 0; i-- {\n\t\tdown++\n\t}\n\tmust(down == 3, \"signed countdown\")\n\n\t// an unsigned counter wraps instead of going below zero\n\tvar u uint = 0\n\tu--\n\tmust(u == math.MaxUint, \"uint wraps\")\n\tfmt.Println(\"ok\")\n}\n",
+   "out": "ok\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "check-java.java": {
+   "code": "public class Main {\n    static void must(boolean ok, String what) {\n        if (!ok) {\n            throw new IllegalStateException(what);\n        }\n    }\n\n    public static void main(String[] args) {\n        int sum = 0;\n        for (int x : new int[] {1, 2, 3}) {\n            sum += x;\n        }\n        must(sum == 6, \"enhanced for\");\n\n        int hits = 0;\n        outer:\n        for (int a = 0; a < 3; a++) {\n            for (int b = 0; b < 3; b++) {\n                if (b == 1) {\n                    continue outer;\n                }\n                if (a == 2) {\n                    break outer;\n                }\n                hits++;\n            }\n        }\n        must(hits == 2, \"labels\");\n\n        int n = 0;\n        do {\n            n += 5;\n        } while (n < 3);\n        must(n == 5, \"do-while runs once\");\n\n        // break inside a switch leaves the switch only\n        int printed = 0;\n        for (int v = 1; v <= 5; v++) {\n            switch (v) {\n                case 3:\n                    break;\n                default:\n                    printed++;\n            }\n        }\n        must(printed == 4, \"break in switch\");\n\n        // IntStream.range is start and end (end excluded); rangeClosed includes the end\n        must(java.util.stream.IntStream.range(1, 4).sum() == 6, \"range\");\n        must(java.util.stream.IntStream.rangeClosed(1, 3).sum() == 6, \"rangeClosed\");\n\n        // continue in a for runs the step; in a do-while it goes to the test\n        int steps = 0;\n        for (int i = 0; i < 3; i++) {\n            if (i == 1) {\n                continue;\n            }\n            steps++;\n        }\n        must(steps == 2, \"continue runs i++\");\n        int k = 0;\n        int passes = 0;\n        do {\n            k++;\n            passes++;\n            if (k >= 3) {\n                continue;\n            }\n        } while (k < 3);\n        must(k == 3 && passes == 3, \"continue in do-while\");\n        System.out.println(\"ok\");\n    }\n}\n",
+   "out": "ok\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "check-kt.kt": {
+   "code": "fun must(ok: Boolean, what: String) {\n    if (!ok) throw IllegalStateException(what)\n}\n\nfun main() {\n    var hits = 0\n    outer@ for (a in 0 until 3) {\n        for (b in 0 until 3) {\n            if (b == 1) continue@outer\n            if (a == 2) break@outer\n            hits++\n        }\n    }\n    must(hits == 2, \"labels\")\n\n    var n = 0\n    do { n += 5 } while (n < 3)\n    must(n == 5, \"do-while runs once\")\n\n    for ((i, x) in listOf(\"a\", \"b\").withIndex()) must(x == listOf(\"a\", \"b\")[i], \"withIndex\")\n    // 4..0 is empty in Kotlin too; downTo counts down\n    must((4..0).toList().isEmpty(), \"4..0 is empty\")\n    must((4 downTo 0).toList() == listOf(4, 3, 2, 1, 0), \"downTo\")\n    println(\"ok\")\n}\n",
+   "out": "ok\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "check-py.py": {
+   "code": "assert list(range(4)) == [0, 1, 2, 3]\nassert list(range(1, 4)) == [1, 2, 3]\nassert list(range(0, 10, 3)) == [0, 3, 6, 9]\nassert list(range(3, -1, -1)) == [3, 2, 1, 0]\nassert list(range(9, 0, -3)) == [9, 6, 3]\nassert list(enumerate([\"a\", \"b\"])) == [(0, \"a\"), (1, \"b\")]\n\nn = 0\nwhile True:\n    n += 1\n    if n == 3:\n        break\nassert n == 3\n\n# the loop variable is a fresh name each pass: changing it lasts one pass (like Rust)\nseen = []\nfor i in range(5):\n    if i == 1:\n        i += 2\n    seen.append(i)\nassert seen == [0, 3, 2, 3, 4]\nassert list(range(len([5, 6, 7]))) == [0, 1, 2]\nprint(\"ok\")\n",
+   "out": "ok\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "check-ts.ts": {
+   "code": "function must(ok: boolean, what: string): void {\n  if (!ok) throw new Error(what);\n}\n\nlet hits = 0;\nouter: for (let a = 0; a < 3; a++) {\n  for (let b = 0; b < 3; b++) {\n    if (b === 1) continue outer;\n    if (a === 2) break outer;\n    hits++;\n  }\n}\nmust(hits === 2, \"labels\");\n\nlet sum = 0;\nfor (const x of [1, 2, 3]) sum += x;\nmust(sum === 6, \"for...of\");\n\nlet n = 0;\nwhile (true) {\n  n += 1;\n  if (n === 3) break;\n}\nmust(n === 3, \"while (true)\");\n\n// for...of: changing the variable lasts one pass (like Rust)\nconst seenOf: number[] = [];\nfor (let x of [0, 1, 2, 3, 4]) {\n  if (x === 1) x += 2;\n  seenOf.push(x);\n}\nmust(JSON.stringify(seenOf) === \"[0,3,2,3,4]\", \"for...of copy\");\n\n// three-part for: the body's change carries into the next pass\nconst seenFor: number[] = [];\nfor (let i = 0; i < 5; i++) {\n  if (i === 1) i += 2;\n  seenFor.push(i);\n}\nmust(JSON.stringify(seenFor) === \"[0,3,4]\", \"for counter\");\n\n// continue in a for runs the step\nlet steps = 0;\nfor (let i = 0; i < 3; i++) {\n  if (i === 1) continue;\n  steps++;\n}\nmust(steps === 2, \"continue runs i++\");\n\nlet d = 0;\ndo { d += 5; } while (d < 3);\nmust(d === 5, \"do-while runs once\");\nconsole.log(\"ok\");\n",
+   "out": "ok\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "for-else.py": {
+   "code": "def first_negative(xs):\n    for x in xs:\n        if x < 0:\n            print(\"found a negative\")\n            break\n    else:\n        # runs only when the loop ended without a break\n        print(\"none\")\n\n\nprint(\"[3, -1, 4]:\", end=\" \")\nfirst_negative([3, -1, 4])\nprint(\"[3, 1, 4]:\", end=\" \")\nfirst_negative([3, 1, 4])\n",
+   "out": "[3, -1, 4]: found a negative\n[3, 1, 4]: none\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "forin.ts": {
+   "code": "const xs = [\"a\", \"b\"];\nfor (const k in xs) {\n  console.log(`for...in key: ${JSON.stringify(k)}, type ${typeof k}`);\n}\nfor (const x of xs) {\n  console.log(`for...of value: ${x}`);\n}\n",
+   "out": "for...in key: \"0\", type string\nfor...in key: \"1\", type string\nfor...of value: a\nfor...of value: b\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "rev-step.kt": {
+   "code": "fun main() {\n    println(\"0 until 4: \" + (0 until 4).toList())\n    println(\"0..4: \" + (0..4).toList())\n    println(\"10 downTo 7: \" + (10 downTo 7).toList())\n    println(\"9 downTo 1 step 3: \" + (9 downTo 1 step 3).toList())\n    println(\"0 until 10 step 3: \" + (0 until 10 step 3).toList())\n    var count = 0\n    repeat(3) { count++ }\n    println(\"repeat(3): $count\")\n}\n",
+   "out": "0 until 4: [0, 1, 2, 3]\n0..4: [0, 1, 2, 3, 4]\n10 downTo 7: [10, 9, 8, 7]\n9 downTo 1 step 3: [9, 6, 3]\n0 until 10 step 3: [0, 3, 6, 9]\nrepeat(3): 3\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "scope.py": {
+   "code": "for i in range(3):\n    pass\nprint(\"i after the loop:\", i)\n",
+   "out": "i after the loop: 2\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "skip-by-hand.c": {
+   "code": "#include <stdio.h>\n\nint main(void) {\n    int passes = 0;\n    for (int i = 0; i < 5; i++) {\n        if (i == 1) {\n            i += 2;\n        }\n        passes++;\n        printf(\"i: %d\\n\", i);\n    }\n    printf(\"passes: %d\\n\", passes);\n    return 0;\n}\n",
+   "out": "i: 0\ni: 3\ni: 4\npasses: 3\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "skip-by-hand.cs": {
+   "code": "var passes = 0;\nfor (var i = 0; i < 5; i++)\n{\n    if (i == 1)\n    {\n        i += 2;\n    }\n    passes++;\n    Console.WriteLine($\"i: {i}\");\n}\nConsole.WriteLine($\"passes: {passes}\");\n",
+   "out": "i: 0\ni: 3\ni: 4\npasses: 3\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "skip-by-hand.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tpasses := 0\n\tfor i := 0; i < 5; i++ {\n\t\tif i == 1 {\n\t\t\ti += 2\n\t\t}\n\t\tpasses++\n\t\tfmt.Println(\"i:\", i)\n\t}\n\tfmt.Println(\"passes:\", passes)\n}\n",
+   "out": "i: 0\ni: 3\ni: 4\npasses: 3\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "skip-by-hand.java": {
+   "code": "public class Main {\n    public static void main(String[] args) {\n        int passes = 0;\n        for (int i = 0; i < 5; i++) {\n            if (i == 1) {\n                i += 2;\n            }\n            passes++;\n            System.out.println(\"i: \" + i);\n        }\n        System.out.println(\"passes: \" + passes);\n    }\n}\n",
+   "out": "i: 0\ni: 3\ni: 4\npasses: 3\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "switch-break.c": {
+   "code": "#include <stdio.h>\n\nint main(void) {\n    for (int n = 1; n <= 5; n++) {\n        switch (n) {\n        case 3:\n            break; /* leaves the switch only */\n        default:\n            printf(\"n: %d\\n\", n);\n        }\n    }\n    printf(\"after the loop\\n\");\n    return 0;\n}\n",
+   "out": "n: 1\nn: 2\nn: 4\nn: 5\nafter the loop\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "switch-break.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfor n := 1; n <= 5; n++ {\n\t\tswitch n {\n\t\tcase 3:\n\t\t\tbreak // leaves the switch only\n\t\tdefault:\n\t\t\tfmt.Println(\"n:\", n)\n\t\t}\n\t}\n\tfmt.Println(\"after the loop\")\n}\n",
+   "out": "n: 1\nn: 2\nn: 4\nn: 5\nafter the loop\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "u8-loop.c": {
+   "code": "#include <stdint.h>\n#include <stdio.h>\n\nint main(void) {\n    int runs = 0;\n    /* a uint8_t is never above 255, so b <= 255 is always true; the guard stops it */\n    for (uint8_t b = 0; b <= 255 && runs < 300; b++) {\n        runs++;\n    }\n    printf(\"runs: %d (stopped by the guard)\\n\", runs);\n    return 0;\n}\n",
+   "warnings": "main.c: In function ‘main’:\nmain.c:7:27: warning: comparison is always true due to limited range of data type [-Wtype-limits]\n    7 |     for (uint8_t b = 0; b <= 255 && runs < 300; b++) {\n      |                           ^~",
+   "out": "runs: 300 (stopped by the guard)\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "underflow.c": {
+   "code": "#include <stdio.h>\n\nint main(void) {\n    int items[] = {5, 6, 7};\n    size_t i = sizeof items / sizeof items[0] - 1;\n    int guard = 0;\n    /* size_t is never negative, so i >= 0 is always true; the guard stops it */\n    while (i >= 0 && guard < 5) {\n        printf(\"i = %zu\\n\", i);\n        i--;\n        guard++;\n    }\n    return 0;\n}\n",
+   "warnings": "main.c: In function ‘main’:\nmain.c:8:14: warning: comparison of unsigned expression in ‘>= 0’ is always true [-Wtype-limits]\n    8 |     while (i >= 0 && guard < 5) {\n      |              ^~",
+   "out": "i = 2\ni = 1\ni = 0\ni = 18446744073709551615\ni = 18446744073709551614\n",
+   "lang": "c",
+   "exit": 0
+  }
+ },
+ "exercises": {
+  "collatz": {
+   "starter": "/// How many steps it takes to reach 1: an even n becomes n / 2, an odd n becomes 3 * n + 1.\n/// `n` is at least 1. 6 -> 3 -> 10 -> 5 -> 16 -> 8 -> 4 -> 2 -> 1 is 8 steps.\nfn collatz_steps(n: u64) -> u32 {\n    todo!(\"a `while` loop that runs until n is 1 and counts the steps\")\n}\n\n/// The smallest k whose square is greater than `limit`.\nfn first_square_over(limit: u32) -> u32 {\n    todo!(\"a `loop` that tries k = 1, 2, ... and ends with `break k` (no `mut` result needed)\")\n}\n\nfn main() {\n    assert_eq!(collatz_steps(1), 0);\n    assert_eq!(collatz_steps(2), 1);\n    assert_eq!(collatz_steps(6), 8);\n    assert_eq!(collatz_steps(27), 111);\n\n    assert_eq!(first_square_over(0), 1);\n    assert_eq!(first_square_over(1), 2);\n    assert_eq!(first_square_over(24), 5);\n    assert_eq!(first_square_over(25), 6);\n    assert_eq!(first_square_over(100), 11);\n\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "/// How many steps it takes to reach 1: an even n becomes n / 2, an odd n becomes 3 * n + 1.\n/// `n` is at least 1. 6 -> 3 -> 10 -> 5 -> 16 -> 8 -> 4 -> 2 -> 1 is 8 steps.\nfn collatz_steps(mut n: u64) -> u32 {\n    let mut steps = 0;\n    while n != 1 {\n        if n % 2 == 0 {\n            n /= 2;\n        } else {\n            n = 3 * n + 1;\n        }\n        steps += 1;\n    }\n    steps\n}\n\n/// The smallest k whose square is greater than `limit`.\nfn first_square_over(limit: u32) -> u32 {\n    let mut k = 1;\n    loop {\n        if k * k > limit {\n            break k;\n        }\n        k += 1;\n    }\n}\n\nfn main() {\n    assert_eq!(collatz_steps(1), 0);\n    assert_eq!(collatz_steps(2), 1);\n    assert_eq!(collatz_steps(6), 8);\n    assert_eq!(collatz_steps(27), 111);\n\n    assert_eq!(first_square_over(0), 1);\n    assert_eq!(first_square_over(1), 2);\n    assert_eq!(first_square_over(24), 5);\n    assert_eq!(first_square_over(25), 6);\n    assert_eq!(first_square_over(100), 11);\n\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "count-primes": {
+   "starter": "/// How many of the numbers in `stack` are prime (2, 3, 5, 7, 11, ...). 0 and 1 are not.\nfn count_primes(mut stack: Vec<u32>) -> u32 {\n    todo!(\"`while let Some(n) = stack.pop()`; a labelled `continue` when a divisor is found\")\n}\n\nfn main() {\n    assert_eq!(count_primes(vec![2, 3, 4, 5, 6, 7]), 4);\n    assert_eq!(count_primes(vec![97, 100]), 1);\n    assert_eq!(count_primes(vec![9, 15, 21]), 0);\n    // 0 and 1 are not prime, and an empty stack is fine\n    assert_eq!(count_primes(vec![0, 1]), 0);\n    assert_eq!(count_primes(vec![]), 0);\n\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "/// How many of the numbers in `stack` are prime (2, 3, 5, 7, 11, ...). 0 and 1 are not.\nfn count_primes(mut stack: Vec<u32>) -> u32 {\n    let mut primes = 0;\n    'next: while let Some(n) = stack.pop() {\n        if n < 2 {\n            continue;\n        }\n        for d in 2..n {\n            if n % d == 0 {\n                continue 'next;\n            }\n        }\n        primes += 1;\n    }\n    primes\n}\n\nfn main() {\n    assert_eq!(count_primes(vec![2, 3, 4, 5, 6, 7]), 4);\n    assert_eq!(count_primes(vec![97, 100]), 1);\n    assert_eq!(count_primes(vec![9, 15, 21]), 0);\n    // 0 and 1 are not prime, and an empty stack is fine\n    assert_eq!(count_primes(vec![0, 1]), 0);\n    assert_eq!(count_primes(vec![]), 0);\n\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}

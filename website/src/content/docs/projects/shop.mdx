@@ -1,0 +1,148 @@
+---
+title: "Project: a multi-crate shop"
+description: "Build a small shop as a Cargo workspace of four crates (core, storage, api, cli) with an optional storage backend behind a feature flag, shared lints and dependencies, tests in every crate and a dependency graph from cargo tree."
+---
+
+import { Files, Remember, Session, Tree } from '../../../components/guide'
+
+[Project structure](/further/project-structure/) explained workspaces, features and lints one at a time. This page uses all three on one small program. The shop keeps a catalog of products, answers requests such as `GET TEA` and `TOTAL TEA:2 MUG`, and runs from the command line. It is split into four crates so that each one has a single job and depends only on the crates below it.
+
+<Remember>Put the types and traits everyone shares in the bottom crate, which depends on nothing. Put each implementation in its own crate, and put the choice of implementation in the program at the top.</Remember>
+
+The sessions below are real runs in the course image (Rust 1.99.1). The first build needs network to read the crates.io index, and the first build with the `file` feature on downloads `serde_json` and the four crates under it. `Cargo.lock` is committed, so a later build gets the same versions. Paths in the output are shown as `/home/you/shop`.
+
+<Tree guide="project-shop" dir="rust" name="shop" title="Project layout" notes={{"Cargo.toml":"the workspace: members, shared package settings, dependencies and lints","rustfmt.toml":"formatter settings","crates/core/src/catalog.rs":"the Catalog trait","crates/storage/src/file.rs":"only built with the file feature","crates/storage/tests/contract.rs":"one set of checks, run on each backend","crates/api/src/lib.rs":"requests in, statuses out","crates/cli/src/main.rs":"the program, named shop","crates/cli/tests/script.rs":"runs the real program","Cargo.lock":"committed"}} />
+
+## The workspace file
+
+The root `Cargo.toml` has no `[package]`. It lists the members, and it holds the three things the members share, so each is written once.
+
+<Files guide="project-shop" dir="rust" files={["Cargo.toml","rustfmt.toml"]} />
+
+`[workspace.package]` carries the version, edition, minimum Rust version and license; every member inherits them. `[workspace.dependencies]` carries the version of `serde_json` and the paths of the three library crates, so a member writes `shop-core = { workspace = true }`. `[workspace.lints]` sets the lint levels; each member opts in with `[lints] workspace = true`. The package names start with `shop-` on purpose. A package called `core` can be confused with the standard library's crate of that name, and Cargo warns when you create one:
+
+<Session guide="project-shop" run="name-core" />
+
+The directory is still `crates/core`. Only the package name matters to Cargo and to `use` paths, which write `shop_core`.
+
+## Step 1: `shop-core`, the domain
+
+The bottom crate has the shop's vocabulary: `Money` (whole cents), `Sku` (a text checked against the SKU rules when it is built), `Product`, an `Error` enum and the `Catalog` trait. Its manifest has no `[dependencies]` section at all. The file `lib.rs` keeps the modules private and re-exports the names callers need, as [Modules](/learn/modules/#re-exports) describes.
+
+<Files guide="project-shop" dir="rust" files={["crates/core/Cargo.toml","crates/core/src/lib.rs","crates/core/src/catalog.rs","crates/core/src/product.rs","crates/core/src/error.rs","crates/core/src/money.rs"]} />
+
+Two choices are worth noticing. `Catalog` is a trait with `get`, `put` and `list`, and nothing in `shop-core` says where products are kept ([Traits](/learn/traits/#defining-a-trait-and-implementing-it)). And `order_total` takes `&dyn Catalog`, so it runs against any implementation. Its tests build a throwaway `Fixed` catalog inside the test module, so `shop-core` is tested without any storage crate. The error type is a plain enum marked `#[non_exhaustive]`, which [Project structure](/further/project-structure/#what-the-library-shows-and-what-it-keeps) explains, and [Errors in applications](/build/app-errors/) covers how a program on top handles it.
+
+<Session guide="project-shop" run="core" />
+
+The last block is a doc test: the example in the comment on `Sku` is compiled and run.
+
+## Step 2: `shop-storage`, one backend always and one behind a feature
+
+The storage crate implements `Catalog` twice. `MemoryCatalog` is always built. `FileCatalog` stores one JSON object per line in a file and needs `serde_json`, so it is a feature. The dependency is marked `optional = true`, and `file = ["dep:serde_json"]` ties the feature to it. `#[cfg(feature = "file")]` hides the module and its re-export when the feature is off ([Features](/further/project-structure/#features)).
+
+<Files guide="project-shop" dir="rust" files={["crates/storage/Cargo.toml","crates/storage/src/lib.rs","crates/storage/src/memory.rs","crates/storage/src/file.rs"]} />
+
+Both must behave the same, so `tests/contract.rs` holds one function, `contract(&dyn Catalog)`, and runs it on each backend. The second test exists only when the feature is on.
+
+<Files guide="project-shop" dir="rust" files={["crates/storage/tests/contract.rs"]} />
+
+Run the crate's tests twice:
+
+<Session guide="project-shop" run="storage" />
+
+The first run has one contract test and the second has two. With the feature off, the item is not just unused but absent, and the compiler says why when you ask for it. This run builds a file `crates/api/examples/gated.rs` in `shop-api` (the next step's crate) that imports `FileCatalog` without the feature:
+
+<Files guide="project-shop" dir="fixes" files={["gated.rs"]} />
+
+<Session guide="project-shop" run="gated" />
+
+That message names the feature, which a plain "not found" would not.
+
+## Step 3: `shop-api`, requests in and statuses out
+
+The API crate turns a text request into a `Response` with a number and a body. It holds a `Box<dyn Catalog>` rather than a generic parameter, because the program at the top decides at run time which backend to give it ([Generics or `dyn`?](/learn/trait-objects/#generics-or-dyn)). There is no network code: a real server would call `Api::handle` for each request it reads, and the tests call it directly. A `match` on a slice pattern ([Patterns](/learn/patterns/)) picks the request, and `?` passes each `Error` up to `handle`, which turns it into a status.
+
+<Files guide="project-shop" dir="rust" files={["crates/api/src/lib.rs","crates/api/Cargo.toml"]} />
+
+`shop-storage` appears only under `[dev-dependencies]`: the tests use `MemoryCatalog`, but the library does not depend on any backend. The graph below shows that.
+
+<Session guide="project-shop" run="api" />
+
+## Step 4: `shop-cli`, choosing the backend
+
+The program is the one place that knows the concrete types. Its own feature, `file = ["shop-storage/file"]`, passes the switch down to the storage crate. With the feature on, `--db FILE` opens a `FileCatalog`. With it off, the same flag prints a message that says which feature is missing. Without `--db` the catalog lives in memory and the requests come from the command line or, when none are given, from standard input. The exit status is 0 when every request succeeded, 1 when one returned a status of 400 or more, and 2 when `--db` cannot be used (no file name, or the feature is off).
+
+<Files guide="project-shop" dir="rust" files={["crates/cli/Cargo.toml","crates/cli/src/main.rs"]} />
+
+With the feature off, a script on standard input works against memory, and a request for a product that is not there prints `404 ...` and exits with 1. The `--db` flag is refused:
+
+<Session guide="project-shop" run="cli" />
+
+With the feature on, the data survives between runs because it is in a file, and the file is plain lines you can read:
+
+<Session guide="project-shop" run="cli-file" />
+
+The integration tests in `tests/script.rs` run the real program with `std::process::Command`. Cargo sets `CARGO_BIN_EXE_shop` to the path of the binary while it builds the test. One test exists only without the feature (the refusal) and one only with it (the file survives a second run), so each build of the workspace tests the behaviour it has. [Testing](/build/testing/) covers the test basics used here.
+
+<Files guide="project-shop" dir="rust" files={["crates/cli/tests/script.rs"]} />
+
+## The dependency graph
+
+`cargo tree` prints the graph Cargo built. Read it from a crate down to what it needs. First with every feature off, then with all on, then inverted for `shop-core` to see who needs it ([cargo tree](https://doc.rust-lang.org/cargo/commands/cargo-tree.html)).
+
+<Session guide="project-shop" run="tree" />
+
+From these three listings:
+
+- `shop-core` has nothing under it, and three crates depend on it directly: `shop-api`, `shop-storage` and `shop-cli`.
+- `shop-api` does not depend on `shop-storage` except as a dev-dependency, which `cargo tree` prints in its own `[dev-dependencies]` group. `shop-cli` is the one crate that depends on all three libraries.
+- `serde_json` and the four crates under it appear only with the feature on, and only below `shop-storage`. A build that never asks for `file` does not have them in its graph.
+- A mark `(*)` means the subtree was already printed above.
+
+## One set of lints and one lock file
+
+All four crates take their lint levels from the root: `unsafe_code` is forbidden, `missing_docs` warns, and Clippy's `dbg_macro` warns. Clippy over every target and feature printed nothing, which includes no missing-docs warning:
+
+<Session guide="project-shop" run="lints" />
+
+To see the shared rule at work, here is an `unsafe` block in `crates/api/examples/danger.rs`, an example of `shop-api`, a crate that never mentions `unsafe_code` in its own manifest:
+
+<Files guide="project-shop" dir="fixes" files={["danger.rs"]} />
+
+<Session guide="project-shop" run="lints-unsafe" />
+
+The note at the end says the compiler was given the level on its command line: Cargo passes the workspace's setting down as a flag.
+
+Last, everything together. The workspace has 16 passing tests with the feature off and 17 with all features on, because the file contract test exists only in the second build. `cargo build --locked` exits with an error if Cargo would have to change `Cargo.lock` ([build options](https://doc.rust-lang.org/cargo/commands/cargo-build.html#manifest-options)), so it checks that the committed file still fits the manifests. `cargo fmt --check` passes with the settings in `rustfmt.toml`. The lock file has 15 packages, more than the nine in the largest graph above; [Project structure](/further/project-structure/#a-workspace-shares-what-should-be-shared) explains why a lock file can list packages that a build never compiles.
+
+<Session guide="project-shop" run="all" />
+
+## Try it yourself
+
+The first session below ran tasks 1 and 2. The second ran the first step of task 3.
+
+1. Ask a crate for a feature it does not have: `cargo build -p shop-core --features file`. Cargo refuses and names the packages that do define `file`.
+2. `cargo test -p shop-cli --features file`. The program's tests still number three, but the refusal test is replaced by the one that writes a file and reads it in a second process.
+3. Add `fn remove(&self, sku: &Sku) -> Result<bool, Error>;` to the `Catalog` trait and run `cargo build --workspace --all-features`. The build stopped with E0046 twice, once for each implementation in `shop-storage`; nothing is reported for `shop-core`, because `cargo build` skips its test code. Implement `remove` in all three implementations: `MemoryCatalog`, `FileCatalog` and the `Fixed` catalog in the tests of `shop-core`, where `cargo test` reports the same error. Then add a `DELETE <sku>` request to `shop-api`. Its test `errors_become_statuses` expects `DELETE TEA` to answer 400, so change that line.
+
+<Session guide="project-shop" run="try" />
+
+<Session guide="project-shop" run="try-remove" />
+
+## What to try next
+
+These are suggestions; none is in the project above and none was run.
+
+- Make `FileCatalog` write to a temporary file in the same directory and rename it over the old one, so a crash is far less likely to leave half a file ([File I/O](/learn/files-io/)).
+- Add a third backend. `contract` cannot be called from another crate as it stands, because it sits in `tests/contract.rs`, a test crate that nothing imports. Move it into a library first: a `pub fn` in a small `shop-testkit` crate that depends on `shop-core`, called from the tests of each backend.
+- Put a real network front on `shop-api`. The [axum guide](/build/axum/) builds one, and the handler there can call `Api::handle`.
+- Replace the hand-written `Error` with `thiserror` ([Errors in applications](/build/app-errors/)) and compare how much code goes.
+- The workspace says `rust-version = "1.85"`. Install that toolchain and build with it, as [Project structure](/further/project-structure/#lints-formatting-and-the-minimum-rust-version) shows.
+
+## Read more
+
+- The Cargo Book: [Workspaces](https://doc.rust-lang.org/cargo/reference/workspaces.html), [Features](https://doc.rust-lang.org/cargo/reference/features.html), [`cargo tree`](https://doc.rust-lang.org/cargo/commands/cargo-tree.html)
+- In this course: [Project structure](/further/project-structure/), [Traits](/learn/traits/), [Trait objects](/learn/trait-objects/), [Modules](/learn/modules/), [Errors in applications](/build/app-errors/)
+
+<p class="lr-fine">Versions on this page: Rust 1.99.1 and serde_json as pinned in <code>Cargo.lock</code>.</p>

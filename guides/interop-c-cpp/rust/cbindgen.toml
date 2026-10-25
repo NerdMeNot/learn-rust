@@ -1,0 +1,4 @@
+language = "C"
+include_guard = "BRIDGE_H"
+cpp_compat = true
+documentation_style = "c"

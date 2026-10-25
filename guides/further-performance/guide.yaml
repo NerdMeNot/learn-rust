@@ -1,0 +1,130 @@
+# Performance: measuring honestly
+#
+# Every time and every size on the page comes from a step marked `varies: true`; the text
+# asserts only a direction. Counts (allocations, instructions) are the numbers the page
+# leans on. Thread ids and process ids in panic and abort messages are masked.
+name: perf-lab
+sessions:
+  # Debug against release: one run on this VM, the same program, the same answer.
+  modes:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin work
+        show: "$ cargo run --bin work   # debug build; one run on this VM, 8 cores (colima), varies"
+        varies: true
+      - cmd: cargo run --release --bin work
+        show: "$ cargo run --release --bin work   # one run on this VM, 8 cores (colima), varies"
+        varies: true
+  # What the two builds do differently besides speed.
+  overflow:
+    dir: rust
+    local_target: true
+    steps:
+      - cmd: set -o pipefail; cargo build -q --bin overflow && ./target/debug/overflow 2>&1 | sed -E "s/(thread 'main') \([0-9]+\)/\1 (N)/"
+        show: "$ cargo build --bin overflow && ./target/debug/overflow   # the thread id in the panic line is replaced by N"
+        expect: fail
+      - cmd: cargo build -q --release --bin overflow && ./target/release/overflow
+      - cmd: set -o pipefail; cargo build -q --release --bin overflow --config profile.release.overflow-checks=true && ./target/release/overflow 2>&1 | sed -E "s/(thread 'main') \([0-9]+\)/\1 (N)/"
+        show: "$ cargo build --release --bin overflow --config profile.release.overflow-checks=true && ./target/release/overflow   # thread id replaced by N"
+        expect: fail
+  # Assembly for the same three functions, debug and release (src/lib.rs, asm.sh).
+  asm:
+    dir: rust
+    local_target: true
+    steps:
+      - cmd: cargo rustc -q --release --lib -- --emit asm
+      - cmd: sh asm.sh release sum_const
+      - cmd: sh asm.sh release sum_to
+      - cmd: sh asm.sh release sum_loop
+      - cmd: cargo rustc -q --lib -- --emit asm
+        show: "$ cargo rustc --lib -- --emit asm   # the debug build"
+      - cmd: sh asm.sh debug sum_to
+      - cmd: sh asm.sh debug sum_loop
+      - cmd: 'for f in sum_const sum_to sum_loop; do echo "$f: calls in debug $(sh asm.sh debug $f | grep -cw bl), in release $(sh asm.sh release $f | grep -cw bl)"; done'
+        show: "$ for each function: count the call instructions (bl) in sh asm.sh debug|release <function>"
+      - cmd: 'diff <(sh asm.sh release sum_to | tail -n +2 | sed "s/LBB[0-9]*_/LBB_/") <(sh asm.sh release sum_loop | tail -n +2 | sed "s/LBB[0-9]*_/LBB_/") && echo "sum_to and sum_loop: same instructions"'
+        show: "$ diff the instructions of sum_to and sum_loop in the release build (label numbers aside)"
+  # Binary sizes for the same program under different profiles ([profile.*] in Cargo.toml).
+  profiles:
+    dir: rust
+    local_target: true
+    timeout: 600
+    steps:
+      - cmd: cargo build --bin app
+      - cmd: 'for p in release small lto one-unit abort stripped tiny; do cargo build -q --profile $p --bin app; done'
+        show: "$ for p in release small lto one-unit abort stripped tiny; do cargo build --profile $p --bin app; done"
+      - cmd: "stat -c '%9s bytes  %n' target/*/app"
+        show: "$ stat -c '%s bytes  %n' target/*/app   # this path, Linux ARM64, rustc 1.99.1; the debug size changed with the build directory, varies"
+        varies: true
+      - cmd: cargo run -q --profile tiny
+  # panic = "abort" is a change of behaviour, not only of size.
+  unwind:
+    dir: rust
+    steps:
+      - cmd: cargo run --release --bin unwind
+      - cmd: "bash -c 'cargo run --profile abort --bin unwind; echo \"exit code: $?\"' 2>&1 | sed -E 's/line [0-9]+: +[0-9]+ /line N: N /'"
+        show: '$ cargo run --profile abort --bin unwind; echo "exit code: $?"    # the process id is replaced by N; "core dumped" depends on the system, varies'
+        varies: true
+  # A counting global allocator: calls to the allocator, not time.
+  allocs:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin allocs
+      - cmd: cargo run --release --bin allocs
+  # Loops the optimiser can answer without running them.
+  fold:
+    dir: rust
+    local_target: true
+    steps:
+      - cmd: cargo run --release --bin fold
+        show: "$ cargo run --release --bin fold   # one run on this VM, 8 cores (colima), varies"
+        varies: true
+      - cmd: cargo rustc -q --release --bin fold -- --emit asm && grep -c umulh target/release/deps/fold-*.s
+        show: "$ cargo rustc --release --bin fold -- --emit asm; then count the umulh instructions in the .s file"
+  # Criterion: a separate crate, so the other sessions do not build it. Needs network.
+  bench:
+    dir: bench
+    local_target: true
+    timeout: 900
+    steps:
+      - cmd: cargo bench -q --bench mix -- --warm-up-time 1 --measurement-time 2 2>&1 | grep -v -e '^Benchmarking' -e '^Gnuplot'
+        show: "$ cargo bench --bench mix -- --warm-up-time 1 --measurement-time 2   # needs network the first time; one run on this VM, varies"
+        varies: true
+  # The page's "Try it yourself".
+  try:
+    dir: rust
+    local_target: true
+    timeout: 600
+    steps:
+      - cmd: cargo run --bin work --config profile.dev.opt-level=3
+        show: "$ cargo run --bin work --config profile.dev.opt-level=3   # one run on this VM, varies"
+        varies: true
+      - cmd: "cargo build -q --release --bin app --config profile.release.debug=true && stat -c '%s bytes  %n' target/release/app"
+        show: "$ cargo build --release --config profile.release.debug=true; stat -c '%s bytes  %n' target/release/app   # varies with the build directory"
+        varies: true
+      - cmd: "sed -i 's/with_capacity(1000)/with_capacity(10)/' src/bin/allocs.rs && cargo run -q --bin allocs | grep 'pushes'"
+        show: "$ sed -i 's/with_capacity(1000)/with_capacity(10)/' src/bin/allocs.rs; cargo run --bin allocs | grep pushes"
+  # The same questions in other languages, where the image has the tool (the page's table).
+  langs:
+    dir: langs
+    steps:
+      - cmd: go run allocs.go
+        show: "$ go run allocs.go   # Go, testing.AllocsPerRun"
+      - cmd: "go tool compile -help 2>&1 | grep -E '^\\s+-(N|l)\\b'"
+        show: "$ go tool compile -help   # the two flags that switch optimisation and inlining off"
+      - cmd: python3 allocs.py
+        show: "$ python3 allocs.py   # Python 3.13, sys.getallocatedblocks; the count can vary, varies"
+        varies: true
+      - cmd: "gcc -O0 -S -o - sum.c | grep -v '^\\s*\\.'"
+        show: "$ gcc -O0 -S sum.c   # C, no optimisation"
+      - cmd: "gcc -O2 -S -o - sum.c | grep -v '^\\s*\\.'"
+        show: "$ gcc -O2 -S sum.c   # C, optimised"
+  # Profilers: perf installs, but this VM does not let a container use it.
+  perf:
+    dir: rust
+    timeout: 300
+    steps:
+      - cmd: 'apt-get update -qq >/dev/null 2>&1; apt-get install -y -qq linux-perf >/dev/null 2>&1; perf --version'
+        show: "$ apt-get install linux-perf   # needs network"
+      - cmd: cat /proc/sys/kernel/perf_event_paranoid
+      - cmd: perf stat -e task-clock true 2>&1 | head -2

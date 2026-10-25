@@ -1,0 +1,115 @@
+# More than one program in a project
+name: tools
+sessions:
+  run:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin seed
+      - cmd: cargo run --bin tools
+      - cmd: cargo run --example demo
+  go:
+    dir: go
+    steps:
+      - cmd: go run ./cmd/seed
+      - cmd: go run ./cmd/server
+  # The gotcha: two programs, no default, and a plain `cargo run`.
+  gotcha:
+    dir: rust
+    steps:
+      - cmd: cargo run
+        expect: fail
+  default-run:
+    dir: rust
+    overlay:
+      Cargo.toml: gotcha/Cargo.toml
+    steps:
+      - cmd: cargo run
+  # Go has no default program either: `go run .` at the module root has nothing to run.
+  go-bare:
+    dir: go
+    steps:
+      - cmd: go run .
+        expect: fail
+  # Try it: a program that is a folder, with its own module file.
+  folder:
+    dir: rust
+    overlay:
+      src/bin/report/main.rs: snippet-folder/src/bin/report/main.rs
+      src/bin/report/table.rs: snippet-folder/src/bin/report/table.rs
+    steps:
+      - cmd: cargo run --bin report
+  # Try it: a mistyped program name.
+  typo:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin sed
+        expect: fail
+  # Try it: examples are not built by `cargo build`; they are by `--example`.
+  examples:
+    dir: rust
+    local_target: true
+    steps:
+      - cmd: cargo build
+      - cmd: ls target/debug/examples | sed -E 's/-[0-9a-f]{16}/-<hash>/'
+        show: "$ ls target/debug/examples   # the hash differs between toolchains, so it is masked"
+      - cmd: cargo build --example demo
+      - cmd: ls target/debug/examples | sed -E 's/-[0-9a-f]{16}/-<hash>/'
+        show: "$ ls target/debug/examples   # the hash differs between toolchains, so it is masked"
+  # Does `cargo test` build examples? (the page says so, citing the Cargo book)
+  examples-test:
+    dir: rust
+    local_target: true
+    steps:
+      - cmd: cargo test
+      - cmd: ls target/debug/examples | sed -E 's/-[0-9a-f]{16}/-<hash>/'
+        show: "$ ls target/debug/examples   # the hash differs between toolchains, so it is masked"
+  # The table on the page: one extra program in each language, run the way the row says.
+  others:
+    dir: polyglot
+    steps:
+      - cmd: python3 seed.py
+        cwd: py
+      - cmd: node seed.ts
+        cwd: ts
+      - cmd: java Seed.java
+        cwd: java
+      - cmd: javac Seed.java && java Seed
+        cwd: java
+      - cmd: kotlinc Seed.kt -include-runtime -d seed.jar && java -jar seed.jar
+        cwd: kotlin
+      # The image has no network, so the project comes from its pre-restored template.
+      - cmd: cp -r /opt/templates/csharp Seed && cp Program.cs Seed/Program.cs && dotnet run --no-restore --project Seed
+        show: "$ dotnet run --no-restore --project Seed   # no network in the image, so no restore"
+        cwd: cs
+      - cmd: gcc seed.c -o seed && ./seed
+        cwd: c
+      - cmd: g++ seed.cpp -o seed && ./seed
+        cwd: cpp
+gotcha:
+  kind: cargo
+  title: Plain `cargo run` stops working
+  verdict: rust-rule
+  looks_fine: >-
+    With one program, `cargo run` knew what to run. Nothing about your code changed,
+    so this feels like it broke for no reason.
+  rust_sees: >-
+    Now there are two programs, `tools` and `seed`, and Cargo won't guess which one
+    you meant.
+  why: >-
+    Picking one for you could run the wrong thing, such as a seed script instead of
+    the server. Name the program each time with `--bin`, or set a default once in
+    `Cargo.toml`.
+  code: { file: rust/Cargo.toml, name: Cargo.toml }
+  code_lang: toml
+  session: gotcha
+  fixed: { file: gotcha/Cargo.toml, name: Cargo.toml, lang: toml, session: default-run }
+  langs:
+    go:
+      status: none
+      session: go-bare
+      says: "Go has no `default-run` either: `go run .` at the module root has no `main` package to run, so you name the folder, as in `go run ./cmd/seed`."
+    kotlin:
+      status: none
+      says: >-
+        Gradle's `run` task uses the one `mainClass` you configured, so you pick it in
+        the build file.

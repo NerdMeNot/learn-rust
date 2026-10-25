@@ -1,0 +1,103 @@
+# Project: a multi-crate shop. One workspace, four crates: core, storage, api, cli.
+name: shop
+sessions:
+  # Why the packages are called shop-core, not core.
+  name-core:
+    dir: rust
+    steps:
+      - cmd: cd "$(mktemp -d)" && cargo new --lib core 2>&1
+        show: '$ cargo new --lib core'
+  # Step 1: the domain crate, tested on its own.
+  core:
+    dir: rust
+    steps:
+      - cmd: cargo test -p shop-core 2>&1 | grep -E '^(   Doc-tests)|^test |test result' | sed -E 's/finished in [0-9.]+s/finished in X.XXs/'
+        show: '$ cargo test -p shop-core    # timings replaced by X.XXs'
+  # Step 2: storage, with the optional backend off and on.
+  storage:
+    dir: rust
+    steps:
+      - cmd: cargo test -p shop-storage 2>&1 | grep -E '^test |test result' | sed -E 's/finished in [0-9.]+s/finished in X.XXs/'
+        show: '$ cargo test -p shop-storage    # timings replaced by X.XXs'
+      - cmd: cargo test -p shop-storage --features file 2>&1 | grep -E '^test |test result' | sed -E 's/finished in [0-9.]+s/finished in X.XXs/'
+        show: '$ cargo test -p shop-storage --features file    # timings replaced by X.XXs'
+  # The feature is not on, and the compiler says what it found.
+  gated:
+    dir: rust
+    overlay:
+      crates/api/examples/gated.rs: fixes/gated.rs
+    steps:
+      - cmd: cargo build -p shop-api --example gated
+        expect: fail
+  # Step 3: the API on a memory catalog.
+  api:
+    dir: rust
+    steps:
+      - cmd: cargo test -p shop-api 2>&1 | grep -E '^test |test result' | sed -E 's/finished in [0-9.]+s/finished in X.XXs/'
+        show: '$ cargo test -p shop-api    # timings replaced by X.XXs'
+  # Step 4: the program, with the feature off.
+  cli:
+    dir: rust
+    steps:
+      - cmd: printf 'PUT TEA 450 Green tea, 100 g\nPUT MUG 1200 Enamel mug\nLIST\nTOTAL TEA:2 MUG\n' | cargo run -q -p shop-cli
+        show: |-
+          $ printf 'PUT TEA 450 Green tea, 100 g\nPUT MUG 1200 Enamel mug\nLIST\nTOTAL TEA:2 MUG\n' | cargo run -q -p shop-cli
+      - cmd: cargo run -q -p shop-cli -- GET TEA; echo "exit status $?"
+        show: '$ cargo run -q -p shop-cli -- GET TEA    # a new run, so the memory catalog is empty; then print the exit status'
+      - cmd: cargo run -q -p shop-cli -- --db shop.jsonl LIST; echo "exit status $?"
+        show: '$ cargo run -q -p shop-cli -- --db shop.jsonl LIST    # then print the exit status'
+  # Step 5: the same program with the feature on; the data is in a file.
+  cli-file:
+    dir: rust
+    steps:
+      - cmd: cargo run -q -p shop-cli --features file -- --db shop.jsonl PUT MUG 1200 Enamel mug
+      - cmd: cargo run -q -p shop-cli --features file -- --db shop.jsonl PUT TEA 450 Green tea, 100 g
+      - cmd: cargo run -q -p shop-cli --features file -- --db shop.jsonl LIST
+      - cmd: cat shop.jsonl
+  # The dependency graph.
+  tree:
+    dir: rust
+    steps:
+      - cmd: cargo tree --workspace
+      - cmd: cargo tree --workspace --all-features
+      - cmd: cargo tree --workspace -i shop-core
+  # One policy for four crates.
+  lints:
+    dir: rust
+    steps:
+      - cmd: cargo clippy --workspace --all-targets --all-features
+  lints-unsafe:
+    dir: rust
+    overlay:
+      crates/api/examples/danger.rs: fixes/danger.rs
+    steps:
+      - cmd: cargo build -p shop-api --example danger
+        expect: fail
+  # Everything, with the feature off and on.
+  all:
+    dir: rust
+    steps:
+      - cmd: cargo test --workspace 2>&1 | grep -c '^test .* ok$'
+        show: '$ cargo test --workspace    # then count the passing tests'
+      - cmd: cargo test --workspace --all-features 2>&1 | grep -c '^test .* ok$'
+        show: '$ cargo test --workspace --all-features    # then count the passing tests'
+      - cmd: cargo build --workspace --locked
+      - cmd: cargo fmt --check
+      - cmd: grep -c '^name = ' Cargo.lock
+        show: '$ grep -c "^name = " Cargo.lock    # packages in the lock file'
+  # Things to try: each step is one task from the page's "Try it yourself".
+  try:
+    dir: rust
+    steps:
+      - cmd: cargo build -p shop-core --features file
+        expect: fail
+      - cmd: cargo test -p shop-cli --features file 2>&1 | grep -E '^test |test result' | sed -E 's/finished in [0-9.]+s/finished in X.XXs/'
+        show: '$ cargo test -p shop-cli --features file    # timings replaced by X.XXs'
+  # Task 3: a new required method on the trait. Which crates break?
+  try-remove:
+    dir: rust
+    overlay:
+      crates/core/src/catalog.rs: fixes/catalog-remove.rs
+    steps:
+      - cmd: cargo build --workspace --all-features
+        expect: fail

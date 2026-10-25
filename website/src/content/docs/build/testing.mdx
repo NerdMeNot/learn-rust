@@ -1,0 +1,84 @@
+---
+title: "Testing"
+description: "Testing is built into Rust and Cargo, no library needed. Unit tests live next to your code, integration tests live in a tests/ folder, doc tests live in your comments, and cargo test runs them all."
+---
+
+import { Files, Remember, Session, Tree } from '../../../components/guide'
+
+Testing is built into Rust and Cargo, and needs no extra library: `cargo test` compiles your code in test mode and runs the test program it produces ([the Book](https://doc.rust-lang.org/book/ch11-02-running-tests.html)). Unit tests live next to your code, integration tests live in a `tests/` folder, doc tests live in your comments, and `cargo test` runs them all.
+
+<Remember>Mark a function with `#[test]` and check with `assert_eq!`. `cargo test` does the rest.</Remember>
+
+<Tree guide="testing" dir="rust" name="temperature" title="Project layout" notes={{"src/lib.rs":"the code, plus unit tests at the bottom","tests/round_trip.rs":"an integration test: uses the crate from outside","Cargo.lock":"created by Cargo","Cargo.toml":"dependencies go here"}} />
+
+<Files guide="testing" dir="rust" files={["src/lib.rs","tests/round_trip.rs"]} run="test" />
+
+Cargo ran three kinds of test, one block each: the unit tests in `src/lib.rs`, the integration test in `tests/round_trip.rs`, and the two doc tests from the `///` comments.
+
+Three things in test output change, on this page and on yours. The hex after each file name (`temperature-dbd6a6154de66132`) was the same in every run I made here, but it may differ between machines and toolchains. The times (`finished in 0.00s`) and the thread number in a panic message differ from run to run. Also, the tests of one test program run in parallel threads by default ([the Book](https://doc.rust-lang.org/book/ch11-02-running-tests.html)), so their lines can come out in a different order each time. I measured it: 25 runs of plain `cargo test` on this project gave 5 distinct outputs (ignoring the times), and 25 runs with `-- --test-threads=1` gave 1. That is one machine, not a guarantee. Everything after `--` goes to the test program, and `-- --test-threads=1` runs one test at a time. Every `cargo test` on this page uses it where there are several test lines, so the order is the same every run.
+
+## The same tests in Go
+
+<Files guide="testing" dir="go" files={["temperature.go","temperature_test.go"]} run="go-test" lang="go" />
+
+Go prints timings too (`0.00s`, `0.001s`), and they vary from run to run.
+
+- **Unit tests** sit in a `mod tests` inside the same file, so `use super::*` gives them the module's private functions too ([the Book](https://doc.rust-lang.org/book/ch11-03-test-organization.html)). `#[cfg(test)]` means that module is compiled by `cargo test`, not by `cargo build`.
+- **Integration tests** in `tests/` use your crate like any outside user would, through its public API. Each file there is its own crate, so it needs its own `use temperature::...`. They need a library (`src/lib.rs`): a crate that only has `src/main.rs` cannot be imported ([the Book](https://doc.rust-lang.org/book/ch11-03-test-organization.html)).
+- **Doc tests:** the code blocks in the `///` comments of your library are compiled and run by `cargo test` ([Cargo Book](https://doc.rust-lang.org/cargo/commands/cargo-test.html)), so an example that stops working shows up as a failing test. Each block behaves like its own small program that uses your crate from outside, which is why the second example starts with `use temperature::parse_celsius;`.
+- **Extras:** [`proptest`](https://docs.rs/proptest/latest/proptest/) for property-based testing, [`insta`](https://docs.rs/insta/latest/insta/) for snapshot tests, [`mockall`](https://docs.rs/mockall/latest/mockall/) for mocks. Crates used only by tests go under `[dev-dependencies]` in `Cargo.toml`: they are compiled for tests, examples and benchmarks, not for a normal build ([Cargo Book](https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html)). This page does not run those three crates.
+
+## More than `assert_eq!`
+
+A separate small crate, `kelvin`, shows the other attributes. This is a different project from the one above, so it has its own test run:
+
+<Files guide="testing" dir="attrs" files={["src/lib.rs"]} run="attrs" />
+
+- `#[should_panic(expected = "...")]` passes only if the code panics, and the panic message contains that text.
+- A test can return `Result<(), E>`, so `?` works inside it, and an `Err` fails the test. You cannot combine this with `#[should_panic]` ([the Book](https://doc.rust-lang.org/book/ch11-01-writing-tests.html)).
+- `#[ignore]` leaves a test out of a normal run, and `cargo test -- --ignored` runs only those, as the second command shows.
+- Floating-point sums are not always exact: the last test asserts that `0.1 + 0.2` is not `0.3` here and then compares with a tolerance. The unit and integration tests above compare results that are exact (`212.0`, `100.0`, `68.0`). The doc test compares `190/9` with the literal `21.11111111111111`: that passes here because the literal rounds to the same `f64`, but it is fragile, and a tolerance is safer for results like that.
+
+## Try it yourself
+
+1. **Run a subset.** `cargo test boiling` runs the tests whose name contains `boiling`, and says how many it skipped (`2 filtered out`). `--lib` runs only the unit tests and `--doc` only the doc tests ([`cargo test`](https://doc.rust-lang.org/cargo/commands/cargo-test.html)). The test names are matched as substrings ([libtest options](https://doc.rust-lang.org/rustc/tests/index.html)):
+
+   <Session guide="testing" run="filter" />
+
+2. **See what a test prints.** The `parses_fahrenheit` test above has a `println!("212F parsed to {parsed:?}");`. A passing test's output is captured and not shown. `--no-capture` lets it print as it happens; `--show-output` prints the output of passing tests after all the tests have run (in a `successes:` block). The rustc book lists `--nocapture` as a deprecated alias of `--no-capture`; the last command below ran it in this image and it printed the same line, with no warning:
+
+   <Session guide="testing" run="nocapture" />
+
+3. **Break it on purpose.** Change `+ 32.0` to `+ 23.0` in `to_fahrenheit`, and run `cargo test -- --test-threads=1`. The failing test prints the panic location and both values: `left` is the first argument of `assert_eq!` (what the code returned) and `right` the second. Cargo then stops: the integration and doc tests did not run, because without `--no-fail-fast` Cargo exits after the first test program that fails ([`cargo test`](https://doc.rust-lang.org/cargo/commands/cargo-test.html)). The number in parentheses after the thread name differs every run:
+
+   <Session guide="testing" run="fail" />
+
+## The same job in your language
+
+| Language | Choices (not a ranking) | Part of the language's own tools? | Ran here |
+| --- | --- | --- | --- |
+| Rust | the built-in harness, `#[test]` | yes: `cargo test` | yes (above) |
+| Go | the `testing` package, `_test.go` files | yes: `go test` ([docs](https://pkg.go.dev/testing)) | yes (above) |
+| Python | `unittest`; [pytest](https://docs.pytest.org/) is a third-party package | `unittest` is in the standard library ([docs](https://docs.python.org/3/library/unittest.html)) | `unittest` yes, pytest no |
+| TypeScript | `node:test`; [vitest](https://vitest.dev/), [jest](https://jestjs.io/) | `node:test` ships with Node and is marked stable ([docs](https://nodejs.org/docs/latest-v24.x/api/test.html)) | `node --test` yes (Node 24 ran the `.ts` file directly, without type-checking it), the others no |
+| Java | [JUnit](https://junit.org/) | no: a separate framework, and the JDK in the image has no JUnit | no |
+| Kotlin | the `kotlin.test` library on JUnit ([docs](https://kotlinlang.org/docs/jvm-test-using-junit.html)), or [Kotest](https://kotest.io/) | no: you add them in the build file, as the docs' Gradle example does | no |
+| C# | [xUnit](https://xunit.net/), [NUnit](https://nunit.org/), MSTest | `dotnet test` is a .NET SDK command that runs tests written with a framework such as xUnit.net or MSTest ([docs](https://learn.microsoft.com/en-us/dotnet/core/testing/unit-testing-with-dotnet-test)) | no |
+| C | [Unity](https://www.throwtheswitch.org/unity), [CMocka](https://cmocka.org/) | no test framework: you build a test program and run it. `assert.h` gives only an `assert` macro that aborts ([man page](https://man7.org/linux/man-pages/man3/assert.3.html)) | no |
+| C++ | [GoogleTest](https://google.github.io/googletest/), [Catch2](https://github.com/catchorg/Catch2) | no: same | no |
+
+For the Java and Kotlin build tools, Gradle's docs describe a `test` task that runs the unit tests ([docs](https://docs.gradle.org/current/userguide/java_testing.html)); I did not run Gradle, Maven, `dotnet test` or any of the C and C++ frameworks. The image has no test framework for Java, Kotlin, C#, C or C++, so those are not run; Rust, Go, Python (`unittest`) and Node (`node --test`) are real runs. Test runners print timings, so the numbers below vary:
+
+<details>
+<summary>The Python and Node runs</summary>
+
+<Files guide="testing" dir="langs" files={["py/test_temperature.py","ts/temperature.test.ts"]} run="langs" lang="python" title="Python and TypeScript" />
+
+</details>
+
+## Read more
+
+- [The Rust Book, chapter 11: Writing Automated Tests](https://doc.rust-lang.org/book/ch11-00-testing.html): [how to write tests](https://doc.rust-lang.org/book/ch11-01-writing-tests.html), [controlling how they run](https://doc.rust-lang.org/book/ch11-02-running-tests.html), [test organization](https://doc.rust-lang.org/book/ch11-03-test-organization.html)
+- [`cargo test`](https://doc.rust-lang.org/cargo/commands/cargo-test.html) in the Cargo Book, and [the rustc book's page on tests](https://doc.rust-lang.org/rustc/tests/index.html) (the flags after `--`)
+- [Documentation tests](https://doc.rust-lang.org/rustdoc/write-documentation/documentation-tests.html) in the rustdoc book
+- [Rust by Example: Testing](https://doc.rust-lang.org/rust-by-example/testing.html)

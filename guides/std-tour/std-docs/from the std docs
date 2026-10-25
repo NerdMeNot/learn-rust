@@ -1,0 +1,11 @@
+// std::fs
+pub fn read_to_string<P: AsRef<Path>>(path: P) -> Result<String> // the io::Result alias
+
+// str (the methods on every &str and String)
+pub fn trim(&self) -> &str
+
+// HashMap<K, V>
+pub fn get<Q>(&self, k: &Q) -> Option<&V>
+where
+    K: Borrow<Q>,
+    Q: Hash + Eq + ?Sized,

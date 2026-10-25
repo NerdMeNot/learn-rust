@@ -1,0 +1,133 @@
+# Finding and using crates
+name: graphemes
+sessions:
+  search:
+    dir: rust
+    steps:
+      - cmd: cargo search grapheme --limit 5
+  # Adding, inspecting and removing crates changes the project, so these run in order
+  # in one session. It starts from the project before any `cargo add`: start/ holds
+  # its Cargo.toml and Cargo.lock as `cargo new graphemes` and a first build leave them.
+  # The page shows its steps one at a time with `only`.
+  manage:
+    dir: rust
+    overlay:
+      Cargo.toml: start/Cargo.toml
+      Cargo.lock: start/Cargo.lock
+    steps:
+      - cmd: cargo add unicode-segmentation
+        raw: true
+      - cmd: cargo add serde --features derive
+        raw: true
+      - cmd: cat Cargo.toml
+      # not raw: on its first run it also prints a "Downloaded ..." line
+      - cmd: cargo tree --depth 1
+      - cmd: cargo remove serde
+        raw: true
+  # Who needs a crate, and does the lock file move when nothing is newer?
+  tree:
+    dir: rust
+    steps:
+      - cmd: cargo tree --invert unicode-segmentation
+      - cmd: cargo update --dry-run
+  # Cargo.toml is edited by hand here (snippet-lock adds itoa) while Cargo.lock is
+  # still the one from before: --locked refuses to change the lock file, a plain build
+  # updates it.
+  locked:
+    dir: rust
+    overlay:
+      Cargo.toml: snippet-lock/Cargo.toml
+    steps:
+      - cmd: cargo build --locked
+        expect: fail
+      - cmd: cargo build
+      - cmd: grep -A 3 'name = "itoa"' Cargo.lock
+      - cmd: cargo build --locked
+  run:
+    dir: rust
+    steps:
+      - cmd: cargo run
+  no-use:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-4/src/main.rs
+    steps:
+      - cmd: cargo build
+        expect: fail
+  suggest:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-7/src/main.rs
+    steps:
+      - cmd: cargo build
+        expect: fail
+  full-path:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-6/src/main.rs
+    steps:
+      - cmd: cargo run
+  hyphen:
+    dir: rust
+    overlay:
+      src/main.rs: gotcha/main.rs
+    steps:
+      - cmd: cargo build
+        expect: fail
+gotcha:
+  kind: compile
+  title: Writing the crate name with a hyphen
+  verdict: rust-rule
+  looks_fine: In Go and JavaScript the name you install is the name you import, hyphens and all, so you would expect the same here.
+  rust_sees: Crate names may contain hyphens, but names in Rust code can't. A hyphen means minus.
+  why: >-
+    So Cargo quietly turns every `-` into `_` for your code: the crate
+    `unicode-segmentation` is `unicode_segmentation` inside Rust. You'll see this with
+    `tokio-util` (`tokio_util`), `async-trait` (`async_trait`) and many others. A crate
+    that is already published with an underscore, like `serde_json`, needs no change.
+  code: { file: gotcha/main.rs, name: src/main.rs }
+  session: hyphen
+  fixed: { file: rust/src/main.rs, name: src/main.rs, session: run }
+  langs:
+    go:
+      status: runs
+      says: Go imports use the module path exactly as written, hyphens and all.
+    typescript:
+      status: runs
+      says: >-
+        An import specifier is a string, so `import x from "my-pkg"` works, and it is the
+        same name you gave `npm install`.
+    python:
+      status: refuses
+      says: >-
+        `import unicode-segmentation` is a `SyntaxError` in Python (I ran it). The name you
+        `pip install` is also often not the name you import: `python-dateutil` is imported
+        as `dateutil`.
+    java:
+      status: refuses
+      says: >-
+        A hyphen is not allowed in a Java package or class name: `import a-b.C;` fails
+        with `'.' expected` (I ran it). The Maven coordinate you add to the build is
+        written separately from the package you import.
+    kotlin:
+      status: none
+      says: >-
+        An import can't contain a hyphen, and the build coordinate you install is written
+        separately from the import: `kotlinx-coroutines-core` is imported as
+        `kotlinx.coroutines`.
+    csharp:
+      status: none
+      says: >-
+        A namespace is a dotted list of identifiers, which can't contain a hyphen. The
+        NuGet package id you install is written separately from the `using` line. (I did
+        not run this one.)
+    c:
+      status: none
+      says: >-
+        There is no package import: a header's file name may contain hyphens, as in
+        `#include <my-lib.h>`. (I did not run this one.)
+    cpp:
+      status: none
+      says: >-
+        There is no package import: a header's file name may contain hyphens, as in
+        `#include <my-lib.h>`. (I did not run this one.)

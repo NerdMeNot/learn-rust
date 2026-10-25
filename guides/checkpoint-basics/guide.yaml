@@ -1,0 +1,42 @@
+# Checkpoint: Basics
+name: checkpoint-basics
+sessions:
+  q1:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin q1
+  q2:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin q2
+  q3:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin q3
+  q4:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin q4
+        expect: fail
+  q5:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin q5
+        expect: fail
+  q6:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin q6
+        expect: fail
+  q7:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin q7
+        expect: fail
+        varies: true # the panic message names a thread id
+  q7-fixed:
+    dir: rust
+    overlay:
+      src/bin/q7.rs: fixes/q7.rs
+    steps:
+      - cmd: cargo run --bin q7

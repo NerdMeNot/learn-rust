@@ -1,0 +1,112 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Errors and Result"
+part: "data"
+intro: >-
+  A function that can fail returns `Result<T, E>`: either `Ok(value)` or `Err(error)`.
+  The `?` operator means "if this failed, return the error right now", in one character.
+coming_from:
+  go: >-
+    `Result<T, E>` replaces `(T, error)`, and `?` does what `if err != nil { return err
+    }` does. Go is the closest cousin: errors are plain values that you return and
+    check. The difference is that Rust won't hand you the value until you have dealt
+    with the `Err` case, and warns when you ignore a `Result` altogether.
+  kotlin: >-
+    Expected failures are return values, not exceptions: `Result<T, E>` is a bit like
+    Kotlin's `Result` from `runCatching`, but the error type is spelled out (Kotlin's is
+    always a `Throwable`). `?` passes the error up to the caller, and there is no
+    `try`/`catch` for expected failures. Rust keeps panics for bugs.
+  python: >-
+    There is no `try`/`except` for normal failures: the function returns `Result<T, E>`,
+    either `Ok(value)` or `Err(error)`. `?` passes the error up the way an exception
+    you don't catch would, but the possibility of failure shows in the function's type.
+  typescript: >-
+    There is no `throw`/`catch` for normal failures. A `Result<T, E>` is like returning
+    a union of `{ ok: true, value }` and `{ ok: false, error }`, but it is built in, so
+    the standard library and crates share the same one. The error type is in the
+    signature (in strict mode a `catch` variable is `unknown`), and `?` passes it up.
+  java: >-
+    `Result<T, E>` is a return value, not an exception, so the error shows up in the
+    signature like a checked exception but travels like normal data. `?` means "return
+    the error to my caller now", which is what an uncaught checked exception does when your method declares `throws`.
+  csharp: >-
+    Rust has no exceptions for normal errors: a function returns `Result<T, E>`, either
+    `Ok` or `Err`. It's like the `TryParse` pattern built into the type system, and `?`
+    passes the error up to the caller in one character.
+  c: >-
+    `Result<T, E>` is C's "return an error code and write the value through a pointer",
+    packed into one value. The compiler won't let you use the value without dealing with
+    the error, and `?` is the `if (err) return err;` line.
+  cpp: >-
+    `Result<T, E>` replaces throwing: the error is part of the return type, and `?`
+    returns it early instead of unwinding. C++20's standard library has no equivalent;
+    C++23's `std::expected` is the same idea.
+notes:
+  - >-
+    Expected failures are ordinary return values, not exceptions, and the compiler won't
+    let you use the value without dealing with the error. A `panic!` is the other
+    kind of failure: it is for bugs, and it ends the thread it happens on (on the main thread, the program).
+  - >-
+    `?` only works inside a function whose return type can carry the error: `Result`
+    for a `Result`, `Option` for an `Option`. In `main`, write `-> Result<(), Box<dyn
+    Error>>` to use it.
+  - >-
+    In real projects, the `thiserror` and `anyhow` crates (add-on libraries) remove most of
+    the boilerplate: see [Errors in real apps](/build/app-errors/).
+gotcha:
+  title: "A Result is not the value"
+  verdict: "rust-rule"
+  looks_fine: >-
+    Most languages let you use the number right away: `int("42") + 1` in Python,
+    `Integer.parseInt("42") + 1` in Java, or in Go `n, _ := strconv.Atoi("42")`, which
+    names the error and throws it away. For the text "42" that is fine, because you can
+    see it is a number.
+  rust_sees: >-
+    `parse` returns `Result<u32, ...>`, not a `u32`. The compiler does not look at the
+    text "42". It only knows that parsing text can fail.
+  why: >-
+    The same line with a user's input could get "abc". Rust makes you choose what
+    happens on failure. `.unwrap_or(0)` means "use 0 if it fails" on purpose (the same as
+    Go's `_`), `?` means "pass the error to my caller", and `.unwrap()` means "stop if
+    wrong", which is what an uncaught exception does elsewhere, minus the stack trace.
+  langs:
+    go:
+      status: "runs"
+      says: >-
+        Go runs this and prints 43. The `_` is written out, so ignoring the error is a
+        visible choice, and for "42" it does no harm. With "abc" the error is thrown away,
+        `n` is 0, and the program quietly prints 1.
+    kotlin:
+      status: "runs"
+      says: >-
+        Kotlin runs this and prints 43. With "abc", `toInt()` would throw a
+        NumberFormatException, and nothing in the code warns you.
+    python:
+      status: "runs"
+      says: >-
+        Python prints 43. `int("42")` works, and if the text were "abc" it would raise a
+        ValueError you didn't catch.
+    typescript:
+      status: "runs"
+      says: >-
+        Prints 43. `parseInt` never throws: bad input like "abc" gives `NaN`, and the
+        math carries on with it.
+    java:
+      status: "runs"
+      says: >-
+        This prints 43. NumberFormatException is unchecked, so nothing makes you handle
+        it; with "abc" the same line would throw at runtime.
+    csharp:
+      status: "runs"
+      says: >-
+        `uint.Parse` hands back the number directly and prints 43. A bad string would
+        throw a FormatException, which nothing here catches.
+    c:
+      status: "wrong"
+      says: >-
+        `atoi` has no way to report an error. It gives 42 for "42", but it also turns
+        "abc" into 0, so the second number is a wrong 1.
+    cpp:
+      status: "runs"
+      says: >-
+        `std::stoi` hands back the number directly and prints 43. A bad input would
+        throw an exception, but nothing in the types makes you handle it.

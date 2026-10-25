@@ -1,0 +1,295 @@
+<p class="lr-layer">The toolkit</p>
+
+## The problem: a reference to something that is gone
+
+A function that returns a reference hands its caller an address. The caller uses that address after the function has finished, so whatever sits there has to still exist. Values made inside a function are dropped at its closing `}` (the [ownership lesson](/learn/ownership/) showed when). So this cannot work:
+
+<Snippet file="local-ref.fail.rs" />
+
+E0515 says the function "returns a reference to data owned by the current function". `upper` is a `String` made inside `shout`. Its bytes are freed when `shout` returns, and `&upper` would point at freed memory. This is the rule from the [borrowing lesson](/learn/borrowing/#how-long-a-borrow-lasts) (E0597 there), applied across a function boundary.
+
+A function with no references to borrow from at all gets a different error:
+
+<Snippet file="no-input.fail.rs" />
+
+E0106, "missing lifetime specifier". A **lifetime** is how long a reference stays valid; [the lifetimes lesson](/learn/lifetimes/) has the notation. In practice E0106 means: the compiler cannot find which value the returned reference points into. Here the `help:` says there is "no value for it to be borrowed from", and offers two ways out. Both come up below.
+
+So a returned reference can point into one of the function's arguments, or at something that lasts for the whole run. A result that is neither is returned as an owned value. There are three ways to get a result out.
+
+## Fix 1: return an owned value
+
+If the function makes something new, return it. The caller then owns it, and it is freed when the caller's variable goes out of scope.
+
+<Snippet file="owned.rs" />
+
+<Memory
+  title={'let (s, addr_inside) = shout("rust");'}
+  stack={[
+    { name: 's', type: 'String', cells: ['ptr', 'len 4', 'cap 4'], to: 'buf', note: 'moved out of shout' },
+  ]}
+  heap={[{ id: 'buf', label: 'allocated inside shout: 4 bytes', cells: ['R', 'U', 'S', 'T'] }]}
+  caption="Returning `upper` moved its three fields (pointer, length, capacity) to the caller. The four bytes did not move: the buffer's address inside and outside the function is the same."
+/>
+
+Returning the `String` did not copy the text. The cost was the allocation `to_uppercase` made: the function allocated, whether or not the caller needed its own copy. For text a function builds, such as `format!` output or a converted string, it is the natural choice.
+
+## Fix 2: return a reference into an input
+
+If the result is a piece of something the caller passed in, return a reference to that piece. Nothing is allocated or copied.
+
+<Snippet file="into-input.rs" />
+
+<Memory
+  title={'let text = String::from("hello world");   let w = first_word(&text);   let again = first_word(&text[6..]);'}
+  stack={[
+    { name: 'text', type: 'String', cells: ['ptr', 'len 11', 'cap 11'], to: 'buf' },
+    { name: 'w', type: '&str', cells: ['address', 'len 5'], to: 'buf', note: 'starts 0 bytes into text' },
+    { name: 'again', type: '&str', cells: ['address', 'len 5'], to: 'buf', note: 'starts 6 bytes into text' },
+  ]}
+  heap={[{ id: 'buf', label: "text's buffer: 11 bytes", cells: ['h', 'e', 'l', 'l', 'o', 'space', 'w', 'o', 'r', 'l', 'd'] }]}
+  caption="Both results are an address and a length inside the one buffer that `text` owns."
+/>
+
+The signature `fn first_word(text: &str) -> &str` does not say what the result borrows from, and it does not need to. With exactly one lifetime in the parameters (a `&str` or a `&[String]` has one; a `&[&str]` has two), the compiler fills in the obvious: the result borrows from it. This is called **lifetime elision**; the [lifetimes lesson](/learn/lifetimes/) gives the rules.
+
+The price is that the result keeps the input borrowed for as long as the result is used. That is what stops it dangling:
+
+<Snippet file="input-changed.fail.rs" />
+
+E0502: `text.clear()` needs to change `text` while `w` still points into it. The fixes are the ones from the [mutable borrows lesson](/learn/mutable-borrows/): finish with `w` first, or copy it into a `String` of its own (`w.to_owned()`) before changing `text`. Copying at the point where you need it to outlive the input is Fix 1 again, done by the caller.
+
+## Fix 3: let the caller supply the buffer
+
+A function that runs in a loop may not want to allocate a new `String` on every call. Instead it can take `&mut String` and append to it. The caller owns the buffer and can reuse it:
+
+<Snippet file="buffer.rs" />
+
+The one `String::with_capacity(64)` served all three calls: in this run the buffer's address was the same afterwards and the capacity was still 64 (`clear` empties a `String` but keeps its capacity). The standard library uses this shape, for example in [`Read::read_to_string`](https://doc.rust-lang.org/std/io/trait.Read.html#method.read_to_string), which appends to a `String` the caller provides. The cost is a clumsier signature: the caller must create the buffer. Reach for it when you have a loop and a reason to avoid allocating, not by default.
+
+**Choosing.** Made inside the function: Fix 1. A piece of an input: Fix 2. Appending to something the caller already has, in a loop: Fix 3. When unsure, start with the owned value, which is the easiest for callers, and change to a reference when you see a reason, such as a big piece of an input you would otherwise copy.
+
+## A lookup that may find nothing
+
+A function returning a piece of a collection often returns `Option<&T>`, the same shape as `get` on a `Vec` or a map ([Option](/learn/option/)). With one borrowed input, elision works as before:
+
+<Snippet file="lookup.rs" />
+
+`longest` borrows from `words`, so the `&str` it returns is only valid while `words` is. To keep the answer longer, `.map(str::to_owned)` turned it into an owned `Option<String>`. A function can also return an iterator that borrows its input ([iterators](/learn/iterators/)).
+
+## String literals and `static` items
+
+A string literal's text is stored in the program itself, so it stays valid for as long as the program runs. A function with no inputs may return one, and the type is written with `'static`:
+
+<Snippet file="static-str.rs" />
+
+`'static` is a lifetime name meaning "valid for the whole run". A literal is the common case, but not the only one: a `static` item and a leaked allocation (`Box::leak`, which gives a value away for the rest of the run) also compile:
+
+<Snippet file="static-item.rs" />
+
+The `help:` for E0106 above suggests `'static` too, with the warning that it is uncommon unless you are "returning a borrowed value from a `const` or a `static`". Its other suggestion is an owned `String`.
+
+## Two inputs: the compiler asks which one
+
+Elision is a fixed rule, so you can predict it:
+
+| Signature | The result borrows from | Compiles? |
+|---|---|---|
+| `fn f(a: &str) -> &str` | `a` | yes |
+| `fn f(words: &[String]) -> &str` | `words` | yes |
+| `fn f(a: &str, n: usize) -> &str` | `a`, the only borrowed input | yes |
+| `fn f(&self, sep: &str) -> &str` (in an `impl`) | `self` | yes |
+| `fn f(a: &str, b: &str) -> &str` | unclear | E0106 |
+| `fn f(words: &[&str]) -> &str` | unclear: one parameter, two lifetimes | E0106 |
+| `fn f() -> &str` | unclear | E0106 |
+
+Two reference parameters leave the compiler unable to choose:
+
+<Snippet file="two-inputs.fail.rs" />
+
+"The signature does not say whether it is borrowed from `a` or `b`". We know the result is one of them, but a caller needs to know how long it stays valid. The help shows the fix, which names a lifetime `'a` and puts it on both inputs and the output:
+
+<Snippet file="two-inputs-fixed.rs" />
+
+Read `'a` here as "the result comes from one of the inputs, so use it only while both are alive". What `'a` means and what it can and cannot do is the job of [the lifetimes lesson](/learn/lifetimes/). The alternatives are to return an owned `String` (Fix 1) or to restructure so there is one source.
+
+In the method row the result is tied to `self`, even when other references are passed in. Methods are a very common source of borrowed results (`fn name(&self) -> &str`), and this rule keeps most of those signatures free of lifetime marks.
+
+<p class="lr-layer">Going deeper</p>
+
+## The signature is the contract
+
+Does the compiler need the annotation when the body is obvious? This function returns `a` every time:
+
+<Snippet file="body-is-fine.fail.rs" />
+
+It is still E0106. Each function is checked against the signatures of the others, not their bodies (the [borrowing lesson](/learn/borrowing/#what-the-compiler-is-checking) says why). A caller must know what the result is tied to without reading the body, and the body can change later while the signature, and every call, keeps compiling. Elision is the compiler writing the signature for you where there is only one reasonable answer. Where there are two, you decide.
+
+## Returning a `&mut`
+
+A function can return a mutable reference into its input. While the result is alive, nothing else may touch the input.
+
+<Snippet file="return-mut.rs" />
+
+<Snippet file="mut-held.fail.rs" />
+
+The returned `&mut` keeps `scores` borrowed, even for reading, until its last use. That is the [mutable borrows](/learn/mutable-borrows/) rule. `last_mut` on a `Vec` and `HashMap::get_mut` have this shape.
+
+## Compared with where you come from
+
+<ForLang only="go">
+Go allows `return &s` for a local `s` (the gotcha above ran it). The Go FAQ says where a variable lives does not change the program's meaning: each variable exists as long as something refers to it ([Go FAQ](https://go.dev/doc/faq#stack_or_heap)). Rust has no collector to keep it alive, so you choose one of the three fixes. When several parts of a program must keep one value alive, that is shared ownership (`Arc<T>`, in the [shared state lesson](/learn/shared-state/)), not a reference.
+
+Returning a piece of the input is normal in Go too, and its hazard is `append`:
+
+<Snippet file="append-alias.go" />
+
+`firstTwo` shares the array and still has spare capacity, so `append` wrote into `scores`. Cutting the capacity with `xs[:2:2]` makes `append` copy. A Rust `&[i32]` cannot grow at all, and a `&mut [i32]` can only overwrite what it has.
+
+The GC works in the other direction too: a subslice keeps its whole backing array alive, which is why the [`strings.Clone` documentation](https://pkg.go.dev/strings#Clone) recommends a copy when "retaining only a small substring of a much larger string". In Rust a `&str` keeps nothing alive; `to_owned()` is the copy you make when a piece must outlive its input.
+
+Go programmers already do Fix 3 for speed: `fmt.Appendf` takes the caller's slice and returns it grown, where Rust's `&mut String` appends in place.
+
+<Snippet file="append-into.go" />
+
+| In Go | In Rust |
+|---|---|
+| `return &Config{...}` | return `Config` (moved to the caller) |
+| `return xs[:2]` | `&xs[..2]`, a `&[T]` (or `&mut [T]`) |
+| `return s[:i]` for a `string` | `&s[..i]`, a `&str` |
+| `func f(buf []byte) int`, filling a caller's slice | `fn f(buf: &mut [u8]) -> usize` |
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+In Java, Kotlin and C# an object lives while something refers to it, so returning one made inside a method raises no lifetime question. The question moves to **who may change it later**, and nothing in the signature says who else holds a reference. The everyday form is a getter that returns the very list the object keeps (shown in Java; the question is the same in Kotlin and C#):
+
+<Snippet file="getter-leak.java" />
+
+The usual cures are a copy or a read-only wrapper (`Collections.unmodifiableList`, `IReadOnlyList<T>`). A Rust `&[String]` result is read-only and cannot outlive its owner, with no copy:
+
+<Snippet file="getter.fail.rs" />
+
+A returned piece of the input can also be a view that stays connected to its owner.
+</ForLang>
+
+<ForLang only="java">
+`subList` is such a view, and [the `List` documentation](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/List.html) says its behaviour becomes undefined if the backing list is structurally modified. In this run `ArrayList` notices and throws, which is a run-time check made on a best-effort basis:
+
+<Snippet file="sublist-view.crash.java" />
+</ForLang>
+
+<ForLang only="kotlin">
+Kotlin's `subList` on the JVM is such a view, and the documentation of the Java `List` it comes from says its behaviour becomes undefined if the backing list is structurally modified. In this run `ArrayList` notices and throws, a run-time check made on a best-effort basis:
+
+<Snippet file="sublist-view.crash.kt" />
+</ForLang>
+
+<ForLang only="csharp">
+`CollectionsMarshal.AsSpan` gives a `Span<int>` over a list's array, and [its documentation](https://learn.microsoft.com/en-us/dotnet/api/system.runtime.interopservices.collectionsmarshal.asspan) says items should not be added or removed while the span is in use. After the list grows, the span still points at the old array and nothing complains:
+
+<Snippet file="stale-span.cs" />
+
+`scores[0]` is still 3 because the write went into the array the list left behind.
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+Rust's `&xs[..2]` is also a view, and the same order of events (take the view, change the owner, use the view) is an error before the program runs:
+
+<Snippet file="view-then-change.fail.rs" />
+
+C# already applies this kind of rule to `Span<T>` and `ref` returns, and says so at compile time:
+
+<Snippet file="span-escape.fail.cs" />
+
+That is the E0515 situation. Rust applies the rule to every reference, not only to ref structs and `ref` returns.
+</ForLang>
+
+<ForLang only="python typescript">
+Returning something made inside a function raises no lifetime question in Python and TypeScript (the gotcha ran it). Returning part of the input is where aliasing shows: an element of a list or array is the same object, not a copy.
+</ForLang>
+
+<ForLang only="python">
+<Snippet file="alias.py" />
+</ForLang>
+
+<ForLang only="typescript">
+<Snippet file="alias.ts" />
+</ForLang>
+
+<ForLang only="python typescript">
+That aliasing is what Rust's `&T` and `&mut T` split makes explicit. Views of a buffer exist too, but you ask for them: `memoryview` in Python, `subarray` on typed arrays in TypeScript.
+</ForLang>
+
+<ForLang only="python">
+<Snippet file="view.py" />
+
+`memoryview` refuses a resize of the owner (`BufferError`), but an in-place write goes through and the view sees it. The list slice is a copy, so `xs` did not change.
+</ForLang>
+
+<ForLang only="typescript">
+<Snippet file="view.ts" />
+
+`subarray` shares memory with `data` and nothing checks writes to either; `slice` copies.
+</ForLang>
+
+<ForLang only="python typescript">
+In Rust, `&xs[..2]` is the view and `xs[..2].to_vec()` is the copy. Rust's rule (the E0502 in Fix 2) covers any write to the owner while the view is alive, and it is reported when the program is compiled.
+</ForLang>
+
+<ForLang only="c cpp">
+In C a function that returns `char *` does not say, in its type, whether the pointer is into an input, a static buffer or new memory. The three functions here have the same return type and three different promises:
+
+<Snippet file="same-type.c" />
+
+`free` is right for one of them and a bug for the other two. Rust puts the promise in the type: `String` is owned, `&str` is borrowed, `&'static str` lasts for the run. Fix 3 is the `snprintf(buf, n, ...)` shape you already use (in C++, `void f(std::string& out)`), except that a `String` grows where `snprintf` stops at `n`.
+</ForLang>
+
+<ForLang only="cpp">
+Returning a `String` is a move: three words are copied (the diagram in Fix 1) and the text stays where it is, so `-> String` is your `-> std::string`. In this g++ 14 build the string's buffer is also the same inside and outside the function:
+
+<Snippet file="by-value.cpp" />
+
+In Rust a move is defined that way, not an optimisation. The borrowed forms are where C++ has no check. `std::string_view` is the closest relative of `&str` (`std::span<const T>` of `&[T]`): a pointer and a length into someone else's characters. Here the view outlives the temporary string it was taken from. The runner builds with `-Wall -Wextra`, and g++ 14 prints no warning:
+
+<Snippet file="dangling-view.cpp" />
+
+The program ran to the end, but the characters were gone. Under AddressSanitizer, a tool that checks memory use while the program runs, the same code stops:
+
+<Snippet file="dangling-view.crash.asan.cpp" title="The same function, under -fsanitize=address" />
+
+The same shape in Rust is a compile error, E0716, because the borrow checker sees that the temporary is dropped while `w` still uses it:
+
+<Snippet file="temp-dropped.fail.rs" />
+
+`std::max` is the C++ version of `longer<'a>`: it returns a reference to one of its two arguments. g++ 14 does warn about this one, with `-Wdangling-reference`:
+
+<Snippet file="max-temp.cpp" />
+
+The `'a` in the Rust signature is what tells the compiler, and the caller, that the result is only valid while both inputs are. The getter `const T& get() const` is `fn get(&self) -> &T`, the method row of the elision table: the result is tied to `self`. The gotcha above shows the other case, returning a reference to a local.
+</ForLang>
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Each exercise is a small program with checks in `main`. Open it in the Playground, replace the `todo!()`, and run it until it prints `all checks passed`. The signature is part of the first two exercises, and the checks look at what you return: a leaked or copied string will not pass.
+
+<Exercise name="banner" title="Build a banner">
+Return the text `== NAME ==` with the name in upper case. The text is made inside the function, so the starter's `-> &str` cannot work: change the return type (Fix 1) and read the error you get first.
+</Exercise>
+
+<Exercise name="after" title="Text after a marker">
+Return the part of `text` after the first `marker`, as a slice of `text`. The starter returns a `String`, which copies. Change the signature so the result borrows from `text`, and only from `text`: the check drops `marker` before it uses the result.
+</Exercise>
+
+<Exercise name="join-into" title="Join into a buffer">
+Write the parts into a `String` the caller supplies, with a separator between them (Fix 3). What the buffer already holds must stay, and the check makes sure you wrote into the caller's `String` rather than replacing it.
+</Exercise>
+
+## Read more
+
+- [The Rust Book, chapter 4.2: References and Borrowing](https://doc.rust-lang.org/book/ch04-02-references-and-borrowing.html#dangling-references), the dangling reference section.
+- [The Rust Book, chapter 10.3: Validating References with Lifetimes](https://doc.rust-lang.org/book/ch10-03-lifetime-syntax.html), including [lifetime elision](https://doc.rust-lang.org/book/ch10-03-lifetime-syntax.html#lifetime-elision).
+- [Rust by Example: Lifetimes in functions](https://doc.rust-lang.org/rust-by-example/scope/lifetime/fn.html) and [elision](https://doc.rust-lang.org/rust-by-example/scope/lifetime/elision.html).
+- [The Rust Reference: Lifetime elision](https://doc.rust-lang.org/reference/lifetime-elision.html), the exact rules.
+- [`Read::read_to_string`](https://doc.rust-lang.org/std/io/trait.Read.html#method.read_to_string), which appends to a buffer you provide, and [`str::split_once`](https://doc.rust-lang.org/std/primitive.str.html#method.split_once), which returns two pieces of the input.
+- Error index: [E0106](https://doc.rust-lang.org/error_codes/E0106.html), [E0515](https://doc.rust-lang.org/error_codes/E0515.html), [E0716](https://doc.rust-lang.org/error_codes/E0716.html), and this site's [errors page](/errors/).

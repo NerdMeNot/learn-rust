@@ -1,0 +1,14 @@
+[package]
+name = "tinymoney"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Money as whole minor units, with a currency attached"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+thiserror = "2.0.21"
+
+# `consumer` is a second package that uses the library the way another crate would.
+[workspace]
+members = ["consumer"]

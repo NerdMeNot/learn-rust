@@ -1,0 +1,124 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Vectors and Slices"
+part: "data"
+intro: >-
+  `Vec<T>` is a list that can grow. `&[T]`, called a slice, is a borrowed window into
+  part of one.
+coming_from:
+  go: >-
+    `Vec<T>` is a slice that you own: `v.push(x)` replaces `v = append(v, x)` and changes
+    the `Vec` in place. `&w[1..3]` is the same no-copy window as `w[1:3]`, but it is
+    read-only unless you ask for `&mut`, it has no capacity to append into, and the
+    compiler refuses to `push` to `w` while the window is in use. That rules out the
+    `append` aliasing surprise.
+  kotlin: >-
+    `Vec<T>` is your `MutableList`, and `&w[1..3]` is a view like `subList(1, 3)`. While
+    the view is in use, the compiler refuses to add to `w`, where on the JVM `subList`
+    can throw `ConcurrentModificationException` later. A `Vec` without `mut` is a list
+    you cannot push to or assign into, which a Kotlin `List` does not promise.
+  python: >-
+    `Vec<T>` is your `list`, but every item has the same type and there are no negative
+    indexes. `&w[1..3]` is a borrowed view, not a copy like Python's slicing, and an
+    index past the end panics (Python raises `IndexError`).
+  typescript: >-
+    `Vec<T>` is your `T[]` and `push` adds to the end the same way. `&w[1..3]` is a borrowed view
+    rather than a copy like `slice`, and an index past the end panics instead of giving
+    `undefined`.
+  java: >-
+    `Vec<i32>` is an `ArrayList<Integer>` whose items are plain numbers stored side by
+    side (Java's `List<int>` does not compile). `&w[1..3]` is like `subList(1, 3)`, but
+    Rust refuses to compile code that changes the `Vec` while a slice of it is in use,
+    where Java can throw `ConcurrentModificationException` at run time.
+  csharp: >-
+    `Vec<T>` is `List<T>`, and `&w[1..3]` is a borrowed view like a `Span<T>`, not a copy
+    like `GetRange`. While that view is alive, Rust won't let you `push` to the list.
+  c: >-
+    `Vec<T>` is your pointer, length and capacity struct with `push` and `realloc` built
+    in, and `&[T]` is a pointer plus a length. The compiler won't let you keep a pointer
+    into a `Vec` across a `push` that might move it, and `v[i]` is bounds-checked.
+  cpp: >-
+    `Vec<T>` is `std::vector<T>`, and `&[T]` is `std::span<const T>`. The difference is
+    that holding a reference or span into a vector, calling `push` and then using the
+    reference is a compile error, not undefined behaviour. `v[i]` checks its bounds
+    where `std::vector`'s `operator[]` does not by default.
+notes:
+  - >-
+    `{:?}` prints a whole Vec. Normal `{}` printing is not defined for lists.
+  - >-
+    `v[10]` on a short Vec crashes the program with a panic. `v.get(10)` returns an
+    Option instead.
+  - >-
+    A Vec is three numbers on the stack (pointer, length, capacity) plus the items on
+    the heap. A slice `&[T]` is two numbers: a pointer and a length.
+  - >-
+    `let x = v[0];` copies a number out of a `Vec<i32>`, but for a `Vec<String>` it is a
+    compile error: borrow with `&v[0]` or copy with `v[0].clone()`.
+  - >-
+    `v.sort()` needs items that can always be ranked, and `f64` cannot (`NaN`). For
+    floats, write `v.sort_by(|a, b| a.total_cmp(b))`.
+gotcha:
+  title: "Taking a String out of a list by index"
+  verdict: "rust-rule"
+  looks_fine: >-
+    In most languages `names[0]` hands you the item, and the list keeps it too.
+  rust_sees: >-
+    `names[0]` is a slot inside the list's buffer, and the list owns the `String` that
+    lives there. `let first = names[0]` would move the `String` out and leave a hole in
+    the list. The list would still free every slot when it is dropped, so that `String`
+    would be freed twice.
+  why: >-
+    Nothing is wrong with wanting the first name. The other languages quietly choose for
+    you: share a reference, copy a pointer, or copy the whole text. Rust asks which one
+    you mean. `&names[0]` borrows it, `names[0].clone()` makes a second copy,
+    `names.remove(0)` takes it out of the list, and `std::mem::take(&mut names[0])`
+    takes it and leaves an empty `String` behind. A `Vec<i32>` has no such error,
+    because an `i32` is copied, not moved. Any item that is not `Copy` behaves like the
+    `String`, a struct or a row of a `Vec<Vec<T>>` included.
+  langs:
+    go:
+      status: "runs"
+      says: >-
+        Go prints `ana of 2`. A Go string is a small header (pointer and length) and its
+        bytes never change, so `first := names[0]` copies the header and both names
+        share the text safely.
+    kotlin:
+      status: "runs"
+      says: >-
+        Kotlin prints `ana of 2`. `first` and the list slot refer to the same `String`
+        object. Strings can't be changed, so sharing is harmless, and the garbage
+        collector keeps the object alive while either refers to it.
+    python:
+      status: "runs"
+      says: >-
+        Python prints `ana of 2`. `first` and the list slot are two names for the same
+        string object, which can't be changed, so sharing is harmless.
+    typescript:
+      status: "runs"
+      says: >-
+        Prints `ana of 2`. `first` is a string value. Strings never change in place, so
+        it makes no visible difference whether the engine copies or shares the
+        characters.
+    java:
+      status: "runs"
+      says: >-
+        Java prints `ana of 2`. `first` and the list slot refer to the same `String`
+        object. A `String` can't be changed, and the garbage collector keeps it alive
+        while either refers to it.
+    csharp:
+      status: "runs"
+      says: >-
+        C# prints `ana of 2`. `first` and the list slot refer to the same `string`
+        object, which can't be changed, and the garbage collector keeps it alive.
+    c:
+      status: "runs"
+      says: >-
+        C prints `ana of 2`. `first` copies the pointer, so both point at the same text.
+        Here the text is a string literal. With heap text, nothing in the code says
+        which of the two pointers must `free` it, and freeing it through one leaves the
+        other dangling.
+    cpp:
+      status: "runs"
+      says: >-
+        C++ prints `ana of 2`. `std::string first = names[0]` copies the whole string,
+        so the two are independent. To take it without copying you write
+        `std::move(names[0])`, which leaves `names[0]` valid but unspecified.

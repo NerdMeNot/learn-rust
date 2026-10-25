@@ -1,0 +1,429 @@
+{
+ "id": "traits",
+ "title": "Traits (Interfaces)",
+ "part": "abstractions",
+ "intro": "A trait is a list of methods a type promises to have. A trait can also include default methods, which a type gets without writing them. You use a trait to say what a function needs from its argument, instead of naming one type.",
+ "coming_from": {
+  "go": "A trait plays the part of a Go interface: the list of methods a function needs. The difference is that a type must say `impl Speaker for Robot`; having the right methods is not enough. A trait can also have default methods, which Go interfaces lack. And because the `impl` is a separate block, you can implement your own trait for types you did not write, such as `i32`, which Go does not allow.",
+  "kotlin": "A trait is close to a Kotlin interface with default methods. The `impl Speaker for Dog` block lives apart from the type, so you can implement your trait for types you did not write, like `i32`. A Kotlin extension function adds a method to such a type but does not make it a `Speaker`.",
+  "python": "A trait is like a `Protocol` with default methods, but a type counts only once you write `impl Speaker for Robot`, and the compiler checks it, not a separate type checker. (A default in a `Protocol` reaches only the classes that name it as a base.)",
+  "typescript": "A trait is like an `interface` plus the default method bodies you would otherwise put in an abstract class or a mixin. It's nominal, though: having a `speak` method isn't enough, the type must say `impl Speaker for Robot`.",
+  "java": "A `trait` is an `interface`, default methods included. A function that takes `&dyn Speaker` accepts any type that implements it, like a parameter of interface type, and `T: Speaker` is like `<T extends Speaker>`. The implementation lives in a separate `impl Speaker for Dog` block, so you can add your own trait to a type you didn't write, such as `String`, without a wrapper class.",
+  "csharp": "A `trait` is an `interface` with default methods. You implement it in a separate `impl Speaker for Robot` block, which means you can add your trait to someone else's type. A default method can be called on the type itself, where a C# default interface method is only visible through the interface type.",
+  "c": "C has no interfaces; you'd build a struct of function pointers by hand. A trait is that pattern written down for the compiler, which checks that every type fills in every method. Used as `&dyn Speaker`, it is a data pointer plus a pointer to such a table.",
+  "cpp": "A trait used through `&dyn Speaker` plays the part of an abstract base class with virtual methods, but a type does not inherit from it and a trait holds no data members. The same trait can also be a compile-time bound on a generic function, a lot like a C++20 concept, except that a type must say `impl Speaker for Robot`."
+ },
+ "notes": [
+  "`&dyn Speaker` means \"a reference to some type that implements Speaker, decided at runtime\". The right `speak` is looked up while the program runs.",
+  "There is also a compile-time version: `fn introduce(s: &impl Speaker)`. The compiler knows the exact type at each call, so it needs no lookup. Use `dyn` when you need a list of mixed types. The generics lesson covers the first, the trait objects lesson the second.",
+  "`format!` works like `println!`, but returns the text as a String instead of printing it."
+ ],
+ "gotcha": {
+  "title": "Having the method but not saying so",
+  "verdict": "rust-rule",
+  "looks_fine": "In Go, Robot has a `Speak` method, so it is a Speaker automatically. Nothing else to write.",
+  "rust_sees": "Rust wants you to say it: `impl Speaker for Robot`. A method with a matching name is not enough.",
+  "why": "One type can then have two methods with the same name that mean different things: the lesson's `Car` has a `start` from `Vehicle` and another from `Appliance`, and a call says which. It also lets you add a trait to a type later, in a separate place, which is how `impl Speaker for i32` works.",
+  "langs": {
+   "go": {
+    "status": "runs",
+    "says": "Go runs this and prints beep 7. Having a `Speak` method is enough to count as a Speaker, with nothing to declare.",
+    "code": "package main\n\nimport \"fmt\"\n\ntype Speaker interface{ Speak() string }\n\ntype Robot struct{ ID int }\n\nfunc (r Robot) Speak() string { return fmt.Sprintf(\"beep %d\", r.ID) }\n\nfunc introduce(s Speaker) { fmt.Println(s.Speak()) }\n\nfunc main() {\n\tintroduce(Robot{ID: 7})\n}\n",
+    "out": "beep 7\n"
+   },
+   "kotlin": {
+    "status": "refuses",
+    "says": "Kotlin refuses this too: `Robot` has to declare `: Speaker` before it can be passed as one.",
+    "code": "interface Speaker {\n    fun speak(): String\n}\n\nclass Robot(val id: Int) { // never says \": Speaker\"\n    fun speak(): String = \"beep $id\"\n}\n\nfun introduce(s: Speaker) = println(s.speak())\n\nfun main() {\n    introduce(Robot(7))\n}\n",
+    "error": "Main.kt:12:15: error: argument type mismatch: actual type is 'Robot', but 'Speaker' was expected.\n    introduce(Robot(7))\n              ^^^^^^^^"
+   },
+   "python": {
+    "status": "runs",
+    "says": "Python prints beep 7. Python uses duck typing: anything with a `speak` method works, with no need to declare that `Robot` is a Speaker.",
+    "code": "class Robot:\n    def __init__(self, id: int):\n        self.id = id\n\n    def speak(self) -> str:\n        return f\"beep {self.id}\"\n\n\ndef introduce(s):\n    print(s.speak())\n\n\nintroduce(Robot(7))\n",
+    "out": "beep 7\n"
+   },
+   "typescript": {
+    "status": "runs",
+    "says": "Prints beep 7. TypeScript checks the shape: `Robot` has a matching `speak`, so it counts as a `Speaker` without saying `implements`.",
+    "code": "interface Speaker {\n  speak(): string;\n}\n\nclass Robot { // never says \"implements Speaker\"\n  constructor(private id: number) {}\n  speak(): string {\n    return `beep ${this.id}`;\n  }\n}\n\nfunction introduce(s: Speaker): void {\n  console.log(s.speak());\n}\n\nintroduce(new Robot(7));\n",
+    "out": "beep 7\n"
+   },
+   "java": {
+    "status": "refuses",
+    "says": "Java refuses this too: `Robot` has a `speak` method but never says `implements Speaker`, so it is not a Speaker.",
+    "code": "public class Main {\n    interface Speaker {\n        String speak();\n    }\n\n    record Robot(int id) {\n        String speak() {\n            return \"beep \" + id;\n        }\n    }\n\n    static void introduce(Speaker s) {\n        System.out.println(s.speak());\n    }\n\n    public static void main(String[] args) {\n        introduce(new Robot(7));\n    }\n}\n",
+    "error": "Main.java:17: error: incompatible types: Robot cannot be converted to Speaker\n        introduce(new Robot(7));\n                  ^\nNote: Some messages have been simplified; recompile with -Xdiags:verbose to get full output\n1 error"
+   },
+   "csharp": {
+    "status": "refuses",
+    "says": "C# refuses this too: having a Speak method is not enough, the class must say `: ISpeaker` (CS1503). Interfaces are opt-in by name in C#, as in Java.",
+    "code": "Introduce(new Robot(7));\n\nstatic void Introduce(ISpeaker s)\n{\n    Console.WriteLine(s.Speak());\n}\n\ninterface ISpeaker\n{\n    string Speak();\n}\n\nrecord Robot(uint Id)   // has Speak, but never says \": ISpeaker\"\n{\n    public string Speak() => $\"beep {Id}\";\n}\n",
+    "error": "Program.cs(1,11): error CS1503: Argument 1: cannot convert from 'Robot' to 'ISpeaker'"
+   },
+   "c": {
+    "status": "none",
+    "says": "C has no traits or interfaces. A C \"Speaker\" is a struct of function pointers you fill in by hand, so there is no declaration to forget."
+   },
+   "cpp": {
+    "status": "refuses",
+    "says": "C++ refuses this too: `Robot` doesn't inherit from `Speaker`, so it can't be passed as a `const Speaker&`. A template or concept would accept it, since those only check that `speak()` exists.",
+    "code": "#include <format>\n#include <iostream>\n#include <string>\n\nclass Speaker {\npublic:\n    virtual ~Speaker() = default;\n    virtual std::string speak() const = 0;\n};\n\nclass Robot {\npublic:\n    unsigned id;\n    std::string speak() const { return std::format(\"beep {}\", id); }\n};\n\nvoid introduce(const Speaker& s) {\n    std::cout << s.speak() << \"\\n\";\n}\n\nint main() {\n    introduce(Robot{7});\n}\n",
+    "error": "main.cpp: In function ‘int main()’:\nmain.cpp:22:15: error: invalid initialization of reference of type ‘const Speaker&’ from expression of type ‘Robot’\n   22 |     introduce(Robot{7});\n      |               ^~~~~~~~\nmain.cpp:17:31: note: in passing argument 1 of ‘void introduce(const Speaker&)’\n   17 | void introduce(const Speaker& s) {\n      |                ~~~~~~~~~~~~~~~^"
+   }
+  },
+  "code": "trait Speaker {\n    fn speak(&self) -> String;\n}\n\nstruct Robot {\n    id: u32,\n}\n\nimpl Robot {\n    fn speak(&self) -> String {\n        format!(\"beep {}\", self.id)\n    }\n}\n\nfn introduce(s: &dyn Speaker) {\n    println!(\"{}\", s.speak());\n}\n\nfn main() {\n    introduce(&Robot { id: 7 });\n}\n",
+  "error": "error[E0277]: the trait bound `Robot: Speaker` is not satisfied\n  --> src/main.rs:20:15\n   |\n20 |     introduce(&Robot { id: 7 });\n   |               ^^^^^^^^^^^^^^^^ unsatisfied trait bound\n   |\nhelp: the trait `Speaker` is not implemented for `Robot`\n  --> src/main.rs:5:1\n   |\n 5 | struct Robot {\n   | ^^^^^^^^^^^^\nhelp: this trait has no implementations, consider adding one\n  --> src/main.rs:1:1\n   |\n 1 | trait Speaker {\n   | ^^^^^^^^^^^^^\n   = note: required for the cast from `&Robot` to `&dyn Speaker`\n",
+  "error_code": "E0277",
+  "fixed": {
+   "code": "trait Speaker {\n    fn speak(&self) -> String;\n}\n\nstruct Robot {\n    id: u32,\n}\n\nimpl Speaker for Robot {\n    fn speak(&self) -> String {\n        format!(\"beep {}\", self.id)\n    }\n}\n\nfn introduce(s: &dyn Speaker) {\n    println!(\"{}\", s.speak());\n}\n\nfn main() {\n    introduce(&Robot { id: 7 });\n}\n",
+   "out": "beep 7\n"
+  }
+ },
+ "order": 32,
+ "program": {
+  "rust": {
+   "code": "trait Speaker {\n    fn speak(&self) -> String;\n\n    fn shout(&self) -> String {\n        // default method\n        self.speak().to_uppercase()\n    }\n}\n\nstruct Dog;\nstruct Robot {\n    id: u32,\n}\n\nimpl Speaker for Dog {\n    fn speak(&self) -> String {\n        String::from(\"woof\")\n    }\n}\n\nimpl Speaker for Robot {\n    fn speak(&self) -> String {\n        format!(\"beep {}\", self.id)\n    }\n}\n\nfn introduce(s: &dyn Speaker) {\n    // any type that implements Speaker\n    println!(\"{} / {}\", s.speak(), s.shout());\n}\n\nfn main() {\n    introduce(&Dog);\n    introduce(&Robot { id: 7 });\n}\n",
+   "out": "woof / WOOF\nbeep 7 / BEEP 7\n"
+  },
+  "go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"strings\"\n)\n\ntype Speaker interface {\n\tSpeak() string\n}\n\ntype Dog struct{}\ntype Robot struct{ ID int }\n\nfunc (Dog) Speak() string     { return \"woof\" }\nfunc (r Robot) Speak() string { return fmt.Sprintf(\"beep %d\", r.ID) }\n\nfunc shout(s Speaker) string { return strings.ToUpper(s.Speak()) }\n\nfunc introduce(s Speaker) {\n\tfmt.Println(s.Speak(), \"/\", shout(s))\n}\n\nfunc main() {\n\tintroduce(Dog{})\n\tintroduce(Robot{ID: 7})\n}\n",
+   "out": "woof / WOOF\nbeep 7 / BEEP 7\n"
+  },
+  "kotlin": {
+   "code": "interface Speaker {\n    fun speak(): String\n    fun shout(): String = speak().uppercase()\n}\n\nobject Dog : Speaker {\n    override fun speak() = \"woof\"\n}\n\nclass Robot(val id: Int) : Speaker {\n    override fun speak() = \"beep $id\"\n}\n\nfun introduce(s: Speaker) {\n    println(\"${s.speak()} / ${s.shout()}\")\n}\n\nfun main() {\n    introduce(Dog)\n    introduce(Robot(7))\n}\n",
+   "out": "woof / WOOF\nbeep 7 / BEEP 7\n"
+  },
+  "python": {
+   "code": "from typing import Protocol\n\n\nclass Speaker(Protocol):\n    def speak(self) -> str: ...\n\n    def shout(self) -> str:  # default method\n        return self.speak().upper()\n\n\nclass Dog(Speaker):\n    def speak(self) -> str:\n        return \"woof\"\n\n\nclass Robot(Speaker):\n    def __init__(self, id: int) -> None:\n        self.id = id\n\n    def speak(self) -> str:\n        return f\"beep {self.id}\"\n\n\ndef introduce(s: Speaker) -> None:\n    print(f\"{s.speak()} / {s.shout()}\")\n\n\nintroduce(Dog())\nintroduce(Robot(7))\n",
+   "out": "woof / WOOF\nbeep 7 / BEEP 7\n"
+  },
+  "typescript": {
+   "code": "// an abstract class can carry a default method, like a trait\nabstract class Speaker {\n  abstract speak(): string;\n\n  shout(): string { // default method\n    return this.speak().toUpperCase();\n  }\n}\n\nclass Dog extends Speaker {\n  speak(): string {\n    return \"woof\";\n  }\n}\n\nclass Robot extends Speaker {\n  constructor(private id: number) {\n    super();\n  }\n  speak(): string {\n    return `beep ${this.id}`;\n  }\n}\n\nfunction introduce(s: Speaker): void {\n  console.log(`${s.speak()} / ${s.shout()}`);\n}\n\nintroduce(new Dog());\nintroduce(new Robot(7));\n",
+   "out": "woof / WOOF\nbeep 7 / BEEP 7\n"
+  },
+  "java": {
+   "code": "public class Main {\n    interface Speaker {\n        String speak();\n\n        default String shout() {   // default method\n            return speak().toUpperCase();\n        }\n    }\n\n    record Dog() implements Speaker {\n        public String speak() {\n            return \"woof\";\n        }\n    }\n\n    record Robot(int id) implements Speaker {\n        public String speak() {\n            return \"beep \" + id;\n        }\n    }\n\n    static void introduce(Speaker s) {\n        System.out.println(s.speak() + \" / \" + s.shout());\n    }\n\n    public static void main(String[] args) {\n        introduce(new Dog());\n        introduce(new Robot(7));\n    }\n}\n",
+   "out": "woof / WOOF\nbeep 7 / BEEP 7\n"
+  },
+  "csharp": {
+   "code": "Introduce(new Dog());\nIntroduce(new Robot(7));\n\nstatic void Introduce(ISpeaker s)   // any type that implements ISpeaker\n{\n    Console.WriteLine($\"{s.Speak()} / {s.Shout()}\");\n}\n\ninterface ISpeaker\n{\n    string Speak();\n\n    string Shout() => Speak().ToUpper();   // default method\n}\n\nclass Dog : ISpeaker\n{\n    public string Speak() => \"woof\";\n}\n\nrecord Robot(uint Id) : ISpeaker\n{\n    public string Speak() => $\"beep {Id}\";\n}\n",
+   "out": "woof / WOOF\nbeep 7 / BEEP 7\n"
+  },
+  "c": {
+   "code": "#include <ctype.h>\n#include <stdio.h>\n\n// C has no traits: a \"Speaker\" is a struct of function pointers\nstruct Speaker {\n    void (*speak)(const void *self, char *out, size_t n);\n};\n\nstruct Dog { int unused; };\nstruct Robot { unsigned id; };\n\nvoid dog_speak(const void *self, char *out, size_t n) {\n    (void)self;\n    snprintf(out, n, \"woof\");\n}\n\nvoid robot_speak(const void *self, char *out, size_t n) {\n    const struct Robot *r = self;\n    snprintf(out, n, \"beep %u\", r->id);\n}\n\nconst struct Speaker DOG_SPEAKER = {dog_speak};\nconst struct Speaker ROBOT_SPEAKER = {robot_speak};\n\n// the \"default method\": works for any Speaker\nvoid shout(const struct Speaker *sp, const void *self, char *out, size_t n) {\n    sp->speak(self, out, n);\n    for (char *p = out; *p; p++) *p = (char)toupper((unsigned char)*p);\n}\n\nvoid introduce(const struct Speaker *sp, const void *self) {\n    char a[64], b[64];\n    sp->speak(self, a, sizeof a);\n    shout(sp, self, b, sizeof b);\n    printf(\"%s / %s\\n\", a, b);\n}\n\nint main(void) {\n    struct Dog dog = {0};\n    struct Robot robot = {7};\n    introduce(&DOG_SPEAKER, &dog);\n    introduce(&ROBOT_SPEAKER, &robot);\n    return 0;\n}\n",
+   "out": "woof / WOOF\nbeep 7 / BEEP 7\n"
+  },
+  "cpp": {
+   "code": "#include <algorithm>\n#include <cctype>\n#include <format>\n#include <iostream>\n#include <string>\n\nclass Speaker {\npublic:\n    virtual ~Speaker() = default;\n    virtual std::string speak() const = 0;\n\n    std::string shout() const {                 // shared method built on speak()\n        std::string s = speak();\n        std::ranges::transform(s, s.begin(), [](unsigned char c) { return std::toupper(c); });\n        return s;\n    }\n};\n\nclass Dog : public Speaker {\npublic:\n    std::string speak() const override { return \"woof\"; }\n};\n\nclass Robot : public Speaker {\npublic:\n    explicit Robot(unsigned id) : id_(id) {}\n    std::string speak() const override { return std::format(\"beep {}\", id_); }\n\nprivate:\n    unsigned id_;\n};\n\nvoid introduce(const Speaker& s) {   // any class that derives from Speaker\n    std::cout << s.speak() << \" / \" << s.shout() << \"\\n\";\n}\n\nint main() {\n    introduce(Dog{});\n    introduce(Robot{7});\n}\n",
+   "out": "woof / WOOF\nbeep 7 / BEEP 7\n"
+  }
+ },
+ "faq": [],
+ "snippets": {
+  "assoc.rs": {
+   "code": "use std::any::type_name;\n\ntrait Container {\n    type Item; // chosen by each implementing type\n    const KIND: &'static str; // a constant, also chosen per type\n\n    fn first(&self) -> Option<&Self::Item>;\n}\n\nstruct Names(Vec<String>);\nstruct Counts(Vec<u32>);\n\nimpl Container for Names {\n    type Item = String;\n    const KIND: &'static str = \"names\";\n\n    fn first(&self) -> Option<&String> {\n        self.0.first()\n    }\n}\n\nimpl Container for Counts {\n    type Item = u32;\n    const KIND: &'static str = \"counts\";\n\n    fn first(&self) -> Option<&u32> {\n        self.0.first()\n    }\n}\n\nfn show<C: Container>(c: &C) {\n    println!(\n        \"{}: Item is {}, first is {}\",\n        C::KIND,\n        type_name::<C::Item>(),\n        c.first().is_some()\n    );\n}\n\nfn main() {\n    show(&Names(vec![String::from(\"ana\")]));\n    show(&Counts(vec![]));\n}\n",
+   "out": "names: Item is alloc::string::String, first is true\ncounts: Item is u32, first is false\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "bare-trait.fail.rs": {
+   "code": "trait Speaker {\n    fn speak(&self) -> String;\n}\n\n// A trait is not a type: its bare name is refused in all three places.\nfn param(s: &Speaker) -> usize {\n    s.speak().len()\n}\n\nfn list(v: Vec<Speaker>) -> usize {\n    v.len()\n}\n\nfn result() -> Speaker {\n    todo!()\n}\n\nfn main() {}\n",
+   "error": "error[E0782]: expected a type, found a trait\n --> src/main.rs:6:14\n  |\n6 | fn param(s: &Speaker) -> usize {\n  |              ^^^^^^^\n  |\nhelp: use a new generic type parameter, constrained by `Speaker`\n  |\n6 - fn param(s: &Speaker) -> usize {\n6 + fn param<T: Speaker>(s: &T) -> usize {\n  |\nhelp: you can also use an opaque type, but users won't be able to specify the type parameter when calling the `fn`, having to rely exclusively on type inference\n  |\n6 | fn param(s: &impl Speaker) -> usize {\n  |              ++++\nhelp: alternatively, use a trait object to accept any type that implements `Speaker`, accessing its methods at runtime using dynamic dispatch\n  |\n6 | fn param(s: &dyn Speaker) -> usize {\n  |              +++\n\nerror[E0782]: expected a type, found a trait\n  --> src/main.rs:10:16\n   |\n10 | fn list(v: Vec<Speaker>) -> usize {\n   |                ^^^^^^^\n   |\nhelp: you can add the `dyn` keyword if you want a trait object\n   |\n10 | fn list(v: Vec<dyn Speaker>) -> usize {\n   |                +++\n\nerror[E0782]: expected a type, found a trait\n  --> src/main.rs:14:16\n   |\n14 | fn result() -> Speaker {\n   |                ^^^^^^^\n   |\nhelp: use `impl Speaker` to return an opaque type, as long as you return a single underlying type\n   |\n14 | fn result() -> impl Speaker {\n   |                ++++\nhelp: alternatively, you can return an owned trait object\n   |\n14 | fn result() -> Box<dyn Speaker> {\n   |                +++++++        +\n",
+   "lang": "rust"
+  },
+  "blanket.rs": {
+   "code": "use std::fmt::Display;\n\ntrait Shout {\n    fn shout(&self) -> String;\n}\n\n// Every type that implements Display gets Shout, with no per-type impl.\nimpl<T: Display> Shout for T {\n    fn shout(&self) -> String {\n        self.to_string().to_uppercase() + \"!\"\n    }\n}\n\nstruct Robot {\n    id: u32,\n}\n\nimpl Display for Robot {\n    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {\n        write!(f, \"robot {}\", self.id)\n    }\n}\n\nfn main() {\n    println!(\"&str: {}\", \"hello\".shout());\n    println!(\"i32: {}\", 42.shout());\n    println!(\"Robot: {}\", Robot { id: 7 }.shout());\n}\n",
+   "out": "&str: HELLO!\ni32: 42!\nRobot: ROBOT 7!\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "bounds.rs": {
+   "code": "use std::fmt::Display;\n\ntrait Speaker {\n    fn speak(&self) -> String;\n}\n\nstruct Dog;\nstruct Robot {\n    id: u32,\n}\n\nimpl Speaker for Dog {\n    fn speak(&self) -> String {\n        String::from(\"woof\")\n    }\n}\n\nimpl Speaker for Robot {\n    fn speak(&self) -> String {\n        format!(\"beep {}\", self.id)\n    }\n}\n\nimpl Display for Robot {\n    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {\n        write!(f, \"robot #{}\", self.id)\n    }\n}\n\n// 1. a type parameter with a bound\nfn intro_a<T: Speaker>(s: &T) -> String {\n    format!(\"a: {}\", s.speak())\n}\n\n// 2. the same, written as `impl Trait` in the parameter\nfn intro_b(s: &impl Speaker) -> String {\n    format!(\"b: {}\", s.speak())\n}\n\n// 3. the same again, with the bound moved into a where clause\nfn intro_c<T>(s: &T) -> String\nwhere\n    T: Speaker,\n{\n    format!(\"c: {}\", s.speak())\n}\n\n// several bounds are joined with +\nfn label<T: Speaker + Display>(s: &T) -> String {\n    format!(\"{} says {}\", s, s.speak())\n}\n\nfn main() {\n    println!(\"{}\", intro_a(&Dog));\n    println!(\"{}\", intro_b(&Dog));\n    println!(\"{}\", intro_c(&Robot { id: 7 }));\n    println!(\"{}\", label(&Robot { id: 7 }));\n}\n",
+   "out": "a: woof\nb: woof\nc: beep 7\nrobot #7 says beep 7\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-orphan-param.rs": {
+   "code": "// Backs the lesson's remark: a local type among the trait's own parameters is allowed.\nstruct Meters(f64);\n\nimpl From<Meters> for f64 {\n    fn from(m: Meters) -> f64 {\n        m.0\n    }\n}\n\nfn main() {\n    let x: f64 = Meters(2.5).into();\n    assert_eq!(x, 2.5);\n}\n",
+   "out": "",
+   "lang": "rust",
+   "exit": 0
+  },
+  "dispatch.rs": {
+   "code": "use std::any::type_name;\n\ntrait Speaker {\n    fn speak(&self) -> String;\n}\n\nstruct Dog;\nstruct Robot {\n    id: u32,\n}\n\nimpl Speaker for Dog {\n    fn speak(&self) -> String {\n        String::from(\"woof\")\n    }\n}\n\nimpl Speaker for Robot {\n    fn speak(&self) -> String {\n        format!(\"beep {}\", self.id)\n    }\n}\n\n// Generic: T is one concrete type, known when the program is compiled.\nfn generic<T: Speaker>(s: &T) {\n    println!(\"generic: T = {}, says {}\", type_name::<T>(), s.speak());\n}\n\nfn main() {\n    generic(&Dog);\n    generic(&Robot { id: 7 });\n\n    // dyn: one list holding different types; the method is looked up while running.\n    let crowd: Vec<Box<dyn Speaker>> = vec![Box::new(Dog), Box::new(Robot { id: 7 })];\n    for s in &crowd {\n        println!(\"dyn: {}\", s.speak());\n    }\n}\n",
+   "out": "generic: T = main::Dog, says woof\ngeneric: T = main::Robot, says beep 7\ndyn: woof\ndyn: beep 7\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "explicit-call.rs": {
+   "code": "trait Vehicle {\n    fn start(&self) -> String;\n}\n\ntrait Appliance {\n    fn start(&self) -> String;\n    fn make() -> String; // no self: an associated function\n}\n\nstruct Car;\n\nimpl Car {\n    fn start(&self) -> String {\n        String::from(\"Car::start (its own method)\")\n    }\n}\n\nimpl Vehicle for Car {\n    fn start(&self) -> String {\n        String::from(\"Vehicle::start\")\n    }\n}\n\nimpl Appliance for Car {\n    fn start(&self) -> String {\n        String::from(\"Appliance::start\")\n    }\n\n    fn make() -> String {\n        String::from(\"Appliance::make\")\n    }\n}\n\nfn main() {\n    let car = Car;\n    println!(\"car.start(): {}\", car.start());\n    println!(\"Vehicle::start(&car): {}\", Vehicle::start(&car));\n    println!(\"Appliance::start(&car): {}\", Appliance::start(&car));\n    println!(\"<Car as Appliance>::make(): {}\", <Car as Appliance>::make());\n}\n",
+   "out": "car.start(): Car::start (its own method)\nVehicle::start(&car): Vehicle::start\nAppliance::start(&car): Appliance::start\n<Car as Appliance>::make(): Appliance::make\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "first-trait.rs": {
+   "code": "trait Speaker {\n    fn speak(&self) -> String; // required: every type writes its own\n\n    fn shout(&self) -> String {\n        // default: built on the required method\n        self.speak().to_uppercase()\n    }\n}\n\nstruct Dog;\nstruct Robot {\n    id: u32,\n}\nstruct Parrot {\n    phrase: String,\n}\n\nimpl Speaker for Dog {\n    fn speak(&self) -> String {\n        String::from(\"woof\")\n    }\n}\n\nimpl Speaker for Robot {\n    fn speak(&self) -> String {\n        format!(\"beep {}\", self.id)\n    }\n}\n\nimpl Speaker for Parrot {\n    fn speak(&self) -> String {\n        self.phrase.clone()\n    }\n\n    fn shout(&self) -> String {\n        // replaces the default\n        format!(\"{}!!\", self.speak())\n    }\n}\n\nfn main() {\n    let robot = Robot { id: 7 };\n    let parrot = Parrot {\n        phrase: String::from(\"hello\"),\n    };\n    println!(\"dog.speak(): {}\", Dog.speak());\n    println!(\"dog.shout(): {}\", Dog.shout());\n    println!(\"robot.shout(): {}\", robot.shout());\n    println!(\"parrot.shout(): {}\", parrot.shout());\n}\n",
+   "out": "dog.speak(): woof\ndog.shout(): WOOF\nrobot.shout(): BEEP 7\nparrot.shout(): hello!!\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "foreign.rs": {
+   "code": "trait Describe {\n    fn describe(&self) -> String;\n}\n\nimpl Describe for i32 {\n    fn describe(&self) -> String {\n        format!(\"the number {}\", self)\n    }\n}\n\nimpl Describe for &str {\n    fn describe(&self) -> String {\n        format!(\"the text {:?}\", self)\n    }\n}\n\nimpl<T: Describe> Describe for Vec<T> {\n    fn describe(&self) -> String {\n        let parts: Vec<String> = self.iter().map(|item| item.describe()).collect();\n        format!(\"a list of [{}]\", parts.join(\", \"))\n    }\n}\n\nfn main() {\n    println!(\"{}\", 7.describe());\n    println!(\"{}\", \"hi\".describe());\n    println!(\"{}\", vec![1, 2].describe());\n}\n",
+   "out": "the number 7\nthe text \"hi\"\na list of [the number 1, the number 2]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "impl-return.fail.rs": {
+   "code": "trait Speaker {\n    fn speak(&self) -> String;\n}\n\nstruct Dog;\nstruct Robot;\n\nimpl Speaker for Dog {\n    fn speak(&self) -> String {\n        String::from(\"woof\")\n    }\n}\n\nimpl Speaker for Robot {\n    fn speak(&self) -> String {\n        String::from(\"beep\")\n    }\n}\n\nfn pick(dog: bool) -> impl Speaker {\n    if dog { Dog } else { Robot }\n}\n\nfn main() {\n    println!(\"{}\", pick(true).speak());\n}\n",
+   "error": "error[E0308]: `if` and `else` have incompatible types\n  --> src/main.rs:21:27\n   |\n21 |     if dog { Dog } else { Robot }\n   |              ---          ^^^^^ expected `Dog`, found `Robot`\n   |              |\n   |              expected because of this\n   |\nhelp: you could change the return type to be a boxed trait object\n   |\n20 - fn pick(dog: bool) -> impl Speaker {\n20 + fn pick(dog: bool) -> Box<dyn Speaker> {\n   |\nhelp: if you change the return type to expect trait objects, box the returned expressions\n   |\n21 |     if dog { Box::new(Dog) } else { Box::new(Robot) }\n   |              +++++++++   +          +++++++++     +\n",
+   "lang": "rust"
+  },
+  "impl-return.rs": {
+   "code": "trait Speaker {\n    fn speak(&self) -> String;\n}\n\nstruct Dog;\nstruct Robot;\n\nimpl Speaker for Dog {\n    fn speak(&self) -> String {\n        String::from(\"woof\")\n    }\n}\n\nimpl Speaker for Robot {\n    fn speak(&self) -> String {\n        String::from(\"beep\")\n    }\n}\n\n// One concrete type per function: the caller sees only \"a Speaker\".\nfn make_dog() -> impl Speaker {\n    Dog\n}\n\n// Different types chosen at run time need a trait object.\nfn pick(dog: bool) -> Box<dyn Speaker> {\n    if dog { Box::new(Dog) } else { Box::new(Robot) }\n}\n\nfn main() {\n    println!(\"make_dog(): {}\", make_dog().speak());\n    println!(\"pick(false): {}\", pick(false).speak());\n}\n",
+   "out": "make_dog(): woof\npick(false): beep\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "layout.rs": {
+   "code": "use std::mem::size_of;\n\ntrait Speaker {\n    fn speak(&self) -> String;\n}\n\nstruct Dog;\nstruct Robot {\n    id: u32,\n}\n\nimpl Speaker for Dog {\n    fn speak(&self) -> String {\n        String::from(\"woof\")\n    }\n}\n\nimpl Speaker for Robot {\n    fn speak(&self) -> String {\n        format!(\"beep {}\", self.id)\n    }\n}\n\nfn main() {\n    println!(\"size_of::<Dog>(): {}\", size_of::<Dog>());\n    println!(\"size_of::<Robot>(): {}\", size_of::<Robot>());\n    println!(\"size_of::<u32>(): {}\", size_of::<u32>());\n    println!(\"{} {}\", Dog.speak(), Robot { id: 1 }.speak());\n}\n",
+   "out": "size_of::<Dog>(): 0\nsize_of::<Robot>(): 4\nsize_of::<u32>(): 4\nwoof beep 1\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "missing-item.fail.rs": {
+   "code": "trait Speaker {\n    fn speak(&self) -> String;\n    fn volume(&self) -> u8;\n}\n\nstruct Dog;\n\nimpl Speaker for Dog {\n    fn speak(&self) -> String {\n        String::from(\"woof\")\n    }\n}\n\nfn main() {\n    println!(\"{}\", Dog.speak());\n}\n",
+   "error": "error[E0046]: not all trait items implemented, missing: `volume`\n --> src/main.rs:8:1\n  |\n3 |     fn volume(&self) -> u8;\n  |     ----------------------- `volume` from trait\n...\n8 | impl Speaker for Dog {\n  | ^^^^^^^^^^^^^^^^^^^^ missing `volume` in implementation\n",
+   "lang": "rust"
+  },
+  "mixed-vec.fail.rs": {
+   "code": "trait Speaker {\n    fn speak(&self) -> String;\n}\n\nstruct Dog;\nstruct Robot;\n\nimpl Speaker for Dog {\n    fn speak(&self) -> String {\n        String::from(\"woof\")\n    }\n}\n\nimpl Speaker for Robot {\n    fn speak(&self) -> String {\n        String::from(\"beep\")\n    }\n}\n\nfn main() {\n    let crowd = vec![Dog, Robot];\n    println!(\"{}\", crowd.len());\n}\n",
+   "error": "error[E0308]: mismatched types\n  --> src/main.rs:21:27\n   |\n21 |     let crowd = vec![Dog, Robot];\n   |                           ^^^^^ expected `Dog`, found `Robot`\n",
+   "lang": "rust"
+  },
+  "newtype.rs": {
+   "code": "use std::fmt;\n\nstruct Numbers(Vec<i32>); // a wrapper type that belongs to this crate\n\nimpl fmt::Display for Numbers {\n    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {\n        write!(f, \"{} numbers\", self.0.len())\n    }\n}\n\nfn main() {\n    println!(\"{}\", Numbers(vec![1, 2, 3]));\n}\n",
+   "out": "3 numbers\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "no-fields.fail.rs": {
+   "code": "trait Named {\n    name: String,\n}\n\nfn main() {}\n",
+   "error": "error: expected one of `!` or `::`, found `:`\n --> src/main.rs:2:9\n  |\n1 | trait Named {\n  |             - while parsing this item list starting here\n2 |     name: String,\n  |         ^ expected one of `!` or `::`\n3 | }\n  | - the item list ends here",
+   "lang": "rust"
+  },
+  "no-impl.fail.rs": {
+   "code": "trait Speaker {\n    fn speak(&self) -> String;\n}\n\nstruct Dog;\nstruct Rock;\n\nimpl Speaker for Dog {\n    fn speak(&self) -> String {\n        String::from(\"woof\")\n    }\n}\n\nfn introduce<T: Speaker>(s: &T) {\n    println!(\"{}\", s.speak());\n}\n\nfn main() {\n    introduce(&Dog);\n    introduce(&Rock);\n}\n",
+   "error": "error[E0277]: the trait bound `Rock: Speaker` is not satisfied\n  --> src/main.rs:20:15\n   |\n20 |     introduce(&Rock);\n   |     --------- ^^^^^ unsatisfied trait bound\n   |     |\n   |     required by a bound introduced by this call\n   |\nhelp: the trait `Speaker` is not implemented for `Rock`\n  --> src/main.rs:6:1\n   |\n 6 | struct Rock;\n   | ^^^^^^^^^^^\nhelp: the trait `Speaker` is implemented for `Dog`\n  --> src/main.rs:8:1\n   |\n 8 | impl Speaker for Dog {\n   | ^^^^^^^^^^^^^^^^^^^^\nnote: required by a bound in `introduce`\n  --> src/main.rs:14:17\n   |\n14 | fn introduce<T: Speaker>(s: &T) {\n   |                 ^^^^^^^ required by this bound in `introduce`\n",
+   "lang": "rust"
+  },
+  "no-method.fail.rs": {
+   "code": "trait Speaker {\n    fn speak(&self) -> String;\n}\n\nstruct Dog;\nstruct Rock;\n\nimpl Speaker for Dog {\n    fn speak(&self) -> String {\n        String::from(\"woof\")\n    }\n}\n\nfn main() {\n    println!(\"{}\", Dog.speak());\n    println!(\"{}\", Rock.speak());\n}\n",
+   "error": "error[E0599]: no method named `speak` found for struct `Rock` in the current scope\n  --> src/main.rs:16:25\n   |\n 6 | struct Rock;\n   | ----------- method `speak` not found for this struct\n...\n16 |     println!(\"{}\", Rock.speak());\n   |                         ^^^^^ method not found in `Rock`\n   |\n   = help: items from traits can only be used if the trait is implemented and in scope\nnote: `Speaker` defines an item `speak`, perhaps you need to implement it\n  --> src/main.rs:1:1\n   |\n 1 | trait Speaker {\n   | ^^^^^^^^^^^^^\n",
+   "lang": "rust"
+  },
+  "not-in-scope.fail.rs": {
+   "code": "mod zoo {\n    pub trait Speaker {\n        fn speak(&self) -> String;\n    }\n\n    pub struct Dog;\n\n    impl Speaker for Dog {\n        fn speak(&self) -> String {\n            String::from(\"woof\")\n        }\n    }\n}\n\nfn main() {\n    let dog = zoo::Dog;\n    println!(\"{}\", dog.speak());\n}\n",
+   "error": "error[E0599]: no method named `speak` found for struct `Dog` in the current scope\n  --> src/main.rs:17:24\n   |\n 3 |         fn speak(&self) -> String;\n   |            ----- the method is available for `Dog` here\n...\n 6 |     pub struct Dog;\n   |     -------------- method `speak` not found for this struct\n...\n17 |     println!(\"{}\", dog.speak());\n   |                        ^^^^^ method not found in `Dog`\n   |\n   = help: items from traits can only be used if the trait is in scope\nhelp: trait `Speaker` which provides `speak` is implemented but not in scope; perhaps you want to import it\n   |\n 1 + use crate::zoo::Speaker;",
+   "lang": "rust"
+  },
+  "orphan.fail.rs": {
+   "code": "use std::fmt;\n\nimpl fmt::Display for Vec<i32> {\n    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {\n        write!(f, \"{} numbers\", self.len())\n    }\n}\n\nfn main() {\n    println!(\"{}\", vec![1, 2, 3]);\n}\n",
+   "error": "error[E0117]: only traits defined in the current crate can be implemented for types defined outside of the crate\n --> src/main.rs:3:1\n  |\n3 | impl fmt::Display for Vec<i32> {\n  | ^^^^^^^^^^^^^^^^^^^^^^--------\n  |                       |\n  |                       `Vec` is not defined in the current crate\n  |\n  = note: impl doesn't have any local type before any uncovered type parameters\n  = note: for more information see https://doc.rust-lang.org/reference/items/implementations.html#orphan-rules\n  = note: define and implement a trait or new type instead\n",
+   "lang": "rust"
+  },
+  "overlap.fail.rs": {
+   "code": "use std::fmt::Display;\n\ntrait Describe {\n    fn describe(&self) -> String;\n}\n\nimpl<T: Display> Describe for T {\n    fn describe(&self) -> String {\n        format!(\"something printable: {}\", self)\n    }\n}\n\nimpl Describe for i32 {\n    fn describe(&self) -> String {\n        format!(\"the number {}\", self)\n    }\n}\n\nfn main() {\n    println!(\"{}\", 7.describe());\n}\n",
+   "error": "error[E0119]: conflicting implementations of trait `Describe` for type `i32`\n  --> src/main.rs:13:1\n   |\n 7 | impl<T: Display> Describe for T {\n   | ------------------------------- first implementation here\n...\n13 | impl Describe for i32 {\n   | ^^^^^^^^^^^^^^^^^^^^^ conflicting implementation for `i32`\n",
+   "lang": "rust"
+  },
+  "same-default.fail.rs": {
+   "code": "trait Vehicle {\n    fn start(&self) -> String {\n        String::from(\"Vehicle::start\")\n    }\n}\n\ntrait Appliance {\n    fn start(&self) -> String {\n        String::from(\"Appliance::start\")\n    }\n}\n\nstruct Car;\n\n// Both impls are accepted, even though both traits have a default `start`.\nimpl Vehicle for Car {}\nimpl Appliance for Car {}\n\nfn main() {\n    println!(\"{}\", Car.start());\n}\n",
+   "error": "error[E0034]: multiple applicable items in scope\n  --> src/main.rs:20:24\n   |\n20 |     println!(\"{}\", Car.start());\n   |                        ^^^^^ multiple `start` found\n   |\nnote: candidate #1 is defined in an impl of the trait `Appliance` for the type `Car`\n  --> src/main.rs:8:5\n   |\n 8 |     fn start(&self) -> String {\n   |     ^^^^^^^^^^^^^^^^^^^^^^^^^\nnote: candidate #2 is defined in an impl of the trait `Vehicle` for the type `Car`\n  --> src/main.rs:2:5\n   |\n 2 |     fn start(&self) -> String {\n   |     ^^^^^^^^^^^^^^^^^^^^^^^^^\nhelp: disambiguate the method for candidate #1\n   |\n20 -     println!(\"{}\", Car.start());\n20 +     println!(\"{}\", Appliance::start(&Car));\n   |\nhelp: disambiguate the method for candidate #2\n   |\n20 -     println!(\"{}\", Car.start());\n20 +     println!(\"{}\", Vehicle::start(&Car));",
+   "lang": "rust"
+  },
+  "scope-ok.rs": {
+   "code": "mod zoo {\n    pub trait Speaker {\n        fn speak(&self) -> String;\n    }\n\n    pub struct Dog;\n\n    impl Speaker for Dog {\n        fn speak(&self) -> String {\n            String::from(\"woof\")\n        }\n    }\n}\n\n// No `use` here: the bound names the trait, so t.speak() is reachable.\nfn generic<T: zoo::Speaker>(t: &T) -> String {\n    t.speak()\n}\n\n// The same for a trait object.\nfn dynamic(t: &dyn zoo::Speaker) -> String {\n    t.speak()\n}\n\nmod kennel {\n    // `as _` brings the trait into scope for method calls without taking its name.\n    use crate::zoo::Speaker as _;\n\n    pub fn call() -> String {\n        crate::zoo::Dog.speak()\n    }\n}\n\nfn main() {\n    println!(\"generic: {}\", generic(&zoo::Dog));\n    println!(\"dyn: {}\", dynamic(&zoo::Dog));\n    println!(\"kennel: {}\", kennel::call());\n}\n",
+   "out": "generic: woof\ndyn: woof\nkennel: woof\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "super-call.panic.rs": {
+   "code": "trait Speaker {\n    fn speak(&self) -> String;\n\n    fn shout(&self) -> String {\n        self.speak().to_uppercase()\n    }\n}\n\nstruct Parrot;\n\nimpl Speaker for Parrot {\n    fn speak(&self) -> String {\n        String::from(\"hello\")\n    }\n\n    // There is no `super` call. This names Parrot's own shout again.\n    #[allow(unconditional_recursion)]\n    fn shout(&self) -> String {\n        format!(\"{}!!\", Speaker::shout(self))\n    }\n}\n\nfn main() {\n    println!(\"{}\", Parrot.shout());\n}\n",
+   "out": "\nthread 'main' (1) has overflowed its stack\nfatal runtime error: stack overflow, aborting\n",
+   "lang": "rust",
+   "exit": -6
+  },
+  "supertrait.fail.rs": {
+   "code": "trait Speaker {\n    fn speak(&self) -> String;\n}\n\ntrait Pet: Speaker {\n    fn name(&self) -> String;\n}\n\nstruct Cat;\n\nimpl Pet for Cat {\n    fn name(&self) -> String {\n        String::from(\"Tom\")\n    }\n}\n\nfn main() {\n    println!(\"{}\", Cat.name());\n}\n",
+   "error": "error[E0277]: the trait bound `Cat: Speaker` is not satisfied\n  --> src/main.rs:11:14\n   |\n11 | impl Pet for Cat {\n   |              ^^^ unsatisfied trait bound\n   |\nhelp: the trait `Speaker` is not implemented for `Cat`\n  --> src/main.rs:9:1\n   |\n 9 | struct Cat;\n   | ^^^^^^^^^^\nhelp: this trait has no implementations, consider adding one\n  --> src/main.rs:1:1\n   |\n 1 | trait Speaker {\n   | ^^^^^^^^^^^^^\nnote: required by a bound in `Pet`\n  --> src/main.rs:5:12\n   |\n 5 | trait Pet: Speaker {\n   |            ^^^^^^^ required by this bound in `Pet`\n\nerror[E0277]: the trait bound `Cat: Speaker` is not satisfied\n  --> src/main.rs:18:24\n   |\n18 |     println!(\"{}\", Cat.name());\n   |                        ^^^^ unsatisfied trait bound\n   |\nhelp: the trait `Speaker` is not implemented for `Cat`\n  --> src/main.rs:9:1\n   |\n 9 | struct Cat;\n   | ^^^^^^^^^^\nhelp: this trait has no implementations, consider adding one\n  --> src/main.rs:1:1\n   |\n 1 | trait Speaker {\n   | ^^^^^^^^^^^^^\nnote: required by a bound in `Pet::name`\n  --> src/main.rs:5:12\n   |\n 5 | trait Pet: Speaker {\n   |            ^^^^^^^ required by this bound in `Pet::name`\n 6 |     fn name(&self) -> String;\n   |        ---- required by a bound in this associated function\n",
+   "lang": "rust"
+  },
+  "supertrait.rs": {
+   "code": "trait Speaker {\n    fn speak(&self) -> String;\n}\n\n// A Pet must also be a Speaker: Pet's own methods may call speak().\ntrait Pet: Speaker {\n    fn name(&self) -> String;\n\n    fn introduce(&self) -> String {\n        format!(\"{} says {}\", self.name(), self.speak())\n    }\n}\n\nstruct Dog;\n\nimpl Speaker for Dog {\n    fn speak(&self) -> String {\n        String::from(\"woof\")\n    }\n}\n\nimpl Pet for Dog {\n    fn name(&self) -> String {\n        String::from(\"Rex\")\n    }\n}\n\n// A bound on Pet also gives access to Speaker's methods.\nfn loud<P: Pet>(p: &P) -> String {\n    p.speak().to_uppercase()\n}\n\nfn main() {\n    println!(\"introduce(): {}\", Dog.introduce());\n    println!(\"loud(): {}\", loud(&Dog));\n}\n",
+   "out": "introduce(): Rex says woof\nloud(): WOOF\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "abc.fail.py": {
+   "code": "from abc import ABC, abstractmethod\n\n\nclass Speaker(ABC):\n    @abstractmethod\n    def speak(self) -> str: ...\n\n\nclass Rock(Speaker):  # forgot to write speak\n    pass\n\n\nprint(\"before the instance\")\nRock()\n",
+   "out": "before the instance\nTraceback (most recent call last):\n  File \"main.py\", line 14, in <module>\n    Rock()\n    ~~~~^^\nTypeError: Can't instantiate abstract class Rock without an implementation for abstract method 'speak'\n",
+   "lang": "python",
+   "exit": 1
+  },
+  "adapter.java": {
+   "code": "public class Main {\n    interface Speaker {\n        String speak();\n    }\n\n    // The standard answer for a type you cannot edit: a wrapper that holds it.\n    static class SpeakingString implements Speaker {\n        private final String text;\n\n        SpeakingString(String text) {\n            this.text = text;\n        }\n\n        public String speak() {\n            return \"the text \" + text;\n        }\n    }\n\n    static <T extends Speaker> String introduce(T s) {\n        return s.speak();\n    }\n\n    public static void main(String[] args) {\n        System.out.println(introduce(new SpeakingString(\"hi\")));\n    }\n}\n",
+   "out": "the text hi\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "concept.cpp": {
+   "code": "#include <concepts>\n#include <iostream>\n#include <string>\n\ntemplate <typename T>\nconcept Speaker = requires(const T& t) {\n    { t.speak() } -> std::convertible_to<std::string>;\n};\n\n// No common base class: any type with a matching speak() qualifies.\nstruct Dog {\n    std::string speak() const { return \"woof\"; }\n};\nstruct Robot {\n    std::string speak() const { return \"beep\"; }\n};\n\ntemplate <typename T>\n    requires Speaker<T>\nvoid introduce(const T& s) {\n    std::cout << s.speak() << \"\\n\";\n}\n\nint main() {\n    introduce(Dog{});\n    introduce(Robot{});\n}\n",
+   "out": "woof\nbeep\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "concept.fail.cpp": {
+   "code": "#include <concepts>\n#include <iostream>\n#include <string>\n\ntemplate <typename T>\nconcept Speaker = requires(const T& t) {\n    { t.speak() } -> std::convertible_to<std::string>;\n};\n\nstruct Rock {};\n\ntemplate <typename T>\n    requires Speaker<T>\nvoid introduce(const T& s) {\n    std::cout << s.speak() << \"\\n\";\n}\n\nint main() {\n    introduce(Rock{});\n}\n",
+   "error": "main.cpp: In function ‘int main()’:\nmain.cpp:19:14: error: no matching function for call to ‘introduce(Rock)’\n   19 |     introduce(Rock{});\n      |     ~~~~~~~~~^~~~~~~~\nmain.cpp:14:6: note: candidate: ‘template<class T>  requires  Speaker<T> void introduce(const T&)’\n   14 | void introduce(const T& s) {\n      |      ^~~~~~~~~\nmain.cpp:14:6: note:   template argument deduction/substitution failed:\nmain.cpp:14:6: note: constraints not satisfied\nmain.cpp: In substitution of ‘template<class T>  requires  Speaker<T> void introduce(const T&) [with T = Rock]’:\nmain.cpp:19:14:   required from here\n   19 |     introduce(Rock{});\n      |     ~~~~~~~~~^~~~~~~~\nmain.cpp:6:9:   required for the satisfaction of ‘Speaker<T>’ [with T = Rock]\nmain.cpp:6:19:   in requirements with ‘const T& t’ [with T = Rock]\nmain.cpp:7:14: note: the required expression ‘t.speak()’ is invalid\n    7 |     { t.speak() } -> std::convertible_to<std::string>;\n      |       ~~~~~~~^~\ncc1plus: note: set ‘-fconcepts-diagnostics-depth=’ to at least 2 for more detail",
+   "lang": "cpp"
+  },
+  "default-iface.fail.cs": {
+   "code": "Dog dog = new Dog();\nISpeaker viaInterface = dog;\n\nConsole.WriteLine(viaInterface.Shout()); // works through the interface type\nConsole.WriteLine(dog.Shout());          // not through the class type\n\ninterface ISpeaker\n{\n    string Speak();\n\n    string Shout() => Speak().ToUpper();\n}\n\nclass Dog : ISpeaker\n{\n    public string Speak() => \"woof\";\n}\n",
+   "error": "Program.cs(5,23): error CS1061: 'Dog' does not contain a definition for 'Shout' and no accessible extension method 'Shout' accepting a first argument of type 'Dog' could be found (are you missing a using directive or an assembly reference?)",
+   "lang": "csharp"
+  },
+  "duplicate-method.fail.go": {
+   "code": "package main\n\ntype Vehicle interface{ Start() string }\ntype Appliance interface{ Start() string }\n\ntype Car struct{}\n\nfunc (Car) Start() string { return \"Vehicle::Start\" }\nfunc (Car) Start() string { return \"Appliance::Start\" }\n\nfunc main() {}\n",
+   "error": "# command-line-arguments\n./main.go:9:12: method Car.Start already declared at ./main.go:8:12",
+   "lang": "go"
+  },
+  "embedding.go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"strings\"\n)\n\ntype Base struct{}\n\nfunc (Base) Speak() string { return \"...\" }\n\n// Shout is built on Speak, as a default method would be.\nfunc (b Base) Shout() string { return strings.ToUpper(b.Speak()) }\n\ntype Dog struct{ Base }\n\nfunc (Dog) Speak() string { return \"woof\" }\n\nfunc main() {\n\td := Dog{}\n\tfmt.Println(\"d.Speak():\", d.Speak())\n\tfmt.Println(\"d.Shout():\", d.Shout()) // Base.Shout calls Base.Speak, not Dog.Speak\n}\n",
+   "out": "d.Speak(): woof\nd.Shout(): ...\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "extension-bound.cs": {
+   "code": "Console.WriteLine(new Dog().Shout());\n\ninterface ISpeaker\n{\n    string Speak();\n}\n\nclass Dog : ISpeaker\n{\n    public string Speak() => \"woof\";\n}\n\nstatic class SpeakerExtensions\n{\n    // An extension with a bound: every ISpeaker gets Shout().\n    public static string Shout<T>(this T s) where T : ISpeaker => s.Speak().ToUpper();\n}\n",
+   "out": "WOOF\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "extension-bound.kt": {
+   "code": "interface Speaker {\n    fun speak(): String\n}\n\nclass Dog : Speaker {\n    override fun speak() = \"woof\"\n}\n\n// An extension on a bounded type parameter: every Speaker gets shout().\nfun <T : Speaker> T.shout(): String = speak().uppercase()\n\nfun main() {\n    println(Dog().shout())\n}\n",
+   "out": "WOOF\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "extension.fail.cs": {
+   "code": "// An extension method adds Speak() to string...\nConsole.WriteLine(\"hi\".Speak());\n\nISpeaker s = \"hi\"; // ...but string is still not an ISpeaker\n\ninterface ISpeaker\n{\n    string Speak();\n}\n\nstatic class StringExtensions\n{\n    public static string Speak(this string text) => $\"the text {text}\";\n}\n",
+   "error": "Program.cs(4,14): error CS0029: Cannot implicitly convert type 'string' to 'ISpeaker'",
+   "lang": "csharp"
+  },
+  "extension.fail.kt": {
+   "code": "interface Speaker {\n    fun speak(): String\n}\n\n// An extension function adds speak() to String...\nfun String.speak(): String = \"the text $this\"\n\nfun introduce(s: Speaker) = println(s.speak())\n\nfun main() {\n    println(\"hi\".speak())\n    introduce(\"hi\") // ...but String is still not a Speaker\n}\n",
+   "error": "Main.kt:12:15: error: argument type mismatch: actual type is 'String', but 'Speaker' was expected.\n    introduce(\"hi\") // ...but String is still not a Speaker\n              ^^^^",
+   "lang": "kotlin"
+  },
+  "foreign-method.fail.go": {
+   "code": "package main\n\nimport \"fmt\"\n\ntype Speaker interface{ Speak() string }\n\nfunc (i int) Speak() string { return fmt.Sprintf(\"the number %d\", i) }\n\nfunc main() {\n\tfmt.Println(\"unreachable: the file does not compile\")\n}\n",
+   "error": "# command-line-arguments\n./main.go:7:9: cannot define new methods on non-local type int",
+   "lang": "go"
+  },
+  "implicit.go": {
+   "code": "package main\n\nimport \"fmt\"\n\n// Robot is written first and knows nothing about Speaker.\ntype Robot struct{ ID int }\n\nfunc (r Robot) Speak() string { return fmt.Sprintf(\"beep %d\", r.ID) }\n\n// Later, the code that needs a Speaker describes the method it calls.\ntype Speaker interface{ Speak() string }\n\nvar _ Speaker = Robot{} // optional: a compile-time check that Robot is a Speaker\n\nfunc main() {\n\tvar s Speaker = Robot{ID: 7}\n\tfmt.Println(s.Speak())\n}\n",
+   "out": "beep 7\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "protocol-default.fail.py": {
+   "code": "from typing import Protocol\n\n\nclass Speaker(Protocol):\n    def speak(self) -> str: ...\n\n    def shout(self) -> str:  # a default body\n        return self.speak().upper()\n\n\nclass Dog(Speaker):  # names the Protocol as a base: gets the default\n    def speak(self) -> str:\n        return \"woof\"\n\n\nclass Robot:  # fits by shape only\n    def speak(self) -> str:\n        return \"beep\"\n\n\nprint(\"Dog:\", Dog().shout())\nprint(\"Robot:\", Robot().shout())\n",
+   "out": "Dog: WOOF\nTraceback (most recent call last):\n  File \"main.py\", line 22, in <module>\n    print(\"Robot:\", Robot().shout())\n                    ^^^^^^^^^^^^^\nAttributeError: 'Robot' object has no attribute 'shout'\n",
+   "lang": "python",
+   "exit": 1
+  },
+  "protocol.py": {
+   "code": "from typing import Protocol, runtime_checkable\n\n\n@runtime_checkable\nclass Speaker(Protocol):\n    def speak(self) -> str: ...\n\n\nclass Robot:  # never mentions Speaker\n    def speak(self) -> str:\n        return \"beep\"\n\n\nclass Rock:\n    pass\n\n\nprint(\"Robot is a Speaker:\", isinstance(Robot(), Speaker))\nprint(\"Rock is a Speaker:\", isinstance(Rock(), Speaker))\n",
+   "out": "Robot is a Speaker: True\nRock is a Speaker: False\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "same-default.fail.java": {
+   "code": "public class Main {\n    interface Vehicle {\n        default String start() {\n            return \"Vehicle::start\";\n        }\n    }\n\n    interface Appliance {\n        default String start() {\n            return \"Appliance::start\";\n        }\n    }\n\n    // Refused at the class, before anyone calls start().\n    static class Car implements Vehicle, Appliance {}\n\n    public static void main(String[] args) {\n        System.out.println(\"unreachable: the file does not compile\");\n    }\n}\n",
+   "error": "Main.java:15: error: types Vehicle and Appliance are incompatible;\n    static class Car implements Vehicle, Appliance {}\n           ^\n  class Car inherits unrelated defaults for start() from types Vehicle and Appliance\n1 error",
+   "lang": "java"
+  },
+  "same-default.fail.kt": {
+   "code": "interface Vehicle {\n    fun start(): String = \"Vehicle::start\"\n}\n\ninterface Appliance {\n    fun start(): String = \"Appliance::start\"\n}\n\n// Refused at the class, before anyone calls start().\nclass Car : Vehicle, Appliance\n\nfun main() {\n    println(\"unreachable: the file does not compile\")\n}\n",
+   "error": "Main.kt:10:1: error: class 'Car' must override 'start' because it inherits multiple interface methods for it.\nclass Car : Vehicle, Appliance\n^^^^^^^^^",
+   "lang": "kotlin"
+  },
+  "shape.ts": {
+   "code": "interface Speaker {\n  speak(): string;\n}\n\nfunction introduce(s: Speaker): void {\n  console.log(s.speak());\n}\n\n// A bound, like `T: Speaker` in Rust.\nfunction twice<T extends Speaker>(s: T): string {\n  return s.speak() + s.speak();\n}\n\n// No class and no declaration: an object with the right shape is a Speaker.\nintroduce({ speak: () => \"beep\" });\nconsole.log(twice({ speak: () => \"beep\" }));\n",
+   "out": "beep\nbeepbeep\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "static-abstract.cs": {
+   "code": "Console.WriteLine(Describe<Dog>());\n\nstatic string Describe<T>() where T : IMaker => T.Make(); // like T::make() in Rust\n\ninterface IMaker\n{\n    static abstract string Make();\n}\n\nclass Dog : IMaker\n{\n    public static string Make() => \"dog\";\n}\n",
+   "out": "dog\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "super-call.java": {
+   "code": "public class Main {\n    interface Speaker {\n        String speak();\n\n        default String shout() {\n            return speak().toUpperCase();\n        }\n    }\n\n    static class Parrot implements Speaker {\n        public String speak() {\n            return \"hello\";\n        }\n\n        @Override\n        public String shout() {\n            return Speaker.super.shout() + \"!!\"; // the default this method replaces\n        }\n    }\n\n    public static void main(String[] args) {\n        System.out.println(new Parrot().shout());\n    }\n}\n",
+   "out": "HELLO!!\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "super-call.kt": {
+   "code": "interface Speaker {\n    fun speak(): String\n\n    fun shout(): String = speak().uppercase()\n}\n\nclass Parrot : Speaker {\n    override fun speak() = \"hello\"\n\n    override fun shout() = super<Speaker>.shout() + \"!!\" // the default this method replaces\n}\n\nfun main() {\n    println(Parrot().shout())\n}\n",
+   "out": "HELLO!!\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "third-party.go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"strings\"\n)\n\nfunc main() {\n\tvar b strings.Builder\n\tb.WriteString(\"hello\")\n\n\t// strings.Builder and fmt.Stringer come from the standard library, and\n\t// neither mentions the other. The Builder has String(), so it fits.\n\tvar s fmt.Stringer = &b\n\tfmt.Println(s.String())\n}\n",
+   "out": "hello\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "virtual-size.cpp": {
+   "code": "#include <iostream>\n\nstruct PlainDog {};\n\nstruct Speaker {\n    virtual ~Speaker() = default;\n    virtual const char* speak() const = 0;\n};\n\nstruct Dog : Speaker {\n    const char* speak() const override { return \"woof\"; }\n};\n\nint main() {\n    std::cout << \"sizeof(PlainDog): \" << sizeof(PlainDog) << \"\\n\";\n    std::cout << \"sizeof(Dog): \" << sizeof(Dog) << \"\\n\";\n    std::cout << Dog{}.speak() << \"\\n\";\n}\n",
+   "out": "sizeof(PlainDog): 1\nsizeof(Dog): 8\nwoof\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "vtable.c": {
+   "code": "#include <stdio.h>\n\nstruct Speaker; // the \"interface\": a table of function pointers, filled in by hand\n\nstruct SpeakerVTable {\n    const char* (*speak)(const struct Speaker*);\n};\n\nstruct Speaker {\n    const struct SpeakerVTable* vtable;\n};\n\nstruct Dog {\n    struct Speaker base; // must come first, so a Dog* can be used as a Speaker*\n};\n\nstatic const char* dog_speak(const struct Speaker* self) {\n    (void)self;\n    return \"woof\";\n}\n\nstatic const struct SpeakerVTable DOG_VTABLE = {dog_speak};\n\nstatic void introduce(const struct Speaker* s) {\n    printf(\"%s\\n\", s->vtable->speak(s));\n}\n\nint main(void) {\n    struct Dog dog = {{&DOG_VTABLE}};\n    introduce(&dog.base);\n    return 0;\n}\n",
+   "out": "woof\n",
+   "lang": "c",
+   "exit": 0
+  }
+ },
+ "exercises": {
+  "scores-display": {
+   "starter": "use std::fmt;\n\n// Goal: print scores as \"scores: 3, 5, 9 (total 17)\", or \"scores: none\" when empty.\n//\n// Step 1. Uncomment this block, put any body in it, and run. Read the error\n// (E0117): Display is not yours and Vec<u32> is not yours.\n//\n// impl fmt::Display for Vec<u32> {\n//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {\n//         write!(f, \"scores\")\n//     }\n// }\n//\n// Step 2. Comment it out again and write the impl for the wrapper below,\n// a type that IS yours.\nstruct Scores(Vec<u32>);\n\nimpl fmt::Display for Scores {\n    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {\n        todo!(\"write! the pieces; join the numbers with \\\", \\\"; handle the empty case\")\n    }\n}\n\nfn main() {\n    assert_eq!(\n        Scores(vec![3, 5, 9]).to_string(),\n        \"scores: 3, 5, 9 (total 17)\"\n    );\n    assert_eq!(Scores(vec![4]).to_string(), \"scores: 4 (total 4)\");\n    // Nothing to join, nothing to total.\n    assert_eq!(Scores(vec![]).to_string(), \"scores: none\");\n    // The wrapper still holds a normal Vec.\n    assert_eq!(Scores(vec![1, 2]).0.len(), 2);\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "use std::fmt;\n\n// Goal: print scores as \"scores: 3, 5, 9 (total 17)\", or \"scores: none\" when empty.\n//\n// Step 1. Uncomment this block, put any body in it, and run. Read the error\n// (E0117): Display is not yours and Vec<u32> is not yours.\n//\n// impl fmt::Display for Vec<u32> {\n//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {\n//         write!(f, \"scores\")\n//     }\n// }\n//\n// Step 2. Comment it out again and write the impl for the wrapper below,\n// a type that IS yours.\nstruct Scores(Vec<u32>);\n\nimpl fmt::Display for Scores {\n    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {\n        if self.0.is_empty() {\n            return write!(f, \"scores: none\");\n        }\n        let parts: Vec<String> = self.0.iter().map(|n| n.to_string()).collect();\n        let total: u32 = self.0.iter().sum();\n        write!(f, \"scores: {} (total {})\", parts.join(\", \"), total)\n    }\n}\n\nfn main() {\n    assert_eq!(\n        Scores(vec![3, 5, 9]).to_string(),\n        \"scores: 3, 5, 9 (total 17)\"\n    );\n    assert_eq!(Scores(vec![4]).to_string(), \"scores: 4 (total 4)\");\n    // Nothing to join, nothing to total.\n    assert_eq!(Scores(vec![]).to_string(), \"scores: none\");\n    // The wrapper still holds a normal Vec.\n    assert_eq!(Scores(vec![1, 2]).0.len(), 2);\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "shapes": {
+   "starter": "trait Shape {\n    fn area(&self) -> f64;\n    fn name(&self) -> String;\n\n    /// Default: \"<name> with area <area>\", the area with two decimals.\n    fn describe(&self) -> String {\n        todo!(\"format self.name() and self.area() with {{:.2}}\")\n    }\n}\n\nstruct Square(f64);\nstruct Circle(f64);\nstruct Triangle {\n    base: f64,\n    height: f64,\n}\n\n// Area of a square is side * side; of a circle, PI * radius * radius.\n// Names are \"square\" and \"circle\".\nimpl Shape for Square {\n    fn area(&self) -> f64 {\n        todo!(\"side * side\")\n    }\n    fn name(&self) -> String {\n        todo!(\"the name\")\n    }\n}\n\nimpl Shape for Circle {\n    fn area(&self) -> f64 {\n        todo!(\"PI * radius * radius, with std::f64::consts::PI\")\n    }\n    fn name(&self) -> String {\n        todo!(\"the name\")\n    }\n}\n\n// Triangle gives only the two required methods and has no describe().\n// Its describe() must still work, so the default belongs in the trait.\nimpl Shape for Triangle {\n    fn area(&self) -> f64 {\n        self.base * self.height / 2.0\n    }\n    fn name(&self) -> String {\n        String::from(\"triangle\")\n    }\n}\n\n/// The position of the item with the largest area, or None for an empty slice.\n/// (If two tie, either position is fine.)\nfn biggest<T: Shape>(items: &[T]) -> Option<usize> {\n    todo!(\"compare areas with total_cmp; return the winner's position\")\n}\n\n/// The total area of a mixed list: a Square next to a Circle.\n/// `&dyn Shape` is a reference to any type that implements Shape.\nfn total_area(items: &[&dyn Shape]) -> f64 {\n    todo!(\"a slice of &dyn Shape holds different types; add up the areas\")\n}\n\nfn main() {\n    assert_eq!(Square(3.0).describe(), \"square with area 9.00\");\n    assert_eq!(Circle(1.0).describe(), \"circle with area 3.14\");\n    // Triangle never wrote describe(): the default from the trait is used.\n    let t = Triangle {\n        base: 3.0,\n        height: 5.0,\n    };\n    assert_eq!(t.describe(), \"triangle with area 7.50\");\n    // `biggest` takes a slice of ONE type (T). A mixed list needs `dyn`.\n    assert_eq!(biggest(&[Square(1.0), Square(3.0), Square(2.0)]), Some(1));\n    assert_eq!(biggest(&[Circle(0.5), Circle(2.0)]), Some(1));\n    assert_eq!(biggest(&[Circle(2.0), Circle(0.5)]), Some(0));\n    // No items, no biggest.\n    assert_eq!(biggest::<Square>(&[]), None);\n    let mixed: [&dyn Shape; 3] = [&Square(2.0), &Circle(1.0), &t];\n    let expected = 4.0 + std::f64::consts::PI + 7.5;\n    assert!((total_area(&mixed) - expected).abs() < 1e-9);\n    // The default method works through `dyn` too.\n    assert_eq!(mixed[2].describe(), \"triangle with area 7.50\");\n    assert_eq!(total_area(&[]), 0.0);\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "trait Shape {\n    fn area(&self) -> f64;\n    fn name(&self) -> String;\n\n    /// Default: \"<name> with area <area>\", the area with two decimals.\n    fn describe(&self) -> String {\n        format!(\"{} with area {:.2}\", self.name(), self.area())\n    }\n}\n\nstruct Square(f64);\nstruct Circle(f64);\nstruct Triangle {\n    base: f64,\n    height: f64,\n}\n\n// Area of a square is side * side; of a circle, PI * radius * radius.\n// Names are \"square\" and \"circle\".\nimpl Shape for Square {\n    fn area(&self) -> f64 {\n        self.0 * self.0\n    }\n    fn name(&self) -> String {\n        String::from(\"square\")\n    }\n}\n\nimpl Shape for Circle {\n    fn area(&self) -> f64 {\n        std::f64::consts::PI * self.0 * self.0\n    }\n    fn name(&self) -> String {\n        String::from(\"circle\")\n    }\n}\n\n// Triangle gives only the two required methods and has no describe().\n// Its describe() must still work, so the default belongs in the trait.\nimpl Shape for Triangle {\n    fn area(&self) -> f64 {\n        self.base * self.height / 2.0\n    }\n    fn name(&self) -> String {\n        String::from(\"triangle\")\n    }\n}\n\n/// The position of the item with the largest area, or None for an empty slice.\n/// (If two tie, either position is fine.)\nfn biggest<T: Shape>(items: &[T]) -> Option<usize> {\n    items\n        .iter()\n        .enumerate()\n        .max_by(|(_, a), (_, b)| a.area().total_cmp(&b.area()))\n        .map(|(position, _)| position)\n}\n\n/// The total area of a mixed list: a Square next to a Circle.\n/// `&dyn Shape` is a reference to any type that implements Shape.\nfn total_area(items: &[&dyn Shape]) -> f64 {\n    items.iter().map(|shape| shape.area()).sum()\n}\n\nfn main() {\n    assert_eq!(Square(3.0).describe(), \"square with area 9.00\");\n    assert_eq!(Circle(1.0).describe(), \"circle with area 3.14\");\n    // Triangle never wrote describe(): the default from the trait is used.\n    let t = Triangle {\n        base: 3.0,\n        height: 5.0,\n    };\n    assert_eq!(t.describe(), \"triangle with area 7.50\");\n    // `biggest` takes a slice of ONE type (T). A mixed list needs `dyn`.\n    assert_eq!(biggest(&[Square(1.0), Square(3.0), Square(2.0)]), Some(1));\n    assert_eq!(biggest(&[Circle(0.5), Circle(2.0)]), Some(1));\n    assert_eq!(biggest(&[Circle(2.0), Circle(0.5)]), Some(0));\n    // No items, no biggest.\n    assert_eq!(biggest::<Square>(&[]), None);\n    let mixed: [&dyn Shape; 3] = [&Square(2.0), &Circle(1.0), &t];\n    let expected = 4.0 + std::f64::consts::PI + 7.5;\n    assert!((total_area(&mixed) - expected).abs() < 1e-9);\n    // The default method works through `dyn` too.\n    assert_eq!(mixed[2].describe(), \"triangle with area 7.50\");\n    assert_eq!(total_area(&[]), 0.0);\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "stats": {
+   "starter": "trait Stats {\n    /// The average, or None when there are no numbers.\n    fn mean(&self) -> Option<f64>;\n    /// The largest minus the smallest, or None when there are no numbers.\n    fn spread(&self) -> Option<i64>;\n}\n\n// Implement the trait for the slice type [i32], a type you do not own.\n// Vec<i32> and arrays can then call these methods too.\nimpl Stats for [i32] {\n    fn mean(&self) -> Option<f64> {\n        todo!(\"add up as i64 so large numbers cannot overflow, then divide\")\n    }\n\n    fn spread(&self) -> Option<i64> {\n        todo!(\"max and min return Option; the subtraction must not overflow an i32\")\n    }\n}\n\nfn main() {\n    let v = vec![2, 4, 9];\n    assert_eq!(v.mean(), Some(5.0));\n    assert_eq!(v.spread(), Some(7));\n    // Arrays and sub-slices work too.\n    assert_eq!([10, 20].mean(), Some(15.0));\n    // A mean that is not a whole number.\n    assert_eq!([1, 2].mean(), Some(1.5));\n    assert_eq!(v[1..].spread(), Some(5));\n    // Negative numbers.\n    assert_eq!([-3, 3].spread(), Some(6));\n    // Large numbers: adding them as i32 would overflow.\n    assert_eq!([i32::MAX, i32::MAX].mean(), Some(i32::MAX as f64));\n    assert_eq!([i32::MIN, i32::MAX].spread(), Some(4_294_967_295));\n    // No numbers, no answer.\n    let empty: Vec<i32> = vec![];\n    assert_eq!(empty.mean(), None);\n    assert_eq!(empty.spread(), None);\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "trait Stats {\n    /// The average, or None when there are no numbers.\n    fn mean(&self) -> Option<f64>;\n    /// The largest minus the smallest, or None when there are no numbers.\n    fn spread(&self) -> Option<i64>;\n}\n\n// Implement the trait for the slice type [i32], a type you do not own.\n// Vec<i32> and arrays can then call these methods too.\nimpl Stats for [i32] {\n    fn mean(&self) -> Option<f64> {\n        if self.is_empty() {\n            return None;\n        }\n        let total: i64 = self.iter().map(|&n| n as i64).sum();\n        Some(total as f64 / self.len() as f64)\n    }\n\n    fn spread(&self) -> Option<i64> {\n        let max = *self.iter().max()?;\n        let min = *self.iter().min()?;\n        Some(max as i64 - min as i64)\n    }\n}\n\nfn main() {\n    let v = vec![2, 4, 9];\n    assert_eq!(v.mean(), Some(5.0));\n    assert_eq!(v.spread(), Some(7));\n    // Arrays and sub-slices work too.\n    assert_eq!([10, 20].mean(), Some(15.0));\n    // A mean that is not a whole number.\n    assert_eq!([1, 2].mean(), Some(1.5));\n    assert_eq!(v[1..].spread(), Some(5));\n    // Negative numbers.\n    assert_eq!([-3, 3].spread(), Some(6));\n    // Large numbers: adding them as i32 would overflow.\n    assert_eq!([i32::MAX, i32::MAX].mean(), Some(i32::MAX as f64));\n    assert_eq!([i32::MIN, i32::MAX].spread(), Some(4_294_967_295));\n    // No numbers, no answer.\n    let empty: Vec<i32> = vec![];\n    assert_eq!(empty.mean(), None);\n    assert_eq!(empty.spread(), None);\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}

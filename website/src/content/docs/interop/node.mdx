@@ -1,0 +1,144 @@
+---
+title: "Use Rust from Node.js and TypeScript"
+description: "Build a Rust library into a Node.js addon with napi-rs, call it from JavaScript and TypeScript, and see what happens to numbers, errors, buffers, promises, callbacks and panics. The commands on the page ran in the image."
+---
+
+import { Files, Remember, Session, Tree } from '../../../components/guide'
+
+Node.js can load a compiled library; the file is called an *addon* and ends in `.node`. This page builds one, `textkit`, from Rust with [napi-rs](https://napi.rs/), and calls it from JavaScript and TypeScript. Everything ran with Rust 1.99.1 and Node 24 in the image behind this site (Linux ARM64; on x86-64 the `.node` file name says `x64`). The steps that download something (`npm ci`, Cargo's crates) need the network. Pinned: napi 3.15.0, napi-derive 3.6.13, napi-build 2.6.0 and `@napi-rs/cli` 3.10.8, with both lock files committed.
+
+<Remember>A `#[napi]` attribute turns a Rust function into a JavaScript export, and the build writes the TypeScript declarations for it.</Remember>
+
+## The project
+
+<Tree guide="interop-node" dir="addon" name="textkit" title="Project layout" notes={{"src/lib.rs":"the Rust code on this page","build.rs":"one call that sets up the linker for a Node addon","Cargo.toml":"a cdylib that depends on napi","package.json":"pins the build tool and has the build scripts","package-lock.json":"created by npm","Cargo.lock":"created by Cargo","demo.mjs":"JavaScript that calls the addon","demo.mts":"TypeScript that calls it, checked against the generated types","bad.mts":"TypeScript that the types reject"}} />
+
+<Files guide="interop-node" dir="addon" files={["Cargo.toml", "build.rs", "package.json"]} />
+
+`crate-type = ["cdylib"]` asks Cargo for "a dynamic system library ... to be loaded from another language" ([Reference: linkage](https://doc.rust-lang.org/reference/linkage.html)), which is what Node loads. The `=` signs pin exact versions, and [Pin napi and napi-derive together](#pin-napi-and-napi-derive-together) shows a pair that did not build. `default-features = false` turns off the default features of `napi` (listed on [docs.rs](https://docs.rs/crate/napi/3.15.0/features)). `napi9` enables the bindings for Node-API version 9, and `async` enables the Tokio runtime that `async fn` exports use, below.
+
+<Files guide="interop-node" dir="addon" files={["src/lib.rs"]} />
+
+## Build it
+
+`napi build --platform` runs Cargo, copies the library next to `package.json` under a name that includes the platform, and writes a loader `index.js` and the declarations `index.d.ts`.
+
+<Session guide="interop-node" run="build" title="terminal" only={[0, 1, 2, 3]} />
+
+The `grep` removes two `WARNING` lines the build prints here; they say the container gave the tool no machine identity to take a lock with. Next, the generated declarations. The doc comments on the Rust functions became its comments.
+
+<Session guide="interop-node" run="build" only={[4]} />
+
+A `.node` file is not a special format. In this build it was byte for byte the library Cargo produced:
+
+<Session guide="interop-node" run="library" only={[2]} />
+
+## Call it from Node
+
+<Files guide="interop-node" dir="addon" files={["demo.mjs"]} lang="javascript" />
+
+<Session guide="interop-node" run="build" only={[5]} />
+
+What crossed the boundary, line by line:
+
+- **Numbers.** `add(2 ** 31, 1)` gave `-2147483647`: Node-API cuts the value to 32 bits before Rust runs. The [Node-API docs](https://nodejs.org/docs/latest-v24.x/api/n-api.html) say "the result is truncated to the equivalent of the bottom 32 bits", and `1.5` became `1`. The C addon below gives the same answers, so this is Node-API, not napi-rs. Nothing warns you; for large values declare `i64` or `f64` (see napi-rs [type conversions](https://napi.rs/docs/concepts/type-conversions)).
+- **Wrong types.** `add("1", 2)` threw before `add` ran, with the code `NumberExpected`.
+- **Errors.** `Err(..)` from a function returning `Result` became a thrown `Error` whose `code` is the napi `Status` name. In Rust ([Errors](/learn/errors/)) the failure is in the return type; in JavaScript it is an exception that no signature mentions.
+- **Data.** The array became a `Vec<i32>` (copied), and the `Stats` struct became a plain object (copied back). `None` became a missing property, which is why `largest` is absent for the empty list. `Counter` is different: JavaScript holds a handle to a Rust value that stays in Rust, and each method call goes back into Rust.
+
+## TypeScript
+
+The declarations let the compiler check calls into Rust. Node 24 can run `.mts` files itself by erasing the types, and the [Node docs](https://nodejs.org/docs/latest-v24.x/api/typescript.html) say no type checking is performed. So the checking is `tsc`'s job. The `tsc` here is the compiler the image ships, not one in `package.json`; the first step prints its version, and the two errors below are from that version. To repeat this elsewhere, install TypeScript yourself.
+
+<Files guide="interop-node" dir="addon" files={["demo.mts", "bad.mts", "tsconfig.json", "tsconfig.bad.json"]} lang="typescript" />
+
+<Session guide="interop-node" run="types" only={[2, 3, 4, 5, 6]} />
+
+`tsc` rejected both mistakes without running anything. `node bad.mts` skipped that check, and the Rust side then refused the string at run time. `largest?: number` is in the types because the Rust field was an `Option`, but a declaration says nothing about what a function can throw: the napi-rs docs say "TypeScript does not encode thrown exceptions or rejected Promises".
+
+## Buffers share memory, arrays are copied
+
+`xorInPlace` took a `Buffer` and changed the bytes JavaScript still holds. `xorCopy` took a `Vec<u8>`, which napi-rs fills by copying, and the caller's array was untouched. Both were in the demo above.
+
+Sharing saves the copy but not the rules. The napi-rs [typed array docs](https://napi.rs/docs/concepts/typed-array) warn that `Buffer` is `Send` and `Sync` so it can cross threads, yet JavaScript can keep changing the same bytes: reading them from a Rust worker thread meanwhile is a data race, and they advise copying first or following an ownership protocol. The compiler cannot see that rule; it is the gap [Send and Sync](/learn/send-sync/) and [unsafe](/learn/unsafe/) describe.
+
+## Promises and callbacks
+
+`count_words` is an `async fn`, so it came out as `Promise<number>`. The two `threadId` comparisons show what ran where: two synchronous calls had the same Rust `ThreadId`, and the async one had a different one. The [napi-rs docs](https://napi.rs/docs/concepts/async-fn) say an exported `async fn` runs on a Tokio runtime that napi-rs provides. For work that blocks, the [`AsyncTask` docs](https://napi.rs/docs/concepts/async-task) describe running a `Task` in the libuv thread pool (libuv is the C library behind Node's event loop). For a Tokio refresher see [Tokio](/build/tokio/).
+
+`count_up` took a callback and called it from a Rust thread, once per number. JavaScript values may only be touched on the JavaScript thread, so napi-rs wraps the callback in a `ThreadsafeFunction`: Rust can call it from any thread, and the callback runs on the JavaScript thread. The `false` in the type is `CalleeHandled`: the callback receives the value alone, as `(arg: number) => void`; with the default `true` it is error-first. The [ThreadsafeFunction docs](https://napi.rs/docs/concepts/threadsafe-function) cover queue limits and failed calls.
+
+## When Rust panics
+
+A debug and a release build behave differently at the edge of `i32`. Cargo's [profile docs](https://doc.rust-lang.org/cargo/reference/profiles.html#overflow-checks) say a panic occurs on overflow when `overflow-checks` is on, and list it as on for `dev` and off for `release`. The build above was a debug build; `npm run build:release` adds `--release`.
+
+<Session guide="interop-node" run="release" only={[2, 3, 4, 5, 6, 7]} />
+
+In the debug build, `add(2147483647, 1)` panicked inside Rust and the Node process ended with exit code 134. I did not look into why unwinding failed (the line `failed to initiate panic`). The numbers in that output change from run to run, and your shell may print its own line about the abort. The napi-rs docs say an uncaught panic in a synchronous function "can terminate the process", and offer `#[napi(catch_unwind)]`, which `add_caught` uses: the same panic became an `Error` with code `GenericFailure`, and the process kept going. `add_checked` is the better fix when you can write it: the failure is then a value you chose. In the release build there was no panic: `+` wrapped to `-2147483648`.
+
+The two file sizes are for this crate, one build each: about 17 MB for debug and 1.2 MB for release. See [Performance](/further/performance/#debug-and-release-are-two-programs) for what the profiles change.
+
+## Pin napi and napi-derive together
+
+napi and napi-derive are two crates, and the code that `#[napi]` writes calls items in napi. This pair of pinned versions failed to build in the image, and the pair above (3.15.0 and 3.6.13) built. The first two lines are Cargo moving the committed `Cargo.lock` to the pinned pair:
+
+<Session guide="interop-node" run="mismatch" />
+
+That is one failing pair and one working pair; I did not look for the first napi that works with napi-derive 3.6.12. Pin both and move them together.
+
+## Other ways in
+
+A *C addon* is the same idea written by hand against the Node-API header, `node_api.h`, which the image ships with Node. The [Node docs](https://nodejs.org/docs/latest-v24.x/api/n-api.html) call Node-API "ABI stable across versions of Node.js": the binary interface stays the same, so a compiled addon can keep loading in later Node versions. This is `add` as a C addon:
+
+<Files guide="interop-node" dir="c-addon" files={["add.c", "demo.js"]} lang="c" />
+
+<Session guide="interop-node" run="c-addon" />
+
+It is 25 lines for one function, with no declaration file: `gcc` produced no types. The `TypeError` text came from my C. The Node docs describe [node-gyp](https://github.com/nodejs/node-gyp) as "a tool written specifically to compile Node.js addons", driven by a `binding.gyp` file ([addons docs](https://nodejs.org/docs/latest-v24.x/api/addons.html)). I did not run it. The steps below show that the image has no `make` and no `node-gyp` on the `PATH`, though npm bundles a copy. node-gyp's README also lists Python as a requirement, so I used `gcc` directly.
+
+| Route | What you write | Run on this page |
+| --- | --- | --- |
+| napi-rs (above) | Rust with `#[napi]`; declarations are generated | Yes |
+| C addon on Node-API | C, by hand, with `node-gyp` or a compiler command | Yes, with `gcc`; `node-gyp` not run |
+| WebAssembly | Rust compiled to a `.wasm` file that Node or a browser instantiates | On [the WebAssembly page](/interop/wasm/) |
+| `node:ffi` | Call a C library from JavaScript with no addon | Not in Node 24 |
+| Neon | Another Rust framework for Node addons, named at [neon-rs.dev](https://neon-rs.dev/) | Not run |
+
+<Session guide="interop-node" run="missing" />
+
+The Node docs for a newer version list an experimental [`node:ffi`](https://nodejs.org/docs/latest-v26.x/api/ffi.html) module, added in v26.1.0. Node 24 in the image refused to load it, as the last step shows.
+
+## The same job in your language
+
+Only the TypeScript/JavaScript and C rows ran on this page; the others are named so that you know what to search for.
+
+| Language | How native code is called | Run here |
+| --- | --- | --- |
+| TypeScript, JavaScript | A Node-API addon (above), or WebAssembly | Yes |
+| Python | `ctypes`, `cffi`, or an extension module such as PyO3's: [Use Rust from Python](/interop/python/) | On that page |
+| Go | [cgo](https://pkg.go.dev/cmd/cgo) | No |
+| Java | JNI, or the foreign function and memory API ([JEP 454](https://openjdk.org/jeps/454)) | No |
+| Kotlin | The Java mechanisms | No |
+| C# | [P/Invoke](https://learn.microsoft.com/en-us/dotnet/standard/native-interop/pinvoke) | No |
+| C | The Node-API header `node_api.h`, as in `add.c` above | Yes |
+| C++ | [node-addon-api](https://github.com/nodejs/node-addon-api) wraps Node-API in C++ classes | No |
+
+The route that skips each runtime's own format, a plain C function exported with `extern "C"`, is the subject of [C and C++](/interop/c-cpp/).
+
+## Try it yourself
+
+Predict each result first, then run the session below; it builds the addon again and ran all four in the image.
+
+1. **A big total.** Call `stats([2147483647, 2147483647])`. The sum does not fit in an `i32`: what is `mean`?
+2. **A negative `u32`.** Construct `new Counter(-1)` and read `count`. Does it throw?
+3. **A bad argument to an `async fn`.** Call `countWords(42)`. Does it return a rejected Promise or throw at once? The napi-rs [error docs](https://napi.rs/docs/concepts/error-handling) say arguments are converted before the Promise is created.
+4. **A `Uint8Array` for a `Buffer`.** Pass `new Uint8Array([1, 2, 3])` to `xorInPlace(u, 255)`. Is it accepted, and do the bytes change?
+
+<Session guide="interop-node" run="try" only={[2, 3, 4, 5]} />
+
+## Read more
+
+- [napi-rs documentation](https://napi.rs/), starting with [getting started](https://napi.rs/docs/introduction/getting-started)
+- [Node-API](https://nodejs.org/docs/latest-v24.x/api/n-api.html) and [Node.js: TypeScript](https://nodejs.org/docs/latest-v24.x/api/typescript.html) in the Node 24 docs
+- [Use Rust from Python](/interop/python/), [C and C++](/interop/c-cpp/) and [WebAssembly](/interop/wasm/): the same question for other targets
+- [Rust for TypeScript developers](/for/typescript/): the phrasebook, with the toolchain map

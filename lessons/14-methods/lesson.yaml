@@ -1,0 +1,120 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Methods"
+part: "data"
+intro: >-
+  Methods go in an `impl` block. The first parameter says how the method uses the
+  struct: read it, change it, or take it.
+coming_from:
+  go: >-
+    An `impl` block holds the methods, and `&mut self` is your pointer receiver. A Go
+    value receiver gets a copy; in Rust, plain `self` takes the value itself, and the
+    caller can't use it again unless the type is `Copy`. `&self` is a pointer receiver that can only read, which
+    Go can't say. `Counter::new()` is a naming habit, like `NewCounter()`.
+  kotlin: >-
+    Methods go in a separate `impl` block, and there is no constructor: `new` is an
+    ordinary function, like a factory in a companion object. A method that changes the
+    struct takes `&mut self`, and a variable that owns the struct must be `let mut` to call
+    it, where Kotlin lets a `val` call anything.
+  python: >-
+    `self` is written out like Python's, but its form says what the method does: `&self`
+    reads, `&mut self` changes, plain `self` uses it up. There is no `__init__`:
+    `Counter::new()` is just a function that returns a `Counter`.
+  typescript: >-
+    `this` becomes an explicit `self` parameter, and its form says what the method does:
+    `&self` reads, `&mut self` changes. There is no `class` or `new`: `Counter::new()`
+    is a plain function, and a variable that owns the object must be `let mut` to call a
+    `&mut self` method.
+  java: >-
+    Methods live in a separate `impl` block, and `this` is written out as the first
+    parameter, with a mode: `&self` reads, `&mut self` changes, `self` takes the value.
+    There are no constructors, so `Counter::new()` is a plain function, and two methods
+    of one type can't share a name. A variable that owns the object must be `let mut`
+    to call a `&mut self` method.
+  csharp: >-
+    An `impl` block holds the methods, and `fn new()` with no `self` is a `static`
+    factory, since Rust has no constructors. The receiver says whether a method changes
+    the struct (`&mut self`) or only reads it (`&self`), which C# classes never spell
+    out.
+  c: >-
+    This is your `counter_bump(struct Counter *c)` pattern with the call written
+    `c.bump()`: `&self` is like `const struct Counter *` and `&mut self` like `struct
+    Counter *`. Where gcc only warns about passing a `const` object to a non-`const`
+    pointer, Rust refuses to build.
+  cpp: >-
+    `&self` is a `const` member function and `&mut self` is a non-`const` one, but the
+    default flips: values are immutable unless declared `let mut`. There are no
+    constructors; `Counter::new()` is an ordinary associated function that returns a
+    value.
+notes:
+  - >-
+    `&self` lets the method read the struct without copying it. `&mut self` lets the
+    method change it. `self` (no &) means the method takes the struct; after calling
+    it the caller can't use it (unless the type is `Copy`), and the method may hand it back.
+  - >-
+    `new` is not a keyword. It is just the usual name for a constructor function.
+  - >-
+    You call methods with a dot either way. Rust adds the `&` or `&mut` for you.
+  - >-
+    Two methods written in a type's own `impl` blocks can't share a name, so you can't
+    overload by parameter list. Constructors get different names instead: `new`,
+    `with_capacity`, `from_parts`. ([Traits](/learn/traits/), covered later, can give one name several
+    meanings, as `From` does for `from`.)
+gotcha:
+  title: "Calling a changing method on a non-mut variable"
+  verdict: "rust-rule"
+  looks_fine: >-
+    In Go, `c.Bump()` works on any variable: Go takes `&c` for you. In Kotlin, `val c`
+    only stops reassigning `c`; the object inside can still change.
+  rust_sees: >-
+    `bump` says "I change the counter" (`&mut self`). But `c` was declared with plain
+    `let`, which means "this never changes".
+  why: >-
+    In Rust, `let` without `mut` covers the whole value, including everything inside it.
+    That is stronger than Java's `final`, Kotlin's `val` or a JavaScript `const`, which
+    only stop the variable from pointing somewhere else. It is what lets you trust that
+    a non-mut value really stays the same (a few types, such as `Cell` and `Mutex`,
+    change through `&` on purpose; see Shared state).
+  langs:
+    go:
+      status: "runs"
+      says: >-
+        Go runs this and prints 1. Go takes `&c` for you behind the scenes when `c` is a
+        variable, so it can call a pointer method.
+    kotlin:
+      status: "runs"
+      says: >-
+        Kotlin runs this and prints 1. `val` only stops you from reassigning `c`, not
+        from changing what's inside it.
+    python:
+      status: "runs"
+      says: >-
+        Python prints 1. There is no `mut`: any name can call any method, and the
+        object changes. An ordinary class has no way to mark a method as "changes the
+        object" or a variable as "never changes" (a frozen dataclass opts in per class).
+    typescript:
+      status: "runs"
+      says: >-
+        Prints 1. `const` only stops you from pointing `c` at a different object; the
+        object itself can still change. (`readonly` fields opt in, one by one.)
+    java:
+      status: "runs"
+      says: >-
+        This prints 1. In Java, `final` only stops `c` from pointing at another object;
+        the object itself can still change.
+    csharp:
+      status: "runs"
+      says: >-
+        A method can change a class's (non-`readonly`) fields in C#, so this prints 1. There is no
+        marker at the call site that says this call changes `c`.
+    c:
+      status: "runs"
+      says: >-
+        gcc only warns that `&c` drops the `const`, then lets `counter_bump` change it
+        and prints 1. Changing a const object is undefined behaviour, so this is luck.
+    cpp:
+      status: "refuses"
+      says: >-
+        In C++ you have to write `const` to get this error; in Rust you get it by writing
+        nothing. `bump` is not a `const` method, so it can't be called on a `const
+        Counter`. (`-fpermissive` in the message is the switch that would turn this error
+        into a warning; without it, it is an error.)

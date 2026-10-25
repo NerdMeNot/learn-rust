@@ -1,0 +1,348 @@
+<p class="lr-layer">The toolkit</p>
+
+[Macros, attributes and naming](/learn/macros-attributes-naming/) taught you to call macros such as `println!` and `vec!`. This page is for reading the others: a `macro_rules!` block in a dependency, the `#[derive(...)]` above a struct, the `#[tokio::main]` above `main`. The aim is to open one, say what it accepts and what it becomes, and know when a function would do. Outputs: Linux on 64-bit ARM, Rust 1.99.1, a debug build.
+
+A macro runs inside the compiler. It reads the *tokens* of your call (the words, numbers and symbols of source, such as `x`, `+` or `(`) and writes new tokens in place of the call. The Book says "macros are expanded before the compiler interprets the meaning of the code" ([chapter 20.5](https://doc.rust-lang.org/book/ch20-05-macros.html)), so a macro can produce what a function cannot, such as a trait implementation.
+
+## Four shapes of macro
+
+| What you see | What it is | Examples |
+|---|---|---|
+| `name!(...)`, `name![...]`, `name!{...}` | Declarative: `macro_rules!`, written in ordinary Rust | `vec!`, `println!` |
+| the same | Procedural, function-like: a Rust function over tokens, in a crate of its own | `make_answer!` in the procedural section |
+| `#[derive(Name)]` | Derive: a procedural macro; the built-in ones ship with the compiler | `Debug`, serde's `Serialize` ([serde](/build/serde/)) |
+| `#[name]`, `#[path::name(...)]` | Attribute: a procedural macro, or built into the compiler | `#[tokio::main]` ([tokio](/build/tokio/)), `#[test]` |
+
+To tell which you are looking at:
+
+- **A `!` after a name** is a function-like macro, and the brackets are not an array or an index: `vec![1, 2]` is a call. What it accepts is written in its docs or its `macro_rules!` block ([`vec!`](https://doc.rust-lang.org/std/macro.vec.html) shows its declaration).
+- **`#[derive(A, B)]`** calls one derive macro per name.
+- **Another `#[...]`** is built into the compiler (`#[inline]`, `#[cfg(...)]`, `#[test]`) or an attribute macro from a crate, which a path such as `tokio::main` gives away.
+- **An attribute inside a derived type**, such as `#[serde(rename = "x")]` or `#[default]`, is a *helper attribute*: the derive reads it.
+
+## Reading a `macro_rules!` block
+
+A `macro_rules!` block is a list of rules, like the arms of a `match`, except the patterns match source code. Each rule is `(pattern) => { code }`. This one follows std's `vec!` without its `[x; n]` form:
+
+<Snippet file="my-vec.rs" />
+
+To read a call, find the first rule whose pattern fits. `my_vec![]` fits the first, `Vec::new()`. For `my_vec![1, 2 + 3, 4,]` the second fits:
+
+- `$x:expr` captures one whole expression, so `2 + 3` is one capture, not three tokens.
+- `$( ... ),+` means "one or more, separated by commas"; `*` is zero or more and `?` zero or one, so `$(,)?` allows a trailing comma.
+- `$(v.push($x);)+` is written once per capture.
+- The doubled braces: the outer pair delimits the code, the inner pair makes a block, so the expansion is one expression.
+
+The `$name:kind` part is a *fragment specifier*, the kind of code to capture ([all of them](https://doc.rust-lang.org/reference/macros-by-example.html)).
+
+| Specifier | Captures | Example |
+|---|---|---|
+| `expr` | an expression | `1 + 2 * x.len()` |
+| `ident` | a name | `total` |
+| `ty` | a type | `Vec<&str>` |
+| `pat` | a pattern | `Some(1 \| 2)` |
+| `literal` | a literal, with an optional `-` | `-3.5` |
+| `tt` | one token, or one bracketed group | `+` or `(b, c)` |
+| `block` `stmt` `item` `path` `lifetime` `meta` `vis` | rarer: look them up | - |
+
+<Snippet file="fragments.rs" />
+
+`$($t:tt)*` takes any tokens and hands them on untouched, which is how `println!` passes its arguments on. Its second rule is in the std source ([macros.rs](https://doc.rust-lang.org/src/std/macros.rs.html)): `($($arg:tt)*) => {{ $crate::io::_print($crate::format_args_nl!($($arg)*)); }}`. `$crate` stands for the crate the macro was written in, so the expansion works wherever it is called.
+
+### Other things you will see
+
+| You see | It means |
+|---|---|
+| `#[macro_export]` | The macro is available from the crate's root path, so other crates can `use` it. |
+| A leading `::`, as in `::std::collections::HashMap` | An absolute path: not something of the same name in the caller's scope. |
+| A pattern starting with `@inner` | An internal rule, by convention: the macro calls itself with that marker. Read the public rules first ([Little Book of Rust Macros](https://lukaswirth.dev/tlborm/decl-macros/patterns/internal-rules.html)). |
+
+## Seeing an expansion
+
+`rustc -Zunpretty=expanded` prints code after expansion, the `gcc -E` of Rust. Unlike `gcc -E`, only the nightly compiler accepts the flag. `RUSTC_BOOTSTRAP=1` makes the stable compiler accept it, as the program below shows. That is an escape hatch for reading code in a scratch directory: the rustc developer guide says the variable "should never be used except when bootstrapping the compiler" ([guide](https://rustc-dev-guide.rust-lang.org/building/bootstrapping/what-bootstrapping-does.html)), so keep it out of a project you ship. `cargo expand` [wraps the same flag](https://github.com/dtolnay/cargo-expand#readme); it is not installed in the runner, so it is not run. The Rust in the program is only a harness; read the output.
+
+<Snippet file="expand.rs" />
+
+`hashmap!` became `insert` calls in a block. `sum!(1, 2, 3)` became `1 + (2 + 3)`: the second rule's `$head + sum!(...)` was expanded again for the tail. `println!` became a call to `::std::io::_print` with a [`format_args!`](/learn/formatting/#format_args-and-what-format-costs), as its rules said, and `{total}` became argument `1`.
+
+## Hygiene
+
+[Macros, attributes and naming](/learn/macros-attributes-naming/#writing-a-macro-macro_rules) showed that a macro's variable does not collide with the caller's. The Reference calls this "mixed-site hygiene": locals and labels belong to where the macro was written. So a macro's locals are hidden from the caller:
+
+<Snippet file="hygiene-local.fail.rs" />
+
+## Why a macro and not a function
+
+A function signature "must declare the number and type of parameters the function has" (the Book):
+
+<Snippet file="fixed-arity.fail.rs" />
+
+A function can take a slice, as `sum(&[1, 2, 3])` does. A macro makes the call itself look like a list, with a type per argument, as in `println!`. A macro also sees the code, not only its value, which gives it five powers:
+
+| A macro can | Shown in |
+|---|---|
+| take a list of any length, written as a call | `my_vec!`, `sum!` above |
+| take a name or type and generate items from it | the first program below |
+| capture the text of an expression | the second program below |
+| `return` from the function that called it | the third program below |
+| check its input while compiling: `println!` rejects a format string that does not fit its arguments | [Macros, attributes and naming](/learn/macros-attributes-naming/#format-strings) |
+
+<Snippet file="items.rs" />
+
+`describe_all!` wrote four `impl` blocks and `make_adder!` two functions named by the caller.
+
+<Snippet file="stringify.rs" />
+
+`stringify!` turns tokens into text, as `assert!` does for its message. The std docs warn that "the expanded results of the input tokens may change in the future", so use it for messages, not logic.
+
+<Snippet file="early-return.rs" />
+
+The `return` inside `parse_or_zero!` leaves `sum_pair`, so the second call prints no "both parsed" line. For errors, `?` is the usual answer ([Errors](/learn/errors/)).
+
+The Book says macro definitions are "generally more difficult to read, understand, and maintain than function definitions". And a macro pastes your argument wherever `$x` appears, so it can run twice. A function evaluates it once:
+
+<Snippet file="double-eval.rs" />
+
+## When a macro call fails
+
+A call fits no rule, or the code the rule wrote does not compile.
+
+<Snippet file="error-semicolon.fail.rs" />
+
+"No rules expected `;`" names the first token that fits nothing: this `my_vec!` has no `[x; n]` rule, where std's does. In the gotcha the note said "while trying to match `=>`", what the rule wanted next. Read the message against the `macro_rules!` block or the docs.
+
+<Snippet file="error-type.fail.rs" />
+
+This one fit a rule and failed later: an ordinary type error, `E0308`, pointing at your argument and at the line inside the macro that received it. To see what the macro wrote, expand it as above.
+
+<p class="lr-layer">Going deeper</p>
+
+## Why `hashmap!` uses `=>`
+
+The gotcha gave `hashmap!` a `:`. A rule with `$key:expr` cannot accept it: after an `expr` fragment only `=>`, `,` and `;` may follow ([Reference](https://doc.rust-lang.org/reference/macros-by-example.html), "follow-set ambiguity restrictions").
+
+<Snippet file="follow-set.fail.rs" />
+
+A `literal` key has no such limit, so another macro could take `"Ada": 36`. This one takes any expression as a key, so it uses `=>`.
+
+## Derive macros: what the one line writes
+
+`#[derive(Debug, Clone, PartialEq)]` is a macro call. It reads the struct and writes `impl` blocks. This is the code after the derives ran, for a struct and for an enum with a helper attribute:
+
+<Snippet file="derive-expanded.rs" />
+
+Each `impl` is plain code: `Clone` clones each field, `PartialEq` compares each field, `Debug` calls a helper with the name and fields. `#[automatically_derived]` marks the block as generated; the Reference says it "has no direct effect". `#[default]` survives expansion: it only marks the variant for `Default`.
+
+The built-in derives add a bound for every type parameter, whether the fields need it or not ([Reference](https://doc.rust-lang.org/reference/attributes/derive.html): `impl<T: Clone> Clone for Foo<T>`). `PhantomData<T>`, a field that stores no data, is `Clone` for any `T` ([docs](https://doc.rust-lang.org/std/marker/struct.PhantomData.html)), yet the derive demands `T: Clone`:
+
+<Snippet file="derive-bounds.fail.rs" />
+
+The note says "consider manually implementing the trait to avoid undesired bounds"; [Common traits](/learn/common-traits/#to-do-this-implement-that) covers when.
+
+## Attribute macros
+
+An attribute macro receives the item it sits on and returns what replaces it. `#[test]` is built into the compiler but works like one: it keeps your function, adds a constant that describes it, and adds a `main` that runs the list. This is what `cargo test` builds (it passes `--test` to the compiler):
+
+<Snippet file="test-expanded.rs" />
+
+Without `--test` the expansion does not mention `adds`: test functions are not part of a normal build ([Reference](https://doc.rust-lang.org/reference/attributes/testing.html)).
+
+| Attribute | Written by | What it does |
+|---|---|---|
+| `#[tokio::main]` | the tokio crate | "helps set up a Runtime" for `async fn main` ([docs](https://docs.rs/tokio/latest/tokio/attr.main.html); [Async with Tokio](/build/tokio/) uses it) |
+| `#[serde(rename = "x")]` | serde's derive | a helper attribute that configures the generated code ([serde](https://serde.rs/attributes.html)) |
+
+## Procedural macro crates
+
+A procedural macro is a Rust function that takes tokens in and returns tokens. The Reference says it "must be defined in the root of a crate with the crate type of proc-macro" and "may not be used from the crate where" it is defined; with Cargo the crate sets `proc-macro = true` under `[lib]` ([Reference](https://doc.rust-lang.org/reference/procedural-macros.html)). So it lives in a different crate from its users.
+
+The lesson runner compiles one file, so this harness writes a two-crate workspace to a temporary folder and builds it with Cargo; the macros are in the string `SHOUT_LIB`. It needs no dependencies, because `proc_macro` ships with the compiler. One macro of each procedural kind; the attribute prints what it receives during compilation:
+
+<Snippet file="proc-macro.rs" />
+
+The two `attr`/`item` lines came from compile time: the attribute received `loud, times = 2` and the whole function as tokens, and returned it unchanged. The function-like macro ignored its input and wrote `answer`. The derive read the name after `struct` and wrote an `impl`. [Project structure](/further/project-structure/) covers workspaces. The Book's examples use `syn` to parse the tokens and `quote` to write them.
+
+Two Reference facts matter when you read someone else's code. Procedural macros "are unhygienic": they act as if their output was written inline. And they have "the same security concerns that Cargo's build scripts have": a dependency with one runs code on your machine when you build. A panic in one becomes a compiler error.
+
+## When to write one
+
+Writing one is rare. In order of preference:
+
+1. **A function**, the easiest to read, test and debug.
+2. **Generics and traits** ([Generics](/learn/generics/), [Traits](/learn/traits/)) for code that must work for many types.
+3. **A `macro_rules!` macro**, for one of the five powers above, such as one implementation repeated for a list of types.
+4. **A procedural macro**, when it must read a struct's fields or parse its own syntax. It costs a separate crate.
+
+## What you write today, in Rust
+
+<ForLang only="go">
+
+| You write in Go | In Rust |
+|---|---|
+| `map[string]int{...}`, `func sum(xs ...int)` | A macro such as `hashmap!`: Rust has no map literal, and a function's parameter list is fixed |
+| `//go:generate`, then `go generate` | Derive and attribute macros, run whenever the crate is compiled |
+| struct tags | Helper attributes. [`reflect`](https://pkg.go.dev/reflect#StructTag) reads a tag at run time; serde's derive reads its attributes at compile time |
+
+`go generate` is the nearest idea to a derive. This program shows `go run` failing for lack of a generated function, runs `go generate`, prints the file it wrote, and runs again:
+
+<Snippet file="generate.go" />
+
+The Go docs say `go generate` is "never run automatically by go build, go test, and so on", so the generated file can be read and reviewed, and goes stale if you forget to rerun it. A Rust macro's output is always current but not in your tree, hence the expansion tools above. Variadic functions do the work of `vec!`:
+
+<Snippet file="varargs.go" />
+
+</ForLang>
+
+<ForLang only="java">
+
+| You write in Java | In Rust |
+|---|---|
+| `Map.of(...)`, `int... xs` | A macro such as `hashmap!` or `vec!`: a Rust function's parameter list is fixed |
+| Lombok `@ToString`, `@EqualsAndHashCode`; a record's methods | `#[derive(Debug, PartialEq, Hash)]` |
+| an annotation processor | A procedural macro crate |
+| `macro_rules!` | no Java counterpart |
+
+An annotation processor runs inside `javac` while your code compiles, the stage where a derive runs, and adds new code. `javac` can write the generated files to disk; a Rust macro's expansion goes nowhere unless you ask, as above. The processor in this program writes one source file; the rest is a harness that starts `javac`:
+
+<Snippet file="annotation-processor.java" />
+
+[Lombok](https://projectlombok.org/features/) is a separate download and is not run here. Variadic methods do what `vec!` does:
+
+<Snippet file="varargs.java" />
+
+</ForLang>
+
+<ForLang only="kotlin">
+
+| You write in Kotlin | In Rust |
+|---|---|
+| `mapOf("a" to 1)`, `vararg xs: Int` | A macro such as `hashmap!` or `vec!`: a Rust function's parameter list is fixed |
+| `data class` | `#[derive(Debug, Clone, PartialEq)]` |
+| a KSP processor | A procedural macro crate |
+
+Kotlin's `vararg` lets a plain function take a list of any length, as `listOf` does. In Rust that needs a macro:
+
+<Snippet file="varargs.kt" />
+
+KSP's docs call a processor "a compiler plugin built with KSP" and say processors "can't examine expressions or statements, and they can't modify the source code" ([KSP overview](https://kotlinlang.org/docs/ksp-overview.html)). A Rust attribute macro can rewrite the item it sits on. KSP needs Gradle and downloads, so it is not run here.
+
+</ForLang>
+
+<ForLang only="csharp">
+
+| You write in C# | In Rust |
+|---|---|
+| `params int[] xs`, collection initializers | A macro such as `vec!` or `hashmap!`: a Rust function's parameter list is fixed |
+| `[CallerArgumentExpression]` | `stringify!($e)` inside a macro |
+| a source generator | A procedural macro crate |
+
+`assert!` and `show!` capture an argument's text with `stringify!`. C# does it with an attribute on a parameter, so it needs no macro:
+
+<Snippet file="caller-expression.cs" />
+
+`params` does what `vec!` does:
+
+<Snippet file="varargs.cs" />
+
+The C# docs say source generators "aim to enable compile time metaprogramming" ([overview](https://learn.microsoft.com/en-us/dotnet/csharp/roslyn-sdk/#source-generators)), the closest match to a derive. Building one needs the Roslyn packages, so it is not run here.
+
+</ForLang>
+
+<ForLang only="python">
+
+| You write in Python | In Rust |
+|---|---|
+| `def f(*args)`, `{"a": 1}` | A macro such as `vec!` or `hashmap!`: a Rust function's parameter list is fixed |
+| `@dataclass` | `#[derive(Debug, Clone, PartialEq)]` |
+| `@decorator` | An attribute macro; [the earlier lesson](/learn/macros-attributes-naming/#assert-is-always-on) compares them |
+
+`@dataclass` is the closest idea to a derive, and it shows when each works:
+
+<Snippet file="dataclass.py" />
+
+The decorator and the code `@dataclass` wrote both ran while the module ran. A derive works before the program runs, so a mistake in what it writes is a compile error. An attribute macro is like a decorator that receives the item's tokens and returns replacement tokens at compile time, as `show_streams` did above. Python's [`ast`](https://docs.python.org/3/library/ast.html) module can rewrite code too, but ordinary Python has no macro stage. `*args` does what `vec!` does:
+
+<Snippet file="varargs.py" />
+
+</ForLang>
+
+<ForLang only="typescript">
+
+| You write in TypeScript | In Rust |
+|---|---|
+| `(...xs: number[])`, `new Map([...])` | A macro such as `vec!` or `hashmap!`: a Rust function's parameter list is fixed |
+| a Babel plugin or TypeScript transformer | A procedural macro crate |
+| a decorator | Looks like an attribute macro, but runs when the program runs |
+
+TypeScript does not have macros. The nearest mechanism is a Babel plugin: Babel says "code transformations are enabled by applying plugins ... to your configuration file" ([plugins](https://babeljs.io/docs/plugins)), so it is set up for the whole build, while a procedural macro runs only where the code names it. Babel is not run here. Decorators, the nearer syntax, run when the program runs, at the `class` statement:
+
+<Snippet file="decorator-runs.ts" />
+
+A rest parameter does what `vec!` does:
+
+<Snippet file="varargs.ts" />
+
+</ForLang>
+
+<ForLang only="c">
+
+| You write in C | In Rust |
+|---|---|
+| `#define SHOW(e) ... #e` | `stringify!($e)` |
+| `#define LOG(...) ... __VA_ARGS__` | a rule with `$($arg:tt)*` |
+| a macro that defines a function | `macro_rules!` with `$name:ident` |
+| `#define SQUARE(x) ((x) * (x))` | An ordinary `fn`. A macro can evaluate its argument twice, as `MAX(i++, j)` does in [Generics](/learn/generics/) |
+
+`gcc -E` prints a C program after the preprocessor ran, as `-Zunpretty=expanded` does for Rust. This program runs `gcc -E -P` on the jobs above:
+
+<Snippet file="gcc-e.c" />
+
+The preprocessor substitutes tokens before the compiler parses anything, so it cannot know that `1 + 2` is one expression: `SQUARE(1 + 2)` became `1 + 2 * 1 + 2`, which is 5 ([the earlier lesson](/learn/macros-attributes-naming/#writing-a-macro-macro_rules) runs it). The parentheses of `((x) * (x))` fix that, but not the double evaluation. A `macro_rules!` macro works on parsed pieces such as `$x:expr`, so `1 + 2` stays one expression. The GCC manual covers [stringizing](https://gcc.gnu.org/onlinedocs/cpp/Stringizing.html) and [variadic macros](https://gcc.gnu.org/onlinedocs/cpp/Variadic-Macros.html).
+
+</ForLang>
+
+<ForLang only="cpp">
+
+| You write in C++ | In Rust |
+|---|---|
+| `template <typename... Ts>` and a fold expression | A macro, for a list of any length: a function's parameter list is fixed, and so are its type parameters |
+| `constexpr` functions, `static_assert` | `const fn` and `const` items, both evaluated while compiling |
+| `template <typename T> T square(T x)` | `fn square<T: Mul<Output = T> + Copy>(x: T) -> T` ([Generics](/learn/generics/)) |
+
+Templates and `constexpr` do much of what a macro would, and so do Rust's generics. Neither can take a name and generate a function, or capture an expression's text. Variadic templates answer `vec!`:
+
+<Snippet file="variadic-template.cpp" />
+
+The preprocessor is still there, with the problems [the earlier lesson](/learn/macros-attributes-naming/#writing-a-macro-macro_rules) ran. The Core Guidelines advise [against macros for constants or functions](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#es31-dont-use-macros-for-constants-or-functions).
+
+</ForLang>
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+The first exercise reads macros; the others finish small ones. Replace each `todo!()` and run until the checks print `all checks passed`.
+
+<Exercise name="read-rules" title="Which rule fires, and what does it become?">
+Say which rule of `rule!` each of four calls matches, then write by hand what `twice!(next())` expands to. The checks compare your answers with the compiler's; one call is not what its shape suggests.
+</Exercise>
+
+<Exercise name="newtype" title="Wrap a type, with its name">
+Finish the `Display` that `newtype!(Meters, f64)` writes so it prints `Meters(2.5)`. Two more types are checked, so the name must come from the call.
+</Exercise>
+
+<Exercise name="max-of" title="The largest of any number of values">
+Finish the second rule of `max_of!`: compare the first argument with the maximum of the rest. The checks count evaluations.
+</Exercise>
+
+<Exercise name="ensure" title="Return from the caller">
+Write `ensure!(cond)`: when false, the calling function returns an `Err` naming the condition as written. One check has a side effect in the condition.
+</Exercise>
+
+## Read more
+
+- [The Rust Book, chapter 20.5](https://doc.rust-lang.org/book/ch20-05-macros.html) and [Rust by Example: macro_rules!](https://doc.rust-lang.org/rust-by-example/macros.html).
+- The Reference: [macros by example](https://doc.rust-lang.org/reference/macros-by-example.html) (fragments, repetition, hygiene, scope), [procedural macros](https://doc.rust-lang.org/reference/procedural-macros.html) and [derive](https://doc.rust-lang.org/reference/attributes/derive.html).
+- [The Little Book of Rust Macros](https://lukaswirth.dev/tlborm/), the long guide to `macro_rules!` (recursion, tt-munchers, internal rules), and [std::stringify!](https://doc.rust-lang.org/std/macro.stringify.html).
+- [syn](https://docs.rs/syn/latest/syn/) parses tokens and [quote](https://docs.rs/quote/latest/quote/) writes them, in most procedural macros.
+- [`-Zunpretty`](https://doc.rust-lang.org/unstable-book/compiler-flags/unpretty.html) in the Unstable Book.

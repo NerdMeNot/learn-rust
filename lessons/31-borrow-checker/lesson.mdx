@@ -1,0 +1,334 @@
+<p class="lr-layer">The toolkit</p>
+
+## From error to fix
+
+This page is for the moment after the borrow checker said no: what do I change? It does not re-teach the rules ([Ownership](/learn/ownership/), [Borrowing](/learn/borrowing/), [Mutable borrows](/learn/mutable-borrows/)).
+
+A borrow error points at up to three places: the first move or borrow, the use that clashes, and a *later use* of the first that keeps it alive ([Mutable borrows](/learn/mutable-borrows/#the-rule-one-writer-or-any-number-of-readers) shows all three). A fix moves one: end the first borrow earlier, avoid the clash, or stop needing the first. [Reading compiler errors](/errors/) explains the layout.
+
+The `help:` lines are hints, not a diagnosis: a suggested `clone` can compile and do the wrong thing ([moving out](#moving-out-of-a-borrow-e0507)), and a suggested type can only move the error (the Java, Kotlin and C# box [below](#the-habit-you-bring-the-error-you-meet)).
+
+**A small fix, or a design problem?** Most errors take one local change, listed below. These signs mean the design is the cause; read [the redesign section](#when-the-error-does-not-go-away-redesign):
+
+- the third `clone` or `Rc` in one struct, added to quiet an error;
+- `&mut self` methods that call each other while a field is borrowed;
+- a struct that stores a reference into something it also owns, such as a parser holding a `String` and slices of it ([self-referential](#parent-pointers-and-graphs-indices-not-references));
+- lifetime annotations spreading through three signatures;
+- two parts that both want to change one value.
+
+| Error | The compiler says | Try first |
+|---|---|---|
+| [E0382](#use-after-move-e0382) | borrow of moved value: `x` | borrow instead of moving |
+| [E0499](#two-borrows-at-once-e0499-e0502) | cannot borrow `x` as mutable more than once | copy a value out, or split the data |
+| [E0502](#two-borrows-at-once-e0499-e0502) | cannot borrow `x` as mutable because it is also borrowed as immutable | end the first borrow earlier |
+| [E0500](#two-borrows-at-once-e0499-e0502) | closure requires unique access to `*self` | name the field inside the closure |
+| [E0505](#moved-or-assigned-while-borrowed-e0505-e0506) | cannot move out of `x` because it is borrowed | finish with the borrow first |
+| [E0506](#moved-or-assigned-while-borrowed-e0505-e0506) | cannot assign to `x` because it is borrowed | finish with the borrow first, or `mem::replace` |
+| [E0507](#moving-out-of-a-borrow-e0507) | cannot move out of `x` which is behind a mutable reference | `take`, `as_ref` |
+| [E0596](#the-habit-you-bring-the-error-you-meet) | cannot borrow `*x` as mutable, as it is behind a `&` reference | take `&mut`, or add `mut` |
+| [E0106](#parent-pointers-and-graphs-indices-not-references) | missing lifetime specifier | an id instead of a reference |
+| [E0597](#a-reference-that-outlives-its-owner-e0515-e0597-e0716) | `x` does not live long enough | keep the owner longer, or own the data |
+| [E0515](#a-reference-that-outlives-its-owner-e0515-e0597-e0716) | cannot return reference to local variable `x` | return an owned value |
+| [E0716](#a-reference-that-outlives-its-owner-e0515-e0597-e0716) | temporary value dropped while borrowed | bind the temporary with `let` |
+
+
+## The habit you bring, the error you meet
+
+<ForLang only="go">
+A pointer into a slice, then an `append` that has to move the data, leaves the pointer on the old array. Slices that share an array write into each other, but only when the capacity allows:
+
+<Snippet file="stale-pointer.go" />
+
+<Snippet file="slice-share.go" />
+
+Rust refuses the push while a pointer or view into the list is alive:
+
+<Snippet file="stale-pointer.fail.rs" />
+
+The `range` variable's address changed in Go 1.22, so `go.mod` decides:
+
+<Snippet file="loop-pointer.go" />
+
+<Snippet file="loop-var.fail.rs" />
+
+The last `help:` is about reusing `refs`'s allocation. The fix is in the table, and `refs` then borrows `items`.
+
+| In Go | Rust says | Usual fix |
+|---|---|---|
+| `p := &s[0]`, `append`, then write through `p` | E0499 on the push | finish with `p` first, or keep an index |
+| `b := a[:2]` shares `a`'s array | E0499 on a later `a.push` while `&mut a[..2]` lives | `a[..2].to_vec()` (Go: `slices.Clone`, `a[:2:2]`); `split_at_mut` for two writable halves |
+| `append(ptrs, &it)` in `range items` (before Go 1.22) | E0597: `it` does not live long enough | `for it in &items { refs.push(it) }` |
+| `for _, it := range items { it.count++ }` changes a copy | no error: looping over `&mut items` gives the element itself | `for it in &mut items { it.count += 1 }` |
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+A getter that returns the internal list hands out the whole list, unless you wrap it: `Collections.unmodifiableList` (Java), `IReadOnlyList<T>` (C#), Kotlin's read-only `List` ([Mutable borrows](/learn/mutable-borrows/#changing-a-list-while-looping-over-it) runs those views). With the unwrapped getter the caller changes the cart (size 1):
+
+<Snippet file="cart.java" />
+
+<Snippet file="cart.kt" />
+
+<Snippet file="cart.cs" />
+
+The Kotlin program needs a cast, which defeats its read-only type. Rust's `&` has no cast, and while a `&` view exists nothing can change the list under it:
+
+<Snippet file="cart-getter.fail.rs" />
+
+The `help:` suggests the type `&mut Vec<String>`, which only moves the error up a line:
+
+<Snippet file="cart-help.fail.rs" />
+
+The cause is the signature, so the fix goes there: a read-only getter, and a method for the one allowed change.
+
+<Snippet file="cart.rs" />
+
+An `items_mut(&mut self) -> &mut Vec<String>` would hand out the whole list again, so a `&mut` getter should be rare.
+
+| In Java, Kotlin or C# | Rust says | Usual fix |
+|---|---|---|
+| a getter returns the internal list | E0596 when the caller changes it through a `&` | return `&[T]`; `add(&mut self, ..)`; `to_vec()` for a copy |
+| `items.forEach(i -> note(i))` in a method | E0500 ([below](#two-borrows-at-once-e0499-e0502)) | name the field inside the closure |
+| two objects point at each other | E0106, then E0506 when the parent changes | [indices](#parent-pointers-and-graphs-indices-not-references); `Rc` with `Weak` ([Box, Rc and RefCell](/learn/smart-pointers/)) |
+</ForLang>
+
+<ForLang only="python">
+`b = a` makes a second name for one list, and either name changes it. That is documented behaviour, not a bug:
+
+<Snippet file="alias.py" />
+</ForLang>
+
+<ForLang only="typescript">
+`const b = a` makes a second name for one array, and either name changes it:
+
+<Snippet file="alias.ts" />
+</ForLang>
+
+<ForLang only="python typescript">
+In Rust, two holders that both change one list are refused:
+
+<Snippet file="two-names.fail.rs" />
+
+Make one owner. Each party borrows for one call, or gets its own copy:
+
+<Snippet file="two-names.rs" />
+
+| In Python or TypeScript | Rust says | Usual fix |
+|---|---|---|
+| `b = a`, then both change the list | E0499 for two `&mut`; E0502 when one only reads ([Mutable borrows](/learn/mutable-borrows/#the-rule-one-writer-or-any-number-of-readers)) | one owner, the other borrows for a call; `a.clone()` for a copy |
+| a parameter can be changed by default (TypeScript's `readonly number[]` opts out) | `&mut` in the signature and at the call | write it in the signature |
+| a list of objects, stored in two places | E0499 when both hold a `&mut` | one owner, the other keeps an index or key ([below](#parent-pointers-and-graphs-indices-not-references)); `Rc<RefCell<T>>` only if both really own it ([Box, Rc and RefCell](/learn/smart-pointers/)) |
+</ForLang>
+
+<ForLang only="c">
+A `realloc` that moves an array leaves every pointer into it dangling. GCC 14's `-Wall` warns about a direct use after `realloc`, not about one behind a `push` helper:
+
+<Snippet file="realloc.c" />
+
+Both lines read freed memory, and the value changes between runs. Copying a struct that owns a pointer is the other habit:
+
+<Snippet file="double-free.crash.c" />
+
+| In C | Rust says | Usual fix |
+|---|---|---|
+| a pointer into an array, then a `push` that may `realloc` | E0499 or E0502 on the push | an index; look the element up again after the push |
+| copy a struct that owns a pointer, free both | E0382 on the second use of the moved value | move it, or clone it |
+</ForLang>
+
+<ForLang only="cpp">
+A moved-from `std::string` or `std::vector` is valid but unspecified; libstdc++ leaves it empty, so `v[0]` reads through a null pointer. This compiles under `-Wall -Wextra` with no warning, then crashes:
+
+<Snippet file="moved-from.crash.cpp" />
+
+The clang-tidy check [`bugprone-use-after-move`](https://clang.llvm.org/extra/clang-tidy/checks/bugprone/use-after-move.html), which you must enable, flags any use of a moved-from object that is not a reinitialization. Rust makes it an error for every type, with no flag.
+
+| In C++ | Rust says | Usual fix |
+|---|---|---|
+| a pointer or iterator into a vector, then `push_back` | E0502 ([Mutable borrows](/learn/mutable-borrows/#changing-a-list-while-looping-over-it) runs it under AddressSanitizer) | an index; look the element up again |
+| use a moved-from object | E0382 | clone, or borrow instead of moving |
+</ForLang>
+
+## Use after move (E0382)
+
+<Snippet file="move.fail.rs" />
+
+`total` takes the `Vec` by value, so `scores` belongs to it after the call. The fix depends on what the function does with it:
+
+<Snippet file="move-fixes.rs" />
+
+- **It only reads: change the signature** to borrow (`&[u32]`). Nothing is copied.
+- **It keeps the value, and you need yours too: clone.** The output shows a different buffer: an allocation and a copy of every element. Fine for a small value built once; a smell in a loop, when the function only reads, or when the copies must stay in sync ([clone or share](#clone-or-share-when-rcrefcellt-is-the-honest-answer)).
+- **It keeps the value, and you are done with it: move it.** Same buffer.
+
+## Two borrows at once (E0499, E0502)
+
+A reference still used after a `push` is E0502. A borrow ends at its last use ([Mutable borrows](/learn/mutable-borrows/#a-borrow-ends-at-its-last-use)), so copy the small value out first (`let n = v.len();`) or move the use above the `push`. A `Drop` impl counts as a use at the closing `}` (E0499 here):
+
+<Snippet file="drop-ends-borrow.fail.rs" />
+
+The note says so: "first borrow might be used here, when `guard` is dropped". `drop(guard)` after its last use ends the borrow there.
+
+**Two elements.** The compiler does not look at index values, so `&mut v[0]` and `&mut v[3]` both borrow the whole `Vec` ([Mutable borrows](/learn/mutable-borrows/#changing-two-parts-at-once)). `swap` swaps, `split_at_mut` gives two halves that cannot overlap, and `get_disjoint_mut` (Rust 1.86) checks the indices when it runs:
+
+<Snippet file="disjoint.rs" />
+
+**Two fields and a method.** The gotcha failed because `self.note(..)` takes `&mut self`, which borrows *all* of `self`, including the `items` being read. A field access names one field, so `items` and `log` are different places:
+
+<Snippet file="self-fixes.rs" />
+
+| Fix | What it costs |
+|---|---|
+| Name the field: `self.log.push(..)` | you give up the helper; its logic is repeated |
+| A function that takes only the field it needs | callers pass the field |
+| Work out what to do first, then call the method (the gotcha's fix) | an extra `Vec` and a second pass |
+| Take the field out with `mem::take`, call the method, put it back | `items` is empty in between, and an early `return` or `?` forgets to put it back |
+| Make the field its own type (`Log`) | one more type, which often matches the data anyway |
+
+A closure that calls the method captures all of `self` the same way:
+
+<Snippet file="closure-self.fail.rs" />
+
+Naming the field in the closure (`self.log.push(..)`) captures only `log`. [Closures](/learn/closures/) explains capture.
+
+## Handing out a `&mut`
+
+Ask for a `&mut` to just the part you change: `opt.as_mut()` or `as_deref_mut()` on an `Option`, `iter_mut()`, `last_mut()` or `iter_mut().find(..)` on a `Vec`, `get_mut(key)` on a map. Use it inside `if let Some(x) = ..`, and do other work after it, where the `&mut` is over. One shape still fails: returning the `&mut` when the key is found and inserting otherwise.
+
+<Snippet file="get-mut-return.fail.rs" />
+
+Both errors are E0499 on 1.99.1. `entry` looks up once and gives back the slot:
+
+<Snippet file="get-mut-return.rs" />
+
+The cost: `entry` takes the key by value, so the `String` is built even when the key is there. [Maps](/learn/maps/#why-not-get-then-insert) has the simpler `get`-then-`insert` shape.
+
+## Moving out of a borrow (E0507)
+
+Behind a `&self` or `&mut self` you cannot take a value out of a field and leave a hole ([Ownership](/learn/ownership/#moving-out-of-things) and [Mutable borrows](/learn/mutable-borrows/#swapping-and-taking) show the error). Its `help:` suggests `clone`, which compiles and is wrong here:
+
+<Snippet file="clone-is-wrong.rs" />
+
+`logout` must leave the session without a token, and a clone leaves the old one in place. Choose between looking, taking and copying:
+
+| You want | Use | What is left behind |
+|---|---|---|
+| to look at the text in an `Option<String>` | `opt.as_deref()`, or `opt.as_ref()` for a `&String` | `opt`, unchanged |
+| the value, and `None` in its place | `opt.take()` | `None` |
+| a whole `String` or `Vec`, and an empty one in its place | `mem::take(&mut x)` | the empty value (the type needs a default) |
+| the old value, and one you choose in its place | `mem::replace(&mut x, new)` | `new` |
+| a second, independent value | `x.clone()` | `x`, unchanged; you paid for a copy |
+
+
+## Moved or assigned while borrowed (E0505, E0506)
+
+<Snippet file="move-while-borrowed.fail.rs" />
+
+<Snippet file="assign-while-borrowed.fail.rs" />
+
+`first` and `before` are still used after the move and the overwrite. Finish with the borrow first, or own a copy of the piece you need. For the assignment, `mem::replace` takes `&mut position` for the call only, so no borrow is kept:
+
+<Snippet file="finish-first.rs" />
+
+## Changing a collection while looping over it
+
+[For loops over collections](/learn/for-collections/#changing-a-list-while-looping-over-it) did this with a `Vec`. A map is the same clash:
+
+<Snippet file="remove-while-iterating.fail.rs" />
+
+<Snippet file="prune.rs" />
+
+| You want | Use | Cost |
+|---|---|---|
+| to drop entries | `retain` | a closure that says which to keep |
+| to drop entries and keep them | `extract_if` (Rust 1.88) | an iterator you never consume removes nothing |
+| to decide now and change later | collect the keys first | an extra `Vec`, and a second lookup per key |
+
+## A reference that outlives its owner (E0515, E0597, E0716)
+
+[Returning references](/learn/returning-references/) covers E0515, and [Lifetimes](/learn/lifetimes/#lifetime-errors-and-the-usual-fix) covers E0597 and E0716 (a temporary dropped at the end of its statement; bind it with `let`). One shape shows up in loops: a value built inside the body, with a reference stored outside.
+
+<Snippet file="loop-ref.fail.rs" />
+
+`trimmed` is dropped at each iteration's end, and `longest` outlives it. Borrow from something that lives long enough, or move the owned value out:
+
+<Snippet file="loop-ref-fixed.rs" />
+
+The second version moves each new `String` into `longest`, which drops the previous one: nothing is borrowed.
+
+## Parent pointers and graphs: indices, not references
+
+A child holding a bare `&Dept` of its parent is E0106. Once the lifetime is named, the child freezes the parent while it is still in use:
+
+<Snippet file="parent-no-lifetime.fail.rs" />
+
+<Snippet file="parent-refs.fail.rs" />
+
+A struct holding a reference into its own field is the same trap: moving `text` in while `first` borrows it is E0505:
+
+<Snippet file="self-referential.fail.rs" />
+
+Store offsets and slice on demand, or keep owner and borrower as separate values. For a tree or graph, keep every node in one `Vec` and refer to nodes by position. The `Vec` is the owner (an *arena*), and an `Id` is a number, which borrows nothing:
+
+<Snippet file="arena.rs" />
+
+<ForLang only="c cpp">
+This is the handle pattern of C++ game engines and ECS libraries: a `Vec` of components and an `Entity(u32)` id.
+</ForLang>
+
+Costs: an `Id` is only a number. Nothing says which `Org` it came from: the last line gets a valid but wrong department from another one. Removing a node leaves later ids pointing at the wrong entries, unless you leave a hole (`Option<Dept>`) or version the ids with a counter in each slot and each id, as the [`slotmap`](https://docs.rs/slotmap/latest/slotmap/) crate does.
+
+## Clone or share: when `Rc<RefCell<T>>` is the honest answer
+
+Cloning to get past an error gives you a second value. If two parts of the program must see each other's changes, that is a bug:
+
+<Snippet file="shared.rs" />
+
+When the design really is "many owners of one changing value", `Rc<RefCell<T>>` says so ([Box, Rc and RefCell](/learn/smart-pointers/)). The price: the borrow rules are checked while the program runs, so a mistake is a panic, and `Rc` cannot cross threads.
+
+| The situation | Usual answer |
+|---|---|
+| a small value, copied once at a boundary | `clone` |
+| a counter or cache that a `&self` method updates | `Cell<T>` for a `Copy` value |
+| two parts must see the same changes | `Rc<RefCell<T>>` (`Arc` and a lock across threads: [Shared state](/learn/shared-state/)) |
+| it keeps coming back as one big `&mut self` | restructure ([below](#when-the-error-does-not-go-away-redesign)) |
+
+<p class="lr-layer">Going deeper</p>
+
+## When the error does not go away: redesign
+
+The signs are at the top. [Ownership](/learn/ownership/#when-ownership-feels-like-a-fight) lists the broad changes (one owner per piece of state, ids for references), [Returning references](/learn/returning-references/) returns results up, and [Lifetimes](/learn/lifetimes/#when-to-own-instead-of-borrow) weighs owning against borrowing. Two belong here:
+
+- **Split a struct when its fields change at different times.** A method that wants `items` read-only and `log` writable is describing two types (the `Log` fix above).
+- **Decide with `&self`, then apply with `&mut self`.** Read everything, return a plan of positions, then change. The cost is the plan, and the list must not change in between.
+
+<Snippet file="plan-apply.rs" />
+
+`apply` removes from the back so earlier positions stay valid.
+
+[`unsafe`](/learn/unsafe/) does not switch the checker off: it lets you do what the compiler cannot check, and a mistake there is yours. The checker also rejects some programs that would run fine, such as the conditional return in [Lifetimes](/learn/lifetimes/#where-a-borrow-really-ends); the fix is a shape it accepts, not a trick.
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Each starter compiles and stops at `todo!`. The first draft you would write anywhere fails with the error named below: write it, read the error, then fix it. The checks count clones, compare buffer addresses and forbid `unsafe`, so copying the data does not pass.
+
+<Exercise name="low-stock" title="Flag low stock">
+Write `flag_low`: for each item with a count below 5, in order, call `self.note` with `low: NAME (COUNT)`. Your first draft fails with E0502. Call `note` itself (it numbers each line), and do not copy the items.
+</Exercise>
+
+<Exercise name="ledger" title="Settle a ledger">
+Write `settle`: apply each entry in order with `self.apply` (it needs `&mut self`), and return the first `Err`. Your first draft fails with E0502. Every entry must stay in the ledger, in the same buffer, even when `apply` fails.
+</Exercise>
+
+<Exercise name="org" title="Teams by id">
+Write `relabel`: set a team's `path` to its parent's path, a slash and its own name, then do the same below it. Your first draft fails with E0502: it holds `&mut self.teams[i]` while reading the parent, or loops over the teams while calling `self.relabel`. The checks count clones of a `Team`.
+</Exercise>
+
+## Read more
+
+- [The Rust Book: Understanding Ownership](https://doc.rust-lang.org/book/ch04-00-understanding-ownership.html) and [References and Borrowing](https://doc.rust-lang.org/book/ch04-02-references-and-borrowing.html).
+- [The Rust Book: updating a hash map](https://doc.rust-lang.org/book/ch08-03-hash-maps.html#updating-a-hash-map), for `entry`.
+- [`std::mem::take`](https://doc.rust-lang.org/std/mem/fn.take.html), [`replace`](https://doc.rust-lang.org/std/mem/fn.replace.html) and [`Option::take`](https://doc.rust-lang.org/std/option/enum.Option.html#method.take).
+- [`slice::split_at_mut`](https://doc.rust-lang.org/std/primitive.slice.html#method.split_at_mut) and [`get_disjoint_mut`](https://doc.rust-lang.org/std/primitive.slice.html#method.get_disjoint_mut).
+- [`Vec::retain`](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.retain) and [`HashMap::extract_if`](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.extract_if).
+- [Reading compiler errors](/errors/): every code here. Rust by Example: [borrowing](https://doc.rust-lang.org/rust-by-example/scope/borrow.html) and [lifetimes](https://doc.rust-lang.org/rust-by-example/scope/lifetime.html).

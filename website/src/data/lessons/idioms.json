@@ -1,0 +1,436 @@
+{
+ "id": "idioms",
+ "title": "Idioms and design patterns",
+ "part": "further",
+ "intro": "An idiom is the way Rust code usually says a common thing: wrap a number in a type of its own, build a value in one place that checks it, make a wrong state impossible to write. Many are design patterns you already know, trimmed because enums, traits and ownership do part of the work. This page shows the ones you will read most, the compiler error each one turns a mistake into, and the habits that look like idioms and are not.",
+ "coming_from": {
+  "go": "A defined type (`type UserID int`) is the newtype, and functional options are the cousin of the Rust builder. Go chose the zero value on purpose (`var p Port` is `0`), and most Go types are designed so it is valid; the cost shows when it should not be, so \"a `Port` that cannot be invalid\" is a convention there. A Rust type has no zero value unless you write one, so a `Port` comes from the function you wrote. Cleanup is also different: `defer` runs at the end of the function, a Rust `Drop` guard at the end of its scope.",
+  "kotlin": "`value class` is the newtype, default and named arguments plus `copy` do much of what a Rust builder or `..Default::default()` does, and a `sealed` hierarchy is an enum. Rust has no named or default arguments, so the builder is more common than in Kotlin. `use {}` is the nearest to a `Drop` guard, but it is written by the caller at each use; a Rust guard runs without it.",
+  "python": "The same designs exist, checked by the compiler where Python relies on convention. `typing.NewType` is erased at run time (the page below passes an order id to a function that wants a user id, and it runs). A class that checks in `__init__` or `__post_init__` is the nearest Python form of \"parse, don't validate\": no invalid `Port` gets built, but the failure is an exception, so nothing makes the caller handle it. A `with` block is the nearest to a `Drop` guard, but the caller has to write it.",
+  "typescript": "Branded types and discriminated unions are your newtype and enum, and `tsc --strict` checks them. They are erased when the program runs (the page below prints `typeof` of a branded id: `number`). A Rust newtype takes no more space than its field, so it is gone at run time too; what differs is the build, where no cast turns a number into a `Port`.",
+  "java": "A `record` around one field is the newtype, a nested `Builder` class is the builder, and `sealed` interfaces with a `switch` are enums. A Strategy is already an interface or a lambda in Java, and a Rust trait or closure is the same thing; State has no base class to subclass per state, so it is an enum or a typestate. `try`-with-resources is the nearest to `Drop`, but you can forget to write the `try`.",
+  "csharp": "A `readonly record struct` is the newtype, `init` properties with `with` expressions do the job of a builder and `..Default::default()`, and `using` is the nearest to a `Drop` guard. A Rust type has no constructors: an associated function such as `new` or `parse` is an ordinary function that returns the value, so it can return a `Result`.",
+  "c": "`typedef int UserId;` names a type without making one: the page below passes an order id to a function that wants a user id, and it compiles under `-Wall -Wextra`. A one-field Rust struct is a new type. Designated initializers (`{.port = 9000}`) give C zero for everything you leave out, and cleanup is `goto cleanup` by hand, where Rust runs `Drop` for you.",
+  "cpp": "RAII is where `Drop` comes from, an `explicit` one-field struct is the newtype, and `std::variant` is an enum. What changes is that a Rust function builds the value, so it can return a `Result` the caller has to handle (a C++ constructor has no return value, so it throws), and a moved-from value cannot be used."
+ },
+ "notes": [
+  "A newtype is a struct with one field. It is a different type from the field's type, so the compiler refuses to mix them up, and its field can be private so that your own functions build it.",
+  "\"Parse, don't validate\": turn loosely typed input into a type that cannot be invalid, once, at the edge; everything after takes the strong type.",
+  "Enums with data make illegal states unrepresentable: a download that is both done and failed has no spelling. A typestate goes further and puts the state in the type, so calling `send` before `connect` is a compile error.",
+  "`Default` with `..Default::default()` and a builder stand in for the named and default arguments that Rust does not have. A guard type with a `Drop` impl ties cleanup to a scope.",
+  "Some habits look like idioms and are not: a `.clone()` that silences the borrow checker, `unwrap()` in a library, `Rc<RefCell<_>>` for everything, text where an enum belongs, generics nobody uses, and `Box<dyn Error>` as a library's error type. Each has a before and an after below."
+ ],
+ "gotcha": {
+  "title": "Copying a struct with `..` and then using the original",
+  "verdict": "rust-rule",
+  "looks_fine": "Copying a struct and changing one field leaves the original alone and usable: `copy(port = 9000)` in Kotlin, `replace` in Python, `{...base}` in TypeScript, `with` in C#, `test := base` in Go.",
+  "rust_sees": "`..base` takes the fields you did not name: `name` and `verbose`. `verbose` is `Copy`, so it is copied, but `name` is a `String`, so it is moved into `test`. `base` is now partly moved, and printing all of it is an error.",
+  "why": "A `String` has one owner, and a copy that allocates is something Rust makes you ask for with `.clone()`. So `..base` moves what it cannot copy, and `base` stays whole when the fields taken were all `Copy` (name the `String` yourself and it works; [Structs](/learn/structs/) shows the same rule). The fix is `..base.clone()` when you want a full copy, or `..Default::default()` when you only wanted defaults.",
+  "langs": {
+   "go": {
+    "status": "runs",
+    "says": "Go runs this and prints both structs. `test := base` copies the three fields. The string is shared, which is fine because a Go string cannot change.",
+    "code": "package main\n\nimport \"fmt\"\n\ntype Config struct {\n\tName    string\n\tPort    uint16\n\tVerbose bool\n}\n\nfunc main() {\n\tbase := Config{Name: \"service\", Port: 8080, Verbose: false}\n\ttest := base // a struct assignment copies the fields\n\ttest.Port = 9000\n\tfmt.Printf(\"%+v\\n\", base)\n\tfmt.Printf(\"%+v\\n\", test)\n}\n",
+    "out": "{Name:service Port:8080 Verbose:false}\n{Name:service Port:9000 Verbose:false}\n"
+   },
+   "kotlin": {
+    "status": "runs",
+    "says": "Kotlin runs this and prints both. `copy(port = 9000)` makes a new `Config`; the `String` is immutable, so the two share it.",
+    "code": "data class Config(val name: String, val port: Int, val verbose: Boolean)\n\nfun main() {\n    val base = Config(\"service\", 8080, false)\n    val test = base.copy(port = 9000)\n    println(base)\n    println(test)\n}\n",
+    "out": "Config(name=service, port=8080, verbose=false)\nConfig(name=service, port=9000, verbose=false)\n"
+   },
+   "python": {
+    "status": "runs",
+    "says": "Python runs this and prints both. `dataclasses.replace` builds a new `Config`; the `str` is immutable, so the two share it.",
+    "code": "from dataclasses import dataclass, replace\n\n\n@dataclass\nclass Config:\n    name: str\n    port: int\n    verbose: bool\n\n\nbase = Config(\"service\", 8080, False)\ntest = replace(base, port=9000)\nprint(base)\nprint(test)\n",
+    "out": "Config(name='service', port=8080, verbose=False)\nConfig(name='service', port=9000, verbose=False)\n"
+   },
+   "typescript": {
+    "status": "runs",
+    "says": "TypeScript runs this and prints both. The spread copies the properties one level deep; the string is a primitive. An object-valued property would be shared by both.",
+    "code": "interface Config {\n  name: string;\n  port: number;\n  verbose: boolean;\n}\n\nconst base: Config = { name: \"service\", port: 8080, verbose: false };\nconst test: Config = { ...base, port: 9000 };\nconsole.log(base);\nconsole.log(test);\n",
+    "out": "{ name: 'service', port: 8080, verbose: false }\n{ name: 'service', port: 9000, verbose: false }\n"
+   },
+   "java": {
+    "status": "runs",
+    "says": "Java runs this and prints both. A record has no copy-with, so you pass the fields you keep by hand; the `String` is immutable and shared.",
+    "code": "public class Main {\n    record Config(String name, int port, boolean verbose) {}\n\n    public static void main(String[] args) {\n        Config base = new Config(\"service\", 8080, false);\n        // A record has no \"copy with\"; you pass the fields you keep.\n        Config test = new Config(base.name(), 9000, base.verbose());\n        System.out.println(base);\n        System.out.println(test);\n    }\n}\n",
+    "out": "Config[name=service, port=8080, verbose=false]\nConfig[name=service, port=9000, verbose=false]\n"
+   },
+   "csharp": {
+    "status": "runs",
+    "says": "C# runs this and prints both. `with` copies the record and changes `Port`; the `string` is immutable and shared.",
+    "code": "var baseConfig = new Config(\"service\", 8080, false);\nvar test = baseConfig with { Port = 9000 };\nConsole.WriteLine(baseConfig);\nConsole.WriteLine(test);\n\nrecord Config(string Name, int Port, bool Verbose);\n",
+    "out": "Config { Name = service, Port = 8080, Verbose = False }\nConfig { Name = service, Port = 9000, Verbose = False }\n"
+   },
+   "c": {
+    "status": "runs",
+    "says": "C runs this and prints both. The struct assignment copies the fields, and here `name` is a pointer to a string literal that both copies share. With a `malloc`ed name, freeing both copies would free it twice (not run).",
+    "code": "#include <stdio.h>\n\nstruct Config {\n    const char *name;\n    unsigned short port;\n    int verbose;\n};\n\nint main(void) {\n    struct Config base = {\"service\", 8080, 0};\n    struct Config test = base; /* copies the fields, including the name pointer */\n    test.port = 9000;\n    printf(\"%s %d %d\\n\", base.name, base.port, base.verbose);\n    printf(\"%s %d %d\\n\", test.name, test.port, test.verbose);\n    return 0;\n}\n",
+    "out": "service 8080 0\nservice 9000 0\n"
+   },
+   "cpp": {
+    "status": "runs",
+    "says": "C++ runs this and prints both. The copy duplicates the `std::string` too, so both are whole; the allocation is the cost Rust asks you to write as `.clone()`.",
+    "code": "#include <iostream>\n#include <string>\n\nstruct Config {\n    std::string name;\n    unsigned short port;\n    bool verbose;\n};\n\nint main() {\n    Config base{\"service\", 8080, false};\n    Config test = base; // copies every field, the string too\n    test.port = 9000;\n    std::cout << base.name << \" \" << base.port << \" \" << base.verbose << \"\\n\";\n    std::cout << test.name << \" \" << test.port << \" \" << test.verbose << \"\\n\";\n}\n",
+    "out": "service 8080 0\nservice 9000 0\n"
+   }
+  },
+  "code": "#[derive(Debug, Clone)]\nstruct Config {\n    name: String,\n    port: u16,\n    verbose: bool,\n}\n\nfn main() {\n    let base = Config {\n        name: \"service\".to_string(),\n        port: 8080,\n        verbose: false,\n    };\n    // \"The same, but on another port.\"\n    let test = Config { port: 9000, ..base };\n    println!(\"{base:?}\");\n    println!(\"{test:?}\");\n}\n",
+  "error": "error[E0382]: borrow of partially moved value: `base`\n  --> src/main.rs:16:16\n   |\n15 |     let test = Config { port: 9000, ..base };\n   |                ----------------------------- value partially moved here\n16 |     println!(\"{base:?}\");\n   |                ^^^^ value borrowed here after partial move\n   |\n   = note: partial move occurs because `base.name` has type `String`, which does not implement the `Copy` trait\n",
+  "error_code": "E0382",
+  "fixed": {
+   "code": "#[derive(Debug, Clone)]\nstruct Config {\n    name: String,\n    port: u16,\n    verbose: bool,\n}\n\nfn main() {\n    let base = Config {\n        name: \"service\".to_string(),\n        port: 8080,\n        verbose: false,\n    };\n    // `..base.clone()` hands over a copy, so `base` stays whole.\n    let test = Config {\n        port: 9000,\n        ..base.clone()\n    };\n    println!(\"{base:?}\");\n    println!(\"{test:?}\");\n    println!(\n        \"{} on port {}, verbose: {}\",\n        test.name, test.port, test.verbose\n    );\n}\n",
+   "out": "Config { name: \"service\", port: 8080, verbose: false }\nConfig { name: \"service\", port: 9000, verbose: false }\nservice on port 9000, verbose: false\n"
+  }
+ },
+ "order": 53,
+ "program": {
+  "rust": {
+   "code": "mod port {\n    /// A port from 1 to 65535. The field is private: only `parse` can build one.\n    pub struct Port(u16);\n\n    impl Port {\n        pub fn parse(text: &str) -> Result<Port, String> {\n            let n: u32 = text.parse().map_err(|_| \"not a number\".to_string())?;\n            if n == 0 || n > 65535 {\n                return Err(format!(\"{n} is outside 1-65535\"));\n            }\n            Ok(Port(n as u16))\n        }\n\n        pub fn get(&self) -> u16 {\n            self.0\n        }\n    }\n}\n\nuse port::Port;\n\n// A Port is already valid, so this function has nothing to check.\nfn listen(port: &Port) {\n    println!(\"listening on {}\", port.get());\n}\n\nfn main() {\n    for text in [\"8080\", \"0\", \"http\"] {\n        match Port::parse(text) {\n            Ok(port) => listen(&port),\n            Err(e) => println!(\"{text:?}: {e}\"),\n        }\n    }\n}\n",
+   "out": "listening on 8080\n\"0\": 0 is outside 1-65535\n\"http\": not a number\n"
+  },
+  "go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"strconv\"\n)\n\n// Port is valid by construction, if every caller goes through ParsePort.\n// In package main the field is visible to the whole package; in its own\n// package, `n` would be hidden from other packages.\ntype Port struct{ n uint16 }\n\nfunc ParsePort(text string) (Port, error) {\n\tn, err := strconv.ParseUint(text, 10, 32)\n\tif err != nil {\n\t\treturn Port{}, fmt.Errorf(\"not a number\")\n\t}\n\tif n == 0 || n > 65535 {\n\t\treturn Port{}, fmt.Errorf(\"%d is outside 1-65535\", n)\n\t}\n\treturn Port{uint16(n)}, nil\n}\n\nfunc listen(p Port) {\n\tfmt.Println(\"listening on\", p.n)\n}\n\nfunc main() {\n\tfor _, text := range []string{\"8080\", \"0\", \"http\"} {\n\t\tport, err := ParsePort(text)\n\t\tif err != nil {\n\t\t\tfmt.Printf(\"%q: %v\\n\", text, err)\n\t\t\tcontinue\n\t\t}\n\t\tlisten(port)\n\t}\n}\n",
+   "out": "listening on 8080\n\"0\": 0 is outside 1-65535\n\"http\": not a number\n"
+  },
+  "kotlin": {
+   "code": "// The constructor is private, so Port.parse is the only way in.\nclass Port private constructor(val number: Int) {\n    companion object {\n        fun parse(text: String): Port {\n            val n = text.toLongOrNull() ?: throw IllegalArgumentException(\"not a number\")\n            if (n < 1 || n > 65535) throw IllegalArgumentException(\"$n is outside 1-65535\")\n            return Port(n.toInt())\n        }\n    }\n}\n\nfun listen(port: Port) {\n    println(\"listening on ${port.number}\")\n}\n\nfun main() {\n    for (text in listOf(\"8080\", \"0\", \"http\")) {\n        try {\n            listen(Port.parse(text))\n        } catch (e: IllegalArgumentException) {\n            println(\"\\\"$text\\\": ${e.message}\")\n        }\n    }\n}\n",
+   "out": "listening on 8080\n\"0\": 0 is outside 1-65535\n\"http\": not a number\n"
+  },
+  "python": {
+   "code": "class Port:\n    \"\"\"The leading underscore is a convention: Python does not stop Port(0).\"\"\"\n\n    def __init__(self, number):\n        self._number = number\n\n    @classmethod\n    def parse(cls, text):\n        try:\n            n = int(text)\n        except ValueError:\n            raise ValueError(\"not a number\") from None\n        if n < 1 or n > 65535:\n            raise ValueError(f\"{n} is outside 1-65535\")\n        return cls(n)\n\n    @property\n    def number(self):\n        return self._number\n\n\ndef listen(port):\n    print(\"listening on\", port.number)\n\n\nfor text in [\"8080\", \"0\", \"http\"]:\n    try:\n        listen(Port.parse(text))\n    except ValueError as e:\n        print(f'\"{text}\": {e}')\n",
+   "out": "listening on 8080\n\"0\": 0 is outside 1-65535\n\"http\": not a number\n"
+  },
+  "typescript": {
+   "code": "class Port {\n  // A private constructor: outside the class, `new Port(0)` does not compile.\n  private constructor(readonly number: number) {}\n\n  static parse(text: string): Port {\n    if (!/^\\d+$/.test(text)) throw new Error(\"not a number\");\n    const n = Number(text);\n    if (n < 1 || n > 65535) throw new Error(`${n} is outside 1-65535`);\n    return new Port(n);\n  }\n}\n\nfunction listen(port: Port): void {\n  console.log(`listening on ${port.number}`);\n}\n\nfor (const text of [\"8080\", \"0\", \"http\"]) {\n  try {\n    listen(Port.parse(text));\n  } catch (e) {\n    console.log(`\"${text}\": ${(e as Error).message}`);\n  }\n}\n",
+   "out": "listening on 8080\n\"0\": 0 is outside 1-65535\n\"http\": not a number\n"
+  },
+  "java": {
+   "code": "public class Main {\n    // The constructor is private, so Port.parse is the only way in.\n    static final class Port {\n        private final int number;\n\n        private Port(int number) {\n            this.number = number;\n        }\n\n        static Port parse(String text) {\n            long n;\n            try {\n                n = Long.parseLong(text);\n            } catch (NumberFormatException e) {\n                throw new IllegalArgumentException(\"not a number\");\n            }\n            if (n < 1 || n > 65535) {\n                throw new IllegalArgumentException(n + \" is outside 1-65535\");\n            }\n            return new Port((int) n);\n        }\n\n        int number() {\n            return number;\n        }\n    }\n\n    static void listen(Port port) {\n        System.out.println(\"listening on \" + port.number());\n    }\n\n    public static void main(String[] args) {\n        for (String text : new String[] {\"8080\", \"0\", \"http\"}) {\n            try {\n                listen(Port.parse(text));\n            } catch (IllegalArgumentException e) {\n                System.out.println(\"\\\"\" + text + \"\\\": \" + e.getMessage());\n            }\n        }\n    }\n}\n",
+   "out": "listening on 8080\n\"0\": 0 is outside 1-65535\n\"http\": not a number\n"
+  },
+  "csharp": {
+   "code": "// The constructor is private, so Port.Parse is the only way in.\nclass Port\n{\n    public int Number { get; }\n\n    private Port(int number) { Number = number; }\n\n    public static Port Parse(string text)\n    {\n        if (!long.TryParse(text, out var n)) throw new FormatException(\"not a number\");\n        if (n < 1 || n > 65535) throw new FormatException($\"{n} is outside 1-65535\");\n        return new Port((int)n);\n    }\n}\n\nclass Program\n{\n    static void Listen(Port port) => Console.WriteLine($\"listening on {port.Number}\");\n\n    static void Main()\n    {\n        foreach (var text in new[] { \"8080\", \"0\", \"http\" })\n        {\n            try { Listen(Port.Parse(text)); }\n            catch (FormatException e) { Console.WriteLine($\"\\\"{text}\\\": {e.Message}\"); }\n        }\n    }\n}\n",
+   "out": "listening on 8080\n\"0\": 0 is outside 1-65535\n\"http\": not a number\n"
+  },
+  "c": {
+   "code": "#include <stdio.h>\n#include <stdlib.h>\n\n/* The struct is a plain value: nothing stops `struct Port p = {0};`.\n   In a library, the header would only declare `struct Port;` so callers\n   could hold a pointer but not build one. */\nstruct Port {\n    unsigned short number;\n};\n\n/* Returns 0 on success; on failure returns -1 and sets *error. */\nstatic int parse_port(const char *text, struct Port *out, const char **error) {\n    char *end;\n    unsigned long n = strtoul(text, &end, 10);\n    if (*text == '\\0' || *end != '\\0') {\n        *error = \"not a number\";\n        return -1;\n    }\n    if (n < 1 || n > 65535) {\n        static char message[64];\n        snprintf(message, sizeof message, \"%lu is outside 1-65535\", n);\n        *error = message;\n        return -1;\n    }\n    out->number = (unsigned short)n;\n    return 0;\n}\n\nstatic void listen_on(const struct Port *port) {\n    printf(\"listening on %d\\n\", port->number);\n}\n\nint main(void) {\n    const char *inputs[] = {\"8080\", \"0\", \"http\"};\n    for (int i = 0; i < 3; i++) {\n        struct Port port;\n        const char *error;\n        if (parse_port(inputs[i], &port, &error) == 0) {\n            listen_on(&port);\n        } else {\n            printf(\"\\\"%s\\\": %s\\n\", inputs[i], error);\n        }\n    }\n    return 0;\n}\n",
+   "out": "listening on 8080\n\"0\": 0 is outside 1-65535\n\"http\": not a number\n"
+  },
+  "cpp": {
+   "code": "#include <iostream>\n#include <stdexcept>\n#include <string>\n\n// The constructor is private, so Port::parse is the only way in.\nclass Port {\npublic:\n    static Port parse(const std::string& text) {\n        std::size_t used = 0;\n        unsigned long n = 0;\n        try {\n            n = std::stoul(text, &used);\n        } catch (const std::exception&) {\n            throw std::invalid_argument(\"not a number\");\n        }\n        if (used != text.size()) throw std::invalid_argument(\"not a number\");\n        if (n < 1 || n > 65535) throw std::invalid_argument(std::to_string(n) + \" is outside 1-65535\");\n        return Port(static_cast<unsigned short>(n));\n    }\n\n    unsigned short number() const { return number_; }\n\nprivate:\n    explicit Port(unsigned short number) : number_(number) {}\n    unsigned short number_;\n};\n\nvoid listen_on(const Port& port) {\n    std::cout << \"listening on \" << port.number() << \"\\n\";\n}\n\nint main() {\n    for (const std::string text : {\"8080\", \"0\", \"http\"}) {\n        try {\n            listen_on(Port::parse(text));\n        } catch (const std::invalid_argument& e) {\n            std::cout << '\"' << text << \"\\\": \" << e.what() << \"\\n\";\n        }\n    }\n}\n",
+   "out": "listening on 8080\n\"0\": 0 is outside 1-65535\n\"http\": not a number\n"
+  }
+ },
+ "faq": [],
+ "snippets": {
+  "box-dyn-lib.rs": {
+   "code": "use std::error::Error;\nuse std::num::ParseIntError;\n\n/// A library function whose signature says only \"some error\".\npub fn read_port(text: &str) -> Result<u16, Box<dyn Error>> {\n    let (key, value) = text.split_once('=').ok_or(\"no '=' in the line\")?;\n    if key != \"port\" {\n        return Err(format!(\"unexpected key {key:?}\").into());\n    }\n    Ok(value.parse::<u16>()?)\n}\n\nfn main() {\n    for text in [\"port=80\", \"port=eighty\", \"host=db\", \"port\"] {\n        match read_port(text) {\n            Ok(p) => println!(\"{text}: {p}\"),\n            Err(e) => {\n                // To react to one kind of failure, the caller has to guess the concrete type.\n                if e.downcast_ref::<ParseIntError>().is_some() {\n                    println!(\"{text}: bad number ({e})\");\n                } else {\n                    println!(\"{text}: other ({e})\");\n                }\n            }\n        }\n    }\n}\n",
+   "out": "port=80: 80\nport=eighty: bad number (invalid digit found in string)\nhost=db: other (unexpected key \"host\")\nport: other (no '=' in the line)\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "builder.rs": {
+   "code": "use std::time::Duration;\n\nstruct Request {\n    url: String,\n    method: String,\n    retries: u32,\n    timeout: Duration,\n}\n\n#[derive(Debug, PartialEq)]\nenum BuildError {\n    MissingUrl,\n}\n\nstruct RequestBuilder {\n    url: Option<String>,\n    method: String,\n    retries: u32,\n    timeout: Duration,\n}\n\nimpl RequestBuilder {\n    fn new() -> RequestBuilder {\n        RequestBuilder {\n            url: None,\n            method: \"GET\".to_string(),\n            retries: 3,\n            timeout: Duration::from_secs(30),\n        }\n    }\n\n    // Each setter takes `self` and returns it, so calls chain and nothing is borrowed.\n    fn url(mut self, url: &str) -> RequestBuilder {\n        self.url = Some(url.to_string());\n        self\n    }\n\n    fn method(mut self, method: &str) -> RequestBuilder {\n        self.method = method.to_string();\n        self\n    }\n\n    fn retries(mut self, retries: u32) -> RequestBuilder {\n        self.retries = retries;\n        self\n    }\n\n    /// The one place that checks the whole value.\n    fn build(self) -> Result<Request, BuildError> {\n        let url = self.url.ok_or(BuildError::MissingUrl)?;\n        Ok(Request {\n            url,\n            method: self.method,\n            retries: self.retries,\n            timeout: self.timeout,\n        })\n    }\n}\n\nfn main() {\n    let ok = RequestBuilder::new()\n        .url(\"https://example.org\")\n        .method(\"POST\")\n        .retries(0)\n        .build();\n    match &ok {\n        Ok(r) => println!(\n            \"{} {} retries={} timeout={:?}\",\n            r.method, r.url, r.retries, r.timeout\n        ),\n        Err(e) => println!(\"error: {e:?}\"),\n    }\n    let missing = RequestBuilder::new().retries(5).build();\n    println!(\"{:?}\", missing.map(|r| r.url));\n}\n",
+   "out": "POST https://example.org retries=0 timeout=30s\nErr(MissingUrl)\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-cow.rs": {
+   "code": "use std::borrow::Cow;\n\n/// Borrows the input when there is nothing to change, and allocates only when there is.\nfn no_tabs(text: &str) -> Cow<'_, str> {\n    if text.contains('\\t') {\n        Cow::Owned(text.replace('\\t', \"    \"))\n    } else {\n        Cow::Borrowed(text)\n    }\n}\n\nfn main() {\n    let clean = no_tabs(\"no tabs here\");\n    let fixed = no_tabs(\"a\\tb\");\n    assert!(matches!(clean, Cow::Borrowed(_)));\n    assert!(matches!(fixed, Cow::Owned(_)));\n    assert_eq!(fixed, \"a    b\");\n    println!(\"clean is borrowed, fixed is owned\");\n}\n",
+   "out": "clean is borrowed, fixed is owned\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-phantom-unused.fail.rs": {
+   "code": "struct Connection<State> {\n    sent: u32,\n}\n\nfn main() {}\n",
+   "error": "error[E0392]: type parameter `State` is never used\n --> src/main.rs:1:19\n  |\n1 | struct Connection<State> {\n  |                   ^^^^^ unused type parameter\n  |\n  = help: consider removing `State`, referring to it in a field, or using a marker such as `PhantomData`\n  = help: if you intended `State` to be a const parameter, use `const State: /* Type */` instead\n",
+   "lang": "rust"
+  },
+  "check-rc-vec.fail.rs": {
+   "code": "fn note(log: &mut Vec<String>, text: String) {\n    log.push(text);\n}\n\nfn add_follow_ups(log: &mut Vec<String>) {\n    for line in log.iter() {\n        note(log, format!(\"follow up on {line}\"));\n    }\n}\n\nfn main() {\n    let mut log = vec![\"call Ada\".to_string()];\n    add_follow_ups(&mut log);\n    println!(\"{log:?}\");\n}\n",
+   "error": "error[E0502]: cannot borrow `*log` as mutable because it is also borrowed as immutable\n --> src/main.rs:7:9\n  |\n6 |       for line in log.iter() {\n  |       -           ----------\n  |       |           |\n  |       |           immutable borrow occurs here\n  |  _____|           immutable borrow later used here\n  | |\n7 | |         note(log, format!(\"follow up on {line}\"));\n  | |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable borrow occurs here\n8 | |     }\n  | |_____- this for loop borrows `*log` immutably, preventing mutation within its body\n  |\n  = help: consider using an index-based loop instead, or collecting modifications into a separate collection\n",
+   "lang": "rust"
+  },
+  "check-sealed.rs": {
+   "code": "// A sealed trait: public, but only this crate can implement it.\nmod shapes {\n    mod private {\n        pub trait Sealed {}\n    }\n\n    pub trait Shape: private::Sealed {\n        fn sides(&self) -> u32;\n    }\n\n    pub struct Square;\n    pub struct Triangle;\n\n    impl private::Sealed for Square {}\n    impl private::Sealed for Triangle {}\n\n    impl Shape for Square {\n        fn sides(&self) -> u32 {\n            4\n        }\n    }\n\n    impl Shape for Triangle {\n        fn sides(&self) -> u32 {\n            3\n        }\n    }\n}\n\nuse shapes::{Shape, Square, Triangle};\n\nfn main() {\n    assert_eq!(Square.sides(), 4);\n    assert_eq!(Triangle.sides(), 3);\n    println!(\"sealed trait: the crate's own types implement it\");\n}\n",
+   "out": "sealed trait: the crate's own types implement it\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-typed-typo.fail.rs": {
+   "code": "#[derive(Debug)]\nenum Mode {\n    Read,\n    Write,\n}\n\nfn main() {\n    let mode = Mode::Wrtie;\n    println!(\"{mode:?} {:?} {:?}\", Mode::Read, Mode::Write);\n}\n",
+   "error": "error[E0599]: no variant, associated function, or constant named `Wrtie` found for enum `Mode` in the current scope\n --> src/main.rs:8:22\n  |\n2 | enum Mode {\n  | --------- variant, associated function, or constant `Wrtie` not found for this enum\n...\n8 |     let mode = Mode::Wrtie;\n  |                      ^^^^^ variant, associated function, or constant not found in `Mode`\n  |\nhelp: there is a variant with a similar name\n  |\n8 -     let mode = Mode::Wrtie;\n8 +     let mode = Mode::Write;",
+   "lang": "rust"
+  },
+  "check-update-copy-only.rs": {
+   "code": "#[derive(Debug)]\nstruct Config {\n    name: String,\n    port: u16,\n    verbose: bool,\n}\n\nfn main() {\n    let base = Config {\n        name: \"service\".to_string(),\n        port: 8080,\n        verbose: false,\n    };\n    // `..base` takes only `verbose` here, which is Copy: `base` stays whole.\n    let test = Config {\n        name: \"test\".to_string(),\n        port: 9000,\n        ..base\n    };\n    println!(\"{} {} {}\", base.name, base.port, base.verbose);\n    println!(\"{} {} {}\", test.name, test.port, test.verbose);\n}\n",
+   "out": "service 8080 false\ntest 9000 false\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "clone-fixed.rs": {
+   "code": "struct Team {\n    scores: Vec<u32>,\n    bonus_per_member: u32,\n}\n\nimpl Team {\n    fn bonus(&self) -> u32 {\n        self.bonus_per_member + self.scores.len() as u32\n    }\n}\n\nfn award(team: &mut Team) {\n    // Read the one number first (a `u32` is copied out, so no borrow is left), then change the list.\n    let bonus = team.bonus();\n    for score in team.scores.iter_mut() {\n        *score += bonus;\n    }\n}\n\nfn main() {\n    let mut team = Team {\n        scores: vec![10, 20, 30],\n        bonus_per_member: 1,\n    };\n    award(&mut team);\n    println!(\"{:?}\", team.scores);\n}\n",
+   "out": "[14, 24, 34]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "clone-lost.rs": {
+   "code": "struct Team {\n    scores: Vec<u32>,\n    bonus_per_member: u32,\n}\n\nimpl Team {\n    fn bonus(&self) -> u32 {\n        self.bonus_per_member + self.scores.len() as u32\n    }\n}\n\nfn award(team: &mut Team) {\n    // \"Fixes\" the borrow error by working on a copy. The copy is thrown away.\n    let mut scores = team.scores.clone();\n    for score in scores.iter_mut() {\n        *score += team.bonus();\n    }\n}\n\nfn main() {\n    let mut team = Team {\n        scores: vec![10, 20, 30],\n        bonus_per_member: 1,\n    };\n    award(&mut team);\n    println!(\"{:?}\", team.scores);\n}\n",
+   "out": "[10, 20, 30]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "clone-trigger.fail.rs": {
+   "code": "struct Team {\n    scores: Vec<u32>,\n    bonus_per_member: u32,\n}\n\nimpl Team {\n    fn bonus(&self) -> u32 {\n        self.bonus_per_member + self.scores.len() as u32\n    }\n}\n\nfn award(team: &mut Team) {\n    for score in team.scores.iter_mut() {\n        *score += team.bonus();\n    }\n}\n\nfn main() {\n    let mut team = Team {\n        scores: vec![10, 20, 30],\n        bonus_per_member: 1,\n    };\n    award(&mut team);\n    println!(\"{:?}\", team.scores);\n}\n",
+   "error": "error[E0502]: cannot borrow `*team` as immutable because it is also borrowed as mutable\n  --> src/main.rs:14:19\n   |\n13 |     for score in team.scores.iter_mut() {\n   |                  ----------------------\n   |                  |\n   |                  mutable borrow occurs here\n   |                  mutable borrow later used here\n14 |         *score += team.bonus();\n   |                   ^^^^ immutable borrow occurs here\n",
+   "lang": "rust"
+  },
+  "concrete.rs": {
+   "code": "/// One caller today, so one concrete signature. `&[u32]` accepts a Vec, an array and `&[]`.\nfn first_or_zero(items: &[u32]) -> u32 {\n    items.first().copied().unwrap_or(0)\n}\n\nfn main() {\n    println!(\"{}\", first_or_zero(&[7, 8]));\n    println!(\"{}\", first_or_zero(&vec![9]));\n    println!(\"{}\", first_or_zero(&[]));\n}\n",
+   "out": "7\n9\n0\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "default-update.rs": {
+   "code": "#[derive(Debug, Clone, PartialEq)]\nstruct Config {\n    host: String,\n    port: u16,\n    retries: u32,\n    verbose: bool,\n}\n\nimpl Default for Config {\n    fn default() -> Config {\n        Config {\n            host: \"localhost\".to_string(),\n            port: 8080,\n            retries: 3,\n            verbose: false,\n        }\n    }\n}\n\nfn main() {\n    let plain = Config::default();\n    let custom = Config {\n        port: 9000,\n        verbose: true,\n        ..Default::default()\n    };\n    println!(\"{plain:?}\");\n    println!(\"{custom:?}\");\n    assert_eq!(custom.host, plain.host);\n}\n",
+   "out": "Config { host: \"localhost\", port: 8080, retries: 3, verbose: false }\nConfig { host: \"localhost\", port: 9000, retries: 3, verbose: true }\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "error-enum.rs": {
+   "code": "use std::fmt;\nuse std::num::ParseIntError;\n\n/// The signature lists every way this can fail.\n#[derive(Debug)]\npub enum PortError {\n    NoEquals,\n    WrongKey(String),\n    BadNumber(ParseIntError),\n}\n\nimpl fmt::Display for PortError {\n    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {\n        match self {\n            PortError::NoEquals => write!(f, \"no '=' in the line\"),\n            PortError::WrongKey(k) => write!(f, \"unexpected key {k:?}\"),\n            PortError::BadNumber(e) => write!(f, \"bad number: {e}\"),\n        }\n    }\n}\n\nimpl std::error::Error for PortError {}\n\nimpl From<ParseIntError> for PortError {\n    fn from(e: ParseIntError) -> PortError {\n        PortError::BadNumber(e)\n    }\n}\n\npub fn read_port(text: &str) -> Result<u16, PortError> {\n    let (key, value) = text.split_once('=').ok_or(PortError::NoEquals)?;\n    if key != \"port\" {\n        return Err(PortError::WrongKey(key.to_string()));\n    }\n    Ok(value.parse::<u16>()?)\n}\n\nfn main() {\n    for text in [\"port=80\", \"port=eighty\", \"host=db\", \"port\"] {\n        match read_port(text) {\n            Ok(p) => println!(\"{text}: {p}\"),\n            Err(PortError::BadNumber(e)) => println!(\"{text}: bad number ({e})\"),\n            Err(e) => println!(\"{text}: other ({e})\"),\n        }\n    }\n}\n",
+   "out": "port=80: 80\nport=eighty: bad number (invalid digit found in string)\nhost=db: other (unexpected key \"host\")\nport: other (no '=' in the line)\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "extension-scope.fail.rs": {
+   "code": "mod text_ext {\n    pub trait StrExt {\n        fn is_blank(&self) -> bool;\n    }\n\n    impl StrExt for str {\n        fn is_blank(&self) -> bool {\n            self.trim().is_empty()\n        }\n    }\n}\n\nfn main() {\n    println!(\"{}\", \"   \".is_blank());\n}\n",
+   "error": "error[E0599]: no method named `is_blank` found for reference `&'static str` in the current scope\n  --> src/main.rs:14:26\n   |\n14 |     println!(\"{}\", \"   \".is_blank());\n   |                          ^^^^^^^^ method not found in `&'static str`\n   |\n   = help: items from traits can only be used if the trait is in scope\nhelp: trait `StrExt` which provides `is_blank` is implemented but not in scope; perhaps you want to import it\n   |\n 1 + use crate::text_ext::StrExt;",
+   "lang": "rust"
+  },
+  "extension.rs": {
+   "code": "mod text_ext {\n    /// Our own trait, so we may implement it for the foreign type `str`.\n    pub trait StrExt {\n        fn is_blank(&self) -> bool;\n        fn first_word(&self) -> &str;\n    }\n\n    impl StrExt for str {\n        fn is_blank(&self) -> bool {\n            self.trim().is_empty()\n        }\n\n        fn first_word(&self) -> &str {\n            self.split_whitespace().next().unwrap_or(\"\")\n        }\n    }\n}\n\n// The methods exist only where the trait is in scope.\nuse text_ext::StrExt;\n\nfn main() {\n    println!(\"{}\", \"   \".is_blank());\n    println!(\"{}\", \"  hello world\".first_word());\n    let owned = String::from(\"rust language\");\n    println!(\"{}\", owned.first_word()); // a String derefs to str\n}\n",
+   "out": "true\nhello\nrust\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "guard.rs": {
+   "code": "use std::cell::Cell;\n\n/// Raises a counter while it is alive. The matching decrement is in `drop`, so it\n/// cannot be forgotten and runs on every way out of the scope.\nstruct Depth<'a> {\n    level: &'a Cell<u32>,\n}\n\nimpl<'a> Depth<'a> {\n    fn enter(level: &'a Cell<u32>, name: &str) -> Depth<'a> {\n        level.set(level.get() + 1);\n        println!(\"{}enter {name}\", \"  \".repeat(level.get() as usize - 1));\n        Depth { level }\n    }\n}\n\nimpl Drop for Depth<'_> {\n    fn drop(&mut self) {\n        self.level.set(self.level.get() - 1);\n        println!(\"{}leave\", \"  \".repeat(self.level.get() as usize));\n    }\n}\n\nfn parse(level: &Cell<u32>, text: &str) -> Result<u32, std::num::ParseIntError> {\n    let _guard = Depth::enter(level, \"parse\");\n    let n = text.parse::<u32>()?; // an early return: the guard still drops\n    Ok(n * 2)\n}\n\nfn main() {\n    let level = Cell::new(0);\n    {\n        let _outer = Depth::enter(&level, \"main\");\n        println!(\"{:?}\", parse(&level, \"21\"));\n        println!(\"{:?}\", parse(&level, \"x\"));\n    }\n    println!(\"level after: {}\", level.get());\n}\n",
+   "out": "enter main\n  enter parse\n  leave\nOk(42)\n  enter parse\n  leave\nErr(ParseIntError { kind: InvalidDigit })\nleave\nlevel after: 0\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "newtype.rs": {
+   "code": "use std::fmt;\nuse std::mem::size_of;\n\nstruct UserId(u32);\nstruct OrderId(u32);\n\nfn load_user(id: &UserId) -> String {\n    format!(\"user #{}\", id.0)\n}\n\n/// A wrapper around a foreign type, so that this crate may implement a foreign trait on it.\nstruct Names(Vec<String>);\n\nimpl fmt::Display for Names {\n    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {\n        write!(f, \"{}\", self.0.join(\", \"))\n    }\n}\n\nfn main() {\n    let user = UserId(7);\n    let order = OrderId(7);\n    println!(\"{}\", load_user(&user));\n    println!(\"order #{}\", order.0);\n\n    println!(\"size_of::<u32>():     {}\", size_of::<u32>());\n    println!(\"size_of::<UserId>():  {}\", size_of::<UserId>());\n    println!(\"size_of::<Names>():   {}\", size_of::<Names>());\n    println!(\"size_of::<Vec<String>>(): {}\", size_of::<Vec<String>>());\n\n    println!(\"{}\", Names(vec![\"Ada\".to_string(), \"Grace\".to_string()]));\n}\n",
+   "out": "user #7\norder #7\nsize_of::<u32>():     4\nsize_of::<UserId>():  4\nsize_of::<Names>():   24\nsize_of::<Vec<String>>(): 24\nAda, Grace\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "over-generic.fail.rs": {
+   "code": "/// Generic over the element type \"in case\" a second caller shows up.\nfn first_or_zero<T: Copy + Into<u32>>(items: &[T]) -> u32 {\n    items.first().map_or(0, |&x| x.into())\n}\n\nfn main() {\n    println!(\"{}\", first_or_zero(&[7u32, 8]));\n    println!(\"{}\", first_or_zero(&[]));\n}\n",
+   "error": "error[E0283]: type annotations needed\n --> src/main.rs:8:20\n  |\n8 |     println!(\"{}\", first_or_zero(&[]));\n  |                    ^^^^^^^^^^^^^ --- type must be known at this point\n  |                    |\n  |                    cannot infer type of the type parameter `T` declared on the function `first_or_zero`\n  |\n  = note: the type must implement `Copy`\n  = note: the type must also implement `Into<u32>`\nnote: required by a bound in `first_or_zero`\n --> src/main.rs:2:21\n  |\n2 | fn first_or_zero<T: Copy + Into<u32>>(items: &[T]) -> u32 {\n  |                     ^^^^ required by this bound in `first_or_zero`\nnote: required by a bound in `first_or_zero`\n --> src/main.rs:2:28\n  |\n2 | fn first_or_zero<T: Copy + Into<u32>>(items: &[T]) -> u32 {\n  |                            ^^^^^^^^^ required by this bound in `first_or_zero`\nhelp: consider specifying a concrete type for the type parameter `T`\n  |\n8 |     println!(\"{}\", first_or_zero::</* Type */>(&[]));\n  |                                 ++++++++++++++\n",
+   "lang": "rust"
+  },
+  "parse-dont-validate.rs": {
+   "code": "use std::str::FromStr;\n\nmod port {\n    use std::fmt;\n    use std::str::FromStr;\n\n    /// A TCP port from 1 to 65535. The only way to get one is `Port::try_from` or `parse`.\n    #[derive(Debug, Clone, Copy, PartialEq)]\n    pub struct Port(u16);\n\n    #[derive(Debug, PartialEq)]\n    pub enum PortError {\n        NotANumber,\n        OutOfRange(u32),\n    }\n\n    impl fmt::Display for PortError {\n        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {\n            match self {\n                PortError::NotANumber => write!(f, \"not a number\"),\n                PortError::OutOfRange(n) => write!(f, \"{n} is outside 1-65535\"),\n            }\n        }\n    }\n\n    impl TryFrom<u32> for Port {\n        type Error = PortError;\n\n        fn try_from(n: u32) -> Result<Port, PortError> {\n            match u16::try_from(n) {\n                Ok(p) if p != 0 => Ok(Port(p)),\n                _ => Err(PortError::OutOfRange(n)),\n            }\n        }\n    }\n\n    impl FromStr for Port {\n        type Err = PortError;\n\n        fn from_str(s: &str) -> Result<Port, PortError> {\n            let n: u32 = s.trim().parse().map_err(|_| PortError::NotANumber)?;\n            Port::try_from(n)\n        }\n    }\n\n    impl Port {\n        pub fn get(self) -> u16 {\n            self.0\n        }\n    }\n}\n\nuse port::Port;\n\n/// No check here: a `Port` is already known to be valid.\nfn listen(port: Port) -> String {\n    format!(\"listening on {}\", port.get())\n}\n\nfn main() {\n    for text in [\"8080\", \"0\", \"70000\", \"http\"] {\n        match Port::from_str(text) {\n            Ok(port) => println!(\"{text:>6} -> {}\", listen(port)),\n            Err(e) => println!(\"{text:>6} -> rejected: {e}\"),\n        }\n    }\n}\n",
+   "out": "  8080 -> listening on 8080\n     0 -> rejected: 0 is outside 1-65535\n 70000 -> rejected: 70000 is outside 1-65535\n  http -> rejected: not a number\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "port-private.fail.rs": {
+   "code": "mod port {\n    pub struct Port(u16);\n\n    impl Port {\n        pub fn get(&self) -> u16 {\n            self.0\n        }\n    }\n}\n\nfn main() {\n    let p = port::Port(0);\n    println!(\"{}\", p.get());\n}\n",
+   "error": "error[E0603]: tuple struct constructor `Port` is private\n  --> src/main.rs:12:19\n   |\n 2 |     pub struct Port(u16);\n   |                     --- a constructor is private if any of the fields is private\n...\n12 |     let p = port::Port(0);\n   |                   ^^^^ private tuple struct constructor\n   |\nnote: the tuple struct constructor `Port` is defined here\n  --> src/main.rs:2:5\n   |\n 2 |     pub struct Port(u16);\n   |     ^^^^^^^^^^^^^^^^^^^^^\nhelp: consider making the field publicly accessible\n   |\n 2 |     pub struct Port(pub u16);\n   |                     +++\n",
+   "lang": "rust"
+  },
+  "rc-everywhere.panic.rs": {
+   "code": "use std::cell::RefCell;\nuse std::rc::Rc;\n\ntype Log = Rc<RefCell<Vec<String>>>;\n\nfn note(log: &Log, text: String) {\n    log.borrow_mut().push(text);\n}\n\n/// Adds a follow-up note for every note so far.\nfn add_follow_ups(log: &Log) {\n    for line in log.borrow().iter() {\n        note(log, format!(\"follow up on {line}\"));\n    }\n}\n\nfn main() {\n    let log: Log = Rc::new(RefCell::new(vec![\"call Ada\".to_string()]));\n    add_follow_ups(&log);\n    println!(\"{:?}\", log.borrow());\n}\n",
+   "out": "\nthread 'main' (1) panicked at src/main.rs:7:9:\nRefCell already borrowed\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+   "lang": "rust",
+   "exit": 101
+  },
+  "rc-fixed.rs": {
+   "code": "fn add_follow_ups(log: &mut Vec<String>) {\n    // Build the new notes first, then add them: the list is never read and changed at once.\n    let follow_ups: Vec<String> = log\n        .iter()\n        .map(|line| format!(\"follow up on {line}\"))\n        .collect();\n    log.extend(follow_ups);\n}\n\nfn main() {\n    let mut log = vec![\"call Ada\".to_string()];\n    add_follow_ups(&mut log);\n    println!(\"{log:?}\");\n}\n",
+   "out": "[\"call Ada\", \"follow up on call Ada\"]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "sealed.fail.rs": {
+   "code": "mod shapes {\n    mod private {\n        pub trait Sealed {}\n    }\n\n    pub trait Shape: private::Sealed {\n        fn sides(&self) -> u32;\n    }\n}\n\nstruct Circle;\n\nimpl shapes::Shape for Circle {\n    fn sides(&self) -> u32 {\n        0\n    }\n}\n\nfn main() {\n    let _circle = Circle;\n}\n",
+   "error": "error[E0277]: the trait bound `Circle: Sealed` is not satisfied\n  --> src/main.rs:13:24\n   |\n13 | impl shapes::Shape for Circle {\n   |                        ^^^^^^ unsatisfied trait bound\n   |\nhelp: the trait `Sealed` is not implemented for `Circle`\n  --> src/main.rs:11:1\n   |\n11 | struct Circle;\n   | ^^^^^^^^^^^^^\nhelp: this trait has no implementations, consider adding one\n  --> src/main.rs:3:9\n   |\n 3 |         pub trait Sealed {}\n   |         ^^^^^^^^^^^^^^^^\nnote: required by a bound in `Shape`\n  --> src/main.rs:6:22\n   |\n 6 |     pub trait Shape: private::Sealed {\n   |                      ^^^^^^^^^^^^^^^ required by this bound in `Shape`\n   = note: `Shape` is a \"sealed trait\", because to implement it you also need to implement `shapes::private::Sealed`, which is not accessible; this is usually done to force you to use one of the provided types that already implement it\n",
+   "lang": "rust"
+  },
+  "states-enum.rs": {
+   "code": "/// One variant per state; each carries only the data that state has.\n#[derive(Debug)]\nenum Download {\n    Running,\n    Done { bytes: u64 },\n    Failed { reason: String },\n}\n\nfn describe(d: &Download) -> String {\n    match d {\n        Download::Running => \"running\".to_string(),\n        Download::Done { bytes } => format!(\"finished, {bytes} bytes\"),\n        Download::Failed { reason } => format!(\"failed: {reason}\"),\n    }\n}\n\nfn main() {\n    let states = [\n        Download::Running,\n        Download::Done { bytes: 512 },\n        Download::Failed {\n            reason: \"timeout\".to_string(),\n        },\n    ];\n    for s in &states {\n        println!(\"{}\", describe(s));\n    }\n    // \"done and failed at once\" has no spelling: there is no variant that holds both.\n}\n",
+   "out": "running\nfinished, 512 bytes\nfailed: timeout\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "states-flags.rs": {
+   "code": "/// Three fields that must agree, and nothing makes them.\n#[derive(Debug)]\nstruct Download {\n    done: bool,\n    error: Option<String>,\n    bytes: Option<u64>,\n}\n\nfn describe(d: &Download) -> String {\n    if d.done {\n        format!(\"finished, {} bytes\", d.bytes.unwrap_or(0))\n    } else if let Some(e) = &d.error {\n        format!(\"failed: {e}\")\n    } else {\n        \"running\".to_string()\n    }\n}\n\nfn main() {\n    let fine = Download {\n        done: true,\n        error: None,\n        bytes: Some(512),\n    };\n    // Compiles. Is it finished or failed? `describe` quietly picks one.\n    let contradiction = Download {\n        done: true,\n        error: Some(\"timeout\".to_string()),\n        bytes: None,\n    };\n    println!(\"{}\", describe(&fine));\n    println!(\"{}\", describe(&contradiction));\n}\n",
+   "out": "finished, 512 bytes\nfinished, 0 bytes\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "strategy.rs": {
+   "code": "use std::fmt::Display;\n\n/// The rule is a parameter. Any closure (or function) with this shape fits.\nfn count_matching(items: &[i32], keep: impl Fn(i32) -> bool) -> usize {\n    let mut n = 0;\n    for &item in items {\n        if keep(item) {\n            n += 1;\n        }\n    }\n    n\n}\n\nfn is_even(n: i32) -> bool {\n    n % 2 == 0\n}\n\n/// Chosen at run time (say, from a config file): a boxed closure, one type for every rule.\nfn rule(name: &str) -> Option<Box<dyn Fn(i32) -> bool>> {\n    match name {\n        \"even\" => Some(Box::new(is_even)),\n        \"big\" => Some(Box::new(|n| n > 5)),\n        _ => None,\n    }\n}\n\n/// `impl Trait` for the item type too: anything that can be iterated and shown.\nfn show_all(items: impl IntoIterator<Item = impl Display>) -> String {\n    let parts: Vec<String> = items.into_iter().map(|i| i.to_string()).collect();\n    parts.join(\" | \")\n}\n\nfn main() {\n    let data = [1, 2, 3, 4, 5, 6, 7, 8];\n    let limit = 5;\n    println!(\"even:       {}\", count_matching(&data, is_even));\n    println!(\"above {limit}:    {}\", count_matching(&data, |n| n > limit));\n    println!(\n        \"odd or > 6: {}\",\n        count_matching(&data, |n| n % 2 == 1 || n > 6)\n    );\n\n    for name in [\"big\", \"even\", \"prime\"] {\n        match rule(name) {\n            Some(keep) => println!(\"rule {name}: {}\", count_matching(&data, keep)),\n            None => println!(\"rule {name}: unknown\"),\n        }\n    }\n\n    println!(\"{}\", show_all(vec![1, 2, 3]));\n    println!(\"{}\", show_all([\"a\", \"b\"]));\n    println!(\"{}\", show_all(data.iter().take(2)));\n}\n",
+   "out": "even:       4\nabove 5:    3\nodd or > 6: 5\nrule big: 3\nrule even: 4\nrule prime: unknown\n1 | 2 | 3\na | b\n1 | 2\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "stringly.rs": {
+   "code": "/// Stringly typed: any text compiles, and a typo falls through to the default arm.\nfn open_flags(mode: &str) -> &'static str {\n    match mode {\n        \"read\" => \"O_RDONLY\",\n        \"write\" => \"O_WRONLY\",\n        _ => \"O_RDONLY\",\n    }\n}\n\nfn main() {\n    println!(\"read  -> {}\", open_flags(\"read\"));\n    println!(\"write -> {}\", open_flags(\"write\"));\n    println!(\"wrtie -> {}\", open_flags(\"wrtie\"));\n}\n",
+   "out": "read  -> O_RDONLY\nwrite -> O_WRONLY\nwrtie -> O_RDONLY\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "typed.rs": {
+   "code": "use std::str::FromStr;\n\n#[derive(Debug, Clone, Copy)]\nenum Mode {\n    Read,\n    Write,\n}\n\nimpl FromStr for Mode {\n    type Err = String;\n\n    /// Text is turned into a `Mode` once, at the edge of the program.\n    fn from_str(s: &str) -> Result<Mode, String> {\n        match s {\n            \"read\" => Ok(Mode::Read),\n            \"write\" => Ok(Mode::Write),\n            other => Err(format!(\"unknown mode {other:?}\")),\n        }\n    }\n}\n\nfn open_flags(mode: Mode) -> &'static str {\n    match mode {\n        Mode::Read => \"O_RDONLY\",\n        Mode::Write => \"O_WRONLY\",\n    }\n}\n\nfn main() {\n    for text in [\"read\", \"write\", \"wrtie\"] {\n        match text.parse::<Mode>() {\n            Ok(mode) => println!(\"{text} -> {}\", open_flags(mode)),\n            Err(e) => println!(\"{text} -> {e}\"),\n        }\n    }\n    println!(\"{}\", open_flags(Mode::Write));\n}\n",
+   "out": "read -> O_RDONLY\nwrite -> O_WRONLY\nwrtie -> unknown mode \"wrtie\"\nO_WRONLY\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "typestate-misuse.fail.rs": {
+   "code": "use std::marker::PhantomData;\n\nstruct Closed;\nstruct Open;\n\nstruct Connection<State> {\n    state: PhantomData<State>,\n}\n\nimpl Connection<Closed> {\n    fn new() -> Connection<Closed> {\n        Connection { state: PhantomData }\n    }\n\n    fn connect(self) -> Connection<Open> {\n        Connection { state: PhantomData }\n    }\n}\n\nimpl Connection<Open> {\n    fn send(&mut self, text: &str) {\n        println!(\"sent {text:?}\");\n    }\n}\n\nfn main() {\n    let mut conn = Connection::new();\n    conn.send(\"hello\");\n    let _open = conn.connect();\n}\n",
+   "error": "error[E0599]: no method named `send` found for struct `Connection<Closed>` in the current scope\n  --> src/main.rs:28:10\n   |\n 6 | struct Connection<State> {\n   | ------------------------ method `send` not found for this struct\n...\n28 |     conn.send(\"hello\");\n   |          ^^^^ method not found in `Connection<Closed>`\n   |\n   = note: the method was found for `Connection<Open>`\n",
+   "lang": "rust"
+  },
+  "typestate-reuse.fail.rs": {
+   "code": "use std::marker::PhantomData;\n\nstruct Closed;\nstruct Open;\n\nstruct Connection<State> {\n    state: PhantomData<State>,\n}\n\nimpl Connection<Closed> {\n    fn new() -> Connection<Closed> {\n        Connection { state: PhantomData }\n    }\n\n    fn connect(self) -> Connection<Open> {\n        Connection { state: PhantomData }\n    }\n}\n\nfn main() {\n    let closed = Connection::new();\n    let _open = closed.connect();\n    let _again = closed.connect();\n}\n",
+   "error": "error[E0382]: use of moved value: `closed`\n  --> src/main.rs:23:18\n   |\n21 |     let closed = Connection::new();\n   |         ------ move occurs because `closed` has type `Connection<Closed>`, which does not implement the `Copy` trait\n22 |     let _open = closed.connect();\n   |                        --------- `closed` moved due to this method call\n23 |     let _again = closed.connect();\n   |                  ^^^^^^ value used here after move\n   |\nnote: `Connection::<Closed>::connect` takes ownership of the receiver `self`, which moves `closed`\n  --> src/main.rs:15:16\n   |\n15 |     fn connect(self) -> Connection<Open> {\n   |                ^^^^\n",
+   "lang": "rust"
+  },
+  "typestate.rs": {
+   "code": "use std::marker::PhantomData;\nuse std::mem::size_of;\n\nstruct Closed;\nstruct Open;\n\nstruct Connection<State> {\n    host: String,\n    sent: u32,\n    state: PhantomData<State>,\n}\n\nimpl Connection<Closed> {\n    fn new(host: &str) -> Connection<Closed> {\n        Connection {\n            host: host.to_string(),\n            sent: 0,\n            state: PhantomData,\n        }\n    }\n\n    /// Takes `self` by value: the closed connection is gone, an open one comes back.\n    fn connect(self) -> Connection<Open> {\n        println!(\"connecting to {}\", self.host);\n        Connection {\n            host: self.host,\n            sent: self.sent,\n            state: PhantomData,\n        }\n    }\n}\n\nimpl Connection<Open> {\n    fn send(&mut self, text: &str) {\n        self.sent += 1;\n        println!(\"sent {text:?} (message {})\", self.sent);\n    }\n\n    fn close(self) -> Connection<Closed> {\n        println!(\"closing after {} messages\", self.sent);\n        Connection {\n            host: self.host,\n            sent: self.sent,\n            state: PhantomData,\n        }\n    }\n}\n\nfn main() {\n    let conn = Connection::new(\"example.org\");\n    let mut conn = conn.connect();\n    conn.send(\"hello\");\n    conn.send(\"world\");\n    let conn = conn.close();\n\n    println!(\n        \"size_of::<Connection<Closed>>(): {}\",\n        size_of::<Connection<Closed>>()\n    );\n    println!(\n        \"size_of::<Connection<Open>>():   {}\",\n        size_of::<Connection<Open>>()\n    );\n    println!(\n        \"size_of::<(String, u32)>():      {}\",\n        size_of::<(String, u32)>()\n    );\n    println!(\"host is still {}\", conn.host);\n}\n",
+   "out": "connecting to example.org\nsent \"hello\" (message 1)\nsent \"world\" (message 2)\nclosing after 2 messages\nsize_of::<Connection<Closed>>(): 32\nsize_of::<Connection<Open>>():   32\nsize_of::<(String, u32)>():      32\nhost is still example.org\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "unwrap-fixed.rs": {
+   "code": "use std::num::ParseIntError;\n\n/// The caller gets the failure as a value and decides what it means.\npub fn parse_port(text: &str) -> Result<u16, ParseIntError> {\n    text.trim().parse()\n}\n\nfn main() {\n    for text in [\"8080\", \"http\"] {\n        match parse_port(text) {\n            Ok(port) => println!(\"{text}: port {port}\"),\n            Err(e) => println!(\"{text}: {e}, using 80\"),\n        }\n    }\n}\n",
+   "out": "8080: port 8080\nhttp: invalid digit found in string, using 80\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "unwrap-lib.panic.rs": {
+   "code": "/// A \"library\" function: it decides, for every caller, that bad input is fatal.\npub fn parse_port(text: &str) -> u16 {\n    text.trim().parse().unwrap()\n}\n\nfn main() {\n    println!(\"{}\", parse_port(\"8080\"));\n    println!(\"{}\", parse_port(\"http\"));\n}\n",
+   "out": "8080\n\nthread 'main' (1) panicked at src/main.rs:3:25:\ncalled `Result::unwrap()` on an `Err` value: ParseIntError { kind: InvalidDigit }\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+   "lang": "rust",
+   "exit": 101
+  },
+  "check-brand.fail.ts": {
+   "code": "type UserId = number & { readonly __brand: \"UserId\" };\ntype OrderId = number & { readonly __brand: \"OrderId\" };\n\nfunction loadUser(id: UserId): string {\n  return `user #${id}`;\n}\n\nconst order = 7 as OrderId;\nconsole.log(loadUser(order));\n",
+   "error": "main.ts(9,22): error TS2345: Argument of type 'OrderId' is not assignable to parameter of type 'UserId'.\n  Type 'OrderId' is not assignable to type '{ readonly __brand: \"UserId\"; }'.\n    Types of property '__brand' are incompatible.\n      Type '\"OrderId\"' is not assignable to type '\"UserId\"'.",
+   "lang": "typescript"
+  },
+  "check-expected.fail.cpp": {
+   "code": "#include <expected>\n#include <iostream>\n\nstd::expected<int, const char*> parse(int n) {\n    if (n > 0) return n;\n    return std::unexpected(\"not positive\");\n}\n\nint main() {\n    std::cout << parse(3).value() << \"\\n\";\n}\n",
+   "error": "main.cpp:4:6: error: ‘expected’ in namespace ‘std’ does not name a template type\n    4 | std::expected<int, const char*> parse(int n) {\n      |      ^~~~~~~~\nmain.cpp:4:1: note: ‘std::expected’ is only available from C++23 onwards\n    4 | std::expected<int, const char*> parse(int n) {\n      | ^~~\nmain.cpp: In function ‘int main()’:\nmain.cpp:10:18: error: ‘parse’ was not declared in this scope\n   10 |     std::cout << parse(3).value() << \"\\n\";\n      |                  ^~~~~",
+   "lang": "cpp"
+  },
+  "check-mixup.fail.cpp": {
+   "code": "#include <iostream>\n\nstruct UserId {\n    explicit UserId(int v) : value(v) {}\n    int value;\n};\n\nstruct OrderId {\n    explicit OrderId(int v) : value(v) {}\n    int value;\n};\n\nvoid load_user(UserId id) {\n    std::cout << \"user #\" << id.value << \"\\n\";\n}\n\nint main() {\n    OrderId order{7};\n    load_user(order);\n}\n",
+   "error": "main.cpp: In function ‘int main()’:\nmain.cpp:19:15: error: could not convert ‘order’ from ‘OrderId’ to ‘UserId’\n   19 |     load_user(order);\n      |               ^~~~~\n      |               |\n      |               OrderId",
+   "lang": "cpp"
+  },
+  "check-mixup.fail.cs": {
+   "code": "var order = new OrderId(7);\nConsole.WriteLine(LoadUser(order));\n\nstatic string LoadUser(UserId id) => $\"user #{id.Value}\";\n\nreadonly record struct UserId(int Value);\nreadonly record struct OrderId(int Value);\n",
+   "error": "Program.cs(2,28): error CS1503: Argument 1: cannot convert from 'OrderId' to 'UserId'",
+   "lang": "csharp"
+  },
+  "check-mixup.fail.go": {
+   "code": "package main\n\nimport \"fmt\"\n\ntype UserID int\ntype OrderID int\n\nfunc loadUser(id UserID) string {\n\treturn fmt.Sprint(\"user #\", int(id))\n}\n\nfunc main() {\n\torder := OrderID(7)\n\tfmt.Println(loadUser(order))\n}\n",
+   "error": "# command-line-arguments\n./main.go:14:23: cannot use order (variable of int type OrderID) as UserID value in argument to loadUser",
+   "lang": "go"
+  },
+  "check-mixup.fail.java": {
+   "code": "public class Main {\n    record UserId(int value) {}\n    record OrderId(int value) {}\n\n    static String loadUser(UserId id) {\n        return \"user #\" + id.value();\n    }\n\n    public static void main(String[] args) {\n        OrderId order = new OrderId(7);\n        System.out.println(loadUser(order));\n    }\n}\n",
+   "error": "Main.java:11: error: incompatible types: OrderId cannot be converted to UserId\n        System.out.println(loadUser(order));\n                                    ^\nNote: Some messages have been simplified; recompile with -Xdiags:verbose to get full output\n1 error",
+   "lang": "java"
+  },
+  "check-mixup.fail.kt": {
+   "code": "@JvmInline\nvalue class UserId(val value: Int)\n\n@JvmInline\nvalue class OrderId(val value: Int)\n\nfun loadUser(id: UserId): String = \"user #${id.value}\"\n\nfun main() {\n    val order = OrderId(7)\n    println(loadUser(order))\n}\n",
+   "error": "Main.kt:11:22: error: argument type mismatch: actual type is 'OrderId', but 'UserId' was expected.\n    println(loadUser(order))\n                     ^^^^^",
+   "lang": "kotlin"
+  },
+  "check-private.ts": {
+   "code": "class Port {\n  private constructor(readonly number: number) {}\n  static parse(n: number): Port {\n    if (n < 1 || n > 65535) throw new Error(\"out of range\");\n    return new Port(n);\n  }\n}\n\n// `private` is a compile-time check only: a cast gets past it, and plain JavaScript never saw it.\nconst bad = new (Port as any)(0);\nconsole.log(\"built Port with number\", bad.number);\n",
+   "out": "built Port with number 0\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "idioms.c": {
+   "code": "#include <stdio.h>\n\n/* 1. typedef makes a second name, not a second type. */\ntypedef int UserId;\ntypedef int OrderId;\n\nstatic void load_user(UserId id) {\n    printf(\"user #%d\\n\", id);\n}\n\n/* 2. Designated initializers: fields you leave out are zero. */\nstruct Config {\n    const char *host;\n    int port;\n    int retries;\n};\n\nint main(void) {\n    OrderId order = 7;\n    load_user(order); /* compiles with -Wall -Wextra */\n\n    struct Config c = {.host = \"localhost\", .port = 9000};\n    printf(\"host=%s port=%d retries=%d\\n\", c.host, c.port, c.retries);\n    return 0;\n}\n",
+   "out": "user #7\nhost=localhost port=9000 retries=0\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "idioms.cpp": {
+   "code": "#include <iostream>\n#include <string>\n\n// 1. A wrapper struct: a distinct type. `value` is public, so this is a label, not a guarantee.\nstruct UserId {\n    explicit UserId(int v) : value(v) {}\n    int value;\n};\n\n// 2. C++20 designated initializers: members left out keep their default (or are zero).\nstruct Config {\n    std::string host = \"localhost\";\n    int port = 8080;\n    int retries = 3;\n};\n\nint main() {\n    UserId id{7};\n    std::cout << \"UserId \" << id.value << \"\\n\";\n\n    Config c{.port = 9000};\n    std::cout << c.host << \" \" << c.port << \" \" << c.retries << \"\\n\";\n}\n",
+   "out": "UserId 7\nlocalhost 9000 3\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "idioms.cs": {
+   "code": "// 1. init-only properties with defaults, and `with`: the nearest to a builder and to ..Default::default().\nvar plain = new Config();\nvar custom = new Config { Port = 9000, Verbose = true };\nvar moved = plain with { Port = 9001 };\nConsole.WriteLine(plain);\nConsole.WriteLine(custom);\nConsole.WriteLine(moved);\n\n// 2. A record struct is a distinct type around one value.\nConsole.WriteLine(new UserId(7));\n\nrecord Config\n{\n    public string Host { get; init; } = \"localhost\";\n    public int Port { get; init; } = 8080;\n    public int Retries { get; init; } = 3;\n    public bool Verbose { get; init; }\n}\n\nreadonly record struct UserId(int Value);\n",
+   "out": "Config { Host = localhost, Port = 8080, Retries = 3, Verbose = False }\nConfig { Host = localhost, Port = 9000, Retries = 3, Verbose = True }\nConfig { Host = localhost, Port = 9001, Retries = 3, Verbose = False }\nUserId { Value = 7 }\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "idioms.go": {
+   "code": "package main\n\nimport (\n\t\"errors\"\n\t\"fmt\"\n\t\"time\"\n)\n\n// 1. A defined type is distinct from its base type, but keeps the base type's operators.\ntype UserID int\n\n// 2. Functional options: each option is a function that changes the value being built.\ntype Request struct {\n\tURL     string\n\tMethod  string\n\tRetries int\n\tTimeout time.Duration\n}\n\ntype Option func(*Request)\n\nfunc WithMethod(m string) Option { return func(r *Request) { r.Method = m } }\nfunc WithRetries(n int) Option   { return func(r *Request) { r.Retries = n } }\n\nfunc NewRequest(url string, opts ...Option) (*Request, error) {\n\tif url == \"\" {\n\t\treturn nil, errors.New(\"missing url\")\n\t}\n\tr := &Request{URL: url, Method: \"GET\", Retries: 3, Timeout: 30 * time.Second}\n\tfor _, opt := range opts {\n\t\topt(r)\n\t}\n\treturn r, nil\n}\n\n// 3. The zero value: every type has one, and nothing can forbid it.\ntype Port struct{ n uint16 }\n\nfunc main() {\n\tfmt.Println(\"UserID(7) + 1 =\", UserID(7)+1)\n\n\tr, _ := NewRequest(\"https://example.org\", WithMethod(\"POST\"), WithRetries(0))\n\tfmt.Println(r.Method, r.URL, \"retries=\"+fmt.Sprint(r.Retries), \"timeout=\"+r.Timeout.String())\n\t_, err := NewRequest(\"\", WithRetries(5))\n\tfmt.Println(\"error:\", err)\n\n\tvar zero Port\n\tfmt.Println(\"zero Port:\", zero.n)\n}\n",
+   "out": "UserID(7) + 1 = 8\nPOST https://example.org retries=0 timeout=30s\nerror: missing url\nzero Port: 0\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "idioms.java": {
+   "code": "public class Main {\n    // A builder: a second class that collects the settings, with one build() that checks them.\n    record Request(String url, String method, int retries) {\n        static class Builder {\n            private String url;\n            private String method = \"GET\";\n            private int retries = 3;\n\n            Builder url(String url) { this.url = url; return this; }\n            Builder method(String method) { this.method = method; return this; }\n            Builder retries(int retries) { this.retries = retries; return this; }\n\n            Request build() {\n                if (url == null) throw new IllegalStateException(\"missing url\");\n                return new Request(url, method, retries);\n            }\n        }\n    }\n\n    public static void main(String[] args) {\n        Request r = new Request.Builder().url(\"https://example.org\").method(\"POST\").retries(0).build();\n        System.out.println(r.method() + \" \" + r.url() + \" retries=\" + r.retries());\n        try {\n            new Request.Builder().retries(5).build();\n        } catch (IllegalStateException e) {\n            System.out.println(\"error: \" + e.getMessage());\n        }\n    }\n}\n",
+   "out": "POST https://example.org retries=0\nerror: missing url\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "idioms.kt": {
+   "code": "// 1. Default and named arguments, and copy(): what a Rust builder or struct update stands in for.\ndata class Config(val host: String = \"localhost\", val port: Int = 8080, val retries: Int = 3, val verbose: Boolean = false)\n\n// 2. A value class is a distinct type with the same representation as its single field.\n@JvmInline\nvalue class UserId(val value: Int)\n\nfun main() {\n    val plain = Config()\n    val custom = Config(port = 9000, verbose = true)\n    val moved = plain.copy(port = 9001)\n    println(plain)\n    println(custom)\n    println(moved)\n    println(\"UserId(7) = ${UserId(7)}\")\n}\n",
+   "out": "Config(host=localhost, port=8080, retries=3, verbose=false)\nConfig(host=localhost, port=9000, retries=3, verbose=true)\nConfig(host=localhost, port=9001, retries=3, verbose=false)\nUserId(7) = UserId(value=7)\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "idioms.py": {
+   "code": "from dataclasses import dataclass, replace\nfrom typing import NewType\n\n# 1. NewType is for the type checker only: at run time a UserId is the int.\nUserId = NewType(\"UserId\", int)\nOrderId = NewType(\"OrderId\", int)\n\n\ndef load_user(user_id: UserId) -> str:\n    return f\"user #{user_id}\"\n\n\nprint(\"NewType, wrong id:\", load_user(OrderId(7)))  # runs; a checker such as mypy would flag it\nprint(\"type(UserId(7)):\", type(UserId(7)).__name__)\n\n\n# 2. A frozen dataclass that checks itself: an invalid Port never exists.\n@dataclass(frozen=True)\nclass Port:\n    number: int\n\n    def __post_init__(self):\n        if not 1 <= self.number <= 65535:\n            raise ValueError(f\"{self.number} is outside 1-65535\")\n\n\nfor n in (8080, 0):\n    try:\n        print(\"Port:\", Port(n))\n    except ValueError as e:\n        print(\"rejected:\", e)\n\n\n# 3. Defaults and keyword arguments, and replace() as \"copy with\".\n@dataclass(frozen=True)\nclass Config:\n    host: str = \"localhost\"\n    port: int = 8080\n    retries: int = 3\n\n\nprint(Config(port=9000))\nprint(replace(Config(), retries=0))\n",
+   "out": "NewType, wrong id: user #7\ntype(UserId(7)): int\nPort: Port(number=8080)\nrejected: 0 is outside 1-65535\nConfig(host='localhost', port=9000, retries=3)\nConfig(host='localhost', port=8080, retries=0)\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "idioms.ts": {
+   "code": "// 1. A branded type: a number the compiler treats as a different type. The brand is erased at run time.\ntype UserId = number & { readonly __brand: \"UserId\" };\nconst userId = (n: number) => n as UserId;\n\nfunction loadUser(id: UserId): string {\n  return `user #${id}`;\n}\nconsole.log(loadUser(userId(7)), `(typeof: ${typeof userId(7)})`);\n\n// 2. Defaults with spread: later keys win.\nconst defaults = { host: \"localhost\", port: 8080, retries: 3 };\nconsole.log({ ...defaults, port: 9000 });\n\n",
+   "out": "user #7 (typeof: number)\n{ host: 'localhost', port: 9000, retries: 3 }\n",
+   "lang": "typescript",
+   "exit": 0
+  }
+ },
+ "exercises": {
+  "celsius": {
+   "starter": "mod temperature {\n    /// A temperature in degrees Celsius: a finite number, not below absolute zero (-273.15).\n    /// The field is private, so `try_from` is the only way to make one.\n    #[derive(Debug, Clone, Copy, PartialEq)]\n    pub struct Celsius(f64);\n\n    #[derive(Debug, PartialEq)]\n    pub enum TempError {\n        NotFinite,\n        BelowAbsoluteZero,\n    }\n\n    impl TryFrom<f64> for Celsius {\n        type Error = TempError;\n\n        fn try_from(degrees: f64) -> Result<Celsius, TempError> {\n            todo!(\"reject NaN and both infinities, then anything below -273.15\")\n        }\n    }\n\n    impl Celsius {\n        pub fn degrees(self) -> f64 {\n            self.0\n        }\n    }\n}\n\nuse temperature::{Celsius, TempError};\n\nfn main() {\n    assert_eq!(Celsius::try_from(21.5).unwrap().degrees(), 21.5);\n    assert_eq!(Celsius::try_from(-273.15).unwrap().degrees(), -273.15); // the limit itself is allowed\n    assert_eq!(\n        Celsius::try_from(-273.16),\n        Err(TempError::BelowAbsoluteZero)\n    );\n    assert_eq!(Celsius::try_from(-1e9), Err(TempError::BelowAbsoluteZero));\n    assert_eq!(Celsius::try_from(f64::NAN), Err(TempError::NotFinite));\n    assert_eq!(Celsius::try_from(f64::INFINITY), Err(TempError::NotFinite));\n    assert_eq!(\n        Celsius::try_from(f64::NEG_INFINITY),\n        Err(TempError::NotFinite)\n    );\n    // `try_into` comes for free with `TryFrom`.\n    let boiling: Result<Celsius, TempError> = 100.0_f64.try_into();\n    assert_eq!(boiling.map(Celsius::degrees), Ok(100.0));\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "mod temperature {\n    /// A temperature in degrees Celsius: a finite number, not below absolute zero (-273.15).\n    /// The field is private, so `try_from` is the only way to make one.\n    #[derive(Debug, Clone, Copy, PartialEq)]\n    pub struct Celsius(f64);\n\n    #[derive(Debug, PartialEq)]\n    pub enum TempError {\n        NotFinite,\n        BelowAbsoluteZero,\n    }\n\n    impl TryFrom<f64> for Celsius {\n        type Error = TempError;\n\n        fn try_from(degrees: f64) -> Result<Celsius, TempError> {\n            if !degrees.is_finite() {\n                return Err(TempError::NotFinite);\n            }\n            if degrees < -273.15 {\n                return Err(TempError::BelowAbsoluteZero);\n            }\n            Ok(Celsius(degrees))\n        }\n    }\n\n    impl Celsius {\n        pub fn degrees(self) -> f64 {\n            self.0\n        }\n    }\n}\n\nuse temperature::{Celsius, TempError};\n\nfn main() {\n    assert_eq!(Celsius::try_from(21.5).unwrap().degrees(), 21.5);\n    assert_eq!(Celsius::try_from(-273.15).unwrap().degrees(), -273.15); // the limit itself is allowed\n    assert_eq!(\n        Celsius::try_from(-273.16),\n        Err(TempError::BelowAbsoluteZero)\n    );\n    assert_eq!(Celsius::try_from(-1e9), Err(TempError::BelowAbsoluteZero));\n    assert_eq!(Celsius::try_from(f64::NAN), Err(TempError::NotFinite));\n    assert_eq!(Celsius::try_from(f64::INFINITY), Err(TempError::NotFinite));\n    assert_eq!(\n        Celsius::try_from(f64::NEG_INFINITY),\n        Err(TempError::NotFinite)\n    );\n    // `try_into` comes for free with `TryFrom`.\n    let boiling: Result<Celsius, TempError> = 100.0_f64.try_into();\n    assert_eq!(boiling.map(Celsius::degrees), Ok(100.0));\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "guard": {
+   "starter": "use std::cell::RefCell;\nuse std::panic::{self, AssertUnwindSafe};\n\ntype Events = RefCell<Vec<String>>;\n\n/// A made-up resource. Opening it records `open <name>`; closing records `close <name>`.\nstruct Handle<'a> {\n    events: &'a Events,\n    name: &'static str,\n}\n\nimpl<'a> Handle<'a> {\n    fn open(events: &'a Events, name: &'static str) -> Handle<'a> {\n        events.borrow_mut().push(format!(\"open {name}\"));\n        Handle { events, name }\n    }\n}\n\nimpl Drop for Handle<'_> {\n    fn drop(&mut self) {\n        todo!(\"record `close <name>`, so every way out of a scope closes the handle\")\n    }\n}\n\n#[derive(Clone, Copy)]\nenum Mode {\n    Fine,\n    Fail,\n    Panic,\n}\n\nfn run(events: &Events, mode: Mode) -> Result<(), String> {\n    let _db = Handle::open(events, \"db\");\n    let _file = Handle::open(events, \"file\");\n    events.borrow_mut().push(\"work\".to_string());\n    match mode {\n        Mode::Fine => {}\n        Mode::Fail => return Err(\"failed\".to_string()),\n        Mode::Panic => panic!(\"boom\"),\n    }\n    events.borrow_mut().push(\"done\".to_string());\n    Ok(())\n}\n\nfn events_of(mode: Mode) -> (Vec<String>, String) {\n    let events: Events = RefCell::new(Vec::new());\n    let outcome = panic::catch_unwind(AssertUnwindSafe(|| run(&events, mode)));\n    let what = match outcome {\n        Ok(Ok(())) => \"ok\",\n        Ok(Err(_)) => \"error\",\n        Err(_) => \"panic\",\n    };\n    (events.into_inner(), what.to_string())\n}\n\nfn main() {\n    // Keep the expected \"boom\" quiet; show any other panic, such as a todo!().\n    panic::set_hook(Box::new(|info| {\n        if info.payload().downcast_ref::<&str>() != Some(&\"boom\") {\n            eprintln!(\"{info}\");\n        }\n    }));\n\n    let (events, what) = events_of(Mode::Fine);\n    assert_eq!(what, \"ok\");\n    assert_eq!(\n        events,\n        [\n            \"open db\",\n            \"open file\",\n            \"work\",\n            \"done\",\n            \"close file\",\n            \"close db\"\n        ]\n    );\n\n    let (events, what) = events_of(Mode::Fail);\n    assert_eq!(what, \"error\");\n    assert_eq!(\n        events,\n        [\"open db\", \"open file\", \"work\", \"close file\", \"close db\"]\n    );\n\n    let (events, what) = events_of(Mode::Panic);\n    assert_eq!(what, \"panic\");\n    assert_eq!(\n        events,\n        [\"open db\", \"open file\", \"work\", \"close file\", \"close db\"]\n    );\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "use std::cell::RefCell;\nuse std::panic::{self, AssertUnwindSafe};\n\ntype Events = RefCell<Vec<String>>;\n\n/// A made-up resource. Opening it records `open <name>`; closing records `close <name>`.\nstruct Handle<'a> {\n    events: &'a Events,\n    name: &'static str,\n}\n\nimpl<'a> Handle<'a> {\n    fn open(events: &'a Events, name: &'static str) -> Handle<'a> {\n        events.borrow_mut().push(format!(\"open {name}\"));\n        Handle { events, name }\n    }\n}\n\nimpl Drop for Handle<'_> {\n    fn drop(&mut self) {\n        self.events\n            .borrow_mut()\n            .push(format!(\"close {}\", self.name));\n    }\n}\n\n#[derive(Clone, Copy)]\nenum Mode {\n    Fine,\n    Fail,\n    Panic,\n}\n\nfn run(events: &Events, mode: Mode) -> Result<(), String> {\n    let _db = Handle::open(events, \"db\");\n    let _file = Handle::open(events, \"file\");\n    events.borrow_mut().push(\"work\".to_string());\n    match mode {\n        Mode::Fine => {}\n        Mode::Fail => return Err(\"failed\".to_string()),\n        Mode::Panic => panic!(\"boom\"),\n    }\n    events.borrow_mut().push(\"done\".to_string());\n    Ok(())\n}\n\nfn events_of(mode: Mode) -> (Vec<String>, String) {\n    let events: Events = RefCell::new(Vec::new());\n    let outcome = panic::catch_unwind(AssertUnwindSafe(|| run(&events, mode)));\n    let what = match outcome {\n        Ok(Ok(())) => \"ok\",\n        Ok(Err(_)) => \"error\",\n        Err(_) => \"panic\",\n    };\n    (events.into_inner(), what.to_string())\n}\n\nfn main() {\n    // Keep the expected \"boom\" quiet; show any other panic, such as a todo!().\n    panic::set_hook(Box::new(|info| {\n        if info.payload().downcast_ref::<&str>() != Some(&\"boom\") {\n            eprintln!(\"{info}\");\n        }\n    }));\n\n    let (events, what) = events_of(Mode::Fine);\n    assert_eq!(what, \"ok\");\n    assert_eq!(\n        events,\n        [\n            \"open db\",\n            \"open file\",\n            \"work\",\n            \"done\",\n            \"close file\",\n            \"close db\"\n        ]\n    );\n\n    let (events, what) = events_of(Mode::Fail);\n    assert_eq!(what, \"error\");\n    assert_eq!(\n        events,\n        [\"open db\", \"open file\", \"work\", \"close file\", \"close db\"]\n    );\n\n    let (events, what) = events_of(Mode::Panic);\n    assert_eq!(what, \"panic\");\n    assert_eq!(\n        events,\n        [\"open db\", \"open file\", \"work\", \"close file\", \"close db\"]\n    );\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "request": {
+   "starter": "#[derive(Debug, PartialEq)]\npub struct Request {\n    pub url: String,\n    pub method: String,\n    pub retries: u32,\n}\n\n#[derive(Debug, PartialEq)]\npub enum BuildError {\n    MissingUrl,\n    EmptyUrl,\n    UnknownMethod(String),\n}\n\n/// Collects settings; `build` checks them all and makes the `Request`.\npub struct RequestBuilder {\n    // add the fields you need\n}\n\nimpl RequestBuilder {\n    /// Defaults: method \"GET\", 3 retries, no url yet.\n    pub fn new() -> RequestBuilder {\n        todo!(\"start with the defaults\")\n    }\n\n    pub fn url(self, url: &str) -> RequestBuilder {\n        todo!(\"remember the url; checking it is build's job\")\n    }\n\n    /// Any case is accepted; the built request holds it in upper case.\n    pub fn method(self, method: &str) -> RequestBuilder {\n        todo!(\"remember the method as given\")\n    }\n\n    pub fn retries(self, retries: u32) -> RequestBuilder {\n        todo!(\"remember the count\")\n    }\n\n    /// Errors: no url was set (MissingUrl); the url is blank after trimming (EmptyUrl);\n    /// the method is not GET, POST, PUT or DELETE in any case (UnknownMethod, as given).\n    pub fn build(self) -> Result<Request, BuildError> {\n        todo!(\"check everything here and return the Request\")\n    }\n}\n\nfn main() {\n    let r = RequestBuilder::new().url(\"http://a\").build().unwrap();\n    assert_eq!(\n        r,\n        Request {\n            url: \"http://a\".into(),\n            method: \"GET\".into(),\n            retries: 3\n        }\n    );\n\n    let r = RequestBuilder::new()\n        .retries(0)\n        .method(\"post\")\n        .url(\"http://b\")\n        .build()\n        .unwrap();\n    assert_eq!(\n        r,\n        Request {\n            url: \"http://b\".into(),\n            method: \"POST\".into(),\n            retries: 0\n        }\n    );\n\n    // the last call wins\n    let r = RequestBuilder::new()\n        .url(\"http://a\")\n        .url(\"http://c\")\n        .retries(1)\n        .retries(2)\n        .build()\n        .unwrap();\n    assert_eq!((r.url.as_str(), r.retries), (\"http://c\", 2));\n\n    assert_eq!(\n        RequestBuilder::new().retries(5).build(),\n        Err(BuildError::MissingUrl)\n    );\n    assert_eq!(\n        RequestBuilder::new().url(\"   \").build(),\n        Err(BuildError::EmptyUrl)\n    );\n    assert_eq!(\n        RequestBuilder::new()\n            .url(\"http://a\")\n            .method(\"fetch\")\n            .build(),\n        Err(BuildError::UnknownMethod(\"fetch\".into()))\n    );\n    // only GET, POST, PUT and DELETE are known: other words are not\n    assert_eq!(\n        RequestBuilder::new()\n            .url(\"http://a\")\n            .method(\"patch\")\n            .build(),\n        Err(BuildError::UnknownMethod(\"patch\".into()))\n    );\n    let r = RequestBuilder::new()\n        .url(\"http://a\")\n        .method(\"put\")\n        .build()\n        .unwrap();\n    assert_eq!(r.method, \"PUT\");\n\n    // a setter does not judge: a bad method that is replaced before `build` is fine\n    let r = RequestBuilder::new()\n        .method(\"fetch\")\n        .method(\"Delete\")\n        .url(\"http://a\")\n        .build()\n        .unwrap();\n    assert_eq!(r.method, \"DELETE\");\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "#[derive(Debug, PartialEq)]\npub struct Request {\n    pub url: String,\n    pub method: String,\n    pub retries: u32,\n}\n\n#[derive(Debug, PartialEq)]\npub enum BuildError {\n    MissingUrl,\n    EmptyUrl,\n    UnknownMethod(String),\n}\n\n/// Collects settings; `build` checks them all and makes the `Request`.\npub struct RequestBuilder {\n    url: Option<String>,\n    method: String,\n    retries: u32,\n}\n\nimpl RequestBuilder {\n    /// Defaults: method \"GET\", 3 retries, no url yet.\n    pub fn new() -> RequestBuilder {\n        RequestBuilder {\n            url: None,\n            method: \"GET\".to_string(),\n            retries: 3,\n        }\n    }\n\n    pub fn url(mut self, url: &str) -> RequestBuilder {\n        self.url = Some(url.to_string());\n        self\n    }\n\n    /// Any case is accepted; the built request holds it in upper case.\n    pub fn method(mut self, method: &str) -> RequestBuilder {\n        self.method = method.to_string();\n        self\n    }\n\n    pub fn retries(mut self, retries: u32) -> RequestBuilder {\n        self.retries = retries;\n        self\n    }\n\n    /// Errors: no url was set (MissingUrl); the url is blank after trimming (EmptyUrl);\n    /// the method is not GET, POST, PUT or DELETE in any case (UnknownMethod, as given).\n    pub fn build(self) -> Result<Request, BuildError> {\n        let url = self.url.ok_or(BuildError::MissingUrl)?;\n        if url.trim().is_empty() {\n            return Err(BuildError::EmptyUrl);\n        }\n        let upper = self.method.to_uppercase();\n        if ![\"GET\", \"POST\", \"PUT\", \"DELETE\"].contains(&upper.as_str()) {\n            return Err(BuildError::UnknownMethod(self.method));\n        }\n        Ok(Request {\n            url,\n            method: upper,\n            retries: self.retries,\n        })\n    }\n}\n\nfn main() {\n    let r = RequestBuilder::new().url(\"http://a\").build().unwrap();\n    assert_eq!(\n        r,\n        Request {\n            url: \"http://a\".into(),\n            method: \"GET\".into(),\n            retries: 3\n        }\n    );\n\n    let r = RequestBuilder::new()\n        .retries(0)\n        .method(\"post\")\n        .url(\"http://b\")\n        .build()\n        .unwrap();\n    assert_eq!(\n        r,\n        Request {\n            url: \"http://b\".into(),\n            method: \"POST\".into(),\n            retries: 0\n        }\n    );\n\n    // the last call wins\n    let r = RequestBuilder::new()\n        .url(\"http://a\")\n        .url(\"http://c\")\n        .retries(1)\n        .retries(2)\n        .build()\n        .unwrap();\n    assert_eq!((r.url.as_str(), r.retries), (\"http://c\", 2));\n\n    assert_eq!(\n        RequestBuilder::new().retries(5).build(),\n        Err(BuildError::MissingUrl)\n    );\n    assert_eq!(\n        RequestBuilder::new().url(\"   \").build(),\n        Err(BuildError::EmptyUrl)\n    );\n    assert_eq!(\n        RequestBuilder::new()\n            .url(\"http://a\")\n            .method(\"fetch\")\n            .build(),\n        Err(BuildError::UnknownMethod(\"fetch\".into()))\n    );\n    // only GET, POST, PUT and DELETE are known: other words are not\n    assert_eq!(\n        RequestBuilder::new()\n            .url(\"http://a\")\n            .method(\"patch\")\n            .build(),\n        Err(BuildError::UnknownMethod(\"patch\".into()))\n    );\n    let r = RequestBuilder::new()\n        .url(\"http://a\")\n        .method(\"put\")\n        .build()\n        .unwrap();\n    assert_eq!(r.method, \"PUT\");\n\n    // a setter does not judge: a bad method that is replaced before `build` is fine\n    let r = RequestBuilder::new()\n        .method(\"fetch\")\n        .method(\"Delete\")\n        .url(\"http://a\")\n        .build()\n        .unwrap();\n    assert_eq!(r.method, \"DELETE\");\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}

@@ -1,0 +1,114 @@
+# Rayon and Tokio together
+name: rayon-tokio
+sessions:
+  run:
+    dir: rust
+    steps:
+      - cmd: cargo run
+  go:
+    dir: go
+    steps:
+      - cmd: go run .
+  # The gotcha: par_iter called straight from an async fn, on a one-thread runtime.
+  par-iter-blocks:
+    dir: rust
+    overlay:
+      src/main.rs: gotcha/main.rs
+    steps:
+      - cmd: cargo run
+  # The fix: rayon::spawn plus a oneshot channel.
+  bridge:
+    dir: rust
+    overlay:
+      src/main.rs: gotcha/fixed.rs
+    steps:
+      - cmd: cargo run
+  pools:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-pools/src/main.rs
+    steps:
+      - cmd: cargo run
+  cancel:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-cancel/src/main.rs
+    steps:
+      - cmd: cargo run
+  go-block:
+    dir: gotcha-go
+    steps:
+      - cmd: go run .
+  py-block:
+    dir: gotcha-py
+    steps:
+      - cmd: python3 main.py
+  ts-block:
+    dir: gotcha-ts
+    steps:
+      - cmd: tsc --strict --target es2022 --module nodenext --types node main.ts && node main.js
+  # One step per cell of the table: the same CPU-bound sum, moved off the caller's thread.
+  languages:
+    dir: langs
+    steps:
+      - cmd: python3 offload.py
+      - cmd: tsc --strict --target es2022 --module nodenext --types node offload.ts && node offload.js
+      - cmd: javac Offload.java && java Offload
+      - cmd: kotlinc -cp /opt/kotlinc/lib/kotlinx-coroutines-core-jvm.jar offload.kt -include-runtime -d offload.jar && java -cp offload.jar:/opt/kotlinc/lib/kotlinx-coroutines-core-jvm.jar OffloadKt
+        cwd: kt
+        show: "$ java -cp offload.jar:kotlinx-coroutines-core-jvm.jar OffloadKt   # Kotlin, kotlinx.coroutines"
+      - cmd: bash cs.sh offload.cs | tail -1
+        show: "$ dotnet run"
+      - cmd: gcc -Wall -Wextra offload.c -o offload_c -pthread && ./offload_c
+      - cmd: g++ -std=c++20 -Wall -Wextra offload.cpp -o offload_cpp -pthread && ./offload_cpp
+gotcha:
+  kind: runtime
+  title: "`par_iter` inside an `async fn`"
+  verdict: different-result
+  looks_fine: >-
+    A parallel loop is a function call that returns the right answer, and a loop inside
+    an async function is ordinary code in most languages.
+  rust_sees: >-
+    `par_iter().sum()` is a blocking call: rayon does the work on its own threads, but
+    the call does not return until they finish, and the thread that made the call waits.
+    In an `async fn` that thread belongs to the runtime. Here the runtime has one thread,
+    so the heartbeat task gets no turn between "tick 1" and the end of the sum. On the
+    default multi-thread runtime the same call would hold one worker thread instead (the
+    Tokio docs describe the swapping as happening on each thread); this page runs only the
+    one-thread case.
+  why: >-
+    Tokio can switch tasks only at an `.await`; its docs say code that spends a long time
+    without reaching one "will prevent other tasks from running". The order above does not
+    depend on how long the sum takes, only on there being no `.await` in it. Hand the work
+    to rayon with `rayon::spawn` and wait on a `tokio::sync::oneshot` channel instead: the
+    task awaits, so the runtime thread is free, and the heartbeat ticks while the job
+    waits. The rayon job in the fix waits on a std channel until the heartbeat has ticked
+    three times; that gate fixes the order, and without it the order would depend on timing.
+  code: { file: gotcha/main.rs, name: src/main.rs }
+  session: par-iter-blocks
+  fixed: { file: gotcha/fixed.rs, name: src/main.rs, session: bridge }
+  langs:
+    go:
+      status: runs
+      says: >-
+        The Go scheduler can preempt a goroutine that is spinning. With `GOMAXPROCS(1)`
+        the heartbeat ticked while the loop was still running. (A Rust runtime cannot
+        interrupt a task between awaits.)
+      file: gotcha-go/main.go
+      session: go-block
+    python:
+      status: runs
+      says: >-
+        `asyncio` has the same rule: the `sum` has no `await`, so the event loop cannot
+        run the heartbeat until it returns. The log has the same order as the Rust one, so
+        there is no difference to show for Python: it is the same trap.
+      file: gotcha-py/main.py
+      session: py-block
+    typescript:
+      status: runs
+      says: >-
+        The event loop has the same rule. A promise runs when it is created, so tick 1 is
+        logged at the call, then the loop runs to the end, then ticks 2 and 3. That is the
+        same order as the Rust log: the same trap, not a different result.
+      file: gotcha-ts/main.ts
+      session: ts-block

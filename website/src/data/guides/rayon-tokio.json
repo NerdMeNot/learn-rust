@@ -1,0 +1,185 @@
+{
+ "id": "rayon-tokio",
+ "files": {
+  "go": {
+   "go.mod": "module rayon-tokio\n\ngo 1.27\n",
+   "main.go": "package main\n\nimport (\n\t\"fmt\"\n\t\"os\"\n\t\"strconv\"\n\t\"strings\"\n\t\"sync\"\n)\n\ntype reading struct {\n\tsensor string\n\tvalue  int\n}\n\nfunc parseLine(line string) (reading, error) {\n\tsensor, value, ok := strings.Cut(line, \",\")\n\tif !ok {\n\t\treturn reading{}, fmt.Errorf(\"%q: no comma\", line)\n\t}\n\tn, err := strconv.Atoi(strings.TrimSpace(value))\n\tif err != nil {\n\t\treturn reading{}, fmt.Errorf(\"%q: %w\", line, err)\n\t}\n\treturn reading{strings.TrimSpace(sensor), n}, nil\n}\n\n// One goroutine per line. Each writes to its own slot, so the order is kept.\nfunc parseAll(lines []string) ([]reading, error) {\n\tout := make([]reading, len(lines))\n\terrs := make([]error, len(lines))\n\tvar wg sync.WaitGroup\n\tfor i, line := range lines {\n\t\twg.Add(1)\n\t\tgo func() {\n\t\t\tdefer wg.Done()\n\t\t\tout[i], errs[i] = parseLine(line)\n\t\t}()\n\t}\n\twg.Wait()\n\tfor _, err := range errs {\n\t\tif err != nil {\n\t\t\treturn nil, err\n\t\t}\n\t}\n\treturn out, nil\n}\n\nfunc main() {\n\trequests := [][]string{\n\t\t{\"a,1\", \"b,2\", \"c,3\"},\n\t\t{\"d,10\", \"e,20\"},\n\t\t{\"f,7\", \"g,oops\"},\n\t}\n\n\t// three \"requests\" handled at once\n\ttype result struct {\n\t\treadings []reading\n\t\terr      error\n\t}\n\tresults := make([]result, len(requests))\n\tvar wg sync.WaitGroup\n\tfor i, lines := range requests {\n\t\twg.Add(1)\n\t\tgo func() {\n\t\t\tdefer wg.Done()\n\t\t\tresults[i].readings, results[i].err = parseAll(lines)\n\t\t}()\n\t}\n\twg.Wait()\n\tfor i, r := range results {\n\t\tif r.err != nil {\n\t\t\tfmt.Printf(\"request %d: error: %v\\n\", i, r.err)\n\t\t\tcontinue\n\t\t}\n\t\ttotal := 0\n\t\tnames := []string{}\n\t\tfor _, rd := range r.readings {\n\t\t\ttotal += rd.value\n\t\t\tnames = append(names, rd.sensor)\n\t\t}\n\t\tfmt.Printf(\"request %d: %s total %d\\n\", i, strings.Join(names, \",\"), total)\n\t}\n\n\t// a blocking call is just a call: the goroutine waits, the others keep running\n\tdata, err := os.ReadFile(\"go.mod\")\n\tif err != nil {\n\t\tpanic(err)\n\t}\n\tfmt.Printf(\"go.mod has %d lines\\n\", strings.Count(string(data), \"\\n\"))\n}\n"
+  },
+  "gotcha": {
+   "fixed.rs": "use rayon::prelude::*;\nuse std::sync::mpsc;\nuse std::sync::{Arc, Mutex};\nuse tokio::sync::oneshot;\n\n#[tokio::main(flavor = \"current_thread\")]\nasync fn main() {\n    let log = Arc::new(Mutex::new(Vec::new()));\n\n    // The rayon job waits on this gate until the heartbeat has ticked three times.\n    // That is only here to force an order; real code would not wait.\n    let (open_gate, gate) = mpsc::channel::<()>();\n\n    let beat = Arc::clone(&log);\n    let heartbeat = tokio::spawn(async move {\n        for i in 1..=3 {\n            beat.lock().unwrap().push(format!(\"tick {i}\"));\n            tokio::task::yield_now().await;\n        }\n        open_gate.send(()).unwrap();\n    });\n\n    // The same work, handed to rayon. The async fn waits on a oneshot channel.\n    let (tx, rx) = oneshot::channel();\n    rayon::spawn(move || {\n        gate.recv().unwrap();\n        let total: u64 = (0..1_000_000u64).into_par_iter().map(|n| n % 7).sum();\n        let _ = tx.send(total);\n    });\n    let total = rx.await.unwrap(); // yields: the heartbeat runs while the job waits\n    log.lock()\n        .unwrap()\n        .push(format!(\"rayon job done, total {total}\"));\n\n    heartbeat.await.unwrap();\n    let log = log.lock().unwrap();\n    for entry in log.iter() {\n        println!(\"{entry}\");\n    }\n    assert_eq!(\n        *log,\n        [\n            \"tick 1\",\n            \"tick 2\",\n            \"tick 3\",\n            \"rayon job done, total 2999997\"\n        ]\n    );\n}\n",
+   "main.rs": "use rayon::prelude::*;\nuse std::sync::{Arc, Mutex};\n\n// One runtime thread, so \"the runtime is busy\" has a single meaning.\n#[tokio::main(flavor = \"current_thread\")]\nasync fn main() {\n    let log = Arc::new(Mutex::new(Vec::new()));\n\n    // A heartbeat task: it records a tick, then lets the runtime run something else.\n    let beat = Arc::clone(&log);\n    let heartbeat = tokio::spawn(async move {\n        for i in 1..=3 {\n            beat.lock().unwrap().push(format!(\"tick {i}\"));\n            tokio::task::yield_now().await;\n        }\n    });\n    tokio::task::yield_now().await; // let the heartbeat start\n\n    // CPU-bound work, called straight from an async fn.\n    let total: u64 = (0..1_000_000u64).into_par_iter().map(|n| n % 7).sum();\n    log.lock()\n        .unwrap()\n        .push(format!(\"par_iter done, total {total}\"));\n\n    heartbeat.await.unwrap();\n    let log = log.lock().unwrap();\n    for entry in log.iter() {\n        println!(\"{entry}\");\n    }\n    assert_eq!(\n        *log,\n        [\"tick 1\", \"par_iter done, total 2999997\", \"tick 2\", \"tick 3\"]\n    );\n}\n"
+  },
+  "gotcha-go": {
+   "go.mod": "module rayon-tokio-gotcha\n\ngo 1.27\n",
+   "main.go": "package main\n\nimport (\n\t\"fmt\"\n\t\"runtime\"\n\t\"sync/atomic\"\n)\n\nfunc main() {\n\truntime.GOMAXPROCS(1) // one thread runs every goroutine, like the single-thread runtime\n\n\tvar ticks atomic.Int32\n\tgo func() { // the heartbeat\n\t\tfor i := 0; i < 3; i++ {\n\t\t\tticks.Add(1)\n\t\t\truntime.Gosched()\n\t\t}\n\t}()\n\n\t// CPU-bound work in the main goroutine, with no function call that could yield.\n\t// It spins until the heartbeat has ticked (the cap is only a safety net).\n\tn := 0\n\tfor ticks.Load() == 0 && n < 2_000_000_000 {\n\t\tn++\n\t}\n\tfmt.Println(\"the heartbeat ticked while the loop was still running:\", ticks.Load() > 0)\n}\n"
+  },
+  "gotcha-py": {
+   "main.py": "import asyncio\n\nlog = []\n\n\nasync def heartbeat():\n    for i in range(1, 4):\n        log.append(f\"tick {i}\")\n        await asyncio.sleep(0)  # let the event loop run something else\n\n\nasync def main():\n    hb = asyncio.create_task(heartbeat())\n    await asyncio.sleep(0)  # let the heartbeat start\n\n    # CPU-bound work, called straight from a coroutine\n    total = sum(n % 7 for n in range(1_000_000))\n    log.append(f\"sum done, total {total}\")\n\n    await hb\n    print(\"\\n\".join(log))\n\n\nasyncio.run(main())\n"
+  },
+  "gotcha-ts": {
+   "main.ts": "const log: string[] = [];\nconst yieldToLoop = () => new Promise<void>((resolve) => setImmediate(resolve));\n\nasync function heartbeat() {\n  for (let i = 1; i <= 3; i++) {\n    log.push(`tick ${i}`);\n    await yieldToLoop(); // let the event loop run something else\n  }\n}\n\nasync function main() {\n  const hb = heartbeat(); // a promise runs when it is created: tick 1 is logged here\n\n  // CPU-bound work, called straight from an async function\n  let total = 0;\n  for (let n = 0; n < 1_000_000; n++) total += n % 7;\n  log.push(`sum done, total ${total}`);\n\n  await hb;\n  console.log(log.join(\"\\n\"));\n}\n\nmain();\n"
+  },
+  "langs": {
+   "Offload.java": "import java.util.concurrent.CompletableFuture;\nimport java.util.stream.LongStream;\n\npublic class Offload {\n    public static void main(String[] args) throws Exception {\n        var total = CompletableFuture.supplyAsync(\n            () -> LongStream.range(0, 1_000_000).parallel().map(n -> n % 7).sum());\n        System.out.println(\"common pool: \" + total.get());\n    }\n}\n",
+   "cs.sh": "#!/bin/bash\n# build one C# file the way the lessons do: inside the image's restored project\nset -e\nrm -rf /tmp/cs && cp -r /opt/templates/csharp /tmp/cs && cp \"$1\" /tmp/cs/Program.cs\ncd /tmp/cs && dotnet build --no-restore -v q -nologo -clp:NoSummary\ndotnet bin/Debug/net10.0/Program.dll\n",
+   "kt/offload.kt": "import kotlinx.coroutines.*\n\nfun cpuWork(): Long = (0 until 1_000_000).sumOf { (it % 7).toLong() }\n\nfun main() = runBlocking {\n    // 1. CPU-bound work called straight from a coroutine, on a loop with one thread.\n    val log = mutableListOf<String>()\n    val heartbeat = launch {\n        for (i in 1..3) {\n            log.add(\"tick $i\")\n            yield() // let the loop run something else\n        }\n    }\n    yield() // let the heartbeat start\n    log.add(\"sum done, total ${cpuWork()}\")\n    heartbeat.join()\n    println(\"called directly: ${log.joinToString(\", \")}\")\n\n    // 2. The same work moved to Dispatchers.Default, a pool of worker threads.\n    println(\"Dispatchers.Default: ${withContext(Dispatchers.Default) { cpuWork() }}\")\n}\n",
+   "offload.c": "#include <pthread.h>\n#include <stdio.h>\n\nstatic void *work(void *out) {\n    long total = 0;\n    for (long n = 0; n < 1000000; n++) total += n % 7;\n    *(long *)out = total;\n    return NULL;\n}\n\nint main(void) {\n    pthread_t t;\n    long total = 0;\n    pthread_create(&t, NULL, work, &total);\n    pthread_join(t, NULL);\n    printf(\"pthread: %ld\\n\", total);\n    return 0;\n}\n",
+   "offload.cpp": "#include <future>\n#include <iostream>\n\nlong work() {\n    long total = 0;\n    for (long n = 0; n < 1000000; n++) total += n % 7;\n    return total;\n}\n\nint main() {\n    auto f = std::async(std::launch::async, work); // a thread, and a future to wait on\n    std::cout << \"std::async: \" << f.get() << \"\\n\";\n}\n",
+   "offload.cs": "using System;\nusing System.Linq;\nusing System.Threading.Tasks;\n\nvar total = await Task.Run(() => Enumerable.Range(0, 1_000_000).AsParallel().Sum(n => (long)(n % 7)));\nConsole.WriteLine($\"Task.Run + PLINQ: {total}\");\n",
+   "offload.py": "import asyncio\nfrom concurrent.futures import ProcessPoolExecutor\n\n\ndef work() -> int:\n    return sum(n % 7 for n in range(1_000_000))\n\n\nasync def main():\n    loop = asyncio.get_running_loop()\n    with ProcessPoolExecutor(max_workers=2) as pool:\n        print(\"process pool:\", await loop.run_in_executor(pool, work))\n    print(\"to_thread:\", await asyncio.to_thread(work))\n\n\nif __name__ == \"__main__\":\n    asyncio.run(main())\n",
+   "offload.ts": "import { Worker, isMainThread, parentPort } from \"node:worker_threads\";\n\nfunction work(): number {\n  let total = 0;\n  for (let n = 0; n < 1_000_000; n++) total += n % 7;\n  return total;\n}\n\nasync function main() {\n  if (isMainThread) {\n    const total = await new Promise<number>((resolve, reject) => {\n      const worker = new Worker(__filename); // the same file, started on another thread\n      worker.once(\"message\", resolve);\n      worker.once(\"error\", reject);\n    });\n    console.log(\"worker thread:\", total);\n  } else {\n    parentPort!.postMessage(work());\n  }\n}\n\nmain();\n"
+  },
+  "rust": {
+   "Cargo.lock": "# This file is automatically @generated by Cargo.\n# It is not intended for manual editing.\nversion = 4\n\n[[package]]\nname = \"bitflags\"\nversion = \"2.13.2\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06\"\n\n[[package]]\nname = \"bytes\"\nversion = \"1.12.1\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04\"\n\n[[package]]\nname = \"cfg-if\"\nversion = \"1.0.5\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600\"\n\n[[package]]\nname = \"crossbeam-deque\"\nversion = \"0.8.8\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"622f3fc73690be383c7214310406f28a90e6edeadc3cea882f9d71e495b9711a\"\ndependencies = [\n \"crossbeam-epoch\",\n \"crossbeam-utils\",\n]\n\n[[package]]\nname = \"crossbeam-epoch\"\nversion = \"0.9.21\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"dc74980687109a3b14c72fd458107bf0baa1da1a1a805e178d15501ba9b86d9d\"\ndependencies = [\n \"crossbeam-utils\",\n]\n\n[[package]]\nname = \"crossbeam-utils\"\nversion = \"0.8.23\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"a31eee39dddec8330830986fcd7625edb5a24ec90ea038215273bbc3adb08ac6\"\n\n[[package]]\nname = \"either\"\nversion = \"1.19.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"0e9c71c2167ca323c882b99918929403426e2373ea17242ff5653e0d5e1058be\"\n\n[[package]]\nname = \"errno\"\nversion = \"0.3.14\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb\"\ndependencies = [\n \"libc\",\n \"windows-sys\",\n]\n\n[[package]]\nname = \"libc\"\nversion = \"0.2.191\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a\"\n\n[[package]]\nname = \"lock_api\"\nversion = \"0.4.14\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"224399e74b87b5f3557511d98dff8b14089b3dadafcab6bb93eab67d3aace965\"\ndependencies = [\n \"scopeguard\",\n]\n\n[[package]]\nname = \"mio\"\nversion = \"1.2.4\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"1788edb87fdc09c7e26304471e2f5be8cdefb1b6930d6e3985fc02ff53bf86ee\"\ndependencies = [\n \"libc\",\n \"wasi\",\n \"windows-sys\",\n]\n\n[[package]]\nname = \"parking_lot\"\nversion = \"0.12.5\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"93857453250e3077bd71ff98b6a65ea6621a19bb0f559a85248955ac12c45a1a\"\ndependencies = [\n \"lock_api\",\n \"parking_lot_core\",\n]\n\n[[package]]\nname = \"parking_lot_core\"\nversion = \"0.9.12\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"2621685985a2ebf1c516881c026032ac7deafcda1a2c9b7850dc81e3dfcb64c1\"\ndependencies = [\n \"cfg-if\",\n \"libc\",\n \"redox_syscall\",\n \"smallvec\",\n \"windows-link\",\n]\n\n[[package]]\nname = \"pin-project-lite\"\nversion = \"0.2.17\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd\"\n\n[[package]]\nname = \"proc-macro2\"\nversion = \"1.0.107\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9\"\ndependencies = [\n \"unicode-ident\",\n]\n\n[[package]]\nname = \"quote\"\nversion = \"1.0.47\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"1fbf4db142a473a8d80c26bbf18454ed458bf8d26c8219c331daecfdbd079001\"\ndependencies = [\n \"proc-macro2\",\n]\n\n[[package]]\nname = \"rayon\"\nversion = \"1.12.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"fb39b166781f92d482534ef4b4b1b2568f42613b53e5b6c160e24cfbfa30926d\"\ndependencies = [\n \"either\",\n \"rayon-core\",\n]\n\n[[package]]\nname = \"rayon-core\"\nversion = \"1.13.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"22e18b0f0062d30d4230b2e85ff77fdfe4326feb054b9783a3460d8435c8ab91\"\ndependencies = [\n \"crossbeam-deque\",\n \"crossbeam-utils\",\n]\n\n[[package]]\nname = \"rayon-tokio\"\nversion = \"0.1.0\"\ndependencies = [\n \"rayon\",\n \"tokio\",\n]\n\n[[package]]\nname = \"redox_syscall\"\nversion = \"0.5.18\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"ed2bf2547551a7053d6fdfafda3f938979645c44812fbfcda098faae3f1a362d\"\ndependencies = [\n \"bitflags\",\n]\n\n[[package]]\nname = \"scopeguard\"\nversion = \"1.2.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49\"\n\n[[package]]\nname = \"signal-hook-registry\"\nversion = \"1.4.8\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"c4db69cba1110affc0e9f7bcd48bbf87b3f4fc7c61fc9155afd4c469eb3d6c1b\"\ndependencies = [\n \"errno\",\n \"libc\",\n]\n\n[[package]]\nname = \"smallvec\"\nversion = \"1.16.4\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"d0d5d4b1981b8bbbb7aed204cae5726d683d5d6ac7e74ec54122ea28f315e7c8\"\n\n[[package]]\nname = \"socket2\"\nversion = \"0.6.5\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4\"\ndependencies = [\n \"libc\",\n \"windows-sys\",\n]\n\n[[package]]\nname = \"syn\"\nversion = \"3.0.9\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"d78c8dee4c7bf0e14673097256fed6142ce9d3b85a408189d07482442145823b\"\ndependencies = [\n \"proc-macro2\",\n \"quote\",\n \"unicode-ident\",\n]\n\n[[package]]\nname = \"tokio\"\nversion = \"1.54.1\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"b52fd3255258d26fac7264ab5a76b53c13367136dc011d3d6ad4f8ed070396a3\"\ndependencies = [\n \"bytes\",\n \"libc\",\n \"mio\",\n \"parking_lot\",\n \"pin-project-lite\",\n \"signal-hook-registry\",\n \"socket2\",\n \"tokio-macros\",\n \"windows-sys\",\n]\n\n[[package]]\nname = \"tokio-macros\"\nversion = \"2.7.2\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"78773a2a397f451582ce068015985c33193cf6dea8b74d2a639fe457b2f07b0e\"\ndependencies = [\n \"proc-macro2\",\n \"quote\",\n \"syn\",\n]\n\n[[package]]\nname = \"unicode-ident\"\nversion = \"1.0.27\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563\"\n\n[[package]]\nname = \"wasi\"\nversion = \"0.11.1+wasi-snapshot-preview1\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"ccf3ec651a847eb01de73ccad15eb7d99f80485de043efb2f370cd654f4ea44b\"\n\n[[package]]\nname = \"windows-link\"\nversion = \"0.2.1\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"f0805222e57f7521d6a62e36fa9163bc891acd422f971defe97d64e70d0a4fe5\"\n\n[[package]]\nname = \"windows-sys\"\nversion = \"0.61.2\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"ae137229bcbd6cdf0f7b80a31df61766145077ddf49416a728b02cb3921ff3fc\"\ndependencies = [\n \"windows-link\",\n]\n",
+   "Cargo.toml": "[package]\nname = \"rayon-tokio\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\nrayon = \"1.12.0\"\ntokio = { version = \"1.54.1\", features = [\"full\"] }\n",
+   "src/main.rs": "use rayon::prelude::*;\nuse tokio::sync::oneshot;\n\n#[derive(Debug)]\nstruct Reading {\n    sensor: String,\n    value: i64,\n}\n\nfn parse_line(line: &str) -> Result<Reading, String> {\n    let (sensor, value) = line.split_once(',').ok_or(format!(\"{line:?}: no comma\"))?;\n    let value = value\n        .trim()\n        .parse::<i64>()\n        .map_err(|e| format!(\"{line:?}: {e}\"))?;\n    Ok(Reading {\n        sensor: sensor.trim().to_string(),\n        value,\n    })\n}\n\n// CPU-bound work goes to rayon's pool; the async fn only waits on a oneshot channel.\nasync fn parse_all(lines: Vec<String>) -> Result<Vec<Reading>, String> {\n    let (tx, rx) = oneshot::channel();\n    rayon::spawn(move || {\n        let result: Result<Vec<Reading>, String> =\n            lines.par_iter().map(|l| parse_line(l)).collect();\n        let _ = tx.send(result);\n    });\n    rx.await.expect(\"the rayon job dropped its sender\")\n}\n\n#[tokio::main]\nasync fn main() {\n    let requests: Vec<Vec<String>> = vec![\n        vec![\"a,1\".into(), \"b,2\".into(), \"c,3\".into()],\n        vec![\"d,10\".into(), \"e,20\".into()],\n        vec![\"f,7\".into(), \"g,oops\".into()],\n    ];\n\n    // three \"requests\" handled at once, as three tasks on the Tokio runtime\n    let handles: Vec<_> = requests\n        .into_iter()\n        .map(|lines| tokio::spawn(parse_all(lines)))\n        .collect();\n    for (i, handle) in handles.into_iter().enumerate() {\n        match handle.await.unwrap() {\n            Ok(readings) => {\n                let total: i64 = readings.iter().map(|r| r.value).sum();\n                let names: Vec<&str> = readings.iter().map(|r| r.sensor.as_str()).collect();\n                println!(\"request {i}: {} total {total}\", names.join(\",\"));\n            }\n            Err(e) => println!(\"request {i}: error: {e}\"),\n        }\n    }\n\n    // a blocking call (a file read) goes to Tokio's blocking pool instead\n    let lines = tokio::task::spawn_blocking(|| {\n        std::fs::read_to_string(\"Cargo.toml\").map(|s| s.lines().count())\n    })\n    .await\n    .unwrap()\n    .unwrap();\n    println!(\"Cargo.toml has {lines} lines\");\n}\n"
+  },
+  "snippet-cancel": {
+   "src/main.rs": "use std::sync::atomic::{AtomicUsize, Ordering};\nuse std::sync::{Arc, mpsc};\nuse tokio::sync::oneshot;\n\n// A rayon job that works through 5 chunks. After chunk 1 it tells us, then waits for a\n// go-ahead (this only forces the order: the receiver is dropped while the job is mid-way).\n// `polite` jobs look at `tx.is_closed()` before each chunk; the others do not.\nasync fn run(polite: bool) -> usize {\n    let done = Arc::new(AtomicUsize::new(0));\n    let (tx, rx) = oneshot::channel::<usize>();\n    let (halfway_tx, halfway) = oneshot::channel::<()>();\n    let (finished_tx, finished) = oneshot::channel::<()>();\n    let (go_tx, go) = mpsc::channel::<()>(); // the job blocks on this one, which is fine on a rayon thread\n\n    let counter = Arc::clone(&done);\n    let mut halfway_tx = Some(halfway_tx);\n    rayon::spawn(move || {\n        for _ in 0..5 {\n            if polite && tx.is_closed() {\n                break;\n            }\n            counter.fetch_add(1, Ordering::SeqCst); // \"process\" one chunk\n            if let Some(tx) = halfway_tx.take() {\n                tx.send(()).unwrap();\n                go.recv().unwrap();\n            }\n        }\n        let sent = tx.send(5);\n        println!(\n            \"  job over: sending the result {}\",\n            if sent.is_ok() {\n                \"worked\"\n            } else {\n                \"failed, nobody is listening\"\n            }\n        );\n        finished_tx.send(()).unwrap();\n    });\n\n    halfway.await.unwrap(); // the job has finished chunk 1\n    drop(rx); // the async side gives up, like a request that was cancelled\n    go_tx.send(()).unwrap();\n    finished.await.unwrap(); // wait for the job to end, so the count is final\n    done.load(Ordering::SeqCst)\n}\n\n#[tokio::main]\nasync fn main() {\n    println!(\"job that ignores cancellation:\");\n    let a = run(false).await;\n    println!(\"  chunks processed: {a}\");\n    println!(\"job that checks tx.is_closed():\");\n    let b = run(true).await;\n    println!(\"  chunks processed: {b}\");\n    assert_eq!((a, b), (5, 1));\n}\n"
+  },
+  "snippet-pools": {
+   "src/main.rs": "use rayon::prelude::*;\nuse std::thread;\n\nfn thread_name() -> String {\n    thread::current().name().unwrap_or(\"?\").to_string()\n}\n\nfn main() {\n    // Defaults: each pool sizes itself from the core count, and neither asks the other.\n    let cores = thread::available_parallelism().unwrap().get();\n    let default_rt = tokio::runtime::Runtime::new().unwrap();\n    assert_eq!(default_rt.metrics().num_workers(), cores);\n    assert_eq!(rayon::current_num_threads(), cores);\n    println!(\"by default, Tokio workers and rayon threads each match available_parallelism\");\n    drop(default_rt);\n\n    // Set both by hand: two numbers you chose, two sets of threads.\n    let rt = tokio::runtime::Builder::new_multi_thread()\n        .worker_threads(2)\n        .thread_name(\"io\")\n        .build()\n        .unwrap();\n    let pool = rayon::ThreadPoolBuilder::new()\n        .num_threads(3)\n        .thread_name(|i| format!(\"cpu-{i}\"))\n        .build()\n        .unwrap();\n    println!(\"Tokio workers: {}\", rt.metrics().num_workers());\n    println!(\"rayon threads: {}\", pool.current_num_threads());\n\n    // Where does code run? An async task runs on a Tokio worker; par_iter inside\n    // install() runs on the rayon pool's threads.\n    let task = rt.block_on(async { tokio::spawn(async { thread_name() }).await.unwrap() });\n    let mut rayon_names: Vec<String> =\n        pool.install(|| (0..100).into_par_iter().map(|_| thread_name()).collect());\n    rayon_names.sort();\n    rayon_names.dedup();\n    println!(\"async task ran on a thread named {task:?}\");\n    println!(\n        \"par_iter ran only on cpu-* threads: {}\",\n        rayon_names.iter().all(|n| n.starts_with(\"cpu-\"))\n    );\n    assert_eq!(task, \"io\");\n    assert!(rayon_names.iter().all(|n| n.starts_with(\"cpu-\")) && rayon_names.len() <= 3);\n}\n"
+  }
+ },
+ "sessions": {
+  "run": [
+   {
+    "show": "$ cargo run",
+    "out": "request 0: a,b,c total 6\nrequest 1: d,e total 30\nrequest 2: error: \"g,oops\": invalid digit found in string\nCargo.toml has 8 lines\n",
+    "exit": 0
+   }
+  ],
+  "go": [
+   {
+    "show": "$ go run .",
+    "out": "request 0: a,b,c total 6\nrequest 1: d,e total 30\nrequest 2: error: \"g,oops\": strconv.Atoi: parsing \"oops\": invalid syntax\ngo.mod has 3 lines\n",
+    "exit": 0
+   }
+  ],
+  "par-iter-blocks": [
+   {
+    "show": "$ cargo run",
+    "out": "tick 1\npar_iter done, total 2999997\ntick 2\ntick 3\n",
+    "exit": 0
+   }
+  ],
+  "bridge": [
+   {
+    "show": "$ cargo run",
+    "out": "tick 1\ntick 2\ntick 3\nrayon job done, total 2999997\n",
+    "exit": 0
+   }
+  ],
+  "pools": [
+   {
+    "show": "$ cargo run",
+    "out": "by default, Tokio workers and rayon threads each match available_parallelism\nTokio workers: 2\nrayon threads: 3\nasync task ran on a thread named \"io\"\npar_iter ran only on cpu-* threads: true\n",
+    "exit": 0
+   }
+  ],
+  "cancel": [
+   {
+    "show": "$ cargo run",
+    "out": "job that ignores cancellation:\n  job over: sending the result failed, nobody is listening\n  chunks processed: 5\njob that checks tx.is_closed():\n  job over: sending the result failed, nobody is listening\n  chunks processed: 1\n",
+    "exit": 0
+   }
+  ],
+  "go-block": [
+   {
+    "show": "$ go run .",
+    "out": "the heartbeat ticked while the loop was still running: true\n",
+    "exit": 0
+   }
+  ],
+  "py-block": [
+   {
+    "show": "$ python3 main.py",
+    "out": "tick 1\nsum done, total 2999997\ntick 2\ntick 3\n",
+    "exit": 0
+   }
+  ],
+  "ts-block": [
+   {
+    "show": "$ tsc --strict --target es2022 --module nodenext --types node main.ts && node main.js",
+    "out": "tick 1\nsum done, total 2999997\ntick 2\ntick 3\n",
+    "exit": 0
+   }
+  ],
+  "languages": [
+   {
+    "show": "$ python3 offload.py",
+    "out": "process pool: 2999997\nto_thread: 2999997\n",
+    "exit": 0
+   },
+   {
+    "show": "$ tsc --strict --target es2022 --module nodenext --types node offload.ts && node offload.js",
+    "out": "worker thread: 2999997\n",
+    "exit": 0
+   },
+   {
+    "show": "$ javac Offload.java && java Offload",
+    "out": "common pool: 2999997\n",
+    "exit": 0
+   },
+   {
+    "show": "$ java -cp offload.jar:kotlinx-coroutines-core-jvm.jar OffloadKt   # Kotlin, kotlinx.coroutines",
+    "out": "called directly: tick 1, sum done, total 2999997, tick 2, tick 3\nDispatchers.Default: 2999997\n",
+    "exit": 0
+   },
+   {
+    "show": "$ dotnet run",
+    "out": "Task.Run + PLINQ: 2999997\n",
+    "exit": 0
+   },
+   {
+    "show": "$ gcc -Wall -Wextra offload.c -o offload_c -pthread && ./offload_c",
+    "out": "pthread: 2999997\n",
+    "exit": 0
+   },
+   {
+    "show": "$ g++ -std=c++20 -Wall -Wextra offload.cpp -o offload_cpp -pthread && ./offload_cpp",
+    "out": "std::async: 2999997\n",
+    "exit": 0
+   }
+  ]
+ },
+ "gotcha": {
+  "kind": "runtime",
+  "title": "`par_iter` inside an `async fn`",
+  "verdict": "different-result",
+  "looks_fine": "A parallel loop is a function call that returns the right answer, and a loop inside an async function is ordinary code in most languages.",
+  "rust_sees": "`par_iter().sum()` is a blocking call: rayon does the work on its own threads, but the call does not return until they finish, and the thread that made the call waits. In an `async fn` that thread belongs to the runtime. Here the runtime has one thread, so the heartbeat task gets no turn between \"tick 1\" and the end of the sum. On the default multi-thread runtime the same call would hold one worker thread instead (the Tokio docs describe the swapping as happening on each thread); this page runs only the one-thread case.",
+  "why": "Tokio can switch tasks only at an `.await`; its docs say code that spends a long time without reaching one \"will prevent other tasks from running\". The order above does not depend on how long the sum takes, only on there being no `.await` in it. Hand the work to rayon with `rayon::spawn` and wait on a `tokio::sync::oneshot` channel instead: the task awaits, so the runtime thread is free, and the heartbeat ticks while the job waits. The rayon job in the fix waits on a std channel until the heartbeat has ticked three times; that gate fixes the order, and without it the order would depend on timing.",
+  "code": "use rayon::prelude::*;\nuse std::sync::{Arc, Mutex};\n\n// One runtime thread, so \"the runtime is busy\" has a single meaning.\n#[tokio::main(flavor = \"current_thread\")]\nasync fn main() {\n    let log = Arc::new(Mutex::new(Vec::new()));\n\n    // A heartbeat task: it records a tick, then lets the runtime run something else.\n    let beat = Arc::clone(&log);\n    let heartbeat = tokio::spawn(async move {\n        for i in 1..=3 {\n            beat.lock().unwrap().push(format!(\"tick {i}\"));\n            tokio::task::yield_now().await;\n        }\n    });\n    tokio::task::yield_now().await; // let the heartbeat start\n\n    // CPU-bound work, called straight from an async fn.\n    let total: u64 = (0..1_000_000u64).into_par_iter().map(|n| n % 7).sum();\n    log.lock()\n        .unwrap()\n        .push(format!(\"par_iter done, total {total}\"));\n\n    heartbeat.await.unwrap();\n    let log = log.lock().unwrap();\n    for entry in log.iter() {\n        println!(\"{entry}\");\n    }\n    assert_eq!(\n        *log,\n        [\"tick 1\", \"par_iter done, total 2999997\", \"tick 2\", \"tick 3\"]\n    );\n}\n",
+  "session": "par-iter-blocks",
+  "fixed": {
+   "code": "use rayon::prelude::*;\nuse std::sync::mpsc;\nuse std::sync::{Arc, Mutex};\nuse tokio::sync::oneshot;\n\n#[tokio::main(flavor = \"current_thread\")]\nasync fn main() {\n    let log = Arc::new(Mutex::new(Vec::new()));\n\n    // The rayon job waits on this gate until the heartbeat has ticked three times.\n    // That is only here to force an order; real code would not wait.\n    let (open_gate, gate) = mpsc::channel::<()>();\n\n    let beat = Arc::clone(&log);\n    let heartbeat = tokio::spawn(async move {\n        for i in 1..=3 {\n            beat.lock().unwrap().push(format!(\"tick {i}\"));\n            tokio::task::yield_now().await;\n        }\n        open_gate.send(()).unwrap();\n    });\n\n    // The same work, handed to rayon. The async fn waits on a oneshot channel.\n    let (tx, rx) = oneshot::channel();\n    rayon::spawn(move || {\n        gate.recv().unwrap();\n        let total: u64 = (0..1_000_000u64).into_par_iter().map(|n| n % 7).sum();\n        let _ = tx.send(total);\n    });\n    let total = rx.await.unwrap(); // yields: the heartbeat runs while the job waits\n    log.lock()\n        .unwrap()\n        .push(format!(\"rayon job done, total {total}\"));\n\n    heartbeat.await.unwrap();\n    let log = log.lock().unwrap();\n    for entry in log.iter() {\n        println!(\"{entry}\");\n    }\n    assert_eq!(\n        *log,\n        [\n            \"tick 1\",\n            \"tick 2\",\n            \"tick 3\",\n            \"rayon job done, total 2999997\"\n        ]\n    );\n}\n",
+   "name": "src/main.rs",
+   "out": "tick 1\ntick 2\ntick 3\nrayon job done, total 2999997\n",
+   "cmd": "$ cargo run"
+  },
+  "langs": {
+   "go": {
+    "status": "runs",
+    "says": "The Go scheduler can preempt a goroutine that is spinning. With `GOMAXPROCS(1)` the heartbeat ticked while the loop was still running. (A Rust runtime cannot interrupt a task between awaits.)",
+    "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"runtime\"\n\t\"sync/atomic\"\n)\n\nfunc main() {\n\truntime.GOMAXPROCS(1) // one thread runs every goroutine, like the single-thread runtime\n\n\tvar ticks atomic.Int32\n\tgo func() { // the heartbeat\n\t\tfor i := 0; i < 3; i++ {\n\t\t\tticks.Add(1)\n\t\t\truntime.Gosched()\n\t\t}\n\t}()\n\n\t// CPU-bound work in the main goroutine, with no function call that could yield.\n\t// It spins until the heartbeat has ticked (the cap is only a safety net).\n\tn := 0\n\tfor ticks.Load() == 0 && n < 2_000_000_000 {\n\t\tn++\n\t}\n\tfmt.Println(\"the heartbeat ticked while the loop was still running:\", ticks.Load() > 0)\n}\n",
+    "out": "the heartbeat ticked while the loop was still running: true\n"
+   },
+   "python": {
+    "status": "runs",
+    "says": "`asyncio` has the same rule: the `sum` has no `await`, so the event loop cannot run the heartbeat until it returns. The log has the same order as the Rust one, so there is no difference to show for Python: it is the same trap.",
+    "code": "import asyncio\n\nlog = []\n\n\nasync def heartbeat():\n    for i in range(1, 4):\n        log.append(f\"tick {i}\")\n        await asyncio.sleep(0)  # let the event loop run something else\n\n\nasync def main():\n    hb = asyncio.create_task(heartbeat())\n    await asyncio.sleep(0)  # let the heartbeat start\n\n    # CPU-bound work, called straight from a coroutine\n    total = sum(n % 7 for n in range(1_000_000))\n    log.append(f\"sum done, total {total}\")\n\n    await hb\n    print(\"\\n\".join(log))\n\n\nasyncio.run(main())\n",
+    "out": "tick 1\nsum done, total 2999997\ntick 2\ntick 3\n"
+   },
+   "typescript": {
+    "status": "runs",
+    "says": "The event loop has the same rule. A promise runs when it is created, so tick 1 is logged at the call, then the loop runs to the end, then ticks 2 and 3. That is the same order as the Rust log: the same trap, not a different result.",
+    "code": "const log: string[] = [];\nconst yieldToLoop = () => new Promise<void>((resolve) => setImmediate(resolve));\n\nasync function heartbeat() {\n  for (let i = 1; i <= 3; i++) {\n    log.push(`tick ${i}`);\n    await yieldToLoop(); // let the event loop run something else\n  }\n}\n\nasync function main() {\n  const hb = heartbeat(); // a promise runs when it is created: tick 1 is logged here\n\n  // CPU-bound work, called straight from an async function\n  let total = 0;\n  for (let n = 0; n < 1_000_000; n++) total += n % 7;\n  log.push(`sum done, total ${total}`);\n\n  await hb;\n  console.log(log.join(\"\\n\"));\n}\n\nmain();\n",
+    "out": "tick 1\nsum done, total 2999997\ntick 2\ntick 3\n"
+   }
+  },
+  "code_name": "src/main.rs",
+  "error_cmd": "$ cargo run",
+  "out": "tick 1\npar_iter done, total 2999997\ntick 2\ntick 3\n"
+ }
+}

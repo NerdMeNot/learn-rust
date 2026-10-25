@@ -1,0 +1,79 @@
+/* Site tokens, shared by the docs (via Starlight's variables) and the landing page.
+   Palette: Ferris orange on the slate rust-lang.org uses (#2a3439), over warm paper in
+   light mode. The orange is darkened for text and fills in light mode (#c93c00 is 5.1:1
+   on white; Ferris's own #f74c00 is 3.5:1) and lightened in dark mode (#ff6b35, 5.4:1 on
+   the page). Faces: Bricolage Grotesque for display, Atkinson Hyperlegible for body,
+   JetBrains Mono. */
+
+:root {
+  --lr-display: 'Bricolage Grotesque', 'Segoe UI', system-ui, sans-serif;
+  --lr-body: 'Atkinson Hyperlegible', 'Segoe UI', system-ui, sans-serif;
+  --lr-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+
+  /* Comparison-language colours, used by lesson panels and the language picker. */
+  --lr-rust: #ff6b35;
+  --lr-go: #4fc8e8;
+  --lr-kotlin: #a78bff;
+  --lr-python: #7fb0e6;
+  --lr-ts: #74a7f2;
+  --lr-java: #e3a24f;
+  --lr-csharp: #6ccf7b;
+  --lr-c: #a9b1bd;
+  --lr-cpp: #f08aa9;
+
+  --sl-font: var(--lr-body);
+  --sl-font-mono: var(--lr-mono);
+
+  /* Starlight's dark theme is the default; light overrides it below. */
+  --sl-color-accent-low: #3d2216;
+  --sl-color-accent: #ff6b35;
+  --sl-color-accent-high: #ffc4ac;
+  --sl-color-white: #eef1f2;
+  --sl-color-gray-1: #dfe5e7;
+  --sl-color-gray-2: #bcc6ca;
+  --sl-color-gray-3: #9aa5aa;
+  --sl-color-gray-4: #5f6c72;
+  --sl-color-gray-5: #3a464c;
+  --sl-color-gray-6: #2a3439;
+  --sl-color-black: #1f272b;
+}
+
+:root[data-theme='light'] {
+  --lr-rust: #c93c00;
+  --lr-go: #00748f;
+  --lr-kotlin: #6b45e6;
+  --lr-python: #2f6aa6;
+  --lr-ts: #2563b8;
+  --lr-java: #a1600d;
+  --lr-csharp: #217a2e;
+  --lr-c: #5c6470;
+  --lr-cpp: #b03a63;
+
+  --sl-color-accent-low: #f6ddd0;
+  --sl-color-accent: #c93c00;
+  --sl-color-accent-high: #7a2000;
+  --sl-color-white: #1f2a2e;
+  --sl-color-gray-1: #2a3439;
+  --sl-color-gray-2: #3d494f;
+  --sl-color-gray-3: #5a6469;
+  --sl-color-gray-4: #86908f;
+  --sl-color-gray-5: #d8d2c4;
+  --sl-color-gray-6: #e8e3d7;
+  --sl-color-gray-7: #ece8de;
+  --sl-color-black: #f4f1ea;
+}
+
+.sl-markdown-content h1,
+.sl-markdown-content h2,
+.sl-markdown-content h3,
+h1#_top {
+  font-family: var(--lr-display);
+  letter-spacing: -0.015em;
+}
+
+/* No ligatures in code: a learner has to see `->` and `!=`, not → and ≠, because those
+   are the characters they will type. */
+code, pre, kbd, samp, .expressive-code, .expressive-code * {
+  font-variant-ligatures: none;
+  font-feature-settings: 'liga' 0, 'calt' 0;
+}

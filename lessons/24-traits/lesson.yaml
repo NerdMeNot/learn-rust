@@ -1,0 +1,116 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Traits (Interfaces)"
+part: "abstractions"
+intro: >-
+  A trait is a list of methods a type promises to have. A trait can also include
+  default methods, which a type gets without writing them. You use a trait to say what
+  a function needs from its argument, instead of naming one type.
+coming_from:
+  go: >-
+    A trait plays the part of a Go interface: the list of methods a function needs. The
+    difference is that a type must say `impl Speaker for Robot`; having the right
+    methods is not enough. A trait can also have default methods, which Go interfaces
+    lack. And because the `impl` is a separate block, you can implement your own trait
+    for types you did not write, such as `i32`, which Go does not allow.
+  kotlin: >-
+    A trait is close to a Kotlin interface with default methods. The `impl Speaker for
+    Dog` block lives apart from the type, so you can implement your trait for types you
+    did not write, like `i32`. A Kotlin extension function adds a method to such a type
+    but does not make it a `Speaker`.
+  python: >-
+    A trait is like a `Protocol` with default methods, but a type counts only once you
+    write `impl Speaker for Robot`, and the compiler checks it, not a separate type
+    checker. (A default in a `Protocol` reaches only the classes that name it as a base.)
+  typescript: >-
+    A trait is like an `interface` plus the default method bodies you would otherwise put
+    in an abstract class or a mixin. It's nominal, though: having a `speak` method isn't
+    enough, the type must say `impl Speaker for Robot`.
+  java: >-
+    A `trait` is an `interface`, default methods included. A function that takes
+    `&dyn Speaker` accepts any type that implements it, like a parameter of interface
+    type, and `T: Speaker` is like `<T extends Speaker>`. The implementation lives in a
+    separate `impl Speaker for Dog` block, so you can add your own trait to a type you
+    didn't write, such as `String`, without a wrapper class.
+  csharp: >-
+    A `trait` is an `interface` with default methods. You implement it in a separate
+    `impl Speaker for Robot` block, which means you can add your trait to someone
+    else's type. A default method can be called on the type itself, where a C#
+    default interface method is only visible through the interface type.
+  c: >-
+    C has no interfaces; you'd build a struct of function pointers by hand. A trait is
+    that pattern written down for the compiler, which checks that every type fills in
+    every method. Used as `&dyn Speaker`, it is a data pointer plus a pointer to such a
+    table.
+  cpp: >-
+    A trait used through `&dyn Speaker` plays the part of an abstract base class with
+    virtual methods, but a type does not inherit from it and a trait holds no data
+    members. The same trait can also be a compile-time bound on a generic function, a
+    lot like a C++20 concept, except that a type must say `impl Speaker for Robot`.
+notes:
+  - >-
+    `&dyn Speaker` means "a reference to some type that implements Speaker, decided at
+    runtime". The right `speak` is looked up while the program runs.
+  - >-
+    There is also a compile-time version: `fn introduce(s: &impl Speaker)`. The compiler
+    knows the exact type at each call, so it needs no lookup. Use `dyn` when you need a
+    list of mixed types. The generics lesson covers the first, the trait objects lesson
+    the second.
+  - >-
+    `format!` works like `println!`, but returns the text as a String instead of
+    printing it.
+gotcha:
+  title: "Having the method but not saying so"
+  verdict: "rust-rule"
+  looks_fine: >-
+    In Go, Robot has a `Speak` method, so it is a Speaker automatically. Nothing else to
+    write.
+  rust_sees: >-
+    Rust wants you to say it: `impl Speaker for Robot`. A method with a matching name is
+    not enough.
+  why: >-
+    One type can then have two methods with the same name that mean different things: the
+    lesson's `Car` has a `start` from `Vehicle` and another from `Appliance`, and a call
+    says which. It also lets you add a trait to a type later, in a separate place, which
+    is how `impl Speaker for i32` works.
+  langs:
+    go:
+      status: "runs"
+      says: >-
+        Go runs this and prints beep 7. Having a `Speak` method is enough to count as a
+        Speaker, with nothing to declare.
+    kotlin:
+      status: "refuses"
+      says: >-
+        Kotlin refuses this too: `Robot` has to declare `: Speaker` before it can be
+        passed as one.
+    python:
+      status: "runs"
+      says: >-
+        Python prints beep 7. Python uses duck typing: anything with a `speak` method
+        works, with no need to declare that `Robot` is a Speaker.
+    typescript:
+      status: "runs"
+      says: >-
+        Prints beep 7. TypeScript checks the shape: `Robot` has a matching `speak`, so
+        it counts as a `Speaker` without saying `implements`.
+    java:
+      status: "refuses"
+      says: >-
+        Java refuses this too: `Robot` has a `speak` method but never says `implements
+        Speaker`, so it is not a Speaker.
+    csharp:
+      status: "refuses"
+      says: >-
+        C# refuses this too: having a Speak method is not enough, the class must say `:
+        ISpeaker` (CS1503). Interfaces are opt-in by name in C#, as in Java.
+    c:
+      status: "none"
+      says: >-
+        C has no traits or interfaces. A C "Speaker" is a struct of function pointers
+        you fill in by hand, so there is no declaration to forget.
+    cpp:
+      status: "refuses"
+      says: >-
+        C++ refuses this too: `Robot` doesn't inherit from `Speaker`, so it can't be
+        passed as a `const Speaker&`. A template or concept would accept it, since those
+        only check that `speak()` exists.

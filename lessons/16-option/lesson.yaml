@@ -1,0 +1,119 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Option (instead of null)"
+part: "data"
+intro: >-
+  Rust has no nil or null. A value that might be missing has the type `Option<T>`, which
+  is either `Some(value)` or `None`.
+coming_from:
+  go: >-
+    `Option<User>` replaces a `*User` that might be nil, and also the `(value, ok)` pair
+    from a map lookup: one value carries both. You can't reach `.name` until you've
+    checked for `Some`, so you can't dereference a missing value by accident.
+  kotlin: >-
+    `Option<User>` is your `User?`, and for Kotlin code the compiler checks it just as
+    strictly. The operators become methods: `?.` is `.map(...)` or `.and_then(...)`,
+    `?:` is `.unwrap_or_else(...)` (both are lazy), and `!!` is `.unwrap()`. `Option` is
+    an ordinary type rather than a mark on a type, so it nests (`Option<Option<T>>`) and
+    has methods, and no value arrives from Java with unknown nullness.
+  python: >-
+    `Option<User>` is your `Optional[User]`, but the check isn't left to a tool you may
+    forget to run: the compiler won't let you touch `.name` until you've matched
+    `Some`. That removes the unchecked AttributeError on `None`.
+  typescript: >-
+    `Option<User>` is `User | undefined` with `strictNullChecks` always on. Rust has one
+    "nothing", `None`, not both `null` and `undefined`. There is no `?.` or `??`: you use
+    methods like `.map(...)` and `.unwrap_or(...)`, or `match` and `if let`.
+  java: >-
+    `Option<T>` is `Optional<T>`, but in Rust it is the standard way to say a value may be
+    missing, and there is no `null` for an `Option` itself to be. Java still has `null`
+    for every reference, including an `Optional` variable.
+    `match` or `if let` do what `ifPresentOrElse` and `map(...).orElse(...)` do.
+  csharp: >-
+    `Option<User>` is what `User?` means, but Rust enforces it: you cannot touch `.name`
+    until you've checked for `Some`. With nullable reference types, C# reports the same
+    mistake (CS8602) as a warning by default, and the program still builds.
+  c: >-
+    `Option<&User>` replaces a pointer that might be `NULL`, and it is stored as just
+    that pointer, with `None` as the null address. The difference is that you must check
+    for `None` before using it; you can't forget and read address 0.
+  cpp: >-
+    `Option<T>` is `std::optional<T>`. `if (auto u = f())` tests the optional, but `u` is
+    still an optional and `u->name` skips the test; Rust has no such shortcut, and
+    `unwrap()` panics with a message on `None` instead of being undefined behaviour.
+    `Option<&T>` is what `std::optional<T&>` is in C++26, and what a raw pointer was
+    before.
+notes:
+  - >-
+    `Option<User>` is either `Some(user)` or `None`. In safe Rust a reference is never null, so
+    "might be missing" is spelled out as a type you can see.
+  - >-
+    Handy shortcuts: `opt.unwrap_or(default)` gives a fallback value, `opt.map(|u|
+    u.name)` changes the value inside if there is one (`|u| u.name` is a closure, a
+    small function written inline; [Closures](/learn/closures/) come later), and `opt?` inside a function that
+    returns Option hands back None early.
+  - >-
+    `opt.unwrap()` takes the value out and crashes if it is None. Use it only where None
+    really cannot happen.
+  - >-
+    Missing for a reason, not by accident: if a function can fail with a reason, return
+    a `Result` instead (next lesson). `Option` says "nothing"; `Result` says why.
+gotcha:
+  title: "Using the value without checking"
+  verdict: "broken-elsewhere"
+  looks_fine: >-
+    In Go, `u := findUser(2); fmt.Println(u.Name)` compiles fine. At runtime `u` is nil,
+    and the program crashes with a nil pointer dereference. Kotlin refuses at compile
+    time, like Rust.
+  rust_sees: >-
+    `u` is an `Option<User>`, not a `User`. An Option has no `name` field. You have to
+    open it first.
+  why: >-
+    Rust moves the nil check from "remember to do it" to "can't compile without it".
+    Every place that might get nothing has to say what happens then. The compiler's
+    `help:` suggests `u.unwrap().name`. That compiles, but `unwrap` on None crashes,
+    which is the classic null crash all over again. Use `match` or `if let` instead.
+  langs:
+    go:
+      status: "crash"
+      says: >-
+        Go compiles this, then crashes with a nil pointer panic when it reads `u.Name`.
+    kotlin:
+      status: "refuses"
+      says: >-
+        Kotlin refuses this too: `findUser` returns `User?`, so `u.name` needs `u?.name`
+        or a null check first.
+    python:
+      status: "crash"
+      says: >-
+        Python runs until `u.name`, then raises AttributeError because `u` is None. This
+        is the same crash as `None.name` anywhere. A type checker such as mypy or pyright
+        flags it first, but only if you run one, and `# type: ignore`, `cast` and `Any`
+        can switch the check off.
+    typescript:
+      status: "refuses"
+      says: >-
+        TypeScript refuses this too with `strict` on: `u` is possibly `undefined`, so
+        you must check it before reading `u.name`.
+    java:
+      status: "crash"
+      says: >-
+        It compiles, then throws a NullPointerException because `findUser(2)` returned
+        null. Nothing made you check first.
+    csharp:
+      status: "crash"
+      says: >-
+        With nullable references on, the compiler warns about the possible null
+        (CS8602). It is only a warning by default, so the program builds and then throws a
+        NullReferenceException.
+    c:
+      status: "crash"
+      mode: "asan"
+      says: >-
+        C compiles this without a word. `find_user(2)` returns NULL, and
+        AddressSanitizer reports a crash reading address 0.
+    cpp:
+      status: "refuses"
+      says: >-
+        C++ refuses this too: `std::optional<User>` has no member `name`. Be careful
+        though, because `u->name` would compile and skip the check, which is undefined
+        behaviour when `u` is empty.

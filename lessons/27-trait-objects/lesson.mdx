@@ -1,0 +1,316 @@
+<p class="lr-layer">The toolkit</p>
+
+## A value whose type you have forgotten
+
+A **trait object** is a value of some type that implements a [trait](/learn/traits/), where the code no longer knows which type. You write its type as `dyn Shape`. A call like `s.area()` is looked up at run time through a table of the type's methods (a **vtable**). That is **dynamic dispatch**, what interface values do in most languages.
+
+The same trait can be held three ways:
+
+<Snippet file="basics.rs" />
+
+- `&dyn Shape` borrows any `Shape` for reading. `&sq` is a `&Square`, and Rust turns it into a `&dyn Shape` where the signature asks for one. It needs no heap: `on_stack` holds references to values in `main`'s own frame.
+- `&mut dyn Shape` borrows it for changing. `double` scaled the same `sq` that `show` printed.
+- `Box<dyn Shape>` owns it. A `Box` is an owned pointer to a value on the heap, freed when the box is dropped (`Box` gets its own lesson, [Smart pointers](/learn/smart-pointers/#boxt-one-owner-on-the-heap)). `Box::new(sq)` moved `sq` onto the heap, and the `Vec` owns the boxes.
+
+Default methods like `describe` work through a `dyn` too. Through a `dyn Shape` you can call the trait's methods and those of its **supertraits** (traits it requires, written `trait Shape: Debug`; see [Traits](/learn/traits/#supertraits)), and nothing of the concrete type's own. The `Rect` is still in there, but its fields are out of reach:
+
+<Snippet file="forgotten.fail.rs" />
+
+Which one to use is the usual question: borrow to read, borrow to change, or own. Shapes with several owners are `Rc<dyn Shape>` or `Arc<dyn Shape>` ([smart pointers](/learn/smart-pointers/)).
+
+To hand a boxed shape to a function that wants `&dyn Shape`, `&boxed` is not enough:
+
+<Snippet file="box-to-ref.fail.rs" />
+
+The compiler treats the whole `Box<dyn Shape>` as the shape, and a box does not implement `Shape`. Borrow what is inside it: `boxed.as_ref()` or `&*boxed`.
+
+## Why not a `Vec<Shape>`?
+
+The gotcha near the top of the page tried that, and the compiler said "expected a type, found a trait". A trait names a set of types, not one. Follow the compiler's advice and write `dyn Shape`:
+
+<Snippet file="vec-dyn.fail.rs" />
+
+There are two errors. A `Vec<T>` stores items side by side, so every `T` needs a size known at compile time, and a `dyn Shape` might be 4 bytes or much more. And the `vec!` is refused, because all items of a `Vec` have one type. A `Box<dyn Shape>` is one type of one size.
+
+The check happens where the box is made. A type that does not implement the trait never gets in:
+
+<Snippet file="not-implemented.fail.rs" />
+
+## Where you have already met `dyn`
+
+<Snippet file="seen-before.rs" />
+
+| You write | It means |
+|---|---|
+| `Box<dyn Error>` | any error type ([Errors](/learn/errors/)) |
+| `Box<dyn Iterator<Item = u32>>` | an iterator whose type depends on a branch ([Iterators](/learn/iterators/)) |
+| `Box<dyn Fn(i32) -> i32>` | a closure. Every closure has its own type, so a list of different closures needs this ([Closures](/learn/closures/)) |
+| `&mut dyn Write` | anywhere bytes can go: a `Vec<u8>`, a file, the terminal |
+
+## Generics or `dyn`?
+
+The [traits lesson](/learn/traits/#static-and-dynamic-dispatch-in-one-program) compared the two. Facts this page can print:
+
+<Snippet file="generic-vs-dyn.rs" />
+
+- `show_generic<T>` is compiled once per type it is used with ([Generics](/learn/generics/)): two functions in this build.
+- `show_dyn` is compiled once. The type is `dyn Shape` for every caller, and the real size (4, then 8) is found through the pointer.
+
+A call through the table is an indirect call, and the Rust Book notes that it prevents inlining the method. That alone does not make `dyn` slow. A JIT (the JVM's, .NET's) can inline an interface call from what it has seen while running. Rust compiles ahead of time with no such profile, so the source decides. Whether it matters is a measurement to make with `cargo run --release`; this page times nothing, because its runner builds only debug programs ([Hello, World](/learn/hello-world/)).
+
+**Which to pick.** Default to a generic. Use `dyn` when a collection or field must hold several types, or the type is only known at run time. Two costs sit behind that default:
+
+- **A type parameter spreads.** A struct holding a `Canvas<S>` must carry `S` too, and so must the struct holding that; `App<Square>` and `App<Rect>` are different types. A `Box<dyn Shape>` field keeps the type out of every signature. That is a common reason for `dyn` in struct fields.
+- **One copy per type is more code.** Each type adds a copy of the generic function (`two copies of show_generic: true`). `dyn` has one. This page measures neither code size nor compile time.
+
+<Snippet file="spread.rs" />
+
+What `dyn` buys is flexibility. `-> impl Shape` names one type ([Traits](/learn/traits/#returning-something-that-implements-a-trait) shows the error); when the type depends on data, `Box<dyn Shape>` can return either. That is plugin-like code: a name from a config file, and one function that hands back the matching implementation.
+
+<Snippet file="return-box.rs" />
+
+If you write all the types and the list is closed, a third option is an `enum`, with no pointer and no table. The [traits lesson](/learn/traits/#a-trait-or-an-enum) compares enum and trait; this table adds the generic column.
+
+<Snippet file="enum-instead.rs" />
+
+| | generic `T: Shape` | `dyn Shape` | `enum` |
+|---|---|---|---|
+| which types | one per call, fixed at compile time | any, chosen at run time | the variants you listed |
+| a `Vec` of mixed types | no | yes, as `Vec<Box<dyn Shape>>` | yes, stored inline |
+| a new type from another module or crate | yes | yes | no: the enum must change |
+| the call is found | at compile time | through the table | by `match` |
+| one list item takes | its own size | 16 bytes, plus the value on the heap | the largest variant plus a tag (12 here) |
+
+## Translating from what you know
+
+<ForLang only="go">
+A Go interface value is a two-word pair: a pointer to information about the type (which leads to the method table) and a pointer to the data ([Go Data Structures: Interfaces](https://research.swtch.com/interfaces) draws it). A Rust `&dyn Shape` is a pair of the same shape and size (16 bytes on a 64-bit machine).
+
+<Snippet file="iface-size.go" />
+
+Two things differ. Assigning to a Go interface **copies** the value; a `&dyn Shape` points at the original (`double` above changed the `sq` that `show` printed).
+
+<Snippet file="iface-copy.go" />
+
+And a Go interface holding a nil pointer is not nil. The method still runs:
+
+<Snippet file="typed-nil.go" />
+
+A Rust `Box` is never null (`Option<Box<dyn Shape>>` stays 16 bytes, below), so "nothing" is `None`, with no nil hiding inside a box.
+
+Go can also ask a value for another interface:
+
+<Snippet file="flusher.go" />
+
+A `dyn Shape` can be asked for its concrete type ([`Any`](#getting-the-real-type-back-any)), not for another trait:
+
+<Snippet file="named-query.fail.rs" />
+
+Put the method in the trait with a default body instead.
+
+| In Go | In Rust |
+|---|---|
+| a type satisfies the interface by having the methods | `impl Shape for Square`, written out |
+| `[]Shape{Square{3}, Rect{4, 6}}` | `Vec<Box<dyn Shape>>` |
+| `sq, ok := s.(Square)` | `downcast_ref::<Square>()` on a `&dyn Any` ([below](#getting-the-real-type-back-any)), or an enum |
+| `switch v := s.(type)` | `match` on an enum |
+| `any` | `dyn Any`, rarely needed: prefer a generic or a trait |
+| `w.(Flusher)`, another interface | no equivalent (above): a default method |
+| an interface embedding two others | a supertrait: `trait Both: A + B` |
+| a nil interface value | `Option<Box<dyn Shape>>` |
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+In Java, Kotlin and C#, a variable of an interface type holds a reference to an object, so `List<Shape>` needs nothing extra, and a call picks the method from the object's class when it runs. Rust writes both parts in the type: the pointer and `dyn`. The table pointer sits beside the reference ([below](#what-a-dyn-pointer-is-made-of)).
+
+On the JVM a generic bound is not the compile-time form. Java and Kotlin erase it ([Generics](/learn/generics/)): the compiled `twice` takes a `Shape`, one body for every type, so `s.area()` is still an interface call.
+
+<Snippet file="erased-bound.java" />
+
+Rust's `<T: Shape>` is compiled once per type, with a direct call. In C# the close match is a **struct** type argument. A struct behind an interface is boxed, like a `Square` in a `Box<dyn Shape>`; a struct as the type argument is not:
+
+<Snippet file="struct-boxed.cs" />
+
+| In Java, Kotlin, C# | In Rust |
+|---|---|
+| `List<Shape>`, `List<IShape>` | `Vec<Box<dyn Shape>>` |
+| `s instanceof Square sq`, `s is Square`, `s is Square sq` | `downcast_ref::<Square>()` ([below](#getting-the-real-type-back-any)), or an enum |
+| a sealed interface with `switch` or `when` (Java, Kotlin) | an `enum` and `match` |
+| `abstract class Shape { protected int id; }` | a trait has no fields: keep them in each struct and add a method such as `fn id(&self) -> u32` |
+| an interface property: Kotlin `val name: String`, C# `string Name { get; }` | a method: `fn name(&self) -> String` |
+| `toString()` on every object | `Debug` or `Display` as a supertrait ([below](#supertraits-come-along)) |
+| a generic method in an interface, `<R> R accept(Visitor<R> v)` | makes the trait not dyn compatible ([below](#which-traits-can-be-dyn)) |
+| a `null` in the list | `Option<Box<dyn Shape>>` |
+| `<T extends Shape>`, `<T : Shape>` | `<T: Shape>`, but the JVM erases the bound (still an interface call) and Rust compiles a copy per type |
+| `where T : IShape` | `<T: Shape>`, closest when `T` is a struct |
+</ForLang>
+
+<ForLang only="python typescript">
+Python and JavaScript look a method up by name when the call runs, so no `dyn` is needed. What changes is who checks: Rust checks where the box is made (the `Rock` error above). The same mistake in your language:
+</ForLang>
+
+<ForLang only="python">
+<Snippet file="duck.fail.py" />
+
+The list builds fine. The failure comes at the call, when the loop reaches the `Rock`. That is plain Python; a type checker can report it earlier, but this page does not run one.
+</ForLang>
+
+<ForLang only="typescript">
+<Snippet file="rock.fail.ts" />
+
+TypeScript does check the list, by shape: `Rock` has no `area`, so it is refused. A class with the right methods would pass without saying `implements`. Rust wants the `impl`.
+</ForLang>
+
+<ForLang only="python typescript">
+| In Python, TypeScript | In Rust |
+|---|---|
+| any object with `area()` goes in a list | `Vec<Box<dyn Shape>>`, and each type needs `impl Shape for T` |
+| an attribute on the shared shape, `shape.name` or `name: string` | a method: `fn name(&self) -> String` |
+| `isinstance(s, Square)`, `s instanceof Square` | `downcast_ref::<Square>()` ([below](#getting-the-real-type-back-any)), or an enum |
+| `typing.Protocol`, a structural `interface` | still an explicit `impl` |
+| `None` or `null` in the list | `Option<Box<dyn Shape>>` |
+</ForLang>
+
+<ForLang only="c">
+The C program at the top builds a `dyn` by hand: a data pointer and a table of function pointers. A `&dyn Shape` is the same idea, built by the compiler from the real type, so no `void *` cast can go wrong. Its table also holds drop, size and alignment ([below](#what-a-dyn-pointer-is-made-of)).
+</ForLang>
+
+<ForLang only="cpp">
+A C++ object whose class has `virtual` methods carries a hidden pointer to its table inside every object, as the [traits lesson](/learn/traits/) measured. A Rust `dyn` keeps that pointer in the reference instead, so the struct is unchanged: `size_of::<Square>()` is 4 in the layout program below.
+
+Two C++ traps go with that design. Without a `virtual` destructor, deleting through a base pointer skips the derived destructor (undefined behaviour; here `unique_ptr<A>` never runs `~B`):
+
+<Snippet file="virtual-dtor.cpp" />
+
+And a base held by value **slices**: copying a `Derived` into a `Base` keeps only the base part, with no error:
+
+<Snippet file="slicing.cpp" />
+
+Rust has neither. Dropping a `Box<dyn Shape>` runs the real type's `drop` (the drop program below), and a `dyn Shape` cannot be held by value at all (the `Vec<dyn Shape>` error above).
+
+| In C++ | In Rust |
+|---|---|
+| `virtual unsigned area() const = 0;` | a method in the trait with no body |
+| `class Square : public Shape` | `impl Shape for Square`, written apart from the struct, so it also works for `i32` or a library type (no wrapper class) |
+| `std::unique_ptr<Shape>` | `Box<dyn Shape>` |
+| `const Shape&` | `&dyn Shape` |
+| `dynamic_cast<Square*>(p)` | `downcast_ref::<Square>()` ([below](#getting-the-real-type-back-any)), or an enum |
+| `std::variant` and `std::visit` | an `enum` and `match` |
+| `virtual Shape* clone() const` | `clone_box`, the same idiom ([below](#why-a-boxdyn-shape-is-not-clone)) |
+| `virtual ~Shape() = default;` | nothing to write (see above) |
+</ForLang>
+
+<p class="lr-layer">Going deeper</p>
+
+## What a `dyn` pointer is made of
+
+A `&dyn Shape` or `Box<dyn Shape>` is a **fat pointer**: two machine words, the address of the value and the address of the vtable for its type. A pointer to a sized type is one word. The sizes here are for this 64-bit Linux runner, where a word is 8 bytes.
+
+<Snippet file="layout.rs" />
+
+<Memory
+  title={'let a: Box<dyn Shape> = Box::new(Square { side: 3 });   let b: Box<dyn Shape> = Box::new(Rect { w: 4, h: 6 });'}
+  stack={[
+    { name: 'a', type: 'Box<dyn Shape>', cells: ['data ptr', 'vtable ptr'], to: 'sq', note: 'the vtable pointer leads to the table for Square as a Shape' },
+    { name: 'b', type: 'Box<dyn Shape>', cells: ['data ptr', 'vtable ptr'], to: 'rect', note: 'the vtable pointer leads to the table for Rect as a Shape' },
+  ]}
+  heap={[
+    { id: 'sq', label: 'a Square (4 bytes)', cells: ['side 3'] },
+    { id: 'rect', label: 'a Rect (8 bytes)', cells: ['w 4', 'h 6'] },
+  ]}
+  caption="Both boxes are 16 bytes, so a Vec of them has equal-sized items. In practice the vtables sit in read-only static data, not on the heap, so they are not drawn."
+/>
+
+What the printed facts say:
+
+- `Box<Rect>` is 8 bytes and `Box<dyn Shape>` is 16. The extra word is the vtable pointer.
+- The pointer inside the fat pointer is the same address the plain reference had (`same data address: true`). Turning a `&Square` into a `&dyn Shape` adds a word and changes nothing else.
+- `Option<Box<dyn Shape>>` is still 16: a box is never null, so `None` takes that spot.
+- `size_of_val` returns 4 for the square and 8 for the rect, from the same `Box<dyn Shape>` type. The real size and alignment must travel with the pointer.
+
+The Reference says a vtable holds a pointer to each method's implementation, supertraits included. The sizes above and the drop below need more, and in practice rustc also keeps drop, size and alignment in the table. The Reference leaves the rest unspecified and says not to rely on two-word pointers, though they are today.
+
+<Snippet file="drop-dyn.rs" />
+
+Each box ran the drop code of the type it holds, in list order.
+
+## Supertraits come along
+
+A trait object has the trait's methods and those of its supertraits. `trait Shape: Debug` means every `Shape` is also `Debug`, so `{:?}` works on a `Box<dyn Shape>`. This is how a `dyn` gets the job of `toString()`:
+
+<Snippet file="supertrait.rs" />
+
+## Which traits can be `dyn`
+
+The compiler must be able to build a table with one function pointer per method. Some methods cannot have one:
+
+<Snippet file="incompatible.fail.rs" />
+
+The error names both reasons. A method returning `Self` has no fixed return type through a `dyn`. A method with its own type parameter would need a table entry for every type it is called with. The [Reference](https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility) lists the full rules ("dyn compatible" was called "object safe"), such as no `Sized` supertrait (`Sized` marks a size known at compile time) and no function without `self`, like `fn new() -> Self`.
+
+A method can stay if it says it needs a concrete type:
+
+<Snippet file="sized-escape.rs" />
+
+`where Self: Sized` removes the method from the table. It works on `sq`, the concrete type, and is refused through the box:
+
+<Snippet file="sized-through-dyn.fail.rs" />
+
+## Why a `Box<dyn Shape>` is not `Clone`
+
+`derive(Clone)` needs every field to be `Clone`. A `Box<dyn Shape>` is `Clone` only if `dyn Shape` is, and `Shape` does not say so:
+
+<Snippet file="clone.fail.rs" />
+
+Adding `trait Shape: Clone` does not help. `Clone` requires a sized type, and a `Sized` supertrait makes the trait not dyn compatible, so it could no longer be `dyn`:
+
+<Snippet file="clone-supertrait.fail.rs" />
+
+The usual workaround is a method that returns a new box, which every type implements by cloning itself, plus an `impl Clone` for the box:
+
+<Snippet file="clone-box.rs" />
+
+The copy kept the original value when the original grew. The [`dyn-clone`](https://docs.rs/dyn-clone/latest/dyn_clone/) crate packages this pattern.
+
+## Bounds on the box
+
+A trait object type can carry more bounds, as in `Box<dyn Shape + Send>` (`Send` marks types that may move to another thread; see [`dyn Trait + Send`](/learn/send-sync/#dyn-trait--send)) or `Box<dyn Shape + 'static>`. You meet them when the compiler asks: [Lifetimes](/learn/lifetimes/#static) teaches `'static`, and [Threads](/learn/threads/) is where `thread::spawn` comes in.
+
+## Getting the real type back: `Any`
+
+A `dyn Shape` has forgotten its type on purpose. If you need it back, [`Any`](https://doc.rust-lang.org/std/any/trait.Any.html) can answer "is this a `Rect`?". It works for types that hold no short-lived borrows (`'static`, per the std docs). Make `Any` a supertrait of your trait, and a `&dyn Shape` can be turned into a `&dyn Any`:
+
+<Snippet file="downcast.rs" />
+
+`downcast_ref::<Rect>()` returns `Some` only for a `Rect`; `is::<Rect>()` is the yes-or-no version.
+
+In the last two lines, coercing the `&Box<dyn Shape>` itself asks about the box, and the answer for `Rect` is `false`. Take the shape out of the box first, as `as_ref()` does.
+
+Needing a downcast often means the types are a closed list, where an enum with `match` (the table above) is the better fit. For an open set, such as plugins or error types, a downcast is normal.
+
+Trait objects ask for more typing than the languages above: `Box::new` at each insertion, `clone_box` for copies, no fields in a trait. In return a `Square` stays 4 bytes whether or not a `dyn` ever points at it, as in Go and unlike a C++ class with `virtual` methods.
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Each exercise has checks in `main`. Replace the `todo!()` and run until it prints `all checks passed`.
+
+<Exercise name="shape-factory" title="Shapes from text">
+Write `parse_shape`, which turns `"square 3"` or `"rect 4 6"` into a boxed shape, and `None` for anything else (a missing or extra number, a word where a number goes, an unknown shape, empty text). Then write `largest`, which returns the biggest shape as a `&dyn Shape`; on a tie, the first. The `dyn` parts are the boxing and the borrow back out of the box. Careful: `max_by_key` returns the last.
+</Exercise>
+
+<Exercise name="registry" title="A command registry">
+A `Registry` maps names to boxed commands. Commands change when they run (a counter counts), so run them through `&mut`. Look a command up by name and run it; an unknown name is `None`, not a panic; registering a name twice replaces the old command.
+</Exercise>
+
+<Exercise name="choose" title="Generic or dyn?">
+`total_of` adds up a slice of items that all have one type: add the bound it lacks. `total_mixed` adds up references to values of different types in the caller's frame, with no `Box`. The checks call each as its situation needs, so the wrong tool does not compile.
+</Exercise>
+
+## Read more
+
+- [The Rust Book, chapter 18.2: Using Trait Objects to Abstract over Shared Behavior](https://doc.rust-lang.org/book/ch18-02-trait-objects.html), including the trade-off between static and dynamic dispatch.
+- [Trait object types](https://doc.rust-lang.org/reference/types/trait-object.html) and [dyn compatibility](https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility) in the Reference.
+- [Rust by Example: Returning Traits with `dyn`](https://doc.rust-lang.org/rust-by-example/trait/dyn.html)
+- [`std::any::Any`](https://doc.rust-lang.org/std/any/trait.Any.html) and [`Box`](https://doc.rust-lang.org/std/boxed/struct.Box.html).

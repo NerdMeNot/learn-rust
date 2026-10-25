@@ -1,0 +1,94 @@
+# Project: a notes API (axum + sqlx + SQLite)
+#
+# Everything the page shows comes from here. Cargo downloads the crates the first time
+# (the image has no registry), so the first command of a session is labelled "needs network".
+# The server sessions never open the port in a test: `test` calls the router in-process.
+# `serve` starts the server in the background (the runner kills it when the session ends);
+# `shutdown` starts it, stops it with SIGTERM and SIGINT, and waits for it, in the foreground.
+# A file database (notes.db) is created in the session's own directory and thrown away with it.
+name: notes-api
+sessions:
+  test:
+    dir: rust
+    steps:
+      - cmd: cargo test -- --test-threads=1 2>&1 | sed -E 's/finished in [0-9.]+s/finished in X.XXs/'
+        show: '$ cargo test -- --test-threads=1    # needs network the first time (crates); timings replaced by X.XXs'
+        timeout: 1500
+  serve:
+    dir: rust
+    steps:
+      - cmd: cargo run 2>&1 | tee server.log
+        show: '$ cargo run    # needs network the first time; the log is also copied to server.log'
+        background: true
+        ready: listening on
+        timeout: 1500
+      - cmd: >-
+          curl -s -w '\n[%{http_code}]\n' -X POST localhost:3000/notes
+          -H 'content-type: application/json' -d '{"text":"learn axum"}'
+      - cmd: >-
+          curl -s -w '\n[%{http_code}]\n' -X POST localhost:3000/notes
+          -H 'content-type: application/json' -d '{"text":"  ship it  "}'
+      - cmd: curl -s -w '\n[%{http_code}]\n' localhost:3000/notes
+      - cmd: curl -s -w '\n[%{http_code}]\n' localhost:3000/notes/2
+      - cmd: curl -s -w '\n[%{http_code}]\n' -X DELETE localhost:3000/notes/2
+      - cmd: curl -s -w '\n[%{http_code}]\n' localhost:3000/notes/2
+      - cmd: >-
+          curl -s -w '\n[%{http_code}]\n' -X POST localhost:3000/notes
+          -H 'content-type: application/json' -d '{"text":"   "}'
+      - cmd: cat server.log
+        show: '$ cat server.log    # what the server logged'
+  # Run, stop with SIGTERM, wait, start again: the note is still there. Then SIGINT (Ctrl-C),
+  # and a bad setting. local_target so that ./target/debug/notes-api is the real path.
+  shutdown:
+    dir: rust
+    local_target: true
+    steps:
+      - cmd: cargo build
+        show: '$ cargo build    # needs network the first time (crates)'
+        timeout: 1500
+      - cmd: |-
+          ./target/debug/notes-api > server.log 2>&1 &
+          pid=$!
+          timeout 20 sh -c 'until grep -q "listening on" server.log; do sleep 0.1; done'
+          curl -s -w '\n' -X POST localhost:3000/notes -H 'content-type: application/json' -d '{"text":"survives a restart"}'
+          kill -TERM $pid
+          wait $pid; echo "exit status: $?"
+          cat server.log
+      - cmd: |-
+          ./target/debug/notes-api > server.log 2>&1 &
+          pid=$!
+          timeout 20 sh -c 'until grep -q "listening on" server.log; do sleep 0.1; done'
+          curl -s -w '\n' localhost:3000/notes
+          kill -INT $pid
+          wait $pid; echo "exit status: $?"
+          cat server.log
+      - cmd: 'BIND_ADDR=nope ./target/debug/notes-api; echo "exit status: $?"'
+  # Async fn in a trait is not dyn compatible: the reason the API is generic over the store.
+  dyn-store:
+    dir: rust
+    overlay:
+      src/bin/dyn_store.rs: fixes/dyn_store.rs
+    steps:
+      - cmd: cargo check --bin dyn_store
+        show: '$ cargo check --bin dyn_store    # needs network the first time (crates)'
+        expect: fail
+        timeout: 1500
+  # A store that disagrees with the contract: the shared test catches it.
+  contract:
+    dir: rust
+    overlay:
+      migrations/0001_create_notes.sql: fixes/no-autoincrement.sql
+    steps:
+      - cmd: "set -o pipefail; cargo test --test api -- --test-threads=1 2>&1 | sed -E \"s/finished in [0-9.]+s/finished in X.XXs/; s/' \\([0-9]+\\) panicked/' (ID) panicked/\""
+        show: '$ cargo test --test api -- --test-threads=1    # needs network the first time (crates); timings replaced by X.XXs, the thread number by ID'
+        expect: fail
+        timeout: 1500
+  checks:
+    dir: rust
+    steps:
+      - cmd: cargo fmt --check
+      - cmd: cargo clippy --all-targets -- -D warnings
+        show: '$ cargo clippy --all-targets -- -D warnings    # needs network the first time (crates)'
+        timeout: 1500
+      - cmd: cargo tree --depth 1
+      - cmd: grep -c '^name = ' Cargo.lock

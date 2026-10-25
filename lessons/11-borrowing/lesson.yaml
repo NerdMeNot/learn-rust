@@ -1,0 +1,133 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Borrowing"
+part: "ownership"
+intro: >-
+  A reference `&value` lets a function look at a value without taking ownership. The
+  caller keeps the value, nothing is copied, and the compiler checks that the reference
+  never outlives what it points at.
+coming_from:
+  go: >-
+    `&nums` is the Rust way to pass a slice: the function sees the same elements and
+    nothing is copied. A Go `[]int` is closest to `&mut [i32]`, since the function can
+    write to the elements. Rust's `&[i32]` is the read-only form, and the compiler
+    also checks that the reference never outlives `nums`.
+  kotlin: >-
+    A `&[i32]` parameter is like Kotlin's read-only `List<Int>`: the function can read
+    but not add or remove. In Kotlin that is only a read-only view, so whoever holds
+    the `MutableList` can still change it. In Rust no other code can change it while the
+    borrow lasts (for ordinary types).
+  python: >-
+    Python passes a reference to every argument, so a function can change the caller's
+    list. In Rust you choose: `&nums` lends the list for reading, `&mut nums` lends it
+    for changing, and plain `nums` gives it away for good. A function taking `&[i32]`
+    can only read it.
+  typescript: >-
+    A `&[i32]` parameter is like `readonly number[]`, but stricter. `readonly` is only
+    a compile-time check on that one name, and another name for the same array can
+    still change it. In Rust no other code can change it while the borrow lasts (for
+    ordinary types).
+  java: >-
+    Java hands every object to a method as a reference, so `total(nums)` looks the
+    same. In Rust you write the `&` yourself, and a `&` reference can't change the list
+    at all. Java has no read-only reference type: a `final` variable can't be
+    reassigned, but the list it holds can still change. The compiler also checks the reference never outlives `nums`.
+  csharp: >-
+    A `List<int>` variable already holds a reference, so the callee sees the same list.
+    The closest typed match for `&[i32]` is `IReadOnlyList<int>` or
+    `ReadOnlySpan<int>`: the function can read but not add. Rust goes further: no other
+    code can change the list while the borrow lasts (for ordinary types). A
+    function that takes `Vec<i32>` by value takes ownership, and the caller loses it.
+  c: >-
+    `&[i32]` is `const int *` plus a length, in one value. What C leaves to convention,
+    Rust checks: the function can't write through it, can't free the array, and can't
+    keep it past the array's life. No other code can change or free the array while
+    it's borrowed (in safe Rust, for ordinary types).
+  cpp: >-
+    `&[i32]` is `std::span<const int>`, and `&T` is `const T&`. Passing a
+    `std::vector` by value copies it; a Rust `Vec<i32>` by value moves, so the caller's
+    `nums` is gone, and a copy only happens if you write `.clone()`. Unlike a
+    `const T&` or a `span`, a reference in safe Rust can't dangle: the compiler
+    rejects code where it could outlive the value.
+notes:
+  - >-
+    A reference is an address. `&nums` for a `Vec` is 8 bytes on a 64-bit machine; handed
+    to a function that takes `&[i32]` it becomes 16: an address and a length. The
+    elements stay where they are on the heap (see [the stack and the
+    heap](/learn/stack-heap/)), and the function never gets a copy.
+  - >-
+    A `&` reference lets you read, not change (for ordinary types). Any number of them
+    can exist at once. Changing a value through a reference needs `&mut`, in the [next
+    lesson](/learn/mutable-borrows/).
+  - >-
+    A borrow lasts until its last use, and the value must still exist then. The
+    compiler rejects a reference that could outlive what it points to.
+  - >-
+    `&[i32]` (a slice: an address and a length) is the usual parameter type for a
+    list. It accepts `&Vec<i32>`, an array, or part of either. In the same way,
+    `&str` accepts `&String`.
+  - >-
+    The signature tells you what happens to your value: `fn f(x: T)` takes it,
+    `fn f(x: &T)` borrows it to read, `fn f(x: &mut T)` borrows it to change.
+gotcha:
+  title: "A function that takes the value instead of borrowing it"
+  verdict: "rust-rule"
+  looks_fine: >-
+    In Go, passing a slice to a function copies the small slice header. The caller still
+    has its slice afterwards.
+  rust_sees: >-
+    `xs: Vec<i32>` means "give me the Vec". Calling `total(nums)` moves the list into
+    the function. When `total` ends, it owns the list, so the list is freed there.
+  why: >-
+    Nothing is wrong with the idea of reading a list twice. Rust just makes the
+    signature say what happens to the value: `Vec<i32>` means "give me the list", and
+    the other languages hand over a reference or a copy without asking. By the time
+    `println!` runs, the list was freed when `total` returned. The fix is not
+    `.clone()`. It is to say what you meant: the function only needs to look, so it
+    borrows. (The compiler's `note:` says the same thing. Its `help:` suggests the
+    simplest fix, not always the best one: `.clone()` would compile, but it copies the
+    list for no reason.)
+  langs:
+    go:
+      status: "runs"
+      says: >-
+        Go runs this and prints 6 [1 2 3]. Passing a slice shares the same array, so the
+        caller can keep using it. The function could also have written to it, and
+        nothing in the signature says whether it will.
+    kotlin:
+      status: "runs"
+      says: >-
+        Kotlin runs this and prints 6 [1, 2, 3]. The function gets a reference to the
+        same list, so the caller can keep using it.
+    python:
+      status: "runs"
+      says: >-
+        Python prints 6 [1, 2, 3]. Passing a list hands the function a reference to the
+        same list, so the caller can keep using it. Nothing in the signature says
+        whether `total` may change the list.
+    typescript:
+      status: "runs"
+      says: >-
+        Prints 6 [ 1, 2, 3 ]. `total` gets a reference to the same array, and the caller
+        keeps using it. Without `readonly` in the signature, nothing says whether
+        `total` may change the array.
+    java:
+      status: "runs"
+      says: >-
+        Java passes a reference to the same list, and the garbage collector keeps it
+        alive. So `nums` is still usable after the call.
+    csharp:
+      status: "runs"
+      says: >-
+        Passing a List passes a reference, so nums is still usable after the call. The
+        catch is that Total could also change it, and nothing in the signature says it
+        won't.
+    c:
+      status: "runs"
+      says: >-
+        C passes the array as a pointer, so `nums` stays usable. Nothing in the type
+        says whether `total` may keep or free it.
+    cpp:
+      status: "runs"
+      says: >-
+        Taking `std::vector<int>` by value makes a full copy, so `nums` is still usable
+        and this prints `6 [1, 2, 3]`. It works, but you pay for the copy.

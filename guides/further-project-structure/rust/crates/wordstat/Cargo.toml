@@ -1,0 +1,22 @@
+[package]
+name = "wordstat"
+description = "Count the words in a piece of text"
+default-run = "wordstat"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[features]
+# Off by default: `Stats::to_json` and the `dump` program need serde_json.
+json = ["dep:serde_json"]
+
+[dependencies]
+serde_json = { workspace = true, optional = true }
+
+[[bin]]
+name = "dump"
+required-features = ["json"]
+
+[lints]
+workspace = true

@@ -1,0 +1,25 @@
+---
+// A real terminal session from a guide, command by command.
+//   <Session guide="axum" run="server" />
+// A step whose command failed is coloured like a compiler error.
+import RustError from '../lesson/RustError.astro'
+import { session } from './data'
+
+interface Props { guide: string; run: string; title?: string; only?: number[] }
+const { guide: id, run, title = 'terminal', only } = Astro.props
+const all = session(id, run)
+const steps = only ? only.map(i => all[i]) : all
+const trim = (s: string) => s.replace(/\n+$/, '')
+const failed = steps.length === 1 && steps[0].error
+---
+{failed ? (
+  <RustError text={trim(steps[0].out)} cmd={steps[0].show} />
+) : (
+  <>
+  <div class="lr-term not-content">
+    <div class="lr-term-head"><span>{title}</span></div>
+    <pre>{steps.map(s => <><span class="lr-tc">{s.show}</span>{'\n'}{trim(s.out)}{s.out.trim() ? '\n' : ''}</>)}</pre>
+  </div>
+  {steps.some(s => s.varies) && <p class="lr-varies">This output changes from run to run. This is one real run.</p>}
+  </>
+)}

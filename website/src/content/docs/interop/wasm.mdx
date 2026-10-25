@@ -1,0 +1,128 @@
+---
+title: "Rust and WebAssembly"
+description: "Build a Rust library for the wasm targets, call it from Node 24 with plain WebAssembly.instantiate, then add wasm-bindgen, wasm-pack, WASI and three runtimes. The commands on the page ran in the image."
+---
+
+import { Files, GuideGotcha, Remember, Session, Tree } from '../../../components/guide'
+
+WebAssembly (Wasm) is, in the words of the [Wasmtime docs](https://docs.wasmtime.dev/), "a binary instruction format that is designed to be a portable compilation target for programming languages". A *host* (a browser, Node, or a runtime such as Wasmtime) loads a `.wasm` file and calls into it. Rust gets there by choosing a target. This page builds one small library, loads it from Node 24 with only `WebAssembly.instantiate`, then adds wasm-bindgen, wasm-pack and WASI.
+
+Everything ran in the image behind this site (Linux ARM64, Rust 1.99.1). The image ships only the native Rust target and none of the Wasm tools, so sessions start with `rustup target add` and some download a pinned tool; those lines say `needs network`. The image has no browser, so nothing here ran in one.
+
+<Remember>A WebAssembly function takes and returns numbers. Text and arrays travel as bytes in the module's memory plus an address, and either you write that glue or a tool such as wasm-bindgen writes it.</Remember>
+
+<Tree guide="interop-wasm" dir="lab" name="wasm-lab" title="Project layout (a Cargo workspace)" notes={{"adder/":"exports and one import, plain extern \"C\"","tiny/":"just add, for the size table","bindgen/":"the same ideas with wasm-bindgen","wasi/":"a program with main","gotcha/":"the gotcha","run.mjs":"the Node host for adder","setup.sh":"downloads one pinned tool"}} />
+
+## Three targets
+
+`wasm32-unknown-unknown` assumes nothing about the host; the [rustc book](https://doc.rust-lang.org/rustc/platform-support/wasm32-unknown-unknown.html) says it "does not import any functions from the host for the standard library". `wasm32-wasip1` assumes the WASI preview 1 system calls (files, arguments, environment, clocks). `wasm32-wasip2` is built on the component model; it appears once, in the WASI section. The `cfg` lines show 32-bit pointers, so `usize` is 4 bytes.
+
+<Session guide="interop-wasm" run="targets" />
+
+## Plain `extern "C"`, no tools
+
+A crate with `crate-type = ["cdylib"]` has no `main`. Each `#[unsafe(no_mangle)] pub extern "C" fn` becomes an export under its own name; edition 2024 writes `no_mangle` inside `unsafe(...)` ([unsafe](/learn/unsafe/), and [C and C++](/interop/c-cpp/) for the same attribute on native code). A function declared in an `unsafe extern "C"` block is an *import*: something the host must supply.
+
+<Files guide="interop-wasm" dir="lab" files={["adder/Cargo.toml","adder/src/lib.rs"]} />
+
+<Files guide="interop-wasm" dir="lab" files={["run.mjs"]} run="plain" lang="typescript" title="JavaScript (Node 24)" />
+
+- **Numbers cross, nothing else does.** `add` and `fib` take and return numbers. The `u64` from `fib` arrived in JavaScript as a `bigint`.
+- **Text is bytes in memory.** `shout` cannot take a `&str`. The host asks the module for room with `alloc`, writes UTF-8 into `memory.buffer`, and passes an address and a length. The answer comes back as an address, with its length written through a second pointer. The host must `dealloc` all three: the module built them with `Box::into_raw`, so its own `dealloc` has to free them ([Smart pointers](/learn/smart-pointers/)). The length slot is 4 bytes because `usize` is 32 bits here.
+- **An import is a function you hand in.** `host_log` is looked up in the `env` object passed to `instantiate`. The `#[link(wasm_import_module = "env")]` line names that module.
+- **A panic is a trap.** `divide(1, 0)` threw `RuntimeError: unreachable`. The message is that one word, with no Rust panic text. The rustc book page above says that on this target "`println!` does nothing".
+- **Views of memory go stale.** MDN says `Memory.grow()` ["detaches the previous buffer"](https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/JavaScript_interface/Memory). The last lines show the old `Uint8Array` reporting length 0 after the module allocated 8 MiB. Make a new view after any call that may allocate.
+- **Release wraps, debug traps.** `add(2147483647, 1)` gave `-2147483648` in this release build. Try it, task 1, runs the debug build ([Types](/learn/types/#overflow-a-panic-in-debug-a-wrap-in-release) has the same rule on native code).
+
+## How big is the module?
+
+Two crates, three builds each. `tiny` exports just `add`; `adder` also has the allocator and the text code. `small` is the profile in the workspace `Cargo.toml` (`opt-level = "z"`, `lto`, `codegen-units = 1`, `strip`; [Performance](/further/performance/#profile-settings-and-sizes)).
+
+<Session guide="interop-wasm" run="sizes" only={[4,5,6,7,8,9,10,11,12,13,14]} />
+
+- The debug builds are by far the largest, about 1.7 MB for one function. With `profile.dev.debug=0` it was about 20 KB, so most of that was debug information.
+- `wasm-opt` (from Binaryen) rejected the `small` module. The cause is `strip` in that profile: it removes the section that records which features the module uses, so `wasm-opt` does not know bulk memory is allowed. The same profile built with `strip=false` passes with no flag. For the stripped file, `--all-features` was the shortest fix (the six features printed are the ones rustc enables for this target), and the result still ran.
+- These counts come from one toolchain (rustc 1.99.1, Binaryen version_133). The debug counts also change with the directory you build in, and every size changes with the tool versions. What a size costs depends on where the file is served from, which I did not run.
+
+## wasm-bindgen: strings, classes and errors
+
+[wasm-bindgen](https://wasm-bindgen.github.io/wasm-bindgen/) is a tool that, its guide says, "allows JS/wasm to communicate with strings, JS objects, classes, etc, as opposed to purely integers and floats". It has two halves: the `wasm-bindgen` crate, whose macros you write, and a command that reads the compiled module and writes the JavaScript glue and a `.d.ts` file. The docs install the command with `cargo install`; the session downloads the prebuilt release of the same version instead (0.2.129, matching the crate pinned in `Cargo.toml`).
+
+<Files guide="interop-wasm" dir="lab" files={["bindgen/Cargo.toml","bindgen/src/lib.rs"]} />
+
+<Files guide="interop-wasm" dir="lab" files={["use.js"]} lang="typescript" title="JavaScript (Node 24)" />
+
+<Session guide="interop-wasm" run="bindgen" only={[1,2,3,4,5,6,7]} />
+
+The `.d.ts` file is what a TypeScript caller sees: `shout(text: string): string`, and `sum` returns `bigint` because the Rust side returns `i64`. The `Result<i32, JsError>` became a thrown `Error` carrying Rust's own message. `Counter` became a class, and `use.js` calls its `free()` to release the Rust value; I did not test skipping it. `--target nodejs` made a CommonJS module; the [deployment page](https://wasm-bindgen.github.io/wasm-bindgen/reference/deployment.html) lists the others, including `web` and `bundler` for browsers, which I did not run.
+
+[wasm-pack](https://wasm-bindgen.github.io/wasm-pack/) wraps the same steps. It built the crate, fetched wasm-bindgen, ran `wasm-opt` and wrote a `package.json`. Its `greeter_bg.wasm` is 26,286 bytes against 35,932 from the command above; the extra step in its output is `wasm-opt`, and `wasm-pack build --no-opt` gave 35,932 again.
+
+wasm-pack uses a `wasm-bindgen` or `wasm-opt` it finds on your PATH instead of downloading its own. The session hides one step: it first ran `rm -f /usr/local/bin/wasm-opt /usr/local/bin/wasm-bindgen`, so wasm-pack downloaded both. In a check outside the page, with Binaryen version_133 and wasm-bindgen on the PATH, the `Installing` line was missing and the file was 26,191 bytes: 26,286 belongs to wasm-pack's own wasm-opt.
+
+<Session guide="interop-wasm" run="pack" only={[0,2,3,4,5]} />
+
+## WASI: a module with `main`
+
+A WASI module is a program: it has `main`, arguments, an environment, stdin and stdout, and files. `wasm32-wasip1` imports those from `wasi_snapshot_preview1`. The rustc book says the standard library works there in part: "spawning a thread will always return an error" and so will spawning a process, while "opening a file" calls WASI functions.
+
+<Files guide="interop-wasm" dir="lab" files={["wasi/src/main.rs"]} />
+
+<Session guide="interop-wasm" run="wasi" />
+
+The same `.wasm` file ran under three hosts. The first run gave the module a directory (`--dir sandbox`) and a variable. The second gave it neither, so the module saw no variable and could not open `sandbox/note.txt`: a WASI module gets what the host hands over. Wasmer printed the same lines except `GREETING`, which I did not pass. Node's `node:wasi` printed the same lines as Wasmtime; its docs mark it "Stability: 1 - Experimental" and say not to rely on it to run untrusted code, so the session runs it with `--no-warnings`, which hides the experimental warning.
+
+The source also builds for `wasm32-wasip2` and ran under Wasmtime with the same kinds of lines as the Wasmer run (argument `x`, no variable). I did not look inside the file; the [rustc book](https://doc.rust-lang.org/rustc/platform-support/wasm32-wasip1.html) says the WASI standard effort was "rebased" on the Component Model and released as 0.2.0 ("WASIp2").
+
+<Session guide="interop-wasm" run="wasip2" only={[1,4]} />
+
+## The same job in your language
+
+Each row says how a language reaches Wasm and what ran here. Where the image has the tool, I built an `add` function and loaded it with one Node script (`callAdd.mjs`).
+
+| Language | Way to WebAssembly | What ran here |
+| --- | --- | --- |
+| Rust | `rustup target add`, then `cargo build --target` | everything above |
+| Go | `GOOS=js GOARCH=wasm` (the Node script `wasm_exec_node.js` ships with Go), or `GOOS=wasip1 GOARCH=wasm`; `//go:wasmexport` since Go 1.24 ([blog](https://go.dev/blog/wasmexport)). TinyGo has its own Wasm guide ([docs](https://tinygo.org/docs/guides/webassembly/)) | all three of Go's; TinyGo not run |
+| TypeScript | the host side here is JavaScript (`run.mjs`); a TypeScript host was not run. AssemblyScript is a language with TypeScript-like syntax that compiles to Wasm | AssemblyScript 0.28.20 `add`, called from Node |
+| Kotlin | Kotlin/Wasm ([docs](https://kotlinlang.org/docs/wasm-overview.html)) | not run |
+| C# | Blazor WebAssembly runs on "a WebAssembly-based .NET runtime" ([docs](https://learn.microsoft.com/en-us/aspnet/core/blazor/hosting-models?view=aspnetcore-10.0)) | not run |
+| C and C++ | Emscripten, "a complete Open Source compiler toolchain to WebAssembly" ([docs](https://emscripten.org/docs/introducing_emscripten/about_emscripten.html)); for `wasm32-wasip1` the rustc book says the target is meant to interoperate with C and C++, and recommends the wasi-sdk if you build a `staticlib` or use an external `-Clinker` | not run: the image's `gcc` builds only for this machine |
+| Python, Java | not covered on this page | not run |
+
+<Files guide="interop-wasm" dir="lab" files={["tiny/src/lib.rs","goexport/main.go","assemblyscript/add.ts"]} run="langs" title="Rust, Go, AssemblyScript" />
+
+The output has Rust's 62-byte `add`, Go's module with 10 WASI imports, and AssemblyScript's 55 bytes. Each module holds different things, so these compare three builds, not three languages. Go's `GOOS=js` hello world, run by `wasm_exec_node.js`:
+
+<Session guide="interop-wasm" run="go-js" />
+
+## The gotcha is in `std`
+
+On Linux or macOS (here, in the image) the probe below prints `Ok`; I did not run it on Windows, where `echo` is a shell built-in:
+
+<Session guide="interop-wasm" run="gotcha-native" />
+
+<GuideGotcha guide="interop-wasm" />
+
+## Try it yourself
+
+1. Build `adder` without `--release` and run `node run.mjs` on the debug file. After the first two lines comes `RuntimeError: unreachable`, and the stack names `panic_const_add_overflow`: the overflow check is compiled in.
+2. Pass `{}` as the imports to `WebAssembly.instantiate`. Node refuses with a `TypeError` that names import #0, `"env"`.
+3. Delete the `#[link(wasm_import_module = "env")]` line and build. The linker fails with `undefined symbol: host_log`.
+
+<Session guide="interop-wasm" run="debug" only={[1,2]} />
+
+<Session guide="interop-wasm" run="link-error" only={[2]} />
+
+<Session guide="interop-wasm" run="no-module" only={[1]} />
+
+## Read more
+
+- [The rustc book: `wasm32-unknown-unknown`](https://doc.rust-lang.org/rustc/platform-support/wasm32-unknown-unknown.html), [`wasm32-wasip1`](https://doc.rust-lang.org/rustc/platform-support/wasm32-wasip1.html) and [`wasm32-wasip2`](https://doc.rust-lang.org/rustc/platform-support/wasm32-wasip2.html)
+- [The wasm-bindgen guide](https://wasm-bindgen.github.io/wasm-bindgen/) and [wasm-pack](https://wasm-bindgen.github.io/wasm-pack/)
+- [MDN: WebAssembly concepts](https://developer.mozilla.org/en-US/docs/WebAssembly/Guides/Concepts) and [`WebAssembly.Memory`](https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/JavaScript_interface/Memory)
+- [WASI](https://wasi.dev/), [Wasmtime](https://docs.wasmtime.dev/), [Wasmer](https://docs.wasmer.io/) and [Node's `node:wasi`](https://nodejs.org/docs/latest-v24.x/api/wasi.html)
+- Other languages: [Go and WebAssembly](https://go.dev/wiki/WebAssembly), [TinyGo](https://tinygo.org/docs/guides/webassembly/), [AssemblyScript](https://www.assemblyscript.org/)
+- In this course: [unsafe](/learn/unsafe/), [C and C++ interop](/interop/c-cpp/), [Performance](/further/performance/)
+
+<p class="lr-fine">Tool versions, all pinned in <code>setup.sh</code> or the manifests: wasm-bindgen crate and command 0.2.129, wasm-pack 0.15.0, Wasmtime v50.0.0, Wasmer 7.5.0, Binaryen version_133, AssemblyScript 0.28.20.</p>

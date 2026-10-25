@@ -1,0 +1,182 @@
+# Splitting code into files: mod and use
+name: shop
+sessions:
+  run:
+    dir: rust
+    steps:
+      - cmd: cargo run
+  # "What if I write `mod models;` in pricing.rs too?"
+  mod-twice:
+    dir: rust
+    overlay:
+      src/pricing.rs: mod-twice/pricing.rs
+    steps:
+      - cmd: cargo build
+        expect: fail
+  gotcha:
+    dir: rust
+    overlay:
+      src/main.rs: gotcha/main.rs
+    steps:
+      - cmd: cargo build
+        expect: fail
+  # "Can I name something in a child module from main.rs?" (private until pub)
+  private-module:
+    dir: rust
+    overlay:
+      src/main.rs: private-module/main.rs
+    steps:
+      - cmd: cargo build
+        expect: fail
+  pub-mod:
+    dir: rust
+    overlay:
+      src/main.rs: pub-mod/main.rs
+      src/pricing.rs: pub-mod/pricing.rs
+    steps:
+      - cmd: cargo run
+  # "Does `use` change the program?"
+  no-use:
+    dir: rust
+    overlay:
+      src/main.rs: no-use/main.rs
+    steps:
+      - cmd: cargo run
+  # "What's mod.rs?"
+  mod-rs:
+    dir: rust
+    steps:
+      - cmd: mv src/pricing.rs src/pricing/mod.rs
+      - cmd: cargo run
+  # The language table: one tiny project per claim, run in the image.
+  langs:
+    dir: langs
+    steps:
+      - cmd: ls
+        cwd: go
+        show: "$ ls   # Go: helper.go is never mentioned by main.go"
+      - cmd: go run .
+        cwd: go
+        show: "$ go run .   # Go"
+      - cmd: sed -i 's/db.Name()/db.secret()/' main.go && go build ./...
+        cwd: go
+        expect: fail
+        show: "$ go build ./...   # Go: main.go now calls db.secret()"
+      - cmd: python3 main.py
+        cwd: py
+        show: "$ python3 main.py   # Python: unused.py is beside it, never imported"
+      - cmd: tsc --noEmit --target es2022 --module nodenext bad.ts
+        cwd: ts
+        expect: fail
+        show: "$ tsc bad.ts   # TypeScript: db.ts has a Hidden without export"
+      - cmd: javac -d /tmp/out app/Main.java app/db/User.java && java -cp /tmp/out app.Main
+        cwd: java
+        show: "$ javac ... && java app.Main   # Java"
+      - cmd: javac -d /tmp/out2 app/Bad.java app/db/Hidden.java
+        cwd: java
+        expect: fail
+        show: "$ javac app/Bad.java app/db/Hidden.java   # Java: Hidden has no public"
+      - cmd: kotlinc Main.kt Helper.kt Priv.kt -include-runtime -d /tmp/k.jar && java -jar /tmp/k.jar
+        cwd: kt
+        show: "$ kotlinc Main.kt Helper.kt Priv.kt ... && java -jar   # Kotlin"
+      - cmd: kotlinc Bad.kt Priv.kt -d /tmp/k2.jar
+        cwd: kt
+        expect: fail
+        show: "$ kotlinc Bad.kt Priv.kt   # Kotlin: secret() is private"
+      # The image has no network, so the project comes from its pre-restored template.
+      - cmd: rm -rf App && cp -r /opt/templates/csharp App && cp Program.cs Extra.cs App/ && dotnet run --no-restore --project App
+        cwd: cs
+        show: "$ dotnet run   # C#: Extra.cs is in the project, never mentioned"
+      - cmd: rm -rf App2 && cp -r /opt/templates/csharp App2 && cp Bad.cs App2/Program.cs && cp Extra.cs App2/ && dotnet run --no-restore --project App2
+        cwd: cs
+        expect: fail
+        show: "$ dotnet run   # C#: Holder.secret has no modifier, so it is private"
+      - cmd: "set -o pipefail; gcc main.c -o /tmp/app 2>&1 | sed -E 's#/tmp/cc[A-Za-z0-9]+[.]o#/tmp/ccXXXX.o#'"
+        cwd: c
+        expect: fail
+        show: "$ gcc main.c   # C: util.c is not in the build"
+      - cmd: gcc main.c util.c -o /tmp/app && /tmp/app
+        cwd: c
+        show: "$ gcc main.c util.c && ./a.out   # C: util.c listed"
+      - cmd: "set -o pipefail; gcc static_main.c static_hid.c -o /tmp/app2 2>&1 | sed -E 's#/tmp/cc[A-Za-z0-9]+[.]o#/tmp/ccXXXX.o#'"
+        cwd: c
+        expect: fail
+        show: "$ gcc static_main.c static_hid.c   # C: hid() is static"
+      - cmd: "set -o pipefail; g++ main.cpp -o /tmp/app3 2>&1 | sed -E 's#/tmp/cc[A-Za-z0-9]+[.]o#/tmp/ccXXXX.o#'"
+        cwd: cpp
+        expect: fail
+        show: "$ g++ main.cpp   # C++: util.cpp is not in the build"
+      - cmd: g++ main.cpp util.cpp -o /tmp/app3 && /tmp/app3
+        cwd: cpp
+        show: "$ g++ main.cpp util.cpp && ./a.out   # C++"
+  forgot-c:
+    dir: langs
+    steps:
+      - cmd: "set -o pipefail; gcc main.c -o /tmp/app 2>&1 | sed -E 's#/tmp/cc[A-Za-z0-9]+[.]o#/tmp/ccXXXX.o#'"
+        cwd: c
+        expect: fail
+        show: "$ gcc main.c -o app"
+  forgot-cpp:
+    dir: langs
+    steps:
+      - cmd: "set -o pipefail; g++ main.cpp -o /tmp/app3 2>&1 | sed -E 's#/tmp/cc[A-Za-z0-9]+[.]o#/tmp/ccXXXX.o#'"
+        cwd: cpp
+        expect: fail
+        show: "$ g++ main.cpp -o app"
+gotcha:
+  kind: compile
+  title: Creating a file and expecting it to just be there
+  verdict: rust-rule
+  looks_fine: >-
+    In Go, the `.go` files in a package folder are compiled together (test files and files
+    excluded by build constraints aside). Build tools for Java, Kotlin and C# typically
+    collect a whole source folder. In those languages, create the file and it's part of
+    the build.
+  rust_sees: >-
+    Rust starts at `main.rs` and only follows the `mod` lines it finds.
+    `src/pricing.rs` exists, but nothing declared it, so it isn't part of the program.
+  why: >-
+    Being explicit means the module tree is written in your code, not decided by
+    whatever files happen to be in a folder. The fix is one line, and the compiler's
+    `help:` shows exactly which one.
+  code: { file: gotcha/main.rs, name: src/main.rs }
+  session: gotcha
+  fixed: { file: rust/src/main.rs, name: src/main.rs, session: run }
+  langs:
+    go:
+      status: none
+      says: >-
+        In Go, the `.go` files in the package folder are included automatically (not
+        `_test.go` files, files whose names start with `_` or `.`, or files excluded by
+        build constraints). There's nothing to declare.
+    kotlin:
+      status: none
+      says: >-
+        In Kotlin the build gives the compiler a set of files, and files in the same
+        package see each other without any declaration.
+    python:
+      status: none
+      says: >-
+        A Python file runs when something imports it, and not otherwise. Nothing
+        declares it ahead of time, but nothing loads it by being in the folder either.
+    typescript:
+      status: none
+      says: >-
+        A TypeScript file is compiled when something imports it (or when `tsconfig.json`
+        includes it). The import is the declaration.
+    c:
+      status: refuses
+      says: >-
+        A C file that is not listed in the build is not compiled, and the linker
+        reports an undefined reference to what is in it. Like `mod`, the build has to be
+        told about the file.
+      file: langs/c/main.c
+      session: forgot-c
+    cpp:
+      status: refuses
+      says: >-
+        Same as C: a `.cpp` file that is not listed in the build is not compiled, and
+        the linker complains about what is missing. Like `mod`, the build has to be told
+        about the file.
+      file: langs/cpp/main.cpp
+      session: forgot-cpp

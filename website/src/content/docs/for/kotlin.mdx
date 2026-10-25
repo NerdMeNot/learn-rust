@@ -1,0 +1,238 @@
+---
+title: "Rust for Kotlin developers"
+description: "Kotlin taught you nullable types, sealed classes and immutable-by-default values. This page lists the ten habits that need changing, with both languages run side by side."
+---
+
+import { Files, Remember, Session, Tree } from '../../../components/guide'
+
+Kotlin and Rust share much syntax: `fun` and `fn`, `name: Type`, `when` and `match`, `T?` and `Option<T>`. What differs is not the syntax. On the JVM the garbage collector frees an object when nothing refers to it, so a variable that holds an object is a way to reach a shared object. In Rust each value has one owner, and the compiler checks who may read or change it.
+
+<Remember>The Kotlin you know already checks absence and covers every case of a sealed class. Unlearn the rest of the JVM's assumptions: assignment shares an object, a `List` is a view someone else can change, and a coroutine starts by default.</Remember>
+
+The programs below were run in the image behind this page: Kotlin with `kotlinc` 2.4.21 on JDK 25, Rust with 1.99.1.
+
+<Tree guide="for-kotlin" dir="rust" name="kotlin-habits" title="The Rust project" notes={{"src/bin/h1.rs":"one program per habit below (h1 to h10)","Cargo.toml":"no dependencies"}} />
+
+## What carries over
+
+- **`val`, `var`, type inference.** `let` and `let mut` are the closest spelling, with one difference in habit 4. [Variables](/learn/variables/#frozen-unless-you-say-mut).
+- **`T?` is `Option<T>`.** Absence is in the type and the compiler makes you handle it (habit 1).
+- **`if`, `when` and `try` are expressions.** So are `if`, `match` and `{ }` in Rust: [Statements and expressions](/learn/statements-expressions/).
+- **A `sealed class` with `when` is an `enum` with `match`.** In both, the compiler names the case you forgot (habit 6).
+- **Lambdas and `map`/`filter` pipelines** are closures and iterators. Rust iterators are lazy like a `Sequence`, not like `List.map`, which builds a list each time: [Closures](/learn/closures/), [Iterators](/learn/iterators/).
+
+## Ten habits to unlearn
+
+### 1. `?.`, `?:` and `!!` are methods, and `?` means something else
+
+<div class="lr-compare">
+<Files guide="for-kotlin" dir="kt" files={["h1.kt"]} run="kt-h1" lang="kotlin" />
+<Files guide="for-kotlin" dir="rust" files={["src/bin/h1.rs"]} run="rs-h1" />
+</div>
+
+`?.` chains become `?` inside a function that returns an `Option`, or `map` and `and_then`. `?:` is `unwrap_or` for a plain default and `unwrap_or_else(|| ...)` when the right side costs something or has an effect (the Option lesson shows why), and `!!` is `unwrap`, which panics. The `?` operator is an early return, not a safe call. Two differences show in the last lines. `T?` is a mark on a type, so Kotlin's `m["k"]` gives `null` whether the key holds `null` or is missing, and you ask `in` to tell them apart. `Option` is an ordinary type, so `get` returns `Some(None)` for one and `None` for the other. And a value from unannotated Java reaches Kotlin as a platform type: no compile-time nullability error, and Kotlin inserts a run-time check where you assign it to a non-null type ([the Kotlin docs](https://kotlinlang.org/docs/java-interop.html)); safe Rust has no such thing. See [Option](/learn/option/).
+
+### 2. Exceptions become return values
+
+<div class="lr-compare">
+<Files guide="for-kotlin" dir="kt" files={["h2.kt"]} run="kt-h2" lang="kotlin" />
+<Files guide="for-kotlin" dir="rust" files={["src/bin/h2.rs"]} run="rs-h2" />
+</div>
+
+`toInt()` throws, and nothing in the signature of `parseAge` says so. Kotlin's `runCatching` and `toIntOrNull` are the nearest thing; the difference is that Rust's compiler makes you handle the failure. In Rust the failure is part of the return type, and `?` hands it to the caller. Treat the `Result` as the number and the build fails:
+
+<Files guide="for-kotlin" dir="fail" files={["h2.rs"]} />
+<Session guide="for-kotlin" run="fail-h2" />
+
+A panic is for a bug, not for input you expected to be wrong. See [Errors](/learn/errors/#two-kinds-of-failure).
+
+### 3. `val b = a` shares the object; in Rust it moves it
+
+<div class="lr-compare">
+<Files guide="for-kotlin" dir="kt" files={["h3.kt"]} run="kt-h3" lang="kotlin" />
+<Files guide="for-kotlin" dir="fail" files={["h3.rs"]} />
+</div>
+
+<Session guide="for-kotlin" run="fail-h3" />
+
+The value now belongs to `b`. Where Kotlin has two names for one object, Rust has one owner, and `a` cannot be read. The compiler's own hint is `.clone()`, which makes a second value. There is no collector to free it later: the owner's scope end does it, at a point you can read in the code. In the program below, a value with a `Drop` impl prints when `b`'s scope ends.
+
+<Files guide="for-kotlin" dir="rust" files={["src/bin/h3.rs"]} run="rs-h3" />
+
+See [Ownership](/learn/ownership/#moves) and [Copy or reference](/learn/copy-or-reference/).
+
+### 4. `val` freezes the name, and `List` is a view
+
+<div class="lr-compare">
+<Files guide="for-kotlin" dir="kt" files={["h4.kt"]} run="kt-h4" lang="kotlin" />
+<Files guide="for-kotlin" dir="fail" files={["h4.rs"]} />
+</div>
+
+`val xs` stops you reassigning `xs`, not calling `xs.add`. The `List<Int>` named `view` is read-only for whoever holds it, but it printed the new item, and a cast got the writes back. A Rust `&[i32]` is a borrow: while it is still going to be used, nobody can change the `Vec`.
+
+<Session guide="for-kotlin" run="fail-h4" />
+
+Use the view first, then push. A borrow ends at its last use:
+
+<Files guide="for-kotlin" dir="rust" files={["src/bin/h4.rs"]} run="rs-h4" />
+
+A Rust `let` without `mut` also freezes the contents, so a `Vec` there cannot be pushed to (the [Variables](/learn/variables/#frozen-unless-you-say-mut) lesson runs it). See [Borrowing](/learn/borrowing/) and [Mutable borrows](/learn/mutable-borrows/#changing-a-list-while-looping-over-it).
+
+### 5. A `data class` becomes a struct with derives, and `copy` becomes `..`
+
+<div class="lr-compare">
+<Files guide="for-kotlin" dir="kt" files={["h5.kt"]} run="kt-h5" lang="kotlin" />
+<Files guide="for-kotlin" dir="rust" files={["src/bin/h5.rs"]} run="rs-h5" />
+</div>
+
+`copy` is shallow in Kotlin: `b` shares `tags` with `a`, so adding a tag to `b` changed `a`, and the last line is `true`. In Rust, printing with `{:?}`, `==` and `clone` are opt-in (`derive`), and `..a.clone()` is a separate list, so `a` is untouched and the comparison is `false`. See [Structs](/learn/structs/#building-one-struct-from-another) and [Common traits](/learn/common-traits/).
+
+### 6. A subclass is a type; an enum variant is not
+
+<div class="lr-compare">
+<Files guide="for-kotlin" dir="kt" files={["h6.kt"]} run="kt-h6" lang="kotlin" />
+<Files guide="for-kotlin" dir="rust" files={["src/bin/h6.rs"]} run="rs-h6" />
+</div>
+
+Exhaustiveness is the same idea in both: [Enums](/learn/enums/#match-must-cover-every-variant) runs the missing-case error. The difference is that `circleArea(c: Circle)` compiles in Kotlin, and a variant is not a type in Rust:
+
+<Files guide="for-kotlin" dir="fail" files={["h6.rs"]} />
+<Session guide="for-kotlin" run="fail-h6" />
+
+If you need a function for circles only, make `Circle` a struct and let the variant hold it ([A variant is not a type](/learn/enums/#a-variant-is-not-a-type)).
+
+### 7. An extension function adds a name; a trait impl adds a promise
+
+<div class="lr-compare">
+<Files guide="for-kotlin" dir="kt" files={["h7.kt"]} run="kt-h7" lang="kotlin" />
+<Files guide="for-kotlin" dir="kt" files={["h7_fail.kt"]} run="kt-h7-fail" lang="kotlin" />
+</div>
+
+`21.speak()` works, but `Int` does not become a `Speaker`, so `announce(21)` is refused. In Rust the `impl` is the implementation, and the value goes wherever the trait is asked for:
+
+<Files guide="for-kotlin" dir="rust" files={["src/bin/h7.rs"]} run="rs-h7" />
+
+The price is the orphan rule: roughly, you can implement your trait for any type, or any trait for your own type, but not a foreign trait for a foreign type; generic parameters add exceptions ([Traits](/learn/traits/#why-the-orphan-rule-exists)).
+
+### 8. Smart casts and `component1()` become patterns that go by name
+
+<div class="lr-compare">
+<Files guide="for-kotlin" dir="kt" files={["h8.kt"]} run="kt-h8" lang="kotlin" />
+<Files guide="for-kotlin" dir="rust" files={["src/bin/h8.rs"]} run="rs-h8" />
+</div>
+
+`val (y, x) = Point(1, 2)` binds by position, so `x` is 2 (the names are only labels). `let Point { y, x } = ...` binds by field name, so `x` is 1. Where Kotlin tests `is` and then uses the smart-cast variable, Rust matches the variant and binds its contents in one step, with an `if` guard for the length check. Anything the `when` called `else` is `_`. A value of unknown type (`Any`) becomes an enum listing the cases you accept. See [Patterns](/learn/patterns/) and [Match](/learn/match/).
+
+### 9. Default arguments and scope functions have no direct equivalent
+
+<div class="lr-compare">
+<Files guide="for-kotlin" dir="kt" files={["h9.kt"]} run="kt-h9" lang="kotlin" />
+<Files guide="for-kotlin" dir="rust" files={["src/bin/h9.rs"]} run="rs-h9" />
+</div>
+
+Rust has no default or named arguments and no overloads. Name the fields in a struct literal and fill the rest from `Default` with `..Default::default()`. `apply { }` is a block that ends in the value, and `x?.let { }` is `map`. See [Methods](/learn/methods/#constructors-overloading-and-default-arguments).
+
+### 10. A coroutine starts by default; a future waits to be polled
+
+<div class="lr-compare">
+<Files guide="for-kotlin" dir="kt" files={["h10.kt"]} run="kt-h10" lang="kotlin" />
+<Files guide="for-kotlin" dir="rust" files={["src/bin/h10.rs"]} run="rs-h10" />
+</div>
+
+Inside `runBlocking`, `async` schedules the coroutine by default (`CoroutineStart.LAZY` changes that; not run here), and it ran even though `fetch(2)` was never awaited. In Rust, calling `fetch(1)` ran nothing until `block_on` polled it, and `fetch(2)` never printed. The standard library has the `Future` trait but no runtime, so the program writes the smallest executor ([The standard library has no runtime](/learn/async-basics/#the-standard-library-has-no-runtime)); real programs use [Tokio](/build/tokio/). `suspend` is a function colour and `.await` marks each wait ([function colour](/learn/async-basics/#what-the-keyword-costs-function-colour)). Cancelling is dropping the future ([Dropping a future cancels it](/learn/async-basics/#dropping-a-future-cancels-it)). `kotlinx.coroutines` comes from the jar in the compiler's `lib` directory.
+
+## Idiom by idiom
+
+The same 19 lines in each language, from `idioms.kt` and `src/main.rs`. The session compiles both, diffs their output, and prints it.
+
+<Files guide="for-kotlin" dir="idioms" files={["idioms.kt"]} lang="kotlin" />
+<Files guide="for-kotlin" dir="idioms" files={["src/main.rs"]} run="idioms" />
+
+| You write in Kotlin | In Rust |
+| --- | --- |
+| `xs.map { it * 2 }` | `xs.iter().map(\|x\| x * 2).collect::<Vec<_>>()` |
+| `xs.filter { it > 1 }.sum()` | `xs.iter().filter(\|&&x\| x > 1).sum::<i32>()` |
+| `for ((i, x) in xs.withIndex())` | `for (i, x) in xs.iter().enumerate()` |
+| `"$name is $age"` | `format!("{name} is {age}")` |
+| `"x".toIntOrNull() ?: 0` | `"x".parse::<i32>().unwrap_or(0)` |
+| `m.getOrPut("a") { mutableListOf() }.add(1)` | `m.entry("a").or_default().push(1)` |
+| `val (a, b) = pair` | `let (a, b) = pair;` |
+| `if (o is Circle) o.r else 0.0` | `if let Shape::Circle(r) = o { r } else { 0.0 }` |
+| `x?.let { it + 1 }` | `x.map(\|v\| v + 1)` |
+| `xs.firstOrNull { it > 1 }` | `xs.iter().find(\|&&x\| x > 1)` |
+| `ys.sortBy { it.length }` | `ys.sort_by_key(\|s\| s.len())` |
+| `p.copy(x = 5)` | `Pt { x: 5, ..p }` |
+| `companion object { fun origin() = Pt(0, 0) }` | `impl Pt { fn origin() -> Pt { Pt { x: 0, y: 0 } } }` |
+| `val answer by lazy { 6 * 7 }` | `static ANSWER: LazyLock<i32> = LazyLock::new(\|\| 6 * 7);` |
+| `try { f("x") } catch (e: NumberFormatException) { 0 }` | `f("x").unwrap_or(0)` |
+| `words.joinToString(", ")` | `words.join(", ")` |
+| `1 until 3`, `1..3` | `1..3`, `1..=3` |
+| `when (k) { 1, 2 -> "low"; else -> "high" }` | `match k { 1 \| 2 => "low", _ => "high" }` |
+| `"kotlin".substring(1, 3)` | `&"kotlin"[1..3]` |
+
+Three rows need care. `1..3` includes 3 in Kotlin and stops before 3 in Rust, so the spellings look alike and mean different things. In Kotlin `f("x")` throws, and the Rust `f` returns a `Result` that `unwrap_or` unpacks. The Rust `[1..3]` counts bytes, where `substring` counts UTF-16 units, so they agree on ASCII text; for other text the numbers count different things, and a Rust range that ends inside a character panics ([Strings](/learn/strings/)). The Rust program uses a small helper, `show`, to print a missing value as `null`, so that the two outputs can be compared. It uses arrays for fixed lists; use `vec!` for a list that grows.
+
+## Toolchain map
+
+| Job | Kotlin | Rust |
+| --- | --- | --- |
+| New project | IntelliJ wizard, `gradle init` (not run: no Gradle in the image) | `cargo new demo` (run) |
+| Dependencies | `dependencies { }` in Gradle (not run) | `[dependencies]` in `Cargo.toml`, or `cargo add` (needs network: not run). [Using crates](/start/using-crates/) |
+| Build and run | `kotlinc x.kt -include-runtime -d x.jar`, `java -jar x.jar` (run) | `cargo run` (run) |
+| Test | `kotlin.test` with JUnit, through Gradle (not run) | `cargo test` (run) |
+| Format | ktlint or ktfmt (not in the image, not run) | `cargo fmt` (run) |
+| Lint | detekt (not run) | `cargo clippy` (run) |
+| Docs | KDoc with Dokka (not run) | `///` comments with `cargo doc` (run) |
+| Debugger | IntelliJ, or `jdb` (found in the image, not run) | `rust-gdb`, `rust-lldb` (wrappers found, but the image printed no `gdb` or `lldb`: not run) |
+
+<Session guide="for-kotlin" run="toolchain" title="the tools that ran" />
+
+The `command -v` line prints only the tools it found. `@Test` is `#[test]`, and the test ran above.
+
+## A reading path
+
+1. [Rust at a glance](/learn/rust-at-a-glance/): the syntax you will meet, mapped to Kotlin.
+2. [What Rust lacks](/learn/what-rust-lacks/): `++`, `?.`, default arguments, `open` classes and exceptions, and what replaces each.
+3. [Stack and heap](/learn/stack-heap/) and [Copy or reference](/learn/copy-or-reference/): which assignments share (habits 3 and 4).
+4. [Ownership](/learn/ownership/): moves, which have no Kotlin counterpart.
+5. [Borrowing](/learn/borrowing/) and [Mutable borrows](/learn/mutable-borrows/): the read-only view you know, enforced.
+6. [Option](/learn/option/) then [Errors](/learn/errors/): the two types you will write most.
+7. [Enums](/learn/enums/) and [Patterns](/learn/patterns/): sealed classes and destructuring, with the compiler checking the cases.
+8. [Traits](/learn/traits/) and [Generics](/learn/generics/): interfaces, extensions and `reified`.
+9. [Closures](/learn/closures/) and [Iterators](/learn/iterators/): lambdas and sequences.
+10. [Box, Rc and RefCell](/learn/smart-pointers/) and [Working with the borrow checker](/learn/borrow-checker/): sharing when you want it, and what to do when the compiler says no.
+11. [Threads](/learn/threads/), [Shared state](/learn/shared-state/) and [Send and Sync](/learn/send-sync/).
+12. [Async basics](/learn/async-basics/), then [Tokio](/build/tokio/).
+13. [Compiler errors](/errors/): an index to look an error code up.
+
+## What you will miss
+
+- **Default and named arguments, overloads.** The substitutes are in habit 9; [What Rust lacks](/learn/what-rust-lacks/#no-default-or-named-arguments-no-function-overloading) runs the errors.
+- **Expressions in string templates.** `"${a + b}"` has no Rust twin, because `{ }` takes a name, not an expression:
+
+<Files guide="for-kotlin" dir="fail" files={["template.rs"]} />
+<Session guide="for-kotlin" run="fail-template" />
+
+- **Run-time reflection.** Kotlin lists a class's properties while the program runs (with `kotlin-reflect.jar`, which ships in the compiler's `lib` directory). The [`std::any` docs](https://doc.rust-lang.org/std/any/index.html) describe type tests and downcasts, not a list of fields. Code that needs the field names, like serde, gets them from a `derive` that writes code at compile time.
+
+<Files guide="for-kotlin" dir="kt" files={["reflect.kt"]} run="kt-reflect" lang="kotlin" />
+
+- **Inheritance.** A type that reuses another holds it as a field ([No inheritance](/learn/methods/#no-inheritance)).
+- **A collector for cycles.** An `Rc` cycle leaks, and `Weak` is how you break it ([Cycles and `Weak<T>`](/learn/smart-pointers/#cycles-and-weakt)).
+- **Coroutines in `std`.** Habit 10: you add a runtime crate.
+
+## Try it yourself
+
+1. In `src/bin/h6.rs`, add a `Triangle(f64, f64)` variant and run it. The compiler points at the `match` in `area` that has no arm for it. Kotlin refuses a `when` over a sealed class in the same way ([Enums](/learn/enums/#match-must-cover-every-variant)).
+2. In `src/bin/h5.rs`, change `..a.clone()` to `..a`. `b` now takes `a`'s `tags`, and the build fails when `a` is used afterwards.
+3. In `src/bin/h10.rs`, replace `let _second = fetch(2);` with `println!("{}", block_on(fetch(2)));`. Now `fetch 2 starts` prints, because something polled the future.
+
+<Session guide="for-kotlin" run="try-triangle" title="task 1" />
+<Session guide="for-kotlin" run="try-move" title="task 2" />
+<Session guide="for-kotlin" run="try-await" title="task 3" />
+
+## Read more
+
+- [Kotlin null safety](https://kotlinlang.org/docs/null-safety.html), [sealed classes](https://kotlinlang.org/docs/sealed-classes.html), [extensions](https://kotlinlang.org/docs/extensions.html), [coroutines basics](https://kotlinlang.org/docs/coroutines-basics.html) and [scope functions](https://kotlinlang.org/docs/scope-functions.html): the Kotlin side of habits 1, 6, 7, 10 and 9.
+- The Rust Book: [Understanding ownership](https://doc.rust-lang.org/book/ch04-00-understanding-ownership.html), [Enums and pattern matching](https://doc.rust-lang.org/book/ch06-00-enums.html), [Error handling](https://doc.rust-lang.org/book/ch09-00-error-handling.html).
+- [Rust by Example](https://doc.rust-lang.org/rust-by-example/index.html).

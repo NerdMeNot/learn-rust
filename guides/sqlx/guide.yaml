@@ -1,0 +1,182 @@
+# Databases with sqlx
+#
+# The program uses the runtime query API (`query`, `query_as`), so it builds without a
+# database, and an in-memory SQLite database, so there is nothing to clean up. The gotcha
+# swaps in the checked macro `query_as!` with no DATABASE_URL set, which is exactly the
+# build error a reader hits. `macro-db` and `prepare` then do what that error asks for,
+# in a throwaway SQLite file (build.db) that lives only in the session directory.
+name: notes-db
+sessions:
+  run:
+    dir: rust
+    steps:
+      - cmd: cargo run
+        timeout: 900
+  # Things to try: one session per task on the page.
+  pool:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-pool/src/main.rs
+    steps:
+      - cmd: cargo run
+        timeout: 900
+  format:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-format/src/main.rs
+    steps:
+      - cmd: cargo build
+        expect: fail
+        timeout: 900
+  inject:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-inject/src/main.rs
+    steps:
+      - cmd: cargo run
+        timeout: 900
+  mismatch:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-mismatch/src/main.rs
+    steps:
+      - cmd: cargo run
+        expect: fail
+        timeout: 900
+  migrate:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-migrate/src/main.rs
+      migrations/0001_create_notes.sql: snippet-migrate/migrations/0001_create_notes.sql
+    steps:
+      - cmd: cargo run
+        timeout: 900
+  # The gotcha: the checked macro with nothing for it to check against.
+  checked-macro:
+    dir: rust
+    overlay:
+      src/main.rs: gotcha/main.rs
+    steps:
+      - cmd: cargo build
+        expect: fail
+        timeout: 900
+  # Fix 1: DATABASE_URL at build time. build.db is a file made here with the sqlite3
+  # tool; the program itself still uses its own in-memory database when it runs.
+  macro-db:
+    dir: rust
+    overlay:
+      src/main.rs: gotcha/main.rs
+    steps:
+      - cmd: sqlite3 build.db "CREATE TABLE notes (id INTEGER PRIMARY KEY, text TEXT NOT NULL, done BOOLEAN NOT NULL DEFAULT 0)"
+      - cmd: DATABASE_URL=sqlite:build.db cargo run
+        timeout: 900
+      - cmd: sed -i 's/id, text, done/id, txt, done/' src/main.rs
+      - cmd: DATABASE_URL=sqlite:build.db cargo build
+        expect: fail
+        timeout: 900
+  # Fix 2: save what the database said (.sqlx), delete the database, build again.
+  prepare:
+    dir: rust
+    overlay:
+      src/main.rs: gotcha/main.rs
+    steps:
+      - cmd: sqlite3 build.db "CREATE TABLE notes (id INTEGER PRIMARY KEY, text TEXT NOT NULL, done BOOLEAN NOT NULL DEFAULT 0)"
+      - cmd: cargo install sqlx-cli --version 0.9.0 --locked --quiet --no-default-features --features sqlite
+        timeout: 900
+      - cmd: DATABASE_URL=sqlite:build.db cargo sqlx prepare
+        timeout: 900
+      - cmd: ls .sqlx
+      - cmd: rm build.db
+      - cmd: cargo run
+        timeout: 900
+  # The same job with the SQLite that comes with, or is added to, other languages
+  # (the page's table). Each program prints the same three lines as the Rust one.
+  go:
+    dir: langs
+    steps:
+      # The first run in a fresh container also prints "go: downloading ..." lines for the
+      # driver; they depend on what was cached, so they are filtered out of the page.
+      - cmd: "set -o pipefail; go run main.go 2>&1 | grep -v '^go: downloading'"
+        show: "$ go run main.go"
+        cwd: go
+        timeout: 900
+  py:
+    dir: langs
+    steps:
+      - cmd: python3 main.py
+        cwd: py
+  ts:
+    dir: langs
+    steps:
+      - cmd: tsc --strict --module nodenext --types node main.ts && node main.js
+        cwd: ts
+  # A misspelled column, one run per language: the SQL is only looked at when it executes.
+  typos:
+    dir: langs
+    steps:
+      - cmd: sed -i 's/id, text, done/id, txt, done/' main.py && python3 main.py
+        cwd: py
+        expect: fail
+      - cmd: sed -i 's/id, text, done/id, txt, done/' main.ts && tsc --strict --module nodenext --types node main.ts && node main.js
+        cwd: ts
+        expect: fail
+      - cmd: "set -o pipefail; sed -i 's/id, text, done/id, txt, done/' main.go && go run main.go 2>&1 | grep -v '^go: downloading'"
+        show: "$ sed -i 's/id, text, done/id, txt, done/' main.go && go run main.go"
+        cwd: go
+        expect: fail
+        timeout: 900
+gotcha:
+  kind: compile
+  title: The checked-query macro without a database
+  verdict: rust-rule
+  looks_fine: >-
+    A SQL query is usually just a string, sent to the database when the program runs,
+    so building the program does not need a database.
+  rust_sees: >-
+    `query_as!` (with the `!`) is a macro. While compiling, it connects to a database,
+    asks it about the query and checks the column names and types against your struct.
+    It finds that database through the `DATABASE_URL` environment variable (or saved
+    query data), and with neither the build stops.
+  why: >-
+    This is something sqlx offers, not a rule of the language: a misspelled column
+    becomes a compile error instead of an error when that line runs. The price is that
+    the build needs a database to ask, or saved answers. The two ways to give it one are
+    below this section; the plain `query_as` (no `!`) used on this page needs neither.
+  code: { file: gotcha/main.rs, name: src/main.rs }
+  session: checked-macro
+  fixed: { file: rust/src/main.rs, name: src/main.rs, session: run }
+  langs:
+    go:
+      status: runs
+      says: >-
+        `go run` on this `database/sql` program does not talk to a database until the
+        query runs: it builds with nothing set up, and a misspelled column is reported when the query
+        runs (see the runs below).
+      file: langs/go/main.go
+      session: go
+    python:
+      status: runs
+      says: >-
+        Python has no build step either. The `sqlite3` module runs the SQL when the
+        line executes, and a misspelled column raised an error at that point (see the
+        runs below).
+      file: langs/py/main.py
+      session: py
+    typescript:
+      status: runs
+      says: >-
+        Node's built-in `node:sqlite` prepares the SQL when the line executes, and a
+        misspelled column threw at that point (see the runs below). Nothing needs a
+        database to build.
+      file: langs/ts/main.ts
+      session: ts
+    java:
+      says: "Not run for this page: the image has no SQLite driver for Java."
+    kotlin:
+      says: "Not run for this page: the image has no SQLite driver for Kotlin."
+    csharp:
+      says: "Not run for this page: the image has no SQLite package for C#."
+    c:
+      says: "Not run for this page: the image has the SQLite library but no header file to compile against."
+    cpp:
+      says: "Not run for this page: the image has the SQLite library but no header file to compile against."

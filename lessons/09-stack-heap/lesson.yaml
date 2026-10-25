@@ -1,0 +1,65 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Values, the Stack and the Heap"
+part: "ownership"
+intro: >-
+  A Rust variable holds a value itself, not an arrow to an object somewhere else. Where
+  that value lives, on the stack or on the heap, is mostly decided by its type. This
+  lesson explains both places, so every later lesson can use the words.
+coming_from:
+  go: >-
+    A Go struct variable holds its fields directly, and so does Rust's. The difference is
+    who picks the place. Go's escape analysis moves a value to the heap for you when it
+    has to outlive the function; in Rust the type says: a plain value lives in its
+    variable, and `Box`, `Vec` and `String` own heap memory. A `Vec`'s header is the
+    same three words as a Go slice header.
+  kotlin: >-
+    A Kotlin `class` variable is a reference to an object (normally on the JVM heap), so
+    `val b = a` shares the object. A Rust variable holds the value itself, like a C
+    struct, so `let b = a` copies the value (or moves it), and no second name for one
+    object appears unless you ask for one with `&`, or with `Rc` or `Arc` when several
+    owners need the value.
+  python: >-
+    In Python every variable is a name for an object, so `b = a` gives one object two
+    names. In Rust a variable holds the value itself. `let b = a` copies the value (for
+    small plain types) or moves it. A second name for the same value is a reference,
+    written `&a`, or an `Rc`/`Arc` when there are several owners; you ask for it.
+  typescript: >-
+    Objects in JavaScript and TypeScript are always held by reference, so `const b = a`
+    shares the object (`const` fixes the binding, not the object). A Rust variable holds
+    the value itself, so `let b = a` copies it or moves it. To share, you write `&a`, or
+    use `Rc`/`Arc` for several owners.
+  java: >-
+    A Java object variable is a reference to an object (normally on the heap), so
+    `Point b = a` shares it. A Rust variable holds the value itself, closer to a Java
+    `int` than to a Java `Point`: `let b = a` copies it or moves it, and sharing is
+    something you ask for with `&`, or with `Rc`/`Arc` for several owners.
+  csharp: >-
+    Rust's variables work like C# `struct` variables: the value sits in the variable,
+    and `var b = a` copies it. There is no `class` kind that shares by default. A
+    reference is a separate thing you write with `&`, and the compiler checks it.
+  c: >-
+    You already know this: a Rust struct variable is a C struct on the stack, and
+    `Box` is a pointer to heap memory that frees itself. What Rust adds is checking.
+    It knows which variable owns each heap allocation, never frees one twice, and frees
+    it when the owner goes out of scope. It also won't let a reference outlive what it
+    points at.
+  cpp: >-
+    Same model as yours: locals live in the frame, and `Box<T>` is close to
+    `std::unique_ptr<T>`. Rust adds two things: moves are the default and the old name
+    can't be used afterwards, and the compiler rejects a reference that would outlive
+    its value.
+notes:
+  - >-
+    The stack holds function calls' local variables, and is cleaned up when each call
+    returns. The heap holds data whose size isn't known when the program is compiled, or
+    that must outlive the call that made it, among other things.
+  - >-
+    A `String` or `Vec` is two parts: a small header (a pointer, a length and a capacity)
+    in the variable, and the text or elements on the heap.
+  - >-
+    Numbers, and a small struct that derives `Copy`, are copied by `let b = a`. Types
+    that own heap memory are moved: the header is copied and the old name stops
+    working.
+  - >-
+    `size_of::<T>()` tells you how many bytes a type takes in its variable. A `&str` is
+    16 bytes (a pointer and a length) however long its text is.

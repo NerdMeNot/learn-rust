@@ -1,0 +1,119 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Common Traits"
+part: "abstractions"
+intro: >-
+  Almost every type you write needs the same few abilities: print, copy, compare, use as
+  a key, start from a default, convert. Each one is a standard trait. `#[derive(...)]`
+  writes the obvious ones from the fields, and you write the rest by hand.
+coming_from:
+  go: >-
+    Go gives a struct `==` (when every field is comparable), map-key use and `%v`
+    printing without being asked. Rust makes each one a trait you ask for, usually in one
+    `derive` line. `String()` is `impl Display`, and `cmp.Compare` is `Ord::cmp` (floats
+    use `total_cmp`).
+  kotlin: >-
+    A `data class` writes `equals`, `hashCode`, `toString` and `copy`. In Rust you list
+    the traits you want: `#[derive(Debug, Clone, PartialEq, Eq, Hash)]`. `Comparable<T>`
+    is `Ord`, and a hand-written `toString()` is `impl Display`.
+  python: >-
+    `__eq__`, `__hash__`, `__repr__`, `__str__` and `__lt__` become `PartialEq`/`Eq`,
+    `Hash`, `Debug`, `Display` and `PartialOrd`/`Ord`. `@dataclass(order=True,
+    frozen=True)` is the closest thing to one `derive` line. A bare Rust struct has none
+    of them.
+  typescript: >-
+    A class compares by identity and has no ordering, and a `Map` keys objects by
+    identity too. In Rust a `derive` line gives equality, ordering and hashing by value,
+    and `toString()` is `impl Display`.
+  java: >-
+    `equals`, `hashCode`, `toString` and `compareTo` become `PartialEq`/`Eq`, `Hash`,
+    `Debug`/`Display` and `Ord`. A `record` writes the first three for you; in Rust the
+    same job is `#[derive(PartialEq, Eq, Hash, Debug)]`, so `equals` and `hashCode`
+    cannot disagree.
+  csharp: >-
+    `Equals`, `GetHashCode`, `ToString` and `IComparable<T>` become `PartialEq`/`Eq`,
+    `Hash`, `Debug`/`Display` and `Ord`. A `record` writes the first three; in Rust you
+    list them in a `derive` line.
+  c: >-
+    C has no traits. A struct has no `==`, cannot be printed and has no hash, so each one
+    is a function you write and call by name (`qsort` takes a comparison function). A
+    Rust trait is that function, named once and found by the compiler.
+  cpp: >-
+    `= default` on `operator==` and `operator<=>` is the nearest thing to a derive. A
+    copy constructor is `Clone`, but it runs only at `.clone()`: `b = a` moves. A
+    destructor is `Drop`, and a `std::hash` specialisation is `Hash`. In Rust all of them
+    are traits with fixed names.
+notes:
+  - >-
+    `derive` writes the obvious code from the fields. `Display` cannot be derived,
+    because there is no obvious text: you write `impl Display`, and `to_string()` comes
+    with it.
+  - >-
+    `Debug` (`{:?}`) is for developers and `Display` (`{}`) is for users. A type has
+    neither until you add it.
+  - >-
+    Some traits need others. `Eq` needs `PartialEq`, `Ord` needs `PartialOrd` and `Eq`,
+    and `Copy` needs `Clone`.
+  - >-
+    `f64` has `PartialEq` and `PartialOrd` but not `Eq`, `Ord` or `Hash`, because `NaN`
+    is not equal to itself. A struct with an `f64` field cannot derive them either.
+gotcha:
+  title: "Using your own type as a map key"
+  verdict: "rust-rule"
+  looks_fine: >-
+    Most languages let a small data type be a map key right away, or after a one-word
+    change. You put `Version(1, 2)` in, ask for `Version(1, 2)` back, and expect it to be
+    found.
+  rust_sees: >-
+    A `HashMap` key needs `Eq` and `Hash`, and `Version` has neither. Nothing is derived
+    unless you ask. The compiler lists the missing traits and suggests the `derive`.
+  why: >-
+    A key is compared and hashed, and for your own type Rust will not guess what "the
+    same" means. Asking for `#[derive(PartialEq, Eq, Hash)]` says that two versions are
+    the same when every field is. It is one line, and it keeps `==` and the hash in step.
+  langs:
+    go:
+      status: "runs"
+      says: >-
+        Go prints `found: stable true`. A struct whose fields are all comparable can be a
+        map key with nothing declared. A struct with a slice field cannot, and that is a
+        compile error (the page shows it).
+    kotlin:
+      status: "runs"
+      says: >-
+        Kotlin prints `found: stable`, because a `data class` writes `equals` and
+        `hashCode`. A plain `class` would not, and the lookup would find nothing (the
+        page runs one).
+    python:
+      status: "runs"
+      says: >-
+        Python prints `found: stable`. A frozen dataclass writes `__eq__` and `__hash__`.
+        A plain class compares by identity, so the lookup finds nothing (the page runs
+        one).
+    typescript:
+      status: "wrong"
+      says: >-
+        TypeScript compiles this and prints `found: undefined`. A `Map` compares object
+        keys by identity, so the second `new Version(1, 2)` is a different key. Key on a
+        string built from the fields, or keep the one object.
+    java:
+      status: "runs"
+      says: >-
+        Java prints `found: stable`, because a `record` writes `equals` and `hashCode`.
+        A plain class without them finds nothing (the page runs one).
+    csharp:
+      status: "runs"
+      says: >-
+        C# prints `found: stable`, because a `record` writes `Equals` and `GetHashCode`.
+        A plain class without them finds nothing (the page runs one).
+    c:
+      status: "none"
+      says: >-
+        C has no standard hash map type, so there is nothing to try. A table you
+        write or borrow decides for itself how keys are hashed and compared.
+    cpp:
+      status: "refuses"
+      says: >-
+        C++ refuses too. `std::unordered_map` needs a `std::hash<Version>`. The error says
+        the `unordered_map` constructor is a deleted function, and it is long because it
+        is reported from inside the library; look for `std::hash<Version>` in it. A
+        `std::map` needs only an `operator<`.

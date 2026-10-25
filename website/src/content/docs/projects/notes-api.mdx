@@ -1,0 +1,110 @@
+---
+title: "Project: a notes API"
+description: "A small web service in three layers: axum for HTTP, sqlx and SQLite for storage, a trait between them, logs from tracing, tests that call the router without opening a port, and a clean shutdown."
+---
+
+import { Files, Remember, Session, Tree } from '../../../components/guide'
+
+This page builds one project end to end. The pieces are the ones the other guides teach separately: [axum](/build/axum/) for HTTP, [sqlx](/build/sqlx/) for SQLite, [tracing](/build/tracing/) for logs and [tests](/build/testing/). What is new here is how they fit together, and which parts are allowed to know about which. It ran in the pinned image (Rust 1.99.1, Linux ARM64). Cargo downloads the crates the first time it builds, so a session below that starts with a build says "needs network"; later builds reuse what was downloaded.
+
+<Remember>Put a trait where one layer meets the next, and the layer above can be tested with a stand-in for the layer below.</Remember>
+
+<Tree guide="project-notes-api" dir="rust" name="notes-api" notes={{"src/lib.rs":"declares the layers","src/domain.rs":"what a note is, and which text is allowed","src/storage/mod.rs":"the NoteStore trait","src/storage/memory.rs":"a Vec behind a Mutex","src/storage/sqlite.rs":"the sqlx version","src/http.rs":"routes, JSON, errors to status codes","src/config.rs":"settings from the environment","src/main.rs":"the only file that picks the real parts","tests/api.rs":"integration tests","migrations/0001_create_notes.sql":"the table","Dockerfile":"shown below, not run","Cargo.lock":"committed"}} />
+
+The pinned dependencies are in `Cargo.toml`. `Cargo.lock` is committed. The Cargo FAQ says a lock file exists "to describe the state of the world at the time of a successful build", so that "the exact same dependencies and versions are used" later, and that whether to commit it "is dependent on the needs of your package" ([FAQ](https://doc.rust-lang.org/cargo/faq.html)). Here the Dockerfile builds with `--locked`, so it needs the file.
+
+<Files guide="project-notes-api" dir="rust" files={["Cargo.toml"]} />
+
+## Layer one: the domain
+
+The domain is plain Rust: no web, no database. A note has an id and text, and text has rules. `NoteText` keeps its string private, so the only way to make one is `parse`, which trims it and refuses empty or over-long text. Once a function takes a `&NoteText`, it does not check again. This is the "parse, don't validate" idea from [Idioms and design patterns](/learn/idioms/): a value that cannot be built wrong. (`Note` derives `Serialize` so the HTTP layer can send it; that is a shortcut, and a larger service would keep a separate response type.)
+
+<Files guide="project-notes-api" dir="rust" files={["src/domain.rs"]} />
+
+## Layer two: storage behind a trait
+
+The HTTP layer needs four things from a store, and it does not care how they are done. That is a trait ([Traits](/learn/traits/)). `NoteStore` has two implementations here: `SqliteStore` for the real thing and `MemoryStore`, a `Vec` behind a `Mutex` (see [Shared state](/learn/shared-state/)). The trait returns `StoreError`, an opaque wrapper, so no `sqlx::Error` appears in the layer above. `SqliteStore` converts at its own edge, and keeps its row type (`NoteRow`) private so `Note` never learns about sqlx.
+
+<Files guide="project-notes-api" dir="rust" files={["src/storage/mod.rs","src/storage/memory.rs","src/storage/sqlite.rs","migrations/0001_create_notes.sql"]} />
+
+The methods are written `-> impl Future<...> + Send` instead of `async fn`. The Rust blog's [announcement of async fn in traits](https://blog.rust-lang.org/2023/12/21/async-fn-rpit-in-traits/) explains why: a trait author decides whether the futures must be `Send`, because users of the trait cannot add that later. axum needs `Send`, so the trait says so, and the implementations may still write `async fn`.
+
+A reader of the [trait objects](/learn/trait-objects/) lesson will ask why the router is generic (`router<S: NoteStore>`) instead of holding an `Arc<dyn NoteStore>`. This is the compiler's answer:
+
+<Files guide="project-notes-api" dir="fixes" files={["dyn_store.rs"]} run="dyn-store" />
+
+A trait with these methods is not dyn compatible, so this project uses [generics](/learn/generics/): the handlers are `create::<S>` and so on, and `main` picks `SqliteStore`. The error message itself suggests another route, an enum that holds each store. I did not try that, or the `trait_variant` crate the blog post mentions.
+
+## Layer three: HTTP
+
+`http.rs` knows axum and the `NoteStore` trait, not sqlx or SQLite. Each handler returns `Result<_, ApiError>`, and `?` converts `InvalidText` and `StoreError` into `ApiError` through the `#[from]` attributes (the pattern in [Errors in real apps](/build/app-errors/)). `ApiError::into_response` is the one place that turns one of these errors into a status code and a body. Failures that happen before a handler runs are axum's own: a body that is not valid JSON gets a `400` and a plain-text message, and a POST without a `content-type` of `application/json` gets a `415`, neither in the `{"error": ...}` shape (I ran both against this project). A storage failure is logged with its cause, and the caller gets only `internal error`.
+
+<Files guide="project-notes-api" dir="rust" files={["src/http.rs"]} />
+
+## Settings, logging and shutdown
+
+`Config::from_lookup` takes a closure that looks up a name, so a test can pass a `HashMap` instead of changing the real environment. `std::env::set_var` is an `unsafe fn` in the [std docs for 1.99.1](https://doc.rust-lang.org/std/env/fn.set_var.html), which say that in multi-threaded programs on operating systems other than Windows, the only sound option is not to use it at all. `main` is where everything real is chosen: it reads the environment, opens SQLite, and starts the server.
+
+`tracing_subscriber` reads `RUST_LOG` through `EnvFilter` (the [docs](https://docs.rs/tracing-subscriber/0.3.23/tracing_subscriber/filter/struct.EnvFilter.html) name it as the default variable) and falls back to `info` when it is unset or cannot be parsed (I set `RUST_LOG` to a bad value and got the `info` logs with no complaint). I turned timestamps off with `without_time()` so the logs on this page do not change between runs; remove that line in real use. [Logging with tracing](/build/tracing/) covers spans and fields.
+
+Graceful shutdown is `with_graceful_shutdown(shutdown_signal())`. The [docs](https://docs.rs/axum/0.8.9/axum/serve/struct.Serve.html) say it "Prepares a server to handle graceful shutdown when the provided future completes", and the future here completes on Ctrl-C or, on Unix, SIGTERM, which is what [`docker stop` sends first](https://docs.docker.com/reference/cli/docker/container/stop/). The code after `serve` returns closes the pool and logs `stopped`.
+
+<Files guide="project-notes-api" dir="rust" files={["src/main.rs","src/config.rs"]} />
+
+## Tests that need no port
+
+`tests/api.rs` builds the router, and sends it requests with `tower::ServiceExt::oneshot`, which the [tower docs](https://docs.rs/tower/0.5.3/tower/trait.ServiceExt.html) describe as consuming the service and calling it "once it is ready". `Router` is `Clone`, so the helper `call` clones it for each request. Nothing opens a socket, so the tests do not clash with a server that is already running on port 3000.
+
+Two things are worth copying. First, `crud_roundtrip` is written once and run against both stores, so `MemoryStore` and `SqliteStore` must agree. Second, `BrokenStore` always fails, which lets one test check that a storage error becomes a `500` that does not repeat the cause. That test needs the trait; with `SqliteStore` hard-wired into the handlers it would need a broken database.
+
+<Files guide="project-notes-api" dir="rust" files={["tests/api.rs"]} />
+
+<Session guide="project-notes-api" run="test" />
+
+Twelve tests ran: six unit tests inside `src/` (in `#[cfg(test)]` modules) and six integration tests. The two blocks that say `running 0 tests` are `src/main.rs` and the doc-tests, which have none. The shared test is meant to catch a store that breaks the contract. To check that it does, I removed `AUTOINCREMENT` from the migration. SQLite's [autoincrement page](https://www.sqlite.org/autoinc.html) says the keyword exists to prevent reuse of row ids from deleted rows, and says it "imposes extra CPU, memory, disk space, and disk I/O overhead and should be avoided if not strictly needed". This project does need it, because `MemoryStore` never reuses an id and both stores should behave the same.
+
+<Session guide="project-notes-api" run="contract" />
+
+## Run it
+
+This session started the server in the background with `cargo run`, called it with `curl` (`-w` prints the status after each body), and printed the log it wrote. The database is the default `notes.db` file in the project directory.
+
+<Session guide="project-notes-api" run="serve" />
+
+## Stop it, and start it again
+
+The next session builds the program, runs it, posts a note, and sends `SIGTERM` with `kill`. `wait` returns the exit status, and the log shows the order: the signal, then `stopped`, which `main` writes after the pool is closed. A second run reads the note back from `notes.db`, and is stopped with `SIGINT`, which is what Ctrl-C sends. The last command shows a bad setting. `main` returns the `Err`, and Rust prints its `Debug` form (the [Errors](/learn/errors/) lesson shows what `main` returning a `Result` does), which is fine for a bad setting at start-up; [Errors in real apps](/build/app-errors/) covers nicer reports.
+
+<Session guide="project-notes-api" run="shutdown" />
+
+What I did not run: a request that is still being handled when the signal arrives. axum's own [graceful-shutdown example](https://github.com/tokio-rs/axum/blob/main/examples/graceful-shutdown/src/main.rs) says in a comment that graceful shutdown "will wait for outstanding requests to complete" and adds a timeout so requests do not hang forever. This project has no such timeout.
+
+## A Dockerfile (not run)
+
+The image that built this page has no Docker, so the Dockerfile below was **not built or run**. I checked two things it depends on: the tag `rust:1.99.1-slim-trixie` is listed on the [Docker Hub page](https://hub.docker.com/_/rust), and the [Dockerfile of that image](https://github.com/rust-lang/docker-rust/blob/master/stable/trixie/slim/Dockerfile) installs `gcc`, which the bundled SQLite needs. Everything else (the `--locked` build, the `/data` volume, the final image starting and answering) is untested. The build stage copies `Cargo.toml`, `Cargo.lock`, `migrations/` and `src/` by name, so a local `target/` or `notes.db` is not copied into the image.
+
+<Files guide="project-notes-api" dir="rust" files={["Dockerfile"]} title="Dockerfile" />
+
+## Checks
+
+`cargo fmt --check` and `cargo clippy --all-targets -- -D warnings` print nothing when they find nothing, as below. `cargo tree --depth 1` lists the direct dependencies with the versions Cargo.lock pins, and the last command counts the packages the lock file lists.
+
+<Session guide="project-notes-api" run="checks" />
+
+## What to try next
+
+None of these were done for this page.
+
+- Add `PUT /notes/{id}` and a `done` flag. Start with a test that fails, then change the trait, then both stores. An implementation that lacks the new method will not compile.
+- Add `tower-http`'s `TraceLayer` and a timeout layer like the one in axum's example. I tried `TraceLayer::new_for_http()` once (tower-http 0.7.1, not kept in the project): with the default `info` filter it printed nothing, because it logs at `debug`; with `RUST_LOG=tower_http=debug,info` it printed three lines per request. The timeout layer was not run.
+- Read `DATABASE_URL` and `BIND_ADDR` from a `.env` file, and decide where that belongs: `Config`, or `main`.
+- Split the layers into crates in a workspace, which the [shop project](/projects/shop/) does, and use [project structure](/further/project-structure/) to decide what each crate may import.
+- Write a property test for `NoteText::parse` ([more testing](/further/testing-more/)).
+
+## Read more
+
+- [axum on docs.rs](https://docs.rs/axum/0.8.9/axum/) and its [`testing` example](https://github.com/tokio-rs/axum/blob/main/examples/testing/src/main.rs), which uses `oneshot` the same way.
+- [`sqlx::migrate!`](https://docs.rs/sqlx/0.9.0/sqlx/macro.migrate.html), which this project uses to embed `migrations/`.
+- [`thiserror`](https://docs.rs/thiserror/2.0.21/thiserror/), for `#[from]` and `#[error(transparent)]`.
+- [Dyn compatibility](https://doc.rust-lang.org/reference/items/traits.html#dyn-compatibility) in the Rust Reference.
+- [Async functions in traits](https://blog.rust-lang.org/2023/12/21/async-fn-rpit-in-traits/) on the Rust blog.

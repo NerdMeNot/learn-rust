@@ -1,0 +1,409 @@
+{
+ "id": "declarations-types",
+ "title": "Declarations, literals and types",
+ "part": "syntax",
+ "intro": "Variables, constants, functions and types are declared with a keyword (`let`, `const`, `fn`, `struct`) and then a name. A type, where you write one, goes after the name behind a colon. Numbers, characters and strings have their own literal syntax, and a few small symbols (`as`, `::<>`, `<>`, `|x|`) cover conversions, generics and closures.",
+ "coming_from": {
+  "go": "`x := 5` is `let x = 5;`. The type goes after a colon, there is no `a, b int` shorthand, and the result type follows `->`. Go's `int` is 64 bits on a 64-bit machine; Rust's default integer is `i32`, so use `i64` (or `isize`) where you mean Go's `int`. `const` always needs a type, and `'R'` is a `char`, not a number.",
+  "kotlin": "This is the nearest syntax to yours: `name: Type`, generics in `<>`. The changes are `val` -> `let`, `var` -> `let mut`, `fun` -> `fn`, and a return type after `->` instead of `:`. `Int` is `i32`, and `$name` in a string template is `{name}`, written inside format-style macros such as `println!` and `format!`.",
+  "python": "`name: str = \"Ada\"` looks like your annotations, but Rust checks them. Every first assignment needs `let`, and `'a'` and `\"a\"` are different types (a character and a string). `int(f)` on a float becomes `f as i32`; `int(\"42\")` on text becomes `\"42\".parse::<i32>()`. Underscores in numbers (`1_000`) work as you know them.",
+  "typescript": "`: type` after the name is already your habit, and `1_000` and `0xff` work. `const` -> `let`, `let` -> `let mut`. Your one `number` becomes many types (`i32`, `f64`...), so `let x: f64 = 5;` is an error, and single quotes make a `char`, never a string.",
+  "java": "The type moves after the name: `int count = 5;` is `let count: i32 = 5;`. `let` works like `final` and is the default, `mut` is the exception, and `(int) x` is `x as i32`. Generics use `<>` in types, like `Vec<i32>`, but need `::<>` when you write them in an expression.",
+  "csharp": "The type moves after the name, and `var x = 5;` is `let mut x = 5;` (a plain `let` cannot change). `(int)x` is `x as i32`, and a verbatim string `@\"C:\\temp\"` is `r\"C:\\temp\"`. `1_000` and `0xff` work as you know them; the `f` suffix is `f32`, so `2.5f` is `2.5f32`.",
+  "c": "`int x = 5;` is `let mut x: i32 = 5;`, and `#define MAX 100` is `const MAX: i32 = 100;`, which has a type. `'a'` is a `char`, not an `int`, `(int)x` is `x as i32`, and a leading zero is not octal: `0o17` is octal and `017` is the decimal number 17.",
+  "cpp": "`auto x = 5;` is `let mut x = 5;` and `const auto x = 5;` is `let x = 5;`. Types that take `<>` in declarations (`Vec<i32>`) need `::<>` in expressions, `static_cast<int>(x)` is `x as i32`, and `5u`, `2.5f` suffixes exist too (`5u32`, `2.5f32`)."
+ },
+ "notes": [
+  "A variable, constant or function starts with a keyword and a name. A type, where you write one, follows the name after a colon. A function's result type follows `->`, and a function without one returns `()`.",
+  "On `let` the type is optional (Rust infers it). On `const`, `static`, and function parameters it is required.",
+  "A number can carry its type as a suffix: `1u8`, `2.5f32`. `_` and the `0x`, `0o`, `0b` prefixes change how it is written, not its type.",
+  "`'R'` is one `char`, `\"R\"` is a string. `'ab'` is an error.",
+  "`x as f64` converts between number types. `parse::<i32>()` names the type for a generic call, and the `::` before `<` is required there."
+ ],
+ "gotcha": {
+  "title": "Putting the type before the name",
+  "verdict": "rust-rule",
+  "looks_fine": "In Java, C#, C and C++, `int count = 5;` is how you declare a variable. The type comes first.",
+  "rust_sees": "Rust reads `i32 count = 5;` as an expression starting with the name `i32`, followed by something unexpected. A variable starts with `let`, then the name, then `: i32`.",
+  "why": "Rust starts variables, constants, functions and types with a keyword (`let`, `const`, `fn`, `struct`), and the type is an extra after a colon. The error does not say \"wrong order\" because the parser sees `i32 count` as a name and then an unexpected name; the long list of tokens is its way of saying it did not expect a second name there. The fix is `let count: i32 = 5;`, or just `let count = 5;`. Go, Kotlin, Python and TypeScript refuse the C-style form for their own reasons, as the outputs show.",
+  "langs": {
+   "go": {
+    "status": "refuses",
+    "says": "Go refuses: `int count = 5` is a syntax error. Go declares with `var` or `:=`, and a type, if you write one, comes after the name: `var count int = 5`.",
+    "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tint count = 5\n\tfmt.Printf(\"count=%d\\n\", count)\n}\n",
+    "error": "# command-line-arguments\n./main.go:6:6: syntax error: unexpected name count at end of statement"
+   },
+   "kotlin": {
+    "status": "refuses",
+    "says": "Kotlin refuses. Declarations start with `val` or `var`, and the type goes after the name: `val count: Int = 5`.",
+    "code": "fun main() {\n    Int count = 5\n    println(\"count=$count\")\n}\n",
+    "error": "Main.kt:2:9: error: unresolved reference 'count'.\n    Int count = 5\n        ^^^^^\nMain.kt:2:15: error: syntax error: Expecting an element.\n    Int count = 5\n              ^\nMain.kt:2:17: error: syntax error: Unexpected tokens (use ';' to separate expressions on the same line).\n    Int count = 5\n                ^\nMain.kt:3:21: error: unresolved reference 'count'.\n    println(\"count=$count\")\n                    ^^^^^"
+   },
+   "python": {
+    "status": "refuses",
+    "says": "Python raises a `SyntaxError`. Python has no type-first declaration, only `count: int = 5` as an optional annotation.",
+    "code": "int count = 5\nprint(f\"count={count}\")\n",
+    "out": "  File \"main.py\", line 1\n    int count = 5\n        ^^^^^\nSyntaxError: invalid syntax\n"
+   },
+   "typescript": {
+    "status": "refuses",
+    "says": "TypeScript refuses. A declaration needs `let` or `const`, and the type goes after the name: `let count: number = 5`.",
+    "code": "number count = 5;\nconsole.log(`count=${count}`);\n",
+    "error": "main.ts(1,1): error TS1434: Unexpected keyword or identifier."
+   },
+   "java": {
+    "status": "runs",
+    "says": "Java prints `count=5`. The type before the name is the usual way to declare a local (`var` also exists).",
+    "code": "public class Main {\n    public static void main(String[] args) {\n        int count = 5;\n        System.out.println(\"count=\" + count);\n    }\n}\n",
+    "out": "count=5\n"
+   },
+   "csharp": {
+    "status": "runs",
+    "says": "C# prints `count=5`. `int count = 5;` is a normal local declaration.",
+    "code": "int count = 5;\nConsole.WriteLine($\"count={count}\");\n",
+    "out": "count=5\n"
+   },
+   "c": {
+    "status": "runs",
+    "says": "C prints `count=5`. The type goes first.",
+    "code": "#include <stdio.h>\n\nint main(void) {\n    int count = 5;\n    printf(\"count=%d\\n\", count);\n    return 0;\n}\n",
+    "out": "count=5\n"
+   },
+   "cpp": {
+    "status": "runs",
+    "says": "C++ prints `count=5`. The type goes first.",
+    "code": "#include <iostream>\n\nint main() {\n    int count = 5;\n    std::cout << \"count=\" << count << \"\\n\";\n}\n",
+    "out": "count=5\n"
+   }
+  },
+  "code": "fn main() {\n    i32 count = 5;\n    println!(\"count={count}\");\n}\n",
+  "error": "error: expected one of `!`, `.`, `::`, `;`, `?`, `{`, `}`, or an operator, found `count`\n --> src/main.rs:2:9\n  |\n2 |     i32 count = 5;\n  |         ^^^^^ expected one of 8 possible tokens",
+  "fixed": {
+   "code": "fn main() {\n    let count: i32 = 5; // `let`, then the name, then `: type`\n    println!(\"count={count}\");\n}\n",
+   "out": "count=5\n"
+  }
+ },
+ "order": 3,
+ "program": {
+  "rust": {
+   "code": "const LIMIT: u32 = 1_000; // a constant: the type is required\n\nfn half(x: f64) -> f64 {\n    x / 2.0\n}\n\nfn main() {\n    let name: &str = \"Ada\"; // type after the name\n    let mut visits = 0u8; // `u8` is a suffix: this 0 is a u8\n    visits += 1;\n    let (mask, ratio) = (0xff, 2.5f32); // two names, one pattern\n    let letter = 'R'; // single quotes: one character\n    let total = LIMIT as f64 + half(5.0); // `as` converts\n    let parsed = \"42\".parse::<i32>().unwrap(); // `unwrap`: stop if not a number\n\n    println!(\"name={name} visits={visits}\");\n    println!(\"mask={mask} ratio={ratio} letter={letter}\");\n    println!(\"limit={LIMIT} total={total}\");\n    println!(\"parsed={parsed}\");\n}\n",
+   "out": "name=Ada visits=1\nmask=255 ratio=2.5 letter=R\nlimit=1000 total=1002.5\nparsed=42\n"
+  },
+  "go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"strconv\"\n)\n\nconst limit uint32 = 1_000\n\nfunc half(x float64) float64 {\n\treturn x / 2.0\n}\n\nfunc main() {\n\tvar name string = \"Ada\"\n\tvar visits uint8 = 0\n\tvisits++\n\tmask, ratio := 0xff, float32(2.5)\n\tletter := 'R'\n\ttotal := float64(limit) + half(5.0)\n\tparsed, _ := strconv.Atoi(\"42\")\n\n\tfmt.Printf(\"name=%s visits=%d\\n\", name, visits)\n\tfmt.Printf(\"mask=%d ratio=%v letter=%c\\n\", mask, ratio, letter)\n\tfmt.Printf(\"limit=%d total=%v\\n\", limit, total)\n\tfmt.Printf(\"parsed=%d\\n\", parsed)\n}\n",
+   "out": "name=Ada visits=1\nmask=255 ratio=2.5 letter=R\nlimit=1000 total=1002.5\nparsed=42\n"
+  },
+  "kotlin": {
+   "code": "const val LIMIT = 1_000\n\nfun half(x: Double): Double = x / 2.0\n\nfun main() {\n    val name: String = \"Ada\"\n    var visits: Byte = 0\n    visits++\n    val (mask, ratio) = Pair(0xff, 2.5f)\n    val letter = 'R'\n    val total = LIMIT.toDouble() + half(5.0)\n    val parsed = \"42\".toInt()\n\n    println(\"name=$name visits=$visits\")\n    println(\"mask=$mask ratio=$ratio letter=$letter\")\n    println(\"limit=$LIMIT total=$total\")\n    println(\"parsed=$parsed\")\n}\n",
+   "out": "name=Ada visits=1\nmask=255 ratio=2.5 letter=R\nlimit=1000 total=1002.5\nparsed=42\n"
+  },
+  "python": {
+   "code": "LIMIT = 1_000\n\n\ndef half(x: float) -> float:\n    return x / 2.0\n\n\nname: str = \"Ada\"\nvisits = 0\nvisits += 1\nmask, ratio = 0xFF, 2.5\nletter = \"R\"\ntotal = float(LIMIT) + half(5.0)\nparsed = int(\"42\")\n\nprint(f\"name={name} visits={visits}\")\nprint(f\"mask={mask} ratio={ratio} letter={letter}\")\nprint(f\"limit={LIMIT} total={total}\")\nprint(f\"parsed={parsed}\")\n",
+   "out": "name=Ada visits=1\nmask=255 ratio=2.5 letter=R\nlimit=1000 total=1002.5\nparsed=42\n"
+  },
+  "typescript": {
+   "code": "const LIMIT = 1_000;\n\nfunction half(x: number): number {\n  return x / 2.0;\n}\n\nconst name: string = \"Ada\";\nlet visits = 0;\nvisits += 1;\nconst [mask, ratio] = [0xff, 2.5];\nconst letter = \"R\";\nconst total = LIMIT + half(5.0);\nconst parsed = parseInt(\"42\", 10);\n\nconsole.log(`name=${name} visits=${visits}`);\nconsole.log(`mask=${mask} ratio=${ratio} letter=${letter}`);\nconsole.log(`limit=${LIMIT} total=${total}`);\nconsole.log(`parsed=${parsed}`);\n",
+   "out": "name=Ada visits=1\nmask=255 ratio=2.5 letter=R\nlimit=1000 total=1002.5\nparsed=42\n"
+  },
+  "java": {
+   "code": "public class Main {\n    static final int LIMIT = 1_000; // Rust: u32. Java has no unsigned integers\n\n    static double half(double x) {\n        return x / 2.0;\n    }\n\n    public static void main(String[] args) {\n        String name = \"Ada\";\n        byte visits = 0; // Rust: u8. Java's byte is signed, the closest it has\n        visits++;\n        int mask = 0xff;\n        float ratio = 2.5f;\n        char letter = 'R';\n        double total = (double) LIMIT + half(5.0);\n        int parsed = Integer.parseInt(\"42\");\n\n        System.out.println(\"name=\" + name + \" visits=\" + visits);\n        System.out.println(\"mask=\" + mask + \" ratio=\" + ratio + \" letter=\" + letter);\n        System.out.println(\"limit=\" + LIMIT + \" total=\" + total);\n        System.out.println(\"parsed=\" + parsed);\n    }\n}\n",
+   "out": "name=Ada visits=1\nmask=255 ratio=2.5 letter=R\nlimit=1000 total=1002.5\nparsed=42\n"
+  },
+  "csharp": {
+   "code": "const uint Limit = 1_000;\n\nstatic double Half(double x) => x / 2.0;\n\nstring name = \"Ada\";\nbyte visits = 0;\nvisits++;\nvar (mask, ratio) = (0xff, 2.5f);\nchar letter = 'R';\ndouble total = (double)Limit + Half(5.0);\nint parsed = int.Parse(\"42\");\n\nConsole.WriteLine($\"name={name} visits={visits}\");\nConsole.WriteLine($\"mask={mask} ratio={ratio} letter={letter}\");\nConsole.WriteLine($\"limit={Limit} total={total}\");\nConsole.WriteLine($\"parsed={parsed}\");\n",
+   "out": "name=Ada visits=1\nmask=255 ratio=2.5 letter=R\nlimit=1000 total=1002.5\nparsed=42\n"
+  },
+  "c": {
+   "code": "#include <stdio.h>\n#include <stdlib.h>\n\n#define LIMIT 1000u\n\nstatic double half(double x) {\n    return x / 2.0;\n}\n\nint main(void) {\n    const char *name = \"Ada\";\n    unsigned char visits = 0;\n    visits += 1;\n    int mask = 0xff;\n    float ratio = 2.5f;\n    char letter = 'R';\n    double total = (double)LIMIT + half(5.0);\n    int parsed = atoi(\"42\");\n\n    printf(\"name=%s visits=%d\\n\", name, visits);\n    printf(\"mask=%d ratio=%.1f letter=%c\\n\", mask, ratio, letter);\n    printf(\"limit=%u total=%.1f\\n\", LIMIT, total);\n    printf(\"parsed=%d\\n\", parsed);\n    return 0;\n}\n",
+   "out": "name=Ada visits=1\nmask=255 ratio=2.5 letter=R\nlimit=1000 total=1002.5\nparsed=42\n"
+  },
+  "cpp": {
+   "code": "#include <cstdint>\n#include <iostream>\n#include <string>\n\nconstexpr std::uint32_t LIMIT = 1'000;\n\ndouble half(double x) {\n    return x / 2.0;\n}\n\nint main() {\n    std::string name = \"Ada\";\n    std::uint8_t visits = 0;\n    visits += 1;\n    int mask = 0xff;\n    float ratio = 2.5f;\n    char letter = 'R';\n    double total = static_cast<double>(LIMIT) + half(5.0);\n    int parsed = std::stoi(\"42\");\n\n    std::cout << \"name=\" << name << \" visits=\" << int(visits) << \"\\n\";\n    std::cout << \"mask=\" << mask << \" ratio=\" << ratio << \" letter=\" << letter << \"\\n\";\n    std::cout << \"limit=\" << LIMIT << \" total=\" << total << \"\\n\";\n    std::cout << \"parsed=\" << parsed << \"\\n\";\n}\n",
+   "out": "name=Ada visits=1\nmask=255 ratio=2.5 letter=R\nlimit=1000 total=1002.5\nparsed=42\n"
+  }
+ },
+ "faq": [],
+ "snippets": {
+  "array-len.fail.rs": {
+   "code": "fn main() {\n    let n = 3;\n    let grid = [0; n];\n    println!(\"{}\", grid.len());\n}\n",
+   "error": "error[E0435]: attempt to use a non-constant value in a constant\n --> src/main.rs:3:20\n  |\n3 |     let grid = [0; n];\n  |                    ^ non-constant value\n  |\nhelp: consider using `const` instead of `let`\n  |\n2 -     let n = 3;\n2 +     const n: /* Type */ = 3;",
+   "lang": "rust"
+  },
+  "cast-char.fail.rs": {
+   "code": "fn main() {\n    let code = 'a' as u32; // fine: a char becomes an integer\n    let wrong = 'a' as f64; // not allowed\n    println!(\"{code} {wrong}\");\n}\n",
+   "error": "error[E0606]: casting `char` as `f64` is invalid\n --> src/main.rs:3:17\n  |\n3 |     let wrong = 'a' as f64; // not allowed\n  |                 ^^^^^^^^^^\n  |\n  = help: cast through an integer first\n",
+   "lang": "rust"
+  },
+  "cast-literal.fail.rs": {
+   "code": "fn main() {\n    println!(\"300 as u8: {}\", 300 as u8);\n}\n",
+   "error": "error: literal out of range for `u8`\n --> src/main.rs:2:31\n  |\n2 |     println!(\"300 as u8: {}\", 300 as u8);\n  |                               ^^^\n  |\n  = note: the literal `300` does not fit into the type `u8` whose range is `0..=255`\n  = note: `#[deny(overflowing_literals)]` on by default",
+   "lang": "rust"
+  },
+  "casts.rs": {
+   "code": "fn main() {\n    let big: i32 = 300;\n    let neg: i32 = -1;\n    let x: f64 = -2.9;\n\n    println!(\"big as u8: {}\", big as u8);\n    println!(\"-1 as u8: {}\", neg as u8);\n    println!(\"-1 as u32: {}\", neg as u32);\n    println!(\"200u8 as i8: {}\", 200u8 as i8);\n    println!(\"-2.9 as i32: {}\", x as i32);\n    println!(\"300.0 as u8: {}\", 300.0f64 as u8);\n    println!(\"-5.0 as u8: {}\", -5.0f64 as u8);\n    println!(\"NaN as i32: {}\", f64::NAN as i32);\n    println!(\"'a' as u32: {}\", 'a' as u32);\n    println!(\"97u8 as char: {}\", 97u8 as char);\n    println!(\"true as i32: {}\", true as i32);\n    println!(\"i64::from(7i32): {}\", i64::from(7i32));\n    println!(\"u8::try_from(300i32): {:?}\", u8::try_from(300i32));\n}\n",
+   "out": "big as u8: 44\n-1 as u8: 255\n-1 as u32: 4294967295\n200u8 as i8: -56\n-2.9 as i32: -2\n300.0 as u8: 255\n-5.0 as u8: 0\nNaN as i32: 0\n'a' as u32: 97\n97u8 as char: a\ntrue as i32: 1\ni64::from(7i32): 7\nu8::try_from(300i32): Err(TryFromIntError(PosOverflow))\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "char-plus.fail.rs": {
+   "code": "fn main() {\n    let next = 'R' + 1;\n    println!(\"{next}\");\n}\n",
+   "error": "error[E0369]: cannot add `{integer}` to `char`\n --> src/main.rs:2:20\n  |\n2 |     let next = 'R' + 1;\n  |                --- ^ - {integer}\n  |                |\n  |                char\n",
+   "lang": "rust"
+  },
+  "char-size.rs": {
+   "code": "fn main() {\n    println!(\"size_of::<char>(): {}\", size_of::<char>());\n    println!(\"size_of::<u8>(): {}\", size_of::<u8>());\n    println!(\"'e'.len_utf8(): {}\", 'e'.len_utf8());\n    println!(\"'é'.len_utf8(): {}\", 'é'.len_utf8());\n    println!(\"'🦀'.len_utf8(): {}\", '🦀'.len_utf8());\n    println!(\"\\\"é\\\".len(): {}\", \"é\".len());\n}\n",
+   "out": "size_of::<char>(): 4\nsize_of::<u8>(): 1\n'e'.len_utf8(): 1\n'é'.len_utf8(): 2\n'🦀'.len_utf8(): 4\n\"é\".len(): 2\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-tables.rs": {
+   "code": "// Backs the \"in Rust\" cells of the tables in lesson.mdx. Never shown.\nuse std::collections::HashMap;\n\nconst MAX: u32 = 100;\nconst MAX_LEVEL: u32 = 99;\n\nstruct P {\n    x: i32,\n    y: i32,\n}\n\nstruct Stack<T> {\n    items: Vec<T>,\n}\n\n#[allow(dead_code)]\nenum Shape {\n    Circle(f64),\n    Rect { w: f64, h: f64 },\n    Empty,\n}\n\nfn add(a: i32, b: i32) -> i32 {\n    a + b\n}\n\nfn ident<T>(x: T) -> T {\n    x\n}\n\nfn main() {\n    let x = 5;\n    let mut y = 5;\n    y += x;\n    let typed: i32 = 5;\n    let later: i32;\n    later = 5;\n    assert_eq!((x, y, typed, later), (5, 10, 5, 5));\n    assert_eq!((MAX, MAX_LEVEL), (100, 99));\n    assert_eq!(add(1, 2), 3);\n\n    let (a, b) = (1, \"two\");\n    assert_eq!((a, b), (1, \"two\"));\n    let arr: [i32; 3] = [1, 2, 3];\n    let v: Vec<i32> = vec![1, 2, 3];\n    assert_eq!(arr, [1, 2, 3]);\n    assert_eq!(v, [1, 2, 3]);\n    let p = P { x: 1, y: 2 };\n    let P { x: px, y: py } = p;\n    assert_eq!(px + py, 3);\n    let s: Stack<i32> = Stack { items: vec![] };\n    assert!(s.items.is_empty());\n    assert_eq!(ident::<i32>(5), 5);\n    let m = HashMap::<String, i32>::new();\n    assert!(m.is_empty());\n    assert!(Vec::<String>::new().is_empty());\n\n    let shape = Shape::Rect { w: 2.0, h: 3.0 };\n    assert!(matches!(shape, Shape::Rect { w, .. } if w == 2.0));\n    assert!(matches!(Shape::Circle(1.0), Shape::Circle(_)) && matches!(Shape::Empty, Shape::Empty));\n    let narrow: i32 = 7;\n    let widened: i64 = i64::from(narrow); // no implicit widening: it is written out\n    assert_eq!(widened, 7);\n    assert!(u8::try_from(300i32).is_err());\n    assert_eq!((b'a' as char, 'a' as u32, true as i32), ('a', 97, 1));\n    assert_eq!(0_usize.checked_sub(1), None);\n    assert_eq!(std::cmp::max::<i32>(1, 2), 2);\n\n    let inc = |x: i32| x + 1;\n    let inc2 = |x| x + 1;\n    assert_eq!((inc(1), inc2(1)), (2, 2));\n\n    let n = 7;\n    let price = 2.9f64;\n    assert_eq!((n as f64, price as i32, -price as i32), (7.0, 2, -2));\n\n    assert_eq!('R' as u32, 82);\n    assert_eq!(b'R', 82u8);\n    assert_eq!(r\"C:\\temp\".len(), 7);\n    assert_eq!(\"42\".parse::<i32>(), Ok(42));\n    assert_eq!((0xff, 1_000, 0b101, 0o17, 0o377), (255, 1000, 5, 15, 255));\n    assert_eq!((017, 0377), (17, 377)); // a leading zero is NOT octal in Rust\n    assert_eq!((5u32, 5u64, 2.5f32, 5_000i64), (5, 5, 2.5, 5000));\n    assert_eq!(size_of::<char>(), 4);\n    assert_eq!(0..5, std::ops::Range { start: 0, end: 5 });\n    let xs = [1, 2, 3, 4, 5];\n    assert_eq!(&xs[1..4], [2, 3, 4]);\n    assert_eq!(&xs[1..=3], [2, 3, 4]);\n    assert_eq!(&xs[..2], [1, 2]);\n    assert_eq!(&xs[3..], [4, 5]);\n    let [first, .., last] = xs;\n    assert_eq!((first, last), (1, 5));\n}\n",
+   "out": "",
+   "lang": "rust",
+   "exit": 0
+  },
+  "const-len.rs": {
+   "code": "const WIDTH: usize = 3;\nconst CELLS: usize = WIDTH * 2; // a constant can use other constants\n\nstatic GREETING: &str = \"hello\";\n\nfn main() {\n    let grid = [0u8; CELLS];\n    println!(\"cells: {}\", grid.len());\n\n    let a = &GREETING;\n    let b = &GREETING;\n    println!(\"same address: {}\", std::ptr::eq(a, b));\n}\n",
+   "out": "cells: 6\nsame address: true\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "const-needs-type.fail.rs": {
+   "code": "const LIMIT = 100;\nstatic NAME = \"Ada\";\n\nfn main() {\n    println!(\"{LIMIT} {NAME}\");\n}\n",
+   "error": "error: missing type for `const` item\n --> src/main.rs:1:12\n  |\n1 | const LIMIT = 100;\n  |            ^ help: provide a type for the constant: `: i32`\n\nerror: missing type for `static` item\n --> src/main.rs:2:12\n  |\n2 | static NAME = \"Ada\";\n  |            ^ help: provide a type for the static variable: `: &str`",
+   "lang": "rust"
+  },
+  "declare.rs": {
+   "code": "const MAX_LEVEL: u32 = 99;\nstatic GREETING: &str = \"hello\";\n\nfn main() {\n    let score = 10; // type inferred\n    let mut lives = 3; // can change\n    let ratio: f64 = 0.5; // type written\n    lives -= 1;\n\n    println!(\"score: {score}, lives: {lives}, ratio: {ratio}\");\n    println!(\"max level: {MAX_LEVEL}, greeting: {GREETING}\");\n}\n",
+   "out": "score: 10, lives: 2, ratio: 0.5\nmax level: 99, greeting: hello\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "infer.fail.rs": {
+   "code": "fn main() {\n    let v = Vec::new();\n    println!(\"{}\", v.len());\n}\n",
+   "error": "error[E0282]: type annotations needed for `Vec<_>`\n --> src/main.rs:2:9\n  |\n2 |     let v = Vec::new();\n  |         ^   ---------- type must be known at this point\n  |\nhelp: consider giving `v` an explicit type, where the type for type parameter `T` is specified\n  |\n2 |     let v: Vec<T> = Vec::new();\n  |          ++++++++\n",
+   "lang": "rust"
+  },
+  "infer.rs": {
+   "code": "use std::any::type_name_of_val;\n\nfn main() {\n    let mut bytes = Vec::new(); // no type yet...\n    bytes.push(1u8); // ...this line makes it a Vec<u8>\n\n    let whole = 7; // nothing decides: an integer defaults to i32\n    let fraction = 7.0; // and a float to f64\n    let small = 7;\n    let total: u64 = small + 1; // `small` becomes u64, because it is added to a u64\n\n    println!(\"bytes[0]: {}\", type_name_of_val(&bytes[0]));\n    println!(\"whole: {}\", type_name_of_val(&whole));\n    println!(\"fraction: {}\", type_name_of_val(&fraction));\n    println!(\"small: {}\", type_name_of_val(&small));\n    println!(\"total: {total}\");\n}\n",
+   "out": "bytes[0]: u8\nwhole: i32\nfraction: f64\nsmall: u64\ntotal: 8\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "keyword-field.fail.rs": {
+   "code": "struct Event {\n    type: String,\n}\n\nfn main() {\n    let e = Event {\n        type: String::from(\"click\"),\n    };\n    println!(\"{}\", e.type);\n}\n",
+   "error": "error: expected identifier, found keyword `type`\n --> src/main.rs:2:5\n  |\n1 | struct Event {\n  |        ----- while parsing this struct\n2 |     type: String,\n  |     ^^^^ expected identifier, found keyword\n  |\nhelp: escape `type` to use it as an identifier\n  |\n2 |     r#type: String,\n  |     ++\n\nerror: expected identifier, found keyword `type`\n --> src/main.rs:7:9\n  |\n7 |         type: String::from(\"click\"),\n  |         ^^^^ expected identifier, found keyword\n  |\nhelp: escape `type` to use it as an identifier\n  |\n7 |         r#type: String::from(\"click\"),\n  |         ++\n\nerror: expected identifier, found keyword `type`\n --> src/main.rs:9:22\n  |\n9 |     println!(\"{}\", e.type);\n  |                      ^^^^ expected identifier, found keyword",
+   "lang": "rust"
+  },
+  "late-init.rs": {
+   "code": "fn main() {\n    let label; // declared, no value yet\n    let n = 3;\n    if n > 2 {\n        label = \"big\";\n    } else {\n        label = \"small\";\n    }\n    println!(\"label: {label}\");\n}\n",
+   "out": "label: big\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "let-else.rs": {
+   "code": "fn first_word_len(text: &str) -> usize {\n    // `split_once` gives `Some((before, after))`, or `None` when there is no space\n    let Some((word, _)) = text.split_once(' ') else {\n        return text.len(); // the `else` block must leave: return, continue, break or panic\n    };\n    word.len()\n}\n\nfn main() {\n    println!(\n        \"first_word_len: {} {}\",\n        first_word_len(\"hello world\"),\n        first_word_len(\"hi\")\n    );\n    for text in [\"1\", \"x\", \"3\"] {\n        let Ok(n) = text.parse::<i32>() else {\n            continue; // skip the texts that are not numbers\n        };\n        println!(\"number: {n}\");\n    }\n}\n",
+   "out": "first_word_len: 5 2\nnumber: 1\nnumber: 3\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "let-top.fail.rs": {
+   "code": "let LIMIT: u32 = 100;\n\nfn main() {\n    println!(\"{LIMIT}\");\n}\n",
+   "error": "error: expected item, found keyword `let`\n --> src/main.rs:1:1\n  |\n1 | let LIMIT: u32 = 100;\n  | ^^^\n  | |\n  | `let` cannot be used for global variables\n  | help: consider using `static` or `const` instead of `let`\n  |\n  = note: for a full list of items that can appear in modules, see <https://doc.rust-lang.org/reference/items.html>",
+   "lang": "rust"
+  },
+  "literals.rs": {
+   "code": "use std::any::type_name_of_val; // gives the name of a value's type\n\nfn main() {\n    println!(\"42 = {} ({})\", 42, type_name_of_val(&42));\n    println!(\n        \"1_000_000 = {} ({})\",\n        1_000_000,\n        type_name_of_val(&1_000_000)\n    );\n    println!(\"0xff = {} ({})\", 0xff, type_name_of_val(&0xff));\n    println!(\"0o17 = {} ({})\", 0o17, type_name_of_val(&0o17));\n    println!(\"0b1010 = {} ({})\", 0b1010, type_name_of_val(&0b1010));\n    println!(\"7u8 = {} ({})\", 7u8, type_name_of_val(&7u8));\n    println!(\"7_i64 = {} ({})\", 7_i64, type_name_of_val(&7_i64));\n    println!(\"2.5 = {} ({})\", 2.5, type_name_of_val(&2.5));\n    println!(\"2.5f32 = {} ({})\", 2.5f32, type_name_of_val(&2.5f32));\n    println!(\"1e3 = {} ({})\", 1e3, type_name_of_val(&1e3));\n    println!(\"'R' = {} ({})\", 'R', type_name_of_val(&'R'));\n    println!(\"\\\"R\\\" = {} ({})\", \"R\", type_name_of_val(&\"R\"));\n    println!(\"b'R' = {} ({})\", b'R', type_name_of_val(&b'R'));\n    println!(\"b\\\"Rs\\\" = {:?} ({})\", b\"Rs\", type_name_of_val(&b\"Rs\"));\n    println!(\"true = {} ({})\", true, type_name_of_val(&true));\n    println!(\"() = {:?} ({})\", (), type_name_of_val(&()));\n}\n",
+   "out": "42 = 42 (i32)\n1_000_000 = 1000000 (i32)\n0xff = 255 (i32)\n0o17 = 15 (i32)\n0b1010 = 10 (i32)\n7u8 = 7 (u8)\n7_i64 = 7 (i64)\n2.5 = 2.5 (f64)\n2.5f32 = 2.5 (f32)\n1e3 = 1000 (f64)\n'R' = R (char)\n\"R\" = R (&str)\nb'R' = 82 (u8)\nb\"Rs\" = [82, 115] (&[u8; 2])\ntrue = true (bool)\n() = () (())\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "mismatch.fail.rs": {
+   "code": "fn main() {\n    let count: i32 = \"5\";\n    let ratio: f64 = 1;\n    let small: i32 = 7;\n    let wide: i64 = small;\n    println!(\"{count} {ratio} {wide}\");\n}\n",
+   "error": "error[E0308]: mismatched types\n --> src/main.rs:2:22\n  |\n2 |     let count: i32 = \"5\";\n  |                ---   ^^^ expected `i32`, found `&str`\n  |                |\n  |                expected due to this\n\nerror[E0308]: mismatched types\n --> src/main.rs:3:22\n  |\n3 |     let ratio: f64 = 1;\n  |                ---   ^ expected `f64`, found integer\n  |                |\n  |                expected due to this\n  |\nhelp: use a float literal\n  |\n3 |     let ratio: f64 = 1.0;\n  |                       ++\n\nerror[E0308]: mismatched types\n --> src/main.rs:5:21\n  |\n5 |     let wide: i64 = small;\n  |               ---   ^^^^^ expected `i64`, found `i32`\n  |               |\n  |               expected due to this\n  |\nhelp: you can convert an `i32` to an `i64`\n  |\n5 |     let wide: i64 = small.into();\n  |                          +++++++\n",
+   "lang": "rust"
+  },
+  "naming.fail.rs": {
+   "code": "#![deny(nonstandard_style)]\n\nconst max_users: u32 = 10;\n\nstruct user_account {\n    UserName: String,\n}\n\nfn main() {\n    let myCount = 3;\n    let account = user_account {\n        UserName: String::from(\"ada\"),\n    };\n    println!(\"{myCount} {max_users} {}\", account.UserName);\n}\n",
+   "error": "error: type `user_account` should have an upper camel case name\n --> src/main.rs:5:8\n  |\n5 | struct user_account {\n  |        ^^^^^^^^^^^^ help: convert the identifier to upper camel case: `UserAccount`\n  |\nnote: the lint level is defined here\n --> src/main.rs:1:9\n  |\n1 | #![deny(nonstandard_style)]\n  |         ^^^^^^^^^^^^^^^^^\n  = note: `#[deny(non_camel_case_types)]` implied by `#[deny(nonstandard_style)]`\n\nerror: constant `max_users` should have an upper case name\n --> src/main.rs:3:7\n  |\n3 | const max_users: u32 = 10;\n  |       ^^^^^^^^^\n  |\n  = note: `#[deny(non_upper_case_globals)]` implied by `#[deny(nonstandard_style)]`\nhelp: convert the identifier to upper case\n  |\n3 - const max_users: u32 = 10;\n3 + const MAX_USERS: u32 = 10;\n\nerror: structure field `UserName` should have a snake case name\n --> src/main.rs:6:5\n  |\n6 |     UserName: String,\n  |     ^^^^^^^^ help: convert the identifier to snake case: `user_name`\n  |\n  = note: `#[deny(non_snake_case)]` implied by `#[deny(nonstandard_style)]`\n\nerror: variable `myCount` should have a snake case name\n  --> src/main.rs:10:9\n   |\n10 |     let myCount = 3;\n   |         ^^^^^^^ help: convert the identifier to snake case: `my_count`",
+   "lang": "rust"
+  },
+  "parse-type.fail.rs": {
+   "code": "fn main() {\n    let n = \"42\".parse().unwrap();\n    println!(\"{n}\");\n}\n",
+   "error": "error[E0284]: type annotations needed\n --> src/main.rs:2:9\n  |\n2 |     let n = \"42\".parse().unwrap();\n  |         ^        ----- type must be known at this point\n  |\n  = note: cannot satisfy `<_ as FromStr>::Err == _`\n  = note: the type must also implement `FromStr`\nhelp: consider giving `n` an explicit type\n  |\n2 |     let n: /* Type */ = \"42\".parse().unwrap();\n  |          ++++++++++++\n\n  ... (notes pointing into the standard library trimmed)",
+   "lang": "rust"
+  },
+  "patterns.rs": {
+   "code": "struct Point {\n    x: i32,\n    y: i32,\n}\n\nfn main() {\n    let (a, b) = (1, \"two\");\n    let Point { x, y } = Point { x: 3, y: 4 };\n    let [first, _, third] = [10, 20, 30];\n    let (lo, _) = (5, 6); // `_` ignores a part\n\n    println!(\"tuple: {a} {b}\");\n    println!(\"struct: {x} {y}\");\n    println!(\"array: {first} {third}\");\n    println!(\"lo: {lo}\");\n}\n",
+   "out": "tuple: 1 two\nstruct: 3 4\narray: 10 30\nlo: 5\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "quote.fail.rs": {
+   "code": "fn main() {\n    let word = 'hello';\n    println!(\"{word}\");\n}\n",
+   "error": "error: character literal may only contain one codepoint\n --> src/main.rs:2:16\n  |\n2 |     let word = 'hello';\n  |                ^^^^^^^\n  |\nhelp: if you meant to write a string literal, use double quotes\n  |\n2 -     let word = 'hello';\n2 +     let word = \"hello\";",
+   "lang": "rust"
+  },
+  "refutable.fail.rs": {
+   "code": "fn main() {\n    let maybe = Some(3);\n    let Some(n) = maybe;\n    println!(\"{n}\");\n}\n",
+   "error": "error[E0005]: refutable pattern in local binding\n --> src/main.rs:3:9\n  |\n3 |     let Some(n) = maybe;\n  |         ^^^^^^^ pattern `None` not covered\n  |\n  = note: `let` bindings require an \"irrefutable pattern\", like a `struct` or an `enum` with only one variant\n  = note: for more information, visit https://doc.rust-lang.org/book/ch19-02-refutability.html\n  = note: the matched value is of type `Option<i32>`\nhelp: you might want to use `let...else` to handle the variant that isn't matched\n  |\n3 |     let Some(n) = maybe else { todo!() };\n  |                         ++++++++++++++++\n",
+   "lang": "rust"
+  },
+  "shadowing.rs": {
+   "code": "fn main() {\n    let spaces = \"   \";\n    let spaces = spaces.len(); // a new variable that reuses the name, with a new type\n    println!(\"spaces: {spaces}\");\n\n    let x = 1;\n    {\n        let x = x * 10; // shadows only inside this block\n        println!(\"inner x: {x}\");\n    }\n    println!(\"outer x: {x}\");\n}\n",
+   "out": "spaces: 3\ninner x: 10\nouter x: 1\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "shapes.rs": {
+   "code": "struct Point {\n    x: i32,\n    y: i32,\n}\n\nstruct Meters(f64);\n\nfn main() {\n    let p = Point { x: 3, y: 4 };\n    let m = Meters(2.5);\n    let pair: (i32, &str) = (7, \"seven\");\n    let grid: [i32; 3] = [10, 20, 30];\n    let zeros = [0u8; 4];\n    let v: Vec<i32> = vec![1, 2, 3, 4, 5];\n    let middle: &[i32] = &v[1..4];\n\n    println!(\"point: {} {}\", p.x, p.y);\n    println!(\"meters: {}\", m.0);\n    println!(\"tuple: {} {}\", pair.0, pair.1);\n    println!(\"array: {grid:?} {zeros:?}\");\n    println!(\"slice: {middle:?}\");\n    println!(\"ranges: {:?} {:?} {:?} {:?}\", 0..5, 0..=5, 2.., ..3);\n}\n",
+   "out": "point: 3 4\nmeters: 2.5\ntuple: 7 seven\narray: [10, 20, 30] [0, 0, 0, 0]\nslice: [2, 3, 4]\nranges: 0..5 0..=5 2.. ..3\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "shared-type.fail.rs": {
+   "code": "fn add(a, b: i32) -> i32 {\n    a + b\n}\n\nfn main() {\n    println!(\"{}\", add(1, 2));\n}\n",
+   "error": "error: expected one of `:`, `@`, or `|`, found `,`\n --> src/main.rs:1:9\n  |\n1 | fn add(a, b: i32) -> i32 {\n  |         ^ expected one of `:`, `@`, or `|`\n  |\nhelp: if this is a parameter name, give it a type\n  |\n1 | fn add(a: TypeName, b: i32) -> i32 {\n  |         ++++++++++\nhelp: if this is a type, explicitly ignore the parameter name\n  |\n1 | fn add(_: a, b: i32) -> i32 {\n  |        ++",
+   "lang": "rust"
+  },
+  "shift-overflow.fail.rs": {
+   "code": "fn main() {\n    let big = 1 << 40; // an integer defaults to i32, which has only 32 bits\n    println!(\"{big}\");\n}\n",
+   "error": "error: this arithmetic operation will overflow\n --> src/main.rs:2:15\n  |\n2 |     let big = 1 << 40; // an integer defaults to i32, which has only 32 bits\n  |               ^^^^^^^ attempt to shift left by `40_i32`, which would overflow\n  |\n  = note: `#[deny(arithmetic_overflow)]` on by default",
+   "lang": "rust"
+  },
+  "strings.rs": {
+   "code": "fn main() {\n    let tab = \"a\\tb\"; // escapes work in normal strings\n    let raw = r\"C:\\temp\\new\"; // raw: backslashes stay\n    let quoted = r#\"she said \"hi\"\"#; // raw with quotes inside: add # on both ends\n    let long = \"one \\\n                two\"; // a backslash at the end of a line skips the newline and the indent\n    let lines = \"first\nsecond\"; // a normal string may span lines\n\n    println!(\"tab: {tab}\");\n    println!(\"raw: {raw} ({} bytes)\", raw.len());\n    println!(\"quoted: {quoted}\");\n    println!(\"long: {long}\");\n    println!(\"lines: {lines:?}\");\n    println!(\"crab: {} {}\", '\\u{1F980}', \"\\u{e9}\");\n}\n",
+   "out": "tab: a\tb\nraw: C:\\temp\\new (11 bytes)\nquoted: she said \"hi\"\nlong: one two\nlines: \"first\\nsecond\"\ncrab: 🦀 é\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "turbofish.rs": {
+   "code": "fn main() {\n    let a = \"42\".parse::<i32>().unwrap(); // turbofish: ::<type>\n    let b: i32 = \"42\".parse().unwrap(); // or annotate the variable\n    let words = \"a b c\".split(' ').collect::<Vec<_>>(); // gather the pieces into a Vec\n    let empty = Vec::<u8>::new();\n\n    println!(\"a: {a}, b: {b}\");\n    println!(\"words: {words:?}, empty: {empty:?}\");\n}\n",
+   "out": "a: 42, b: 42\nwords: [\"a\", \"b\", \"c\"], empty: []\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "uninit.fail.rs": {
+   "code": "fn main() {\n    let count: i32;\n    println!(\"{count}\");\n}\n",
+   "error": "error[E0381]: used binding `count` isn't initialized\n --> src/main.rs:3:16\n  |\n2 |     let count: i32;\n  |         ----- binding declared here but left uninitialized\n3 |     println!(\"{count}\");\n  |                ^^^^^ `count` used here but it isn't initialized\n  |\nhelp: consider assigning a value\n  |\n2 |     let count: i32 = 42;\n  |                    ++++\n",
+   "lang": "rust"
+  },
+  "usize-underflow.panic.rs": {
+   "code": "fn last_index(items: &[i32]) -> usize {\n    items.len() - 1 // `len()` is a usize: a whole number that cannot go below 0\n}\n\nfn main() {\n    println!(\"last_index: {}\", last_index(&[1, 2, 3]));\n    println!(\"last_index: {}\", last_index(&[]));\n}\n",
+   "out": "last_index: 2\n\nthread 'main' (1) panicked at src/main.rs:2:5:\nattempt to subtract with overflow\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+   "lang": "rust",
+   "exit": 101
+  },
+  "array-len.fail.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tn := 3\n\tvar grid [n]int\n\tfmt.Println(n, len(grid))\n}\n",
+   "error": "# command-line-arguments\n./main.go:7:12: invalid array length n",
+   "lang": "go"
+  },
+  "char-size.java": {
+   "code": "public class Main {\n    public static void main(String[] args) {\n        String crab = \"🦀\";\n        System.out.println(\"Character.BYTES: \" + Character.BYTES);\n        System.out.println(\"crab.length(): \" + crab.length());\n        System.out.println(\"code points: \" + crab.codePointCount(0, crab.length()));\n    }\n}\n",
+   "out": "Character.BYTES: 2\ncrab.length(): 2\ncode points: 1\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "check-c.c": {
+   "code": "#include <assert.h>\n#include <stdint.h>\n#include <stdio.h>\n\n#define MAX 100\n\nstatic int add(int a, int b) { return a + b; }\n\nint main(void) {\n    int x = 5;\n    const int y = 5;\n    int a[3] = {1, 2, 3};\n    assert(x == y && MAX == 100 && add(1, 2) == 3 && a[2] == 3);\n\n    double price = 2.9;\n    assert((int)price == 2 && (int)-price == -2 && (double)x == 5.0);\n\n    assert(sizeof('a') == sizeof(int)); /* in C a character constant is an int */\n    assert(0377 == 255 && 017 == 15);   /* a leading zero means octal */\n    assert(0xff == 255 && 0b101 == 5);  /* 0b literals: GCC extension, C23 */\n    assert(5u == 5 && 5UL == 5 && 2.5f == 2.5);\n    return 0;\n}\n",
+   "out": "",
+   "lang": "c",
+   "exit": 0
+  },
+  "check-cpp.cpp": {
+   "code": "#include <algorithm>\n#include <cassert>\n#include <string>\n#include <string_view>\n#include <tuple>\n#include <utility>\n#include <vector>\n\nconstexpr int MAX = 100;\n\nint add(int a, int b) { return a + b; }\n\nint main() {\n    int x = 5;\n    const int y = 5;\n    auto z = 5;\n    const auto w = 5;\n    assert(x == y && z == w && MAX == 100 && add(1, 2) == 3);\n\n    auto pair = std::make_pair(1, 2);\n    auto [p, q] = pair;\n    assert(p == 1 && q == 2);\n\n    double price = 2.9;\n    assert(static_cast<int>(price) == 2 && static_cast<int>(-price) == -2 && (int)price == 2);\n\n    auto inc = [](int v) { return v + 1; };\n    assert(inc(1) == 2);\n\n    std::vector<int> v;\n    std::vector<int> v2 = std::vector<int>();\n    assert(v.empty() && v2.empty());\n\n    const int n = 3;\n    int grid[n]; // legal in C++: a const int with a constant initialiser is a constant expression\n    grid[0] = 1;\n    double d = 1; // implicit conversion\n    int truncated = 5.7;\n    assert(grid[0] == 1 && d == 1.0 && truncated == 5);\n    std::string s = \"Ada\";\n    std::string_view sv = \"Ada\";\n    assert(s == sv && std::stoi(\"42\") == 42 && std::max<int>(1, 2) == 2);\n    auto small = 7;\n    unsigned long total = small + 1; // `auto` fixed `small` as int from its initialiser\n    assert(total == 8 && sizeof(small) == sizeof(int));\n\n    static_assert(sizeof('a') == 1, \"in C++ a character literal is a char\");\n    assert(0377 == 255 && 017 == 15);\n    assert(1'000'000 == 1000000 && 0xff == 255 && 0b101 == 5);\n    assert(5u == 5 && 5UL == 5 && 2.5f == 2.5);\n    return 0;\n}\n",
+   "out": "",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "check-cs.cs": {
+   "code": "using System.Linq;\n\nvoid Must(bool ok, string what)\n{\n    if (!ok) throw new Exception(what);\n}\n\nint Add(int a, int b) => a + b;\n\nconst int Max = 100;\nint count = 5;\nvar inferred = 5;\nint[] arr = { 1, 2, 3 };\nMust(count == inferred && Max == 100 && Add(1, 2) == 3 && arr.Length == 3, \"declarations\");\n\nvar (a, b) = (1, \"two\");\nMust(a == 1 && b == \"two\", \"tuple\");\n\ndouble price = 2.9;\nint n = 7;\nMust((int)price == 2 && (int)-price == -2 && (double)n == 7.0, \"casts\");\n\nFunc<int, int> inc = x => x + 1;\nMust(inc(1) == 2, \"lambda\");\n\nvar empty = Enumerable.Empty<string>();\nMust(!empty.Any(), \"explicit type argument\");\n\nstring verbatim = @\"C:\\temp\";\nMust(verbatim.Length == 7, \"verbatim\");\nMust(1_000 == 1000 && 0xFF == 255 && 0b101 == 5 && 5u == 5 && 5L == 5 && 2.5f == 2.5, \"literals\");\nchar c = 'R';\nMust(c == 82 && sizeof(char) == 2, \"char is 2 bytes\");\n",
+   "out": "",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "check-go.go": {
+   "code": "package main\n\nimport \"strconv\"\n\ntype P struct{ X, Y int }\n\ntype Stack[T any] struct{ items []T }\n\nfunc add(a, b int) int { return a + b }\n\nfunc ident[T any](x T) T { return x }\n\nfunc must(ok bool, what string) {\n\tif !ok {\n\t\tpanic(what)\n\t}\n}\n\nconst Max = 100\n\nfunc main() {\n\tx := 5\n\tvar y int = 5\n\tvar z int\n\tmust(x == y && z == 0, \"zero value\")\n\n\tvar f float64 = Max // an untyped constant fits a float: Rust's `const` has no such thing\n\tmust(f == 100, \"untyped const\")\n\n\ta, b := 1, \"two\"\n\tmust(a == 1 && b == \"two\", \"multi\")\n\n\tarr := [3]int{1, 2, 3}\n\tsl := []int{1, 2, 3}\n\tmust(len(arr) == 3 && len(sl) == 3, \"arrays\")\n\n\tp := P{1, 2}\n\tmust(p.X+p.Y == 3, \"struct\")\n\n\tinc := func(x int) int { return x + 1 }\n\tmust(inc(1) == 2 && add(1, 2) == 3, \"func\")\n\n\tn := 7\n\tprice := 2.9\n\tmust(float64(n) == 7.0 && int(price) == 2 && int(-price) == -2, \"conversion\")\n\n\tr := 'R'\n\tmust(r == 82, \"rune\")\n\traw := `C:\\temp`\n\tmust(len(raw) == 7, \"raw string\")\n\tmust(0xff == 255 && 1_000 == 1000 && 0b101 == 5 && 017 == 15, \"literals\")\n\n\ts := Stack[int]{}\n\tmust(len(s.items) == 0 && ident[int](5) == 5, \"generics\")\n\tm := map[string]int{}\n\tmust(len(m) == 0, \"map\")\n\tbig := 1 << 40 // Go's int is 64 bits here: this runs\n\tmust(big == 1099511627776 && strconv.IntSize == 64, \"int is 64 bits\")\n\tmust('R'+1 == 83, \"a rune is a number\")\n\twide := 300\n\tmust(uint8(wide) == 44 && 0o17 == 15, \"narrowing wraps, 0o17\")\n\tvar name string = \"Ada\"\n\tmust(len(name) == 3 && p.X == 1, \"string, struct\")\n\tv, err := strconv.Atoi(\"42\")\n\tmust(v == 42 && err == nil, \"Atoi\")\n}\n",
+   "out": "",
+   "lang": "go",
+   "exit": 0
+  },
+  "check-java.java": {
+   "code": "import java.util.ArrayList;\nimport java.util.Collections;\nimport java.util.List;\n\npublic class Main {\n    static final int MAX = 100;\n\n    static int add(int a, int b) {\n        return a + b;\n    }\n\n    static void must(boolean ok, String what) {\n        if (!ok) throw new AssertionError(what);\n    }\n\n    public static void main(String[] args) {\n        int count = 5;\n        final int fixed = 5;\n        var list = new ArrayList<Integer>();\n        must(count == fixed && list.isEmpty() && MAX == 100 && add(1, 2) == 3, \"declarations\");\n\n        double price = 2.9;\n        int n = 7;\n        must((int) price == 2 && (int) -price == -2 && (double) n == 7.0, \"casts\");\n\n        long big = 5_000L;\n        char c = 'R';\n        must(big == 5000 && c == 82 && Character.BYTES == 2, \"long char\");\n\n        java.util.function.IntUnaryOperator inc = x -> x + 1;\n        must(inc.applyAsInt(1) == 2, \"lambda\");\n\n        int wide = 300;\n        double nan = Double.NaN;\n        must((byte) wide == 44 && (byte) -1 == -1 && (int) nan == 0, \"narrowing casts\");\n        must((int) 1e20 == Integer.MAX_VALUE && Integer.parseInt(\"42\") == 42, \"float cast saturates, parseInt\");\n        double widened = n; // Java widens int to double on its own\n        record Point(int x, int y) {}\n        int[] arr = {1, 2, 3};\n        String name = \"Ada\";\n        List<Integer> nums = List.of(1, 2, 3);\n        must(widened == 7.0 && new Point(1, 2).x() == 1 && arr.length == 3 && name.length() == 3 && nums.size() == 3, \"types\");\n\n        List<String> empty = Collections.<String>emptyList();\n        must(empty.isEmpty(), \"explicit type argument\");\n        must(1_000 == 1000 && 0xFF == 255 && 0b101 == 5 && 017 == 15, \"literals\");\n    }\n}\n",
+   "out": "",
+   "lang": "java",
+   "exit": 0
+  },
+  "check-kt.kt": {
+   "code": "const val MAX = 100\n\nfun add(a: Int, b: Int): Int { return a + b }\n\nfun must(ok: Boolean, what: String) {\n    if (!ok) throw AssertionError(what)\n}\n\nfun main() {\n    val count: Int = 5\n    var mutable = 5\n    mutable += count\n    must(mutable == 10, \"val var\")\n\n    val pair = Pair(1, \"two\")\n    val (a, b) = pair\n    must(a == 1 && b == \"two\", \"destructuring\")\n\n    val n = 7\n    val d = 2.9\n    must(n.toDouble() == 7.0 && d.toInt() == 2 && (-d).toInt() == -2, \"conversion\")\n\n    val inc = { x: Int -> x + 1 }\n    val inc2: (Int) -> Int = { it + 1 }\n    must(inc(1) == 2 && inc2(1) == 2 && add(1, 2) == 3 && MAX == 100, \"lambda\")\n\n    val typed = emptyList<String>()\n    val ints = listOf<Int>()\n    must(typed.isEmpty() && ints.isEmpty(), \"explicit type arguments\")\n\n    must(\"42\".toInt() == 42, \"toInt on text\")\n    val raw = \"\"\"C:\\temp\"\"\"\n    must(raw.length == 7, \"raw string\")\n\n    val c: Char = 'R'\n    must(c.code == 82 && Char.SIZE_BYTES == 2, \"char is 2 bytes\")\n    must(1_000 == 1000 && 0xFF == 255 && 0b101 == 5, \"literals\")\n    val big = 5L\n    val f = 2.5f\n    must(big == 5L && f == 2.5f, \"suffixes\")\n}\n",
+   "out": "",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "check-py.py": {
+   "code": "def must(ok, what):\n    if not ok:\n        raise AssertionError(what)\n\n\ndef add(a: int, b: int) -> int:\n    return a + b\n\n\ncount: int = 5\nwrong: int = \"not an int\"  # Python does not check the annotation when it runs\nmust(count == 5 and wrong == \"not an int\", \"annotations are not enforced\")\n\nMAX_LEVEL = 99\nMAX_LEVEL = 100  # a constant by convention only\nmust(MAX_LEVEL == 100, \"constants\")\n\na, b = 1, \"two\"\nmust(a == 1 and b == \"two\", \"unpacking\")\ninc = lambda x: x + 1\nmust(inc(1) == 2 and add(1, 2) == 3, \"lambda\")\n\nmust(int(2.9) == 2 and int(-2.9) == -2 and float(7) == 7.0, \"conversion\")\nmust('R' == \"R\", \"quotes\")\nmust(int(\"42\") == 42, \"int of text\")\nfrom dataclasses import dataclass\n\n\n@dataclass\nclass Point:\n    x: float\n    y: float\n\n\nmust(Point(1.0, 2.0).x == 1.0, \"dataclass\")\nraw = r\"C:\\temp\"\nmust(len(raw) == 7, \"raw string\")\nmust(1_000 == 1000 and 0xFF == 255 and 0b101 == 5 and 0o17 == 15, \"literals\")\nmust(b\"a\"[0] == 97 and list(range(5)) == [0, 1, 2, 3, 4], \"bytes, range\")\n",
+   "out": "",
+   "lang": "python",
+   "exit": 0
+  },
+  "check-ts.ts": {
+   "code": "function must(ok: boolean, what: string): void {\n  if (!ok) throw new Error(what);\n}\n\nfunction add(a: number, b: number): number {\n  return a + b;\n}\n\nfunction ident<T>(x: T): T {\n  return x;\n}\n\nconst count = 5;\nlet changing = 5;\nchanging += count;\nmust(changing === 10, \"const let\");\n\nconst pair: [number, string] = [1, \"two\"];\nconst [a, b] = pair;\nconst p = { x: 3, y: 4 };\nconst { x, y } = p;\nmust(a === 1 && b === \"two\" && x + y === 7, \"destructuring\");\n\nconst inc = (v: number) => v + 1;\nmust(inc(1) === 2 && add(1, 2) === 3, \"arrow\");\n\nconst unknownValue: unknown = \"5\";\nconst asserted = unknownValue as number; // a compile-time assertion: nothing is converted\nmust(typeof asserted === \"string\", \"as does not convert\");\n\nmust(ident<number>(5) === 5, \"explicit type argument\");\nconst m = new Map<string, number>();\nmust(m.size === 0, \"Map\");\n\nconst arr: number[] = [];\narr.push(1); // a TypeScript const stops reassignment, not changes inside\nmust(arr.length === 1 && parseInt(\"42\", 10) === 42 && Number(\"42\") === 42, \"const contents, parse\");\ninterface Point {\n  x: number;\n  y: number;\n}\nconst pt: Point = { x: 1, y: 2 };\nmust(pt.x + pt.y === 3, \"interface\");\n\nconst raw = String.raw`C:\\temp`;\nmust(raw.length === 7, \"raw string\");\nmust(10_000 === 10000 && 0xff === 255 && 0b101 === 5 && 0o17 === 15, \"literals\");\nconst nums: number[] = [1, 2];\nconst nums2: Array<number> = [1, 2];\nmust(nums.length === nums2.length, \"arrays\");\n",
+   "out": "",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "shadow.fail.cpp": {
+   "code": "#include <iostream>\n\nint main() {\n    int x = 1;\n    int x = x * 10; // the same name twice in one scope\n    std::cout << x << \"\\n\";\n}\n",
+   "error": "main.cpp: In function ‘int main()’:\nmain.cpp:5:9: error: redeclaration of ‘int x’\n    5 |     int x = x * 10; // the same name twice in one scope\n      |         ^\nmain.cpp:4:9: note: ‘int x’ previously declared here\n    4 |     int x = 1;\n      |         ^",
+   "lang": "cpp"
+  },
+  "shadow.fail.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tx := 1\n\tx := x * 10 // a second := in the same scope needs a new name\n\tfmt.Println(x)\n}\n",
+   "error": "# command-line-arguments\n./main.go:7:4: no new variables on left side of :=",
+   "lang": "go"
+  },
+  "shadow.fail.java": {
+   "code": "public class Main {\n    public static void main(String[] args) {\n        int x = 1;\n        {\n            int x = x * 10; // a local cannot be declared twice, even in an inner block\n            System.out.println(x);\n        }\n    }\n}\n",
+   "error": "Main.java:5: error: variable x is already defined in method main(String[])\n            int x = x * 10; // a local cannot be declared twice, even in an inner block\n                ^\n1 error",
+   "lang": "java"
+  },
+  "vla.c": {
+   "code": "#include <stdio.h>\n\nint main(void) {\n    int n = 3;\n    int grid[n]; // a variable-length array: the size is read at run time\n    printf(\"elements: %zu\\n\", sizeof(grid) / sizeof(grid[0]));\n    return 0;\n}\n",
+   "out": "elements: 3\n",
+   "lang": "c",
+   "exit": 0
+  }
+ },
+ "exercises": {
+  "int-float": {
+   "starter": "/// \"3, 2.5\" -> Some((3, 2.5)). Anything that is not \"integer, number\" -> None.\nfn int_float(text: &str) -> Option<(i32, f64)> {\n    todo!(\n        \"split_once(',') gives Some((left, right)); parse::<i32>() gives Ok(n) or Err(_), so try `let Ok(n) = ... else` with `return None`; trim() drops spaces\"\n    )\n}\n\nfn main() {\n    assert_eq!(int_float(\"3,2.5\"), Some((3, 2.5)));\n    assert_eq!(int_float(\" 7 , 0.5 \"), Some((7, 0.5)));\n    assert_eq!(int_float(\"3,4\"), Some((3, 4.0)));\n    assert_eq!(int_float(\"x,1.0\"), None);\n    assert_eq!(int_float(\"3\"), None);\n    assert_eq!(int_float(\"3,abc\"), None);\n    // The case to watch: the first part must be a whole number.\n    assert_eq!(int_float(\"2.5,3\"), None);\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "/// \"3, 2.5\" -> Some((3, 2.5)). Anything that is not \"integer, number\" -> None.\nfn int_float(text: &str) -> Option<(i32, f64)> {\n    let Some((left, right)) = text.split_once(',') else {\n        return None;\n    };\n    let Ok(whole) = left.trim().parse::<i32>() else {\n        return None;\n    };\n    let Ok(fraction) = right.trim().parse::<f64>() else {\n        return None;\n    };\n    Some((whole, fraction))\n}\n\nfn main() {\n    assert_eq!(int_float(\"3,2.5\"), Some((3, 2.5)));\n    assert_eq!(int_float(\" 7 , 0.5 \"), Some((7, 0.5)));\n    assert_eq!(int_float(\"3,4\"), Some((3, 4.0)));\n    assert_eq!(int_float(\"x,1.0\"), None);\n    assert_eq!(int_float(\"3\"), None);\n    assert_eq!(int_float(\"3,abc\"), None);\n    // The case to watch: the first part must be a whole number.\n    assert_eq!(int_float(\"2.5,3\"), None);\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "read-literals": {
+   "starter": "// Read this program without running it. Then replace each `todo!()` below with the text\n// that `show` makes for that variable (what `to_string()` gives).\n\nfn show(input: &str) -> Vec<String> {\n    let n = input.trim().len();\n    let n = n as f64 / 4.0;\n    let big = 1_000;\n    let wrapped = big as u8;\n    let byte = 0xff_u8;\n    let signed = byte as i8;\n    let raw = r\"\\n\".len();\n    let cooked = \"\\n\".len();\n    let half = \"7\".parse::<i32>().unwrap() / 2;\n    let next = (b'a' + 1) as char;\n    vec![\n        n.to_string(),\n        wrapped.to_string(),\n        signed.to_string(),\n        raw.to_string(),\n        cooked.to_string(),\n        half.to_string(),\n        next.to_string(),\n    ]\n}\n\n// What `show(\"  abcde \")` makes, in that order:\n/// Hint: how long is `input` once `trim()` drops the spaces, and what does the second `let n` make of it?\nfn n_is() -> &'static str {\n    todo!(\n        \"how long is `input` once `trim()` drops the spaces, and what does the second `let n` make of it?\"\n    )\n}\n\n/// Hint: `as u8` keeps only the low 8 bits, which is the value modulo 256\nfn wrapped_is() -> &'static str {\n    todo!(\"`as u8` keeps only the low 8 bits, which is the value modulo 256\")\n}\n\n/// Hint: `0xff` has all eight bits set; read as an `i8` (the top bit is the sign), what number is that?\nfn signed_is() -> &'static str {\n    todo!(\n        \"`0xff` has all eight bits set; read as an `i8` (the top bit is the sign), what number is that?\"\n    )\n}\n\n/// Hint: a raw string processes no escapes, so count the characters\nfn raw_is() -> &'static str {\n    todo!(\"a raw string processes no escapes, so count the characters\")\n}\n\n/// Hint: in an ordinary string, how many characters is the escape for a newline?\nfn cooked_is() -> &'static str {\n    todo!(\"in an ordinary string, how many characters is the escape for a newline?\")\n}\n\n/// Hint: `parse::<i32>()` makes an integer, and integer `/` drops the fraction (7 / 2 is not 3.5)\nfn half_is() -> &'static str {\n    todo!(\n        \"`parse::<i32>()` makes an integer, and integer `/` drops the fraction (7 / 2 is not 3.5)\"\n    )\n}\n\n/// Hint: `b'a'` is a number; `as char` turns the sum back into a character\nfn next_is() -> &'static str {\n    todo!(\"`b'a'` is a number; `as char` turns the sum back into a character\")\n}\n\nfn check(variable: &str, said: &str, truth: &str) {\n    assert!(said == truth, \"misread `{variable}`: you said {said:?}\");\n    println!(\"ok: {variable} is {said:?}\");\n}\n\nfn main() {\n    let made = show(\"  abcde \");\n    check(\"n\", n_is(), &made[0]);\n    check(\"wrapped\", wrapped_is(), &made[1]);\n    check(\"signed\", signed_is(), &made[2]);\n    check(\"raw\", raw_is(), &made[3]);\n    check(\"cooked\", cooked_is(), &made[4]);\n    check(\"half\", half_is(), &made[5]);\n    check(\"next\", next_is(), &made[6]);\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "// Read this program without running it. Then replace each `todo!()` below with the text\n// that `show` makes for that variable (what `to_string()` gives).\n\nfn show(input: &str) -> Vec<String> {\n    let n = input.trim().len();\n    let n = n as f64 / 4.0;\n    let big = 1_000;\n    let wrapped = big as u8;\n    let byte = 0xff_u8;\n    let signed = byte as i8;\n    let raw = r\"\\n\".len();\n    let cooked = \"\\n\".len();\n    let half = \"7\".parse::<i32>().unwrap() / 2;\n    let next = (b'a' + 1) as char;\n    vec![\n        n.to_string(),\n        wrapped.to_string(),\n        signed.to_string(),\n        raw.to_string(),\n        cooked.to_string(),\n        half.to_string(),\n        next.to_string(),\n    ]\n}\n\n// What `show(\"  abcde \")` makes, in that order:\n/// Hint: how long is `input` once `trim()` drops the spaces, and what does the second `let n` make of it?\nfn n_is() -> &'static str {\n    \"1.25\"\n}\n\n/// Hint: `as u8` keeps only the low 8 bits, which is the value modulo 256\nfn wrapped_is() -> &'static str {\n    \"232\"\n}\n\n/// Hint: `0xff` has all eight bits set; read as an `i8` (the top bit is the sign), what number is that?\nfn signed_is() -> &'static str {\n    \"-1\"\n}\n\n/// Hint: a raw string processes no escapes, so count the characters\nfn raw_is() -> &'static str {\n    \"2\"\n}\n\n/// Hint: in an ordinary string, how many characters is the escape for a newline?\nfn cooked_is() -> &'static str {\n    \"1\"\n}\n\n/// Hint: `parse::<i32>()` makes an integer, and integer `/` drops the fraction (7 / 2 is not 3.5)\nfn half_is() -> &'static str {\n    \"3\"\n}\n\n/// Hint: `b'a'` is a number; `as char` turns the sum back into a character\nfn next_is() -> &'static str {\n    \"b\"\n}\n\nfn check(variable: &str, said: &str, truth: &str) {\n    assert!(said == truth, \"misread `{variable}`: you said {said:?}\");\n    println!(\"ok: {variable} is {said:?}\");\n}\n\nfn main() {\n    let made = show(\"  abcde \");\n    check(\"n\", n_is(), &made[0]);\n    check(\"wrapped\", wrapped_is(), &made[1]);\n    check(\"signed\", signed_is(), &made[2]);\n    check(\"raw\", raw_is(), &made[3]);\n    check(\"cooked\", cooked_is(), &made[4]);\n    check(\"half\", half_is(), &made[5]);\n    check(\"next\", next_is(), &made[6]);\n    println!(\"all checks passed\");\n}\n",
+    "out": "ok: n is \"1.25\"\nok: wrapped is \"232\"\nok: signed is \"-1\"\nok: raw is \"2\"\nok: cooked is \"1\"\nok: half is \"3\"\nok: next is \"b\"\nall checks passed\n"
+   }
+  },
+  "rgb": {
+   "starter": "/// Split a colour written as 0xRRGGBB into its (red, green, blue) bytes.\nfn rgb(colour: u32) -> (u8, u8, u8) {\n    todo!(\n        \"shift the colour right to bring a byte to the bottom, then `as u8` keeps only the low 8 bits\"\n    )\n}\n\nfn main() {\n    assert_eq!(rgb(0xff8800), (255, 136, 0));\n    assert_eq!(rgb(0x000000), (0, 0, 0));\n    assert_eq!(rgb(0x123456), (0x12, 0x34, 0x56));\n    // The case to watch: a stray top byte (alpha) must not leak into the result.\n    assert_eq!(rgb(0xff_12_34_56), (0x12, 0x34, 0x56));\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "/// Split a colour written as 0xRRGGBB into its (red, green, blue) bytes.\nfn rgb(colour: u32) -> (u8, u8, u8) {\n    // `as u8` throws away every bit above the lowest 8, so the stray top byte disappears.\n    ((colour >> 16) as u8, (colour >> 8) as u8, colour as u8)\n}\n\nfn main() {\n    assert_eq!(rgb(0xff8800), (255, 136, 0));\n    assert_eq!(rgb(0x000000), (0, 0, 0));\n    assert_eq!(rgb(0x123456), (0x12, 0x34, 0x56));\n    // The case to watch: a stray top byte (alpha) must not leak into the result.\n    assert_eq!(rgb(0xff_12_34_56), (0x12, 0x34, 0x56));\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "without-ends": {
+   "starter": "/// Everything except the first and last item. A slice with fewer than 2 items has none left.\nfn without_ends(items: &[i32]) -> &[i32] {\n    todo!(\"a range like `1..items.len() - 1` builds the slice; check the length first\")\n}\n\nfn main() {\n    assert_eq!(without_ends(&[1, 2, 3, 4]), [2, 3]);\n    assert_eq!(without_ends(&[1, 2, 3]), [2]);\n    assert_eq!(without_ends(&[1, 2]), []);\n    assert_eq!(without_ends(&[1]), []);\n    // The case to watch: `0 - 1` on an unsigned length panics.\n    assert_eq!(without_ends(&[]), []);\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "/// Everything except the first and last item. A slice with fewer than 2 items has none left.\nfn without_ends(items: &[i32]) -> &[i32] {\n    if items.len() < 2 {\n        return &[];\n    }\n    &items[1..items.len() - 1]\n}\n\nfn main() {\n    assert_eq!(without_ends(&[1, 2, 3, 4]), [2, 3]);\n    assert_eq!(without_ends(&[1, 2, 3]), [2]);\n    assert_eq!(without_ends(&[1, 2]), []);\n    assert_eq!(without_ends(&[1]), []);\n    // The case to watch: `0 - 1` on an unsigned length panics.\n    assert_eq!(without_ends(&[]), []);\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}

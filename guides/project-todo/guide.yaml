@@ -1,0 +1,92 @@
+# Project: a todo CLI
+#
+# rust/     the finished crate (lib.rs + store.rs + main.rs + tests/cli.rs)
+# stage1/   lib.rs as it is after step 1 (the same file without `mod store;`), swapped in for that session
+name: todo
+sessions:
+  # Step 1: the model alone, tested without a file or a command line.
+  model:
+    dir: rust
+    overlay:
+      src/lib.rs: stage1/lib.rs
+    steps:
+      - cmd: cargo test --lib -- --test-threads=1 2>&1 | grep -E '^(     Running|   Doc-tests)|^test |test result' | sed -E 's/finished in [0-9.]+s/finished in X.XXs/; s/-[0-9a-f]{16}\)/-HASH)/'
+        show: '$ cargo test --lib    # timings replaced by X.XXs, build hash by HASH'
+        raw: true
+  # Step 2: storage added; all unit tests.
+  store:
+    dir: rust
+    steps:
+      - cmd: cargo test --lib -- --test-threads=1 2>&1 | grep -E '^(     Running|   Doc-tests)|^test |test result' | sed -E 's/finished in [0-9.]+s/finished in X.XXs/; s/-[0-9a-f]{16}\)/-HASH)/'
+        show: '$ cargo test --lib    # timings replaced by X.XXs, build hash by HASH'
+        raw: true
+  # Step 3: the command line, used for real. Each step is a new process reading the file the last one wrote.
+  run:
+    dir: rust
+    steps:
+      - cmd: cargo run -- list
+      - cmd: cargo run -- add "write the page" -p 1
+      - cmd: cargo run -- add "run the tests"
+      - cmd: cargo run -- done 1
+      - cmd: cargo run -- list
+      - cmd: cargo run -- list --open
+      - cmd: cargo run -- list --file todo.json
+      - cmd: cat todo.json
+      - cmd: cargo run -- --help
+      - cmd: cargo run -- add --help
+  # Step 4: things that go wrong, and what the user sees.
+  errors:
+    dir: rust
+    steps:
+      - cmd: cargo run -- done 9
+        expect: fail
+      - cmd: cargo run -- add "x" -p 5
+        expect: fail
+      - cmd: echo '{oops' > bad.json
+      - cmd: cargo run -- --file bad.json list
+        expect: fail
+      - cmd: cargo run -- add
+        expect: fail
+  # Step 5: the integration tests run the real binary.
+  test:
+    dir: rust
+    steps:
+      - cmd: cargo test -- --test-threads=1 2>&1 | grep -E '^(     Running|   Doc-tests)|^test |test result' | sed -E 's/finished in [0-9.]+s/finished in X.XXs/; s/-[0-9a-f]{16}\)/-HASH)/'
+        show: '$ cargo test    # one test thread so the order is stable; timings replaced by X.XXs, build hash by HASH'
+        raw: true
+      # The tests do not need --test-threads=1; five runs with the default (parallel) setting.
+      - cmd: |-
+          for i in 1 2 3 4 5; do cargo test --test cli 2>&1 | grep -oE 'test result: [a-zA-Z]+\. [0-9]+ passed; [0-9]+ failed'; done
+        show: '$ for i in 1 2 3 4 5; do cargo test --test cli; done    # default thread count; only the result lines'
+  # A bug in main.rs that the unit tests cannot see: `done` forgets to save.
+  break:
+    dir: rust
+    steps:
+      - cmd: sed -i '/Command::Done/{n;n;d;}' src/main.rs && grep -n -A3 'Command::Done {' src/main.rs
+        show: "$ sed -i '/Command::Done/{n;n;d;}' src/main.rs    # delete the save call in the Done arm"
+      - cmd: cargo test --lib -- --test-threads=1 2>&1 | grep 'test result' | sed -E 's/finished in [0-9.]+s/finished in X.XXs/'
+        show: '$ cargo test --lib    # timings replaced by X.XXs'
+      - cmd: |-
+          cargo test --test cli -- --test-threads=1 > out.txt 2>&1; status=$?; grep -vE '^ +(Compiling|Finished)' out.txt | sed -E "s/finished in [0-9.]+s/finished in X.XXs/; s/-[0-9a-f]{16}\)/-HASH)/; s/\([0-9]+\) panicked/(N) panicked/"; exit $status
+        show: '$ cargo test --test cli    # one test thread; timings, build hash and thread id masked'
+        raw: true
+        expect: fail
+  # A limit: the file is trusted. A hand-edited next_id gives a repeated id.
+  limits:
+    dir: rust
+    steps:
+      - cmd: cargo run -- add "first"
+      - cmd: cargo run -- add "second"
+      - cmd: |-
+          sed -i 's/"next_id": 2/"next_id": 0/' todo.json
+        show: "$ sed -i 's/\"next_id\": 2/\"next_id\": 0/' todo.json    # edit the file by hand"
+      - cmd: cargo run -- add "third"
+      - cmd: cargo run -- list
+      - cmd: echo '{"next_id":1,"tasks":[{"id":1,"text":"","priority":9,"done":false}]}' > odd.json
+      - cmd: cargo run -- --file odd.json list
+  # Formatting and lints, as the first-project page does.
+  lint:
+    dir: rust
+    steps:
+      - cmd: cargo fmt --check
+      - cmd: cargo clippy --all-targets

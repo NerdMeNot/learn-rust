@@ -1,0 +1,5 @@
+{
+  "name": "wordstat-workspace",
+  "private": true,
+  "workspaces": ["packages/*"]
+}

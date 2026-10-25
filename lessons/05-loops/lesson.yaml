@@ -1,0 +1,98 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Loops"
+part: "basics"
+intro: >-
+  Rust has three loops: `for` over a range or collection, `while`, and `loop` (forever,
+  until `break`).
+coming_from:
+  go: >-
+    `for i in 1..4` counts 1, 2, 3 like `for i := 1; i < 4; i++`, `while n > 0` is `for
+    n > 0`, and `loop` is `for {}`. There is no three-part `for` and no `n++`, but
+    `break` can hand back a value from a `loop`.
+  kotlin: >-
+    Watch the ranges: Rust's `1..4` stops before 4 like Kotlin's `1 until 4`, and Rust's
+    `1..=4` is Kotlin's `1..4`. There is no `n++` (write `n += 1`), and `loop` is `while
+    (true)` where `break` can give back a value.
+  python: >-
+    `for i in 1..4` is `for i in range(1, 4)` and `loop` is `while True`. The one new
+    thing is that `break tries * 10` can hand a value back out of a `loop`.
+  typescript: >-
+    Rust has no C-style `for (let i = 1; i < 4; i++)` and no `++`. You loop over a range
+    instead (`for i in 1..4`), and `loop` is `while (true)` where `break` can hand back
+    a value.
+  java: >-
+    `for i in 1..4` is `for (int i = 1; i < 4; i++)`; Rust has no C-style three-part
+    `for` and no `++`, so you write `n += 1`. `loop` is `while (true)`, except `break`
+    can hand back a value.
+  csharp: >-
+    `for i in 1..4` is like `foreach (var i in Enumerable.Range(1, 3))`, except that
+    `1..4` gives start and end (4 excluded) where `Range` gives start and count. Rust has
+    no three-part `for` or `++`. `loop` is `while (true)` where `break value` returns a
+    result, so the result can be an ordinary `let` instead of a variable set inside the loop.
+  c: >-
+    Rust has no three-part `for (init; test; step)`: you loop over a range like `1..4`
+    instead, and `n++` is gone, so write `n += 1`. `loop` is `for (;;)`, and `break` can
+    carry a value out of it.
+  cpp: >-
+    `for i in 1..4` is a range-based `for` over a half-open range, like `for (int i :
+    std::views::iota(1, 4))` in C++20, and there is no classic three-part `for` or `++`.
+    `loop` is `while (true)` with a `break` that returns a value, so you don't need the
+    lambda trick.
+notes:
+  - "`1..4` is 1, 2, 3: the end is left out. `1..=4` includes the 4."
+  - "There is no C-style `for i := 0; i < n; i++`. Use `for i in 0..n`."
+  - "`(0..10).rev()` counts down. `(0..10).step_by(2)` skips. A range that starts above its end, like `4..0`, is empty: it does not count down."
+faq:
+  - q: "Can a `for` loop give back a value with `break value`, like `loop` does?"
+    a: |-
+      No. Only `loop` can hand back a value with `break value`. A `for` or `while` loop has the value `()`, and the compiler stops you if you write `break value` in one.
+
+      The reason: a `for` loop can finish without ever reaching `break`, for example on an empty list. Then there would be no value to assign. A `loop` can only end through `break`, so a value always comes out.
+
+      In practice you rarely need either. When you want a value from a loop, use an iterator method. Each one is an expression and says what you mean:
+
+      - `find`: the first item that matches. It returns an [Option](/learn/option/), because there might be none.
+      - `position`: the index of the first match, also an Option.
+      - `sum`, `count`, `max`, `any`, `all`: one value from the list.
+      - `map(...).collect()`: a new list.
+gotcha:
+  title: "Using n++"
+  verdict: "rust-rule"
+  looks_fine: "`n++` is normal in most languages you know."
+  rust_sees: "Rust has no `++` or `--`. Write `n += 1`."
+  why: >-
+    Rust has no `++` or `--`; `+= 1` is the one way to add one. `++` inside other
+    expressions (like `a[i++] = i`) is a classic source of confusion about what happens
+    first. Go keeps `n++` but only as a statement; Rust drops it.
+  langs:
+    go:
+      status: "runs"
+      says: >-
+        Go runs this and prints 1. `n++` is fine in Go as a statement on its own.
+    kotlin:
+      status: "runs"
+      says: >-
+        Kotlin runs this and prints 1. In Rust you write the same thing as `n += 1`.
+    python:
+      status: "wrong"
+      says: >-
+        `n++` is a syntax error in Python, but `++n` runs and prints 0. It is read as
+        two unary pluses, so `n` never changes.
+    typescript:
+      status: "runs"
+      says: >-
+        Prints 1. `n++` is normal TypeScript; Rust has no `++` and wants `n += 1`.
+    java:
+      status: "runs"
+      says: >-
+        Java has `++`, so this prints 1. Rust has no `++`; write `n += 1` instead.
+    csharp:
+      status: "runs"
+      says: >-
+        `n++` is everyday C# and prints 1. Rust has no `++` and asks for `n += 1`.
+    c:
+      status: "runs"
+      says: "C has `n++`, so this prints 1. In Rust you write `n += 1`."
+    cpp:
+      status: "runs"
+      says: "C++ has `++`, so this prints 1. In Rust you write `n += 1`."

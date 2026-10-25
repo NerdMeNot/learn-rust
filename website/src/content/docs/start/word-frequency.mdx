@@ -1,0 +1,348 @@
+---
+title: "Build a word counter"
+description: "Write a real command-line program in nine steps: read a file, count words with a HashMap, sort them, report errors with proper exit codes, and test it. The ownership decisions that shape the design are called out as they come up."
+---
+
+import { Files, Remember, Session, Tree } from '../../../components/guide'
+
+This page builds one small program from an empty folder: `wordcount`, a command-line tool that reads a text file, counts how often each word appears, and prints the most common ones. It uses most of the Ownership and Data parts of the course: ownership, borrowing, structs, enums, `Option`, `Result`, `String` and `&str`, `Vec` and `HashMap`.
+
+Where one of those ideas decides how the code is written, a short note says which way it went and why, and links the lesson. The page does not re-teach the lessons.
+
+<Remember>A `&`, a `String`, a `clone` and a `move` are each a decision. This page says which one was made, and why, wherever it shapes the design.</Remember>
+
+**To follow along**, run `cargo new wordcount` and copy each file into it as it appears (every code panel has a Copy button). Every file is shown in full, so there is nothing to download. Two small text files, below, go next to `Cargo.toml`. Every output is a real run in the course's pinned image (Linux, Rust 1.99.1).
+
+## What we are building
+
+```text
+wordcount [FILE] [--top N]
+```
+
+- It reads `FILE`, or standard input when there is no file (or the file is `-`).
+- A word is a run of letters and apostrophes. Case is ignored: `The` and `the` are one word.
+- It prints the number of words, the number of distinct words, then the `N` most common ones (10 by default). Words with the same count come out in code point order, which for English is alphabetical order.
+- On failure it prints a message on standard error and exits with a non-zero **exit code**, the number a program hands back to the shell. 0 means success.
+
+We use only the standard library. Real tools use the `clap` crate for arguments ([the clap page](/build/clap/)), but a generated parser would hide the `String`s and `Option`s this page is about. Save this as `sample.txt`:
+
+<Files guide="word-frequency" dir="rust" files={["sample.txt"]} />
+
+Several things here have a close cousin in the language you know. This table is the map; the notes do not repeat it.
+
+| In this program | Java | Go | Python | C++ |
+| --- | --- | --- | --- | --- |
+| `*counts.entry(k).or_insert(0) += 1` | `map.merge(k, 1, Integer::sum)` | `m[k]++` (a missing key reads as 0) | `Counter`, `defaultdict(int)` | `++m[k]` (`[]` inserts a default) |
+| `sort_by(...)` with `then_with(...)` | `Comparator.comparing(...).thenComparing(...)` | `sort.Slice` with an `if` for ties | `sorted(key=(-n, w))` | `std::sort` with a lambda |
+| `?` after a call that can fail | an exception propagating, as with `throws` | `if err != nil { return err }` | an exception propagating | an exception, or an error code |
+| `&str` | a `String` object, shared by reference | a string: pointer and length | `str` | `std::string_view`: pointer and length |
+| `.clone()` | not needed: assigning a `String` copies a reference | assigning a string copies its small header | not needed | the copy constructor, run silently on pass by value |
+| using `counts` after `top_n(counts, n)` took it | no such error: both names share the map | no such error | no such error | `std::move`, and the moved-from object is still readable |
+
+## Step 1: read a file
+
+<Session guide="word-frequency" run="new" />
+
+Replace `src/main.rs` with this. `Cargo.toml` stays as it is, with no dependencies.
+
+<Files guide="word-frequency" dir="step1" files={["src/main.rs"]} run="step1" />
+
+`env::args()` gives the command line, one `String` per argument. The first is traditionally the program's own name, so `.nth(1)` skips it and returns an `Option<String>`, `None` if no file was given. `.expect(...)` stops the program with its message on `None` ([Option](/learn/option/)). `fs::read_to_string` returns a `Result<String, io::Error>`, and `?` means "if this failed, return the error from `main` now" ([Errors](/learn/errors/)). That works because `main` itself returns a `Result`, much as a Java method declares `throws IOException`, except that here it is in the return type.
+
+:::note[Why this borrows, and why this moves]
+`path` owns its text: `env::args()` hands out owned `String`s. `read_to_string(&path)` **borrows** it, because the function only needs to look, and we want `path` again in the `println!`. Writing `read_to_string(path)` would **move** the `String` into the call, and the later use would not compile ([Ownership](/learn/ownership/), [Borrowing](/learn/borrowing/)).
+
+`text` is a `String` returned by value: `read_to_string` allocated it and handed us ownership. Everything after this borrows from `text` ([Strings](/learn/strings/)).
+:::
+
+The two failing runs show a program with no real error handling. A missing file prints the error's `Debug` form, which is meant for programmers, and never names the file. Forgetting the argument is a panic. Steps 6 to 8 fix both.
+
+## Step 2: split the text into words
+
+A new file, `src/words.rs`, plus `mod words;` in `main.rs` so Rust knows the file exists ([modules](/start/files-and-modules/)). `pub` makes the function visible outside its file; private is the default, so `pub` is Rust's capital letter.
+
+<Files guide="word-frequency" dir="rust" files={["src/words.rs"]} />
+
+<Files guide="word-frequency" dir="step2" files={["src/main.rs"]} run="step2" />
+
+`text.split(...)` cuts the text wherever the closure says "this `char` is a separator". A **closure** is a small unnamed function written inline ([Closures](/learn/closures/)). Ours says: anything that is not a letter or an apostrophe separates words. `trim_matches('\'')` removes apostrophes from the ends, so `'quoted'` becomes `quoted` while `don't` keeps its own.
+
+:::note[Why this borrows]
+A `&str` is a pointer and a length into text that someone else owns, like C++'s `string_view` or a Go string. `words` borrows `text` and returns `Vec<&str>`: slices of the text, so no word is copied. Returning `Vec<String>` would allocate once per word, and step 3 will build new `String`s anyway.
+:::
+
+Unlike `string_view`, these slices cannot dangle. The compiler gives every reference a **lifetime**: how long the thing it points at stays alive. With one reference parameter, the references in the result get that parameter's lifetime ([Returning references](/learn/returning-references/)). So this does not compile:
+
+<Files guide="word-frequency" dir="fail-dangling" files={["src/main.rs"]} />
+
+<Session guide="word-frequency" run="dangling" />
+
+The equivalent C++ with a `vector<string_view>` compiles, and reads freed memory.
+
+<details>
+<summary>Optional: what counts as a letter, and where this breaks</summary>
+
+`char::is_alphabetic` decides what is a word, so look at what it says. This side program (not part of `wordcount`) runs it on some characters, and `words` on some strings:
+
+<Files guide="word-frequency" dir="limits" files={["src/main.rs"]} run="limits" />
+
+- Precomposed letters in Latin, Cyrillic and Greek count, and so do Han characters: `é`, `ß`, `你`. So does the Roman numeral `Ⅳ`, which may surprise you: Rust tests Unicode's Alphabetic property, and that includes it.
+- Digits do not count, so `3rd` becomes `rd`. Hyphens split words: `state-of-the-art` is four.
+- A typographic apostrophe (U+2019, which many word processors produce) is not the ASCII `'`, so `don’t` becomes `don` and `t`.
+- A combining accent is a separate, non-alphabetic character. `café` typed as `e` plus U+0301 loses its accent. Scripts whose words contain combining marks break the same way: the Hindi and Thai words above are split inside.
+- Chinese is written without spaces, so `你好世界` is one "word" here. Splitting it properly needs a dictionary or a library.
+- `to_lowercase` follows Unicode but not any language's rules. `Straße` becomes `straße` and `STRASSE` becomes `strasse`, so they count as two words. `ISTANBUL` becomes `istanbul`, which is wrong in Turkish, and `İ` (U+0130) lowercases to two characters. Greek is fine: the final sigma in `ΟΔΥΣΣΕΥΣ` came out right.
+
+In short: the program is reasonable for English and for text in precomposed Latin, Cyrillic and Greek. For anything else it needs more than the standard library, and should say so.
+
+</details>
+
+## Step 3: count the words
+
+We want a map from word to count. `words` gives `&str`, so the first thing most people try is a map keyed by those: `HashMap<&str, usize>`. Each word is also lowercased so that `The` and `the` match, and `to_lowercase()` returns a new `String`. `counts.entry(key)` looks the key up once and gives a handle to its slot. `.or_insert(0)` fills the slot with 0 if the word is new and returns a `&mut usize`, and `*... += 1` adds one through it ([Maps](/learn/maps/#the-entry-api-look-up-once-then-decide)). Here is the first try:
+
+<Files guide="word-frequency" dir="fail-borrowed" files={["src/count.rs"]} />
+
+<Session guide="word-frequency" run="fail-borrowed" />
+
+`lower` is created in each pass through the loop and dropped at the end of it, and the map would keep pointing at the freed text. The compiler reports it where the map leaves the function (E0515). This is the C++ `unordered_map<string_view, ...>` over a temporary string, caught at compile time. A `&str` key works only when the text it points into outlives the map.
+
+<details>
+<summary>The same loop in a function that does not return the map</summary>
+
+Count the distinct words and return only a number, and the same mistake is reported at the borrow itself (E0597, "does not live long enough"):
+
+<Files guide="word-frequency" dir="fail-local" files={["src/count.rs"]} />
+
+<Session guide="word-frequency" run="fail-local" />
+
+</details>
+
+The fix is to let the map own its keys: `HashMap<String, usize>`. Because the function returns the map, the caller owns it and it no longer depends on `text`. (`HashMap::new()` needs no type written: it comes from the return type.)
+
+<Files guide="word-frequency" dir="step3" files={["src/count.rs", "src/main.rs"]} run="step3" />
+
+In `main`, `counts.get("the")` accepts a `&str` although the keys are `String`s: a map may be asked with any borrowed form of its key, which C++ calls heterogeneous lookup. It returns `Option<&usize>`, a reference to the number inside the map; `.copied()` copies the number out and `unwrap_or(0)` supplies 0 for a missing word.
+
+:::note[Why the key is a new String]
+There is no `clone` call, but there is one allocation per word: `word.to_lowercase()` builds a new `String`, and `entry` takes it **by value**. It **moves** into the map if the word is new and is dropped if the word was already there ([Maps](/learn/maps/#the-map-owns-its-keys-and-values)). `count_words` only reads `text`, so it **borrows** it.
+:::
+
+### Two more errors
+
+**Using a String after it moved into the map.** A debug print after the insert is all it takes:
+
+<Files guide="word-frequency" dir="fail-moved" files={["src/count.rs"]} />
+
+<Session guide="word-frequency" run="fail-moved" />
+
+This is the least natural error here if you come from Java or Python, where a variable and a map share one string and both stay usable. In Rust the map took the `String`, so there is one owner. (C++ lets you read a moved-from string; Rust refuses. [Ownership](/learn/ownership/#moves).) The `help:` offers `.clone()`, which would copy every word just for a print. Better: delete the print, or run it before the move.
+
+**Holding a reference into the map while changing it.** Say you want to print the old count as you go:
+
+<Files guide="word-frequency" dir="fail-held" files={["src/count.rs"]} />
+
+<Session guide="word-frequency" run="fail-held" />
+
+`counts.get(&lower)` returns a reference into the map, kept in `before`. The `println!` after the insert still uses it, so the map is borrowed while `insert` needs to change it: many readers or one writer, never both ([Mutable borrows](/learn/mutable-borrows/)). The error is about holding the reference, not about calling `get` and then `insert`. Copy the number out first and it compiles:
+
+<Files guide="word-frequency" dir="ok-get" files={["src/count.rs"]} run="ok-get" />
+
+It looks the key up twice, where `entry` looks once. C++'s `unordered_map` happens to keep references to its elements valid across inserts; Rust's `HashMap` may move its entries when it grows, so a reference into it must not be held across a change.
+
+<details>
+<summary>Optional: what the String keys cost, measured</summary>
+
+Every word allocates a `String`, and a word seen a thousand times drops 999 of them. Does that matter? This side program counts allocations by wrapping the system allocator in a counter. (`GlobalAlloc` is an `unsafe` trait because a broken allocator can break memory safety. This one forwards `alloc`, `dealloc` and `realloc` to the real allocator and counts the calls to `alloc` and `realloc`. You can skip reading it.) It builds the same map four ways from the sample repeated 1,000 times:
+
+<Files guide="word-frequency" dir="alloc" files={["src/main.rs"]} run="alloc" />
+
+| Variant | What it does |
+| --- | --- |
+| A | what `count_words` does: a new lowercase `String` per word |
+| B | lowercase the whole text once, keep `&str` keys pointing into that copy |
+| C | owned keys, cloned for every word |
+| D | owned keys, cloned only when the word is new (`get_mut`, then `insert`) |
+
+The output is from a debug build. A and C allocate about once per word, B a handful of times in all, D about once per distinct word. The `realloc` column is the `Vec` of words and the map growing, the same for every variant. The program checks that all four built identical maps. We counted allocations and timed nothing: A allocates more, which does not mean it is slower.
+
+D keeps owned keys and is a small change. B removes almost everything, but the lowercase copy must outlive the map, which is the first error again: the function could no longer return the map on its own. We keep A, the simplest correct version.
+
+</details>
+
+## Step 4: sort, and the tie problem
+
+A `HashMap` has no order, so we copy the pairs into a `Vec` and sort that. Add `top_n` to `count.rs`:
+
+<Files guide="word-frequency" dir="step4" files={["src/count.rs", "src/main.rs"]} run="step4" />
+
+`counts.into_iter().collect()` turns the map into a `Vec<(String, usize)>`, a list of (word, count) pairs ([Iterators](/learn/iterators/), [Tuples](/learn/tuples/)). `sort_by` takes a closure that compares two entries, each a reference to a pair. `b.1.cmp(&a.1)` compares the counts (`cmp` borrows both sides) with `b` first, so bigger counts sort first. If they are equal, `then_with` compares the words. A `String` compares by code point, so `zoo` comes before `école`, and Latin before Cyrillic before Han. `truncate(n)` drops everything after the first `n`.
+
+:::note[Why this moves]
+`top_n` takes the map **by value**, and `into_iter()` moves each pair out of it, so no word is cloned: the `Vec` owns the same heap text the map did. The price is that the caller cannot use `counts` afterwards, which is why `main` reads the total and the distinct count **before** the call. To keep the map you would borrow it and sort a `Vec<(&String, &usize)>`. That copies nothing either, but the `Vec` could then not outlive the map ([Borrowing](/learn/borrowing/)).
+:::
+
+### Why the second comparison matters
+
+Here is the same program comparing only the counts. `sort_by` is **stable**: equal items keep the order they arrived in, and they arrive from a `HashMap` whose seed is random ([Maps](/learn/maps/#the-order-is-not-yours-to-rely-on)). Two runs on the same file:
+
+<Session guide="word-frequency" run="unstable" only={[1, 2]} />
+
+The top three are fixed, but the seven words tied at 2 (places four to ten) come out in a different order each time, and with `--top 5` it would be a different set. A Python dict remembers insertion order, so its ties would repeat; Go's maps are random like Rust's and `sort.Slice` is not stable, so Go needs the second key too. With the tie-break the result depends only on the input, which also makes it testable in step 9.
+
+## Step 5: print aligned columns
+
+<Files guide="word-frequency" dir="rust" files={["src/report.rs"]} />
+
+<Files guide="word-frequency" dir="step5" files={["src/main.rs"]} />
+
+The format `{:>3}  {word:<width$}  {count:>5}` right-aligns the rank in 3 columns, left-aligns the word in `width` columns, and right-aligns the count in 5. `width` counts characters (`chars().count()`), not bytes (`len()`), or `café` would count as five ([Strings](/learn/strings/)).
+
+:::note[Why this borrows]
+`print` takes `&[(String, usize)]`, a read-only view of the rows. It only prints, so it needs no ownership. The caller passes `&top`, and the `&Vec` converts to the slice by itself ([Vectors](/learn/vectors/)).
+:::
+
+To see more than English, save this as `mixed.txt` and run `cargo run -- mixed.txt`:
+
+<Files guide="word-frequency" dir="rust" files={["mixed.txt"]} run="step5" />
+
+`Café`, `café` and `CAFÉ` become one word through lowercasing, and `straße` and `strasse` stay separate (see the optional box in step 2). Padding counts characters, but many terminals draw Chinese characters two columns wide, so the `你好世界` row looks out of line.
+
+## Step 6: errors as a type
+
+Step 1 showed a bare `io::Error`: no file name, and not written for users. We want errors in our program's own terms. There are two kinds of failure, and they carry different data, which is what an **enum** is for ([Enums](/learn/enums/)): a message for a wrong command line, and the input's name plus the `io::Error` for an unreadable input. Create `src/error.rs`:
+
+<Files guide="word-frequency" dir="rust" files={["src/error.rs"]} />
+
+- `exit_code` is a method ([Methods](/learn/methods/)) with a `match` that must cover both variants. It returns `u8` because an exit code is a number from 0 to 255, which is exactly what a `u8` holds. We use 0 for success, 1 for unreadable input and 2 for a wrong command line. That is a convention (many tools use 2 for bad usage), not a Rust rule.
+- `impl fmt::Display` says how `{err}` prints. `Display` is Rust's `toString` for people; `Debug`, used by `{:?}`, is the form for programmers that step 1 printed. A **trait** is a set of methods a type can promise to have; the [Traits](/learn/traits/) lesson comes later.
+- `CliError` does not implement `std::error::Error`, the trait that lets errors be boxed and chained. Nothing in this program needs that. A library would; [Errors in real apps](/build/app-errors/) shows how.
+
+:::note[Why this owns]
+`CliError::Read` holds a `String` and an `io::Error`, not references. The error leaves the function that made it and travels up to `main`, so it cannot borrow from a local ([Returning references](/learn/returning-references/)).
+:::
+
+## Step 7: reading the command line
+
+`src/args.rs` turns the arguments into a `Config`, a **struct** holding what the user asked for ([Structs](/learn/structs/)), or into a `CliError`:
+
+<Files guide="word-frequency" dir="rust" files={["src/args.rs"]} />
+
+- `parse_args` takes `impl Iterator<Item = String>`: "some type that hands out owned `String`s". The compiler builds the function for the exact type, as with a template, so there is no virtual call. `env::args().skip(1)` is one. (Step 1 used `nth(1)` to take one argument; here we need all of them after the program name.)
+- `while let Some(arg) = args.next()` loops until the arguments run out. After `--top` it takes the next argument, and `value.parse::<usize>()` returns a `Result`: `Ok(n)` for a number, `Err(e)` for text like `abc`. We also refuse 0.
+- `impl Into<String>` in `usage` accepts either a `&str` or a `String`.
+- Arm order matters: `_ if path.is_some()` comes before the arm that stores a path, so a second file is an error. `--top=5` is not supported; it would be one more arm.
+
+:::note[Why this moves]
+`match arg.as_str()` only **borrows** `arg` to compare it, so the last arm can `path = Some(arg)`, which **moves** the `String` into `path`. No argument is ever cloned.
+:::
+
+## Step 8: reading the input, and exit codes
+
+`src/input.rs` reads the file, or standard input when `path` is `None`:
+
+<Files guide="word-frequency" dir="rust" files={["src/input.rs"]} />
+
+`read_to_string` loads the whole input into memory, which is fine for text you can hold in RAM. It comes from the `Read` trait, hence `use std::io::Read`. `&mut text` lends the `String` out to be changed ([Mutable borrows](/learn/mutable-borrows/)).
+
+:::note[Why this clones, but only on failure]
+`main` will call `config.path.as_deref()`, which turns `&Option<String>` into `Option<&str>`: a **borrow**, not a copy. Inside `read_input`, `path.to_string()` **clones**, but it sits in a `map_err` closure that runs only when reading failed, so the success path never pays.
+:::
+
+Now `main`. First a decision: **how should `main` fail?**
+
+| Option | What happens | Verdict |
+| --- | --- | --- |
+| `fn main() -> Result<(), E>` | On `Err`, Rust prints `Error: ` and the error's `Debug` form, and exits with 1. Java's analogue is letting an exception escape `main`. | Debug text for programmers, and always code 1, so we could not use 2 for bad usage. |
+| `std::process::exit(code)` once, at the end of `main`, after `run()` returns | The Go habit, `os.Exit(run())`. | Works, and is close to what we do. It ends the process at once without running destructors (the `std` docs say so), as `std::exit` does in C++, and `System.exit` skips Java's `finally` blocks. A buffered writer or a lock file added later would not be cleaned up. |
+| `std::process::exit(code)` where the error happens | Ends the program on the spot. | Scatters the decisions about messages and codes through the program. |
+| `fn main() -> ExitCode` calling `run() -> Result<(), CliError>` | `run` uses `?`. One `match` in `main` prints the message and picks the code. | **This one.** `main` returns normally, so destructors run, and one place decides what the user sees. |
+
+<Tree guide="word-frequency" dir="rust" name="wordcount" notes={{"src/main.rs":"run() and main()","src/words.rs":"splitting text","src/count.rs":"counting and ranking (and tests)","src/report.rs":"the aligned output","src/error.rs":"CliError","src/args.rs":"Config and parse_args","src/input.rs":"read_input","sample.txt":"the file we count","mixed.txt":"accents, Cyrillic, Chinese"}} />
+
+<Files guide="word-frequency" dir="rust" files={["src/main.rs"]} />
+
+`matches!(err, CliError::Usage(_))` asks "is this the `Usage` variant?" without taking the error apart, so `err` is still there for `err.exit_code()`. From here we run `./target/debug/wordcount` directly, which makes the exit code easy to show; these terminals merge standard error and standard output. First the success cases: a file, then a pipe.
+
+<Session guide="word-frequency" run="cli" only={[0, 1, 2]} />
+
+With no file and nothing piped, the program waits for you to type; Ctrl-D ends the input. Now the errors the program checks for, each followed by the exit code:
+
+<Session guide="word-frequency" run="cli" only={[3, 4, 5, 6, 7, 8, 9, 10, 11]} />
+
+The file errors name the file, and the operating system's reason comes from the `io::Error`. `src` is a directory, and `latin1.txt` holds a byte that is not valid UTF-8, so `read_to_string` refuses the whole file instead of guessing.
+
+Two things still panic, with exit code 101, because they are not checked. `env::args()` panics on an argument that is not valid Unicode (`args_os()` does not, and a tool that must accept any file name should use it). And `println!` panics when standard output fails, shown here with `/dev/full`, a device that rejects every write:
+
+<Session guide="word-frequency" run="cli" only={[12, 13]} />
+
+## Step 9: test the pure part
+
+`count_words` and `top_n` are worth testing alone: text in, numbers out, no files, no terminal. A function like that, with no side effects, is called **pure**, and it is easy to test. The finished `count.rs`, with the tests at the bottom:
+
+<Files guide="word-frequency" dir="rust" files={["src/count.rs"]} run="test" />
+
+`#[cfg(test)]` means "compile this module only for `cargo test`". `use super::*;` brings the parent's names in. A `#[test]` function passes unless it panics, and `assert_eq!` panics when its two sides differ. There is no test framework to install; the standard library has one. `counts["the"]` panics if the key is missing, which is what you want in a test. Tests run on several threads, so the output order is not the file order. They cover case, punctuation, empty text, an apostrophe inside a word, accented letters, ties, and an accented word sorting after a plain one. More in [Testing](/build/testing/).
+
+## The same program in Python and Go
+
+We wrote the tool in Python and Go too and ran all of them in the same image. A Python programmer would not hand-roll an argument parser, so there are two Python files: a short one with `argparse` and `Counter`, and a long one with the same options, messages and exit codes as the Rust, for a fair comparison. We ran Python and Go because we had to pick two garbage-collected languages; Java, Kotlin and C# sit with them on the points below (managed memory, exceptions). C++ is the language whose decisions match Rust's; the table near the top is its comparison, and we did not run a C++ version.
+
+<Files guide="word-frequency" dir="compare" files={["wordcount_short.py", "wordcount.py", "main.go"]} />
+
+All four programs print the same bytes on the sample and on the mixed-script file:
+
+<Session guide="word-frequency" run="compare" only={[0, 1, 7, 8]} />
+
+Lines that are not blank and not comments, with the Rust tests left out:
+
+<Session guide="word-frequency" run="compare" only={[9]} />
+
+The short Python is the honest price list: Rust costs many more lines. What those lines buy is that every decision is written down. The short Python has no error handling of its own. `argparse` gives usage errors for free (as `clap` would in Rust), and a missing file is a traceback:
+
+<Session guide="word-frequency" run="compare" only={[10, 11]} />
+
+The messages for a missing file differ in wording across the three full programs (the exit codes match because we wrote them to). The `exit status 1` line in the Go output comes from `go run`:
+
+<Session guide="word-frequency" run="compare" only={[14, 15, 16]} />
+
+On a file that is not valid UTF-8, Rust refuses to read it, and so does Python (opened with `encoding="utf-8"`), by raising an exception that our program turns into a message. Go reads the bytes without checking: the bad byte is not a letter, so it ends the word `caf`, and the run succeeds.
+
+<Session guide="word-frequency" run="compare" only={[18, 19, 20]} />
+
+Each language also has its own idea of "a letter". Rust's `is_alphabetic` said `true` for `Ⅳ` in step 2. Python's `isalpha` and Go's `unicode.IsLetter` test letter categories instead of the Alphabetic property, and both say:
+
+<Session guide="word-frequency" run="compare" only={[12, 13]} />
+
+What Rust made us decide that the others did not:
+
+- **Who owns each word.** Where memory is managed for you, a map key is just a value you can keep. In Rust we chose `&str` for `words` and `String` for the keys, and the signatures say so.
+- **Borrow or consume.** `top_n` takes the map by value; `print` borrows the rows.
+- **What an error is.** We defined an enum and its exit codes. The Python and Go versions use exceptions and `error` values from the language, and did not force us to list the ways the program can fail.
+- **When a copy happens.** Every `to_string`, `to_lowercase` and `clone` is visible. We did not measure Python or Go.
+
+The step 3 errors are the other side of the trade. The others have no equivalent because the collector keeps keys alive. In Rust you may choose variant B, one shared buffer behind all the keys, and the compiler checks it.
+
+## What you used
+
+| Idea | Where it appeared | Lesson |
+| --- | --- | --- |
+| Owned `String` from a function | `read_to_string`, `to_lowercase` | [Ownership](/learn/ownership/), [Strings](/learn/strings/) |
+| `&str` and slices | `words`, `counts.get("the")` | [Strings](/learn/strings/), [Borrowing](/learn/borrowing/) |
+| Move into a function or a map | `entry(word.to_lowercase())`, `top_n(counts, n)`, `path = Some(arg)` | [Ownership](/learn/ownership/) |
+| `&` borrow | `&path`, `&text`, `&top` | [Borrowing](/learn/borrowing/) |
+| `&mut` borrow | `read_to_string(&mut text)`, `or_insert(0)` | [Mutable borrows](/learn/mutable-borrows/) |
+| Returning a borrow | `words(&str) -> Vec<&str>` | [Returning references](/learn/returning-references/) |
+| Struct, methods | `Config`, `CliError::exit_code` | [Structs](/learn/structs/), [Methods](/learn/methods/) |
+| Enum and `match` | `CliError`, `parse_args` | [Enums](/learn/enums/) |
+| `Option`, `Result` and `?` | `nth(1)`, `get`, `read_input`, `run` | [Option](/learn/option/), [Errors](/learn/errors/) |
+| `Vec`, `HashMap` and `entry` | the words, the rows, `count_words` | [Vectors](/learn/vectors/), [Maps](/learn/maps/) |
+| Closures and iterators | `split`, `sort_by`, `map_err`, `into_iter().collect()` | [Closures](/learn/closures/), [Iterators](/learn/iterators/) |
+| Modules and tests | `mod`, `pub`, `#[test]` | [Modules](/start/files-and-modules/), [Testing](/build/testing/) |
+
+## Where to next
+
+- The same tool with `clap`, `--help` and usage errors for free: [Command-line tools with clap](/build/clap/).
+- Errors that carry context without writing your own enum: [Errors in real apps](/build/app-errors/).
+
+<p class="lr-fine">Paths in Cargo's output are shown as /home/you. Allocation counts are from a debug build in the course's Docker image.</p>

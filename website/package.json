@@ -1,0 +1,23 @@
+{
+  "name": "learningrust-website",
+  "type": "module",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Learn Rust (even with all your past baggage) — learningrust.nerdmenot.in",
+  "scripts": {
+    "extract": "bun run scripts/extract.ts",
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check-links": "python3 scripts/check-links.py dist",
+    "deploy": "astro build && wrangler pages deploy dist --project-name=${CLOUDFLARE_PROJECT:-learningrust}"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.41.11",
+    "astro": "^7.3.2",
+    "marked": "^16.4.2"
+  },
+  "devDependencies": {
+    "wrangler": "^4.131.0"
+  }
+}

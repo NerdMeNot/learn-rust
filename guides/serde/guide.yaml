@@ -1,0 +1,150 @@
+# JSON with serde
+name: people-json
+sessions:
+  run:
+    dir: rust
+    steps:
+      - cmd: cargo run
+  go:
+    dir: go
+    steps:
+      - cmd: go run .
+  missing:
+    dir: rust
+    steps:
+      - cmd: cargo run --example missing
+  optional:
+    dir: rust
+    steps:
+      - cmd: cargo run --example optional
+  go-missing:
+    dir: gotcha-go
+    steps:
+      - cmd: go run main.go
+  # Short programs next to src/main.rs, run with `cargo run --example <name>`
+  lenient:
+    dir: rust
+    steps:
+      - cmd: cargo run --example lenient
+  strict:
+    dir: rust
+    steps:
+      - cmd: cargo run --example strict
+  shapes:
+    dir: rust
+    steps:
+      - cmd: cargo run --example shapes
+  untyped:
+    dir: rust
+    steps:
+      - cmd: cargo run --example untyped
+  # Try it 1: main.rs with rename_all changed to "snake_case"; the JSON still says fullName
+  snake:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-snake/src/main.rs
+    steps:
+      - cmd: cargo run
+        expect: fail
+  # Try it 2: examples/missing.rs with only the type changed (fails: Option has no Display),
+  # then with the {} for age changed to {:?}
+  missing-option:
+    dir: rust
+    steps:
+      - cmd: |-
+          sed -i 's/age: u32/age: Option<u32>/' examples/missing.rs && cargo run --example missing
+        show: "$ cargo run --example missing    # after changing only age: u32 to age: Option<u32>"
+        expect: fail
+      - cmd: |-
+          sed -i 's/{} is {}/{} is {:?}/' examples/missing.rs && cargo run --example missing
+        show: "$ cargo run --example missing    # after also changing the second {} to {:?}"
+  # Try it 3: strict.rs without deny_unknown_fields
+  strict-off:
+    dir: rust
+    overlay:
+      examples/strict.rs: snippet-strict-off/examples/strict.rs
+    steps:
+      - cmd: cargo run --example strict
+  # The same struct as TOML and CSV (a second project: it has its own dependencies)
+  formats:
+    dir: formats
+    steps:
+      - cmd: cargo run
+  # The gotcha's JSON ({ "fullName": "Cy" }, no age) in the other languages the image can run
+  py-missing:
+    dir: gotcha-python
+    steps:
+      - cmd: python3 main.py
+  ts-missing:
+    dir: gotcha-ts
+    steps:
+      - cmd: tsc --strict --module nodenext --types node main.ts && node main.js
+  cs-missing:
+    dir: gotcha-cs
+    steps:
+      - cmd: bash cs.sh main.cs
+        show: "$ dotnet run"
+
+gotcha:
+  kind: runtime
+  title: A field is missing from the JSON
+  verdict: different-result
+  looks_fine: >-
+    Loading `{ "fullName": "Cy" }` raises no error in Go, Python, TypeScript or C#
+    (the tabs show what each one does with the missing `age`).
+  rust_sees: >-
+    The struct says `age: u32`: always a number. The JSON has no age, so serde returns
+    an error that names the field instead of making a value up.
+  why: >-
+    A plain `int` field cannot tell a real 0 from a missing value afterwards. In Rust you
+    say what you mean: `Option<u32>` if it may be missing, or `#[serde(default)]` if 0 is
+    a fine answer. Other languages can ask for the same strictness (the C# tab shows
+    `required`); in serde it is what you get when you write nothing.
+  code: { file: rust/examples/missing.rs, name: examples/missing.rs }
+  session: missing
+  fixed: { file: rust/examples/optional.rs, name: examples/optional.rs, session: optional }
+  langs:
+    go:
+      status: wrong
+      says: >-
+        Go fills in the zero value, so `Age` is 0 and `err` is nil. Nothing in the result
+        says the field was missing, and a real 0 would look the same.
+      file: gotcha-go/main.go
+      session: go-missing
+    python:
+      status: wrong
+      says: >-
+        `json.loads` does not know about a shape: you get a dict without an `"age"` key and
+        no error at load. The dict is faithful to the text, but code that expects an age
+        finds out only when it reads `cy["age"]`, and then it is a `KeyError`.
+      file: gotcha-python/main.py
+      session: py-missing
+    typescript:
+      status: wrong
+      says: >-
+        `JSON.parse` returns whatever is in the text, and `as Person` only tells the
+        compiler to believe you. The type says `number`, the value is `undefined`, and
+        `undefined + 1` is `NaN`.
+      file: gotcha-ts/main.ts
+      session: ts-missing
+    csharp:
+      status: wrong
+      says: >-
+        `System.Text.Json` leaves `Age` at its default, 0, with no error. Marking the
+        properties `required` makes it throw, as the second line of the output shows.
+      file: gotcha-cs/main.cs
+      session: cs-missing
+    kotlin:
+      says: >-
+        Not run here: the image has no kotlinx.serialization runtime. Its documentation
+        says an object can be deserialized only when all its properties are present in the
+        input, and that a property with a default value is optional.
+    java:
+      says: >-
+        Not run here: the image has no JSON library for Java, and the standard library has none.
+    c:
+      says: >-
+        Not run here: the image has no JSON library for C, and the standard library has none.
+    cpp:
+      says: >-
+        Not run here: the image has no JSON library for C++, and the standard library has none.

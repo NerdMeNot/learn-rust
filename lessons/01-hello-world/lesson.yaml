@@ -1,0 +1,115 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Hello World"
+part: "basics"
+intro: >-
+  Our first program prints a line. Put this in src/main.rs and run cargo run.
+coming_from:
+  go: >-
+    `fn main` in `src/main.rs` is your `func main` in `package main`, and `println!` is
+    closest to `fmt.Printf` with the `\n` added: the first argument is a format string,
+    so `fmt.Println("x =", x)` becomes `println!("x = {x}")`. `cargo run` is `go run`,
+    and `Cargo.toml` is where `go.mod`'s name and requirements go. The `!` means a macro,
+    which lets the compiler check the format string while it builds.
+  kotlin: >-
+    `fn main` and `println!` read just like Kotlin's `fun main` and `println`. The `!`
+    marks a macro, and `cargo run` builds a native executable: there is no JVM and no
+    jar to run it.
+  python: >-
+    `println!` is your `print`, but its first argument is a format string, not a list of
+    values: `print("x =", x)` becomes `println!("x = {x}")`. Code can't sit at the top
+    level of the file: everything starts from `fn main`, with no
+    `if __name__ == "__main__"`. `cargo run` compiles the program first, then runs it.
+  typescript: >-
+    `println!` is your `console.log`, but its first argument is a format string, not a
+    list of values: `console.log("x =", x)` becomes `println!("x = {x}")`. The `!` marks
+    a macro. There is no `node` or `tsc` step: `cargo run` compiles a native executable and runs that, and
+    `Cargo.toml` plays the part of `package.json`.
+  java: >-
+    `fn main()` is your `public static void main(String[] args)`. Java 25 lets a
+    single-file program drop the class and `static`, and Rust never had either: `main` is
+    a free function and Rust has no classes. `println!` is a macro, not a method, so the
+    compiler checks the format string and its arguments before the program runs.
+  csharp: >-
+    `fn main()` is your `static void Main`, written out: Rust has no top-level
+    statements, so every statement must be inside a function. `println!` is
+    `Console.WriteLine`, and the `!` marks a macro that checks the `{}` placeholders
+    against the arguments at build time.
+  c: >-
+    `fn main()` is `int main(void)` and `println!` is `printf` with the `\n` added for
+    you. A wrong or missing argument for a `{}` is a compile error, where a wrong
+    `printf` argument is undefined behaviour, and there is no `return 0` to write.
+  cpp: >-
+    `println!` plays the role of `std::cout << ... << "\n"`, with `{}` placeholders like
+    C++20 `std::format`. Like `std::format`, a bad format string or a missing argument
+    fails to compile. `main` has no `return 0` and no `int`.
+notes:
+  - >-
+    `fn main()` is where the program starts. It takes no parameters and, by default,
+    returns nothing. Nothing outside a function runs: a `println!` at the top of the
+    file is an error.
+  - >-
+    `println!` writes a line to standard output; `eprintln!` writes to standard error.
+    The `!` marks a macro: [Macros, attributes, naming](/learn/macros-attributes-naming/)
+    has the format-string syntax.
+  - >-
+    `cargo new hello` makes a project, `cargo run` builds and runs it, and `cargo check`
+    only looks for errors, which is faster. The executable lands in `target/debug/`.
+gotcha:
+  title: "Giving main a return value"
+  verdict: "rust-rule"
+  looks_fine: >-
+    In C and C++, `main` returns an `int` and the program ends with `return 0`. C# lets
+    `Main` return an `int` too.
+  rust_sees: >-
+    `main` may return `()`, a `Result`, or an `ExitCode`. An `i32` is none of those, so
+    the compiler says `main` has an invalid return type and suggests `()` or a
+    `Result`.
+  why: >-
+    Rust's `main` can return anything that implements the `Termination` trait, and that
+    trait decides the exit code. `()` means success, so most programs return nothing. To
+    pick a code, return `std::process::ExitCode`; to fail with a message, return a
+    `Result` (the lesson shows both). A bare number is not accepted, so the code cannot
+    come from a stray value.
+  langs:
+    go:
+      status: "refuses"
+      says: >-
+        Go refuses: "func main must have no arguments and no return values". To set an
+        exit code, call `os.Exit(n)`.
+    kotlin:
+      status: "crash"
+      says: >-
+        Kotlin compiles `fun main(): Int`, but built with `kotlinc -include-runtime` the
+        jar has no entry point and `java -jar` fails with "no main manifest attribute". Kotlin's `main` returns nothing; call
+        `exitProcess(n)` to choose a code.
+    python:
+      status: "none"
+      says: >-
+        Python has no `main` to return from: the file runs from the top. The exit code
+        comes from `sys.exit(n)`.
+    typescript:
+      status: "none"
+      says: >-
+        TypeScript has no `main` either. Set `process.exitCode = n`, or call
+        `process.exit(n)`.
+    java:
+      status: "crash"
+      says: >-
+        `public static int main` compiles, then the JVM reports "Main method not found
+        in class Main" and exits with 1. Java's `main` must return `void`; call
+        `System.exit(n)`.
+    csharp:
+      status: "runs"
+      says: >-
+        C# accepts this: a top-level `return 0;` (or an `int` return from `Main`) sets
+        the exit code. Rust gets the same result with `ExitCode`.
+    c:
+      status: "runs"
+      says: >-
+        This is plain C: `main` returns an `int`, and 0 means success. In Rust the
+        equivalent is `ExitCode`, and returning `()` already means 0.
+    cpp:
+      status: "runs"
+      says: >-
+        This is plain C++: `main` returns an `int`, and `return 0` may be left out
+        because the compiler adds it. Rust's equivalent is `ExitCode`.

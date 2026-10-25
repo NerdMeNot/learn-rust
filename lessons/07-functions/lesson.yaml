@@ -1,0 +1,111 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Functions"
+part: "basics"
+intro: >-
+  Parameters always have types. The return type comes after `->`. The last line, written
+  without a semicolon, is the return value.
+coming_from:
+  go: >-
+    Types come after names like Go, with `-> i32` for the return type. The last
+    expression without a semicolon is the return value, and `return` is still there for
+    leaving early.
+  kotlin: >-
+    The shape is Kotlin's `fun add(a: Int, b: Int): Int`, with `->` before the return
+    type. Braces are always required (there is no `= a + b` body), and the last
+    expression without a semicolon is the result, so `return` is only for leaving early.
+  python: >-
+    Like a fully type-hinted `def`, except the compiler enforces the hints and you must
+    write them for every parameter. The last expression without a semicolon is returned,
+    so leaving out `return` doesn't give you `None`.
+  typescript: >-
+    Same shape as `function add(a: number, b: number): number`, with `->` before the
+    return type. Parameter types must always be written, and so must any return type
+    other than nothing. The last expression without a semicolon is the return value.
+  java: >-
+    The return type goes after `->`, and the last expression without a semicolon is the
+    return value, so `return` is only needed for early exits. Rust has no overloading,
+    so two functions need two different names.
+  csharp: >-
+    The return type comes after `->`, and a block's last expression (no semicolon) is
+    its result. Unlike an expression-bodied `=>` member, the block can hold statements
+    first. Rust has no method overloading and no default or named arguments.
+  c: >-
+    `fn add(a: i32, b: i32) -> i32` is `int add(int a, int b)` with the return type
+    moved to the end. The last expression without a semicolon is returned, and falling
+    off the end of a function that should return a value is a compile error, not junk.
+  cpp: >-
+    The trailing `-> i32` is like C++'s trailing return type, and the last expression
+    without `;` is the return value. Forgetting to return a value is a compile error
+    rather than undefined behaviour, and Rust has no overloading or default arguments.
+notes:
+  - >-
+    `return a + b;` also works. The no-semicolon style is just shorter, and it is what
+    most Rust code uses.
+  - >-
+    `&str` is the type for text you only read; a string literal such as `"kotlin"` has it.
+    [Strings](/learn/strings/) comes later.
+  - >-
+    Functions can be declared after they are used. Their order in the file doesn't
+    matter.
+  - >-
+    Arguments are passed by value, and a `String` passed in is moved, not copied
+    ([Ownership](/learn/ownership/)). There are no default or named arguments and no
+    overloading ([What Rust lacks](/learn/what-rust-lacks/)).
+gotcha:
+  title: "A semicolon on the last line"
+  verdict: "rust-rule"
+  looks_fine: >-
+    Go, Kotlin, Java and C# need an explicit `return`, so a stray semicolon changes
+    nothing.
+  rust_sees: >-
+    In Rust a block's value is its last expression. Adding `;` turns `a + b` into a
+    statement that produces nothing, written `()` and called the unit type.
+  why: >-
+    So the function now promises an `i32` and gives back `()`. The compiler's `help:`
+    line points at the exact semicolon to remove.
+  langs:
+    go:
+      status: "refuses"
+      says: >-
+        Go refuses this too: `a + b` is "not used" and the function has a `missing
+        return`. Go always needs an explicit `return`, so a stray semicolon can't change
+        what a function returns.
+    kotlin:
+      status: "refuses"
+      says: >-
+        Kotlin refuses this too: a block body needs `return`, so a body whose last line is
+        just `a + b` gives `missing return statement`.
+    python:
+      status: "wrong"
+      says: >-
+        Python prints None. Without `return`, the last line is worked out and thrown
+        away, and the function gives back None.
+    typescript:
+      status: "refuses"
+      says: >-
+        TypeScript refuses this too: `add` promises a `number` but has no `return`.
+        Without the `: number` it would compile and quietly return `undefined`.
+    java:
+      status: "refuses"
+      says: >-
+        Java refuses this too: `a + b;` is "not a statement". Java always needs an
+        explicit `return`, so a stray semicolon can't change what a method returns.
+    csharp:
+      status: "refuses"
+      says: >-
+        C# refuses this too: `a + b;` is not a valid statement on its own, and the
+        method never returns a value (CS0201, CS0161). C# always needs an explicit
+        `return`.
+    c:
+      status: "wrong"
+      says: >-
+        gcc only warns that `a + b` does nothing and that `add` never returns. The
+        program prints 2 instead of 5: whatever value happened to be left behind. Another
+        compiler or machine can print something else.
+    cpp:
+      status: "crash"
+      says: >-
+        g++ warns that `a + b;` does nothing and that `add` never returns, then builds
+        it anyway. Running off the end is undefined behaviour, and here g++ plants a
+        trap so the program dies before printing. On ARM, this site's machine, that is a
+        trap signal (SIGTRAP); on x86 it is an illegal-instruction signal (SIGILL).

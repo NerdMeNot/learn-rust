@@ -1,0 +1,262 @@
+---
+title: "Rust for Python developers"
+description: "Ten Python habits that Rust treats differently, each run in Python 3.13 and in Rust: type hints, names and lists, default arguments, exceptions, None, duck typing, comprehensions, the GIL and asyncio."
+---
+
+import { Files, Remember, Session } from '../../../components/guide'
+
+A lot of Python carries over to Rust, and a few habits do not. This page lists ten of those habits. Each one was run twice in the same image, as a Python program and as a Rust program, so the outputs and compiler errors below are real ones. It summarises the lessons and links to them; it does not replace them.
+
+<Session guide="for-python" run="versions" title="the image behind this page" />
+
+<Remember>Python finds many mistakes when the line runs, if it ever does, unless you also run a checker. Rust asks for the type and the owner up front, so the compiler refuses several of the ten habits below before the program starts.</Remember>
+
+## What carries over
+
+- **Control flow reads the same.** `for x in items`, `if`/`else`, and a `match` that is close to Python 3.10's ([Match](/learn/match/)).
+- **Unpacking and formatting.** `let (lo, hi) = pair;` is `lo, hi = pair`, and `println!("{name} is {age}")` is an f-string ([Patterns](/learn/patterns/), [Macros, attributes and naming](/learn/macros-attributes-naming/)).
+- **Lazy iterator chains** work like generator expressions (habit 7).
+- **`@dataclass` and `with` have counterparts:** a `struct` with `#[derive(...)]` ([Structs](/learn/structs/)), and cleanup at the end of a scope (the last row of the table).
+- **`async def` and `await`** have a similar shape (Rust writes `.await` after the call), and a coroutine and a future are both lazy (habit 10).
+
+## Ten habits to unlearn
+
+### 1. Type hints are notes, not rules
+
+**Your habit:** write `count: int = "five"`, or call a function marked `int` with strings. Python runs it. The `typing` docs say why: "The Python runtime does not enforce function and variable type annotations."
+
+<div class="lr-compare">
+<Files guide="for-python" dir="py" files={["h1_types.py"]} run="h1-py" lang="python" />
+<Files guide="for-python" dir="ex" files={["h1_types.rs"]} run="h1-rs" />
+</div>
+
+A checker such as mypy does read the hints, and finds both mistakes before the run (the steps to install it are in the toolchain map below; they need network):
+
+<Session guide="for-python" run="python-tools" only={[3, 4]} />
+
+In Rust the compiler is the checker, and it builds nothing when it reports an error, so the program does not run at all. [Declarations and types](/learn/declarations-types/) covers the syntax. Python's `int` has no fixed size, where Rust asks you to pick one ([Big numbers are not built in](/learn/types/#big-numbers-are-not-built-in)).
+
+### 2. Two names, one list
+
+**Your habit:** `b = a` and then `b.append(4)`, or a function that appends to the list you passed. Both change `a`. In Python each name leads to an object, and nothing in the `def` line says a function will change its argument.
+
+<div class="lr-compare">
+<Files guide="for-python" dir="py" files={["h2_alias.py"]} run="h2-py" lang="python" />
+<Files guide="for-python" dir="ex" files={["h2_alias.rs"]} run="h2-rs" />
+</div>
+
+In Rust `let mut b = a;` moves the vector into `b`, so using `a` afterwards is E0382. You pick what you meant: `a.clone()` for an independent copy, or lend the list with `&mut` so a function can change it. The signature says so, and so does the call:
+
+<Files guide="for-python" dir="ex" files={["h2_fixed.rs"]} run="h2-fixed" />
+
+Read [Ownership](/learn/ownership/), [Borrowing](/learn/borrowing/) and [Mutable borrows](/learn/mutable-borrows/), and [Copy or reference?](/learn/copy-or-reference/), which has Python detectors for "is this a copy?".
+
+### 3. Default arguments, and the mutable default
+
+**Your habit:** `def add_item(item, bucket=[])`. The default list is made once, when `def` runs, so the second call sees the first call's item. The Python reference says the default "is evaluated once, when the function is defined, and that the same 'pre-computed' value is used for each call", and suggests `None` and a test, which is the second function below.
+
+<div class="lr-compare">
+<Files guide="for-python" dir="py" files={["h3_default.py"]} run="h3-py" lang="python" />
+<Files guide="for-python" dir="ex" files={["h3_default.rs"]} run="h3-rs" />
+</div>
+
+Rust has no default arguments, so there is no default value to share between calls. A call that leaves the argument out is an error, and `None` builds a fresh vector inside the call:
+
+<Session guide="for-python" run="h3-missing" />
+
+The struct forms (`Default`, a literal ending in `..Default::default()`, a builder) are in [Constructors, overloading and default arguments](/learn/methods/#constructors-overloading-and-default-arguments).
+
+### 4. Exceptions become return values
+
+**Your habit:** let `int(text)` raise and catch `ValueError` somewhere above. Nothing in `def parse_port(text)` tells a caller it can raise.
+
+<div class="lr-compare">
+<Files guide="for-python" dir="py" files={["h4_errors.py"]} run="h4-py" lang="python" />
+<Files guide="for-python" dir="ex" files={["h4_errors.rs"]} run="h4-rs" />
+</div>
+
+In Rust the failure is in the signature: `Result<u16, ParseIntError>`. You handle it with `match`, pass it up with `?`, or stop with `unwrap`/`expect`, which panic. Discarding a `Result` is a compiler warning ([Do not ignore a Result](/learn/errors/#do-not-ignore-a-result)). There is no `finally`: cleanup is `Drop` ([Cleanup still happens](/learn/errors/#cleanup-still-happens)). See [Errors](/learn/errors/).
+
+### 5. `None`, truthiness and `or`
+
+**Your habit:** `x or default`, `if items:` and `d.get(key).upper()`. The run shows two traps. `0 or 5` is `5` even though `0` was a real value, and `get("bob")` returned `None`, which has no `upper`, found when that line ran.
+
+<div class="lr-compare">
+<Files guide="for-python" dir="py" files={["h5_none.py"]} run="h5-py" lang="python" />
+<Files guide="for-python" dir="ex" files={["h5_none.rs"]} run="h5-rs" />
+</div>
+
+`get` returns an `Option`, a different type from the text inside it, so the call does not compile until you say what happens for `None`: `match`, `map`, or `unwrap_or(5)`, which replaces only `None`. An `if` takes only a `bool`, so `if items:` is `if !items.is_empty()` (rows in the table below). See [Option](/learn/option/) and [Only a bool is a condition](/learn/if-else/#only-a-bool-is-a-condition).
+
+### 6. Duck typing becomes traits
+
+**Your habit:** put any objects with an `area()` method in a list. Python looks the method up by name when the call runs, so the list builds, `4` prints, and `Rock` fails afterwards.
+
+<div class="lr-compare">
+<Files guide="for-python" dir="py" files={["h6_duck.py"]} run="h6-py" lang="python" />
+<Files guide="for-python" dir="ex" files={["h6_duck.rs"]} run="h6-rs" />
+</div>
+
+In Rust a type joins the list by declaring `impl Shape for Rock`, and the compiler refuses the line that builds the list, so even the first `4` is not printed. The price is that you write the `impl`. For a closed set of types an enum is often the better answer ([A trait or an enum?](/learn/traits/#a-trait-or-an-enum)). See [Traits](/learn/traits/) and [Trait objects](/learn/trait-objects/).
+
+### 7. Comprehensions are eager; Rust chains wait
+
+**Your habit:** a list comprehension runs now, so `[square(n) for n in nums]` works for its side effects. A generator expression waits, and the run shows both orders.
+
+<div class="lr-compare">
+<Files guide="for-python" dir="py" files={["h7_lazy.py"]} run="h7-py" lang="python" />
+<Files guide="for-python" dir="ex" files={["h7_lazy.rs"]} run="h7-rs" />
+</div>
+
+A Rust chain is shaped like your generator expression: `map` does nothing until something consumes it, here `collect`. A chain that nothing consumes is a compiler warning, and `square` did not print. So do not use `map` for side effects: write a `for` loop. See [Iterators](/learn/iterators/).
+
+### 8. Objects are open; structs are closed
+
+**Your habit:** a typo in an assignment makes a new attribute. `@dataclass` generates `__init__` and `__repr__`, but by default the instance is still an ordinary object whose attributes can be added.
+
+<div class="lr-compare">
+<Files guide="for-python" dir="py" files={["h8_class.py"]} run="h8-py" lang="python" />
+<Files guide="for-python" dir="ex" files={["h8_struct.rs"]} run="h8-rs" />
+</div>
+
+A Rust struct has the fields you declared, and the compiler suggests the one you probably meant. There is no inheritance either: a type that wants another type's data holds it in a field ([No inheritance](/learn/methods/#no-inheritance)). See [Structs](/learn/structs/).
+
+### 9. The GIL is not your lock
+
+**Your habit:** share a counter between threads and rely on the GIL. In the standard CPython build one thread runs Python bytecode at a time, but that does not make "read, add, write back" one step. Here four threads each add one 2,000,000 times, with a function call between the read and the write.
+
+<div class="lr-compare">
+<Files guide="for-python" dir="py" files={["h9_threads.py"]} run="h9-py" lang="python" />
+<Files guide="for-python" dir="ex" files={["h9_threads.rs"]} run="h9-rs" />
+</div>
+
+The Python total differs from run to run and was short in the run above. A plain `count += 1` loop printed the exact total in the lessons' runs on this build, but that is how this build behaves, not a promise ([Send and Sync](/learn/send-sync/) shows both). I did not run a free-threaded Python build. Rust has no interpreter lock. The `Mutex` makes the total exact, and sharing an `Rc` with a thread is refused when the program is compiled:
+
+<Session guide="for-python" run="h9-rc" />
+
+Python threads are still useful for waiting on I/O; [Threads](/learn/threads/) measured which kinds of work overlap in this image. For the rest see [Shared state](/learn/shared-state/).
+
+### 10. `async` looks the same, and the runtime is your choice
+
+**Your habit:** call `hello()` and expect it to start. In both languages it does not: the coroutine or future is a value that something has to drive. Python warns at run time, when the unused coroutine is collected. The `asyncio` docs say "simply calling a coroutine will not schedule it to be executed".
+
+<div class="lr-compare">
+<Files guide="for-python" dir="py" files={["h10_async.py"]} run="h10-py" lang="python" />
+<Files guide="for-python" dir="ex" files={["h10_async.rs"]} run="h10-rs" />
+</div>
+
+Rust warns when the program is compiled, and `hello` did not print. The other difference: `asyncio.run` comes with Python, and the Rust standard library has the `Future` trait but no runtime ([The standard library has no runtime](/learn/async-basics/#the-standard-library-has-no-runtime)), so you add one. See [Async basics](/learn/async-basics/) and [Async with Tokio](/build/tokio/).
+
+## Idiom by idiom
+
+Both programs behind this table printed the same lines, and `diff` found no difference. The Python program prints through `json.dumps` so that its lines can be compared with Rust's `{:?}`; plain `print` would show `True` and `'fig'`. The left cell is a line of the Python program; the right cell is a line of the Rust program.
+
+| You write in Python | In Rust |
+| --- | --- |
+| `[n * n for n in nums]` | `nums.iter().map(\|n\| n * n).collect::<Vec<_>>()` |
+| `[n for n in nums if n % 2 == 0]` | `nums.iter().filter(\|n\| *n % 2 == 0).collect::<Vec<_>>()` |
+| `sorted(words, key=len)` | `let mut w = words.clone(); w.sort_by_key(\|s\| s.len());` |
+| `[f"{i}:{w}" for i, w in enumerate(words)]` | `words.iter().enumerate().map(\|(i, w)\| format!("{i}:{w}")).collect::<Vec<_>>()` |
+| `"b," in text` | `text.contains("b,")` |
+| `text.split(",")` | `text.split(',').collect::<Vec<_>>()` |
+| `", ".join(words)` | `words.join(", ")` |
+| `len(s)` | `s.chars().count()` |
+| `len(s.encode())` | `s.len()` |
+| `xs[1:3]` | `xs[1..3].to_vec()` |
+| `d.get("c", 0)` | `m.get("c").copied().unwrap_or(0)` |
+| `x if x is not None else 5` | `x.unwrap_or(5)` |
+| `try: return int(text)` and `except ValueError: return -1` | `text.parse::<i32>().unwrap_or(-1)` |
+| `-7 // 2` | `(-7_i32).div_euclid(2)` |
+| `2**100` | `2_u128.pow(100)` |
+| `bool(items)` | `!items.is_empty()` |
+| `Path("note.txt").read_text()` | `fs::read_to_string("note.txt").unwrap()` |
+| `f"{42:>5}"` | `format!("{:>5}", 42)` |
+| `with Guard():` | `let _guard = Guard::new();`, closed at the end of the scope |
+
+<Session guide="for-python" run="idioms" only={[1, 2]} />
+
+Where the meaning differs and not only the spelling: Rust's `/` truncates (`-7 / 2` is `-3`), so the floor-division row uses `div_euclid`, which agrees with Python for a positive divisor ([Division and remainder](/learn/types/#division-and-remainder)). `len(s)` counts code points and `s.len()` counts bytes, which is why the two `len` rows have different Rust spellings ([Strings](/learn/strings/)). `unwrap()` on the file row panics where Python raises `FileNotFoundError`; a function would return the error with `?`. Three more rows look equal and are not:
+
+<Session guide="for-python" run="differs" />
+
+`int` accepts underscores and spaces that `parse` rejects, `xs[1:10]` stops at the end where `xs[1..10]` panics (`get` returns `None` instead), and `sorted(words, key=len)` counts code points where `s.len()` counts bytes. For the rest of the Python spellings, each lesson has a table: [Vectors](/learn/vectors/), [Maps](/learn/maps/), [Strings](/learn/strings/), [Text](/learn/text/).
+
+## Toolchain map
+
+The Python side needs pip, and this image has Python but no pip, so the Python steps below install it and three tools into a virtual environment. They need network, and the packages' own dependencies are not pinned. The Rust steps run offline because this project has no dependencies.
+
+| Job | Python | Rust |
+| --- | --- | --- |
+| Project file | `pyproject.toml` | `Cargo.toml` |
+| Add a dependency | `pip install pytest` in a virtual environment | `cargo add serde` (not run here; [Using crates](/start/using-crates/) runs it) |
+| Build | none: `python3` runs the file (`python3 -m build` makes a package; not run) | `cargo build` |
+| Run | `python3 wordcount.py` | `cargo run` |
+| Test | `pytest -q` | `cargo test` |
+| Format | `ruff format` | `cargo fmt` |
+| Lint | `ruff check` | `cargo clippy` |
+| Type check | `mypy` | part of the build |
+| Docs | `python3 -m pydoc` reads `"""docstrings"""` | `cargo doc` builds HTML from `///` comments |
+| Debugger | `python3 -m pdb` (not run) | `rust-gdb`, `rust-lldb` (not run) |
+
+<div class="lr-compare">
+<Files guide="for-python" dir="py" files={["pyproject.toml"]} lang="python" title="Python" />
+<Files guide="for-python" dir="rust" files={["Cargo.toml"]} />
+</div>
+
+The Python half. The last step reads `pyproject.toml` with `tomllib`, which comes with Python:
+
+<Session guide="for-python" run="python-tools" only={[0, 1, 2, 3, 5, 6, 7, 8]} />
+
+The Rust half:
+
+<Session guide="for-python" run="rust-tools" />
+
+## A reading path
+
+The lessons in the order that suits a Python reader:
+
+1. [Rust at a glance](/learn/rust-at-a-glance/): one page of syntax, with a Python column.
+2. [What Rust lacks](/learn/what-rust-lacks/): most of your habits fail loudly, such as truthiness and default arguments; `//` does not, it starts a comment.
+3. [Types](/learn/types/): fixed-size integers instead of one `int`.
+4. [Stack and heap](/learn/stack-heap/) and [Copy or reference?](/learn/copy-or-reference/): why `b = a` means something else here.
+5. [Ownership](/learn/ownership/), [Borrowing](/learn/borrowing/), [Mutable borrows](/learn/mutable-borrows/): habit 2 in full, and the heart of the language.
+6. [Option](/learn/option/) and [Errors](/learn/errors/): `None` and exceptions, replaced.
+7. [Structs](/learn/structs/), [Methods](/learn/methods/), [Enums](/learn/enums/): classes and dataclasses, without inheritance.
+8. [Closures](/learn/closures/) and [Iterators](/learn/iterators/): lambdas and comprehensions.
+9. [Traits](/learn/traits/) and [Trait objects](/learn/trait-objects/): `Protocol` and duck typing.
+10. [Modules](/learn/modules/): a file joins a crate when its parent says `mod`, not when someone imports it.
+11. [Working with the borrow checker](/learn/borrow-checker/): once the errors start arriving.
+12. [Threads](/learn/threads/), [Shared state](/learn/shared-state/), [Send and Sync](/learn/send-sync/): the GIL's replacement.
+13. [Async basics](/learn/async-basics/), then [Async with Tokio](/build/tokio/).
+14. [Using Rust from Python](/interop/python/): a Rust extension module that Python imports.
+
+## What you will miss
+
+- **Running half-written code.** `h6_duck.py` printed `4` before it failed. The Rust version printed nothing, because a program with a type error is not built. [`todo!()`](https://doc.rust-lang.org/std/macro.todo.html) stands in for a body you have not written yet, so the rest can still compile.
+- **A REPL.** `python3` opens one. None of the tools in the listing above (`cargo`, `rustc`, `rustfmt`, `rust-analyzer` and others) reads a line of Rust and runs it, and the [Rust Playground](https://play.rust-lang.org/) runs short programs in a browser.
+- **Open objects.** Habit 8 was a mistake, and it was also a feature: adding attributes as you go has no counterpart in a struct. A `HashMap` is the nearest container for data whose keys you do not know in advance.
+- **Unbounded integers and decimals.** `2**200` has no built-in Rust type ([Big numbers are not built in](/learn/types/#big-numbers-are-not-built-in)).
+- **Your data libraries.** pandas and NumPy are packages you install, and the Rust counterparts are crates. The [DataFusion guide](/build/datafusion/) runs one job with a Rust query engine and with several Python data libraries.
+
+## Try it yourself
+
+Each task starts from one of the programs above. The sessions were run in the image.
+
+1. In `h5_none.rs`, print `users.get("bob").map(|name| name.to_uppercase())` with `{:?}` instead of calling `to_uppercase` on the `Option`. It prints `None` and compiles. Change `"bob"` to `"ada"` and it prints the name inside `Some(...)`.
+2. In `h6_duck.rs`, add `impl Shape for Rock` with an `area` that returns `0`. The program compiles and prints `4` and `0`.
+3. In `h2_fixed.rs`, change `add_bonus(&mut a)` to `add_bonus(&a)`. The error says the types differ in mutability: the call must agree with the signature.
+
+<Session guide="for-python" run="try-1" />
+
+<Session guide="for-python" run="try-2" />
+
+<Session guide="for-python" run="try-3" />
+
+## Read more
+
+- [The Rust Book, chapter 4](https://doc.rust-lang.org/book/ch04-00-understanding-ownership.html): ownership, for habit 2.
+- [The Rust Book, chapter 9](https://doc.rust-lang.org/book/ch09-00-error-handling.html): `Result` and `panic!`, for habit 4.
+- [The Rust Book, chapter 13.2](https://doc.rust-lang.org/book/ch13-02-iterators.html): iterators, for habit 7.
+- [The Cargo Book: Guide](https://doc.rust-lang.org/cargo/guide/index.html): the `cargo` half of the toolchain map.
+- [The rustdoc book: how to write documentation](https://doc.rust-lang.org/rustdoc/how-to-write-documentation.html): what goes in `///` comments.
+- Python side: [`typing`](https://docs.python.org/3/library/typing.html), [function definitions](https://docs.python.org/3/reference/compound_stmts.html#function-definitions) (default values), [coroutines and tasks](https://docs.python.org/3/library/asyncio-task.html) and [writing your `pyproject.toml`](https://packaging.python.org/en/latest/guides/writing-pyproject-toml/).

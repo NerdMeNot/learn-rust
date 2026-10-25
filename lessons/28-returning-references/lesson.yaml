@@ -1,0 +1,127 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Returning References"
+part: "abstractions"
+intro: >-
+  A function can return a reference only if it points into something that will still
+  exist after the function returns. Usually that means into one of its inputs.
+coming_from:
+  go: >-
+    Go lets you return `&s` for a local `s`: the compiler sees that `s` escapes the
+    function and allocates it on the heap. (A Go function would normally just return the
+    string.) Rust has no garbage collector, so you choose: return an owned `String`, or
+    return a `&str` that points into one of the inputs.
+  kotlin: >-
+    Kotlin returns object references, and the garbage collector keeps whatever is still
+    referenced alive. In Rust you choose: an owned `String` that the caller now owns, or
+    a `&str` borrowed from an input, which works only while that input is still around.
+  python: >-
+    Python returns an object and keeps it alive for as long as anything refers to it.
+    In Rust you return either an owned `String`, or a `&str` that borrows from an input
+    and is valid only while that input lives.
+  typescript: >-
+    In TypeScript an object you return stays alive for as long as something refers to
+    it. In Rust a returned `&str` must point into one of the inputs; anything made
+    inside the function has to be returned as an owned `String`.
+  java: >-
+    Java returns object references, and the garbage collector keeps whatever is still
+    referenced alive. In Rust a returned `&str` must point into one of the inputs;
+    anything made inside the function has to be returned as an owned `String`: ownership
+    moves to the caller, and the text is not copied.
+  csharp: >-
+    A returned `&str` is closest to a `ReadOnlySpan<char>` that points into the input.
+    C# already refuses to return a span of a local or a `ref` to a local (CS8352,
+    CS8168); Rust applies that rule to every reference, not only to ref structs.
+    Anything the function makes itself is returned as an owned `String`.
+  c: >-
+    gcc warns when a function returns a pointer to a local array, but the program still
+    builds, and using the pointer is undefined behaviour. In Rust it does not compile.
+    Return an owned `String`, which frees itself, or a `&str` that points into an input.
+  cpp: >-
+    A returned `&str` is closest to a `std::string_view` into the input. Returning a
+    reference to a local compiles in C++ (g++ warns) and is undefined behaviour when
+    used; in Rust it is an error. Return a `String`, which is what returning a
+    `std::string` by value is, and the usual fix in C++ too.
+notes:
+  - >-
+    Rule of thumb: if you made it inside the function, return it owned (`String`,
+    `Vec`). If it is a piece of an input, you can return a reference (`&str`, `&[T]`).
+  - >-
+    `first_word` returns a `&str` that points into `g`. Rust remembers that link, so `w`
+    can't outlive `g`.
+  - >-
+    This link is what Rust calls a lifetime. With one borrowed input, Rust fills it in
+    by itself. With two, you must write it: `fn longer<'a>(a: &'a str, b: &'a str) ->
+    &'a str`. The `'a` says "the result comes from one of these inputs, so use it only
+    while both are alive".
+faq:
+  - q: "Do people really write lifetimes all over their code?"
+    a: |-
+      Not in every function. The compiler fills in the common cases (one reference in, a reference out; a method that returns a piece of `&self`), and a struct that owns its data (`String`, `Vec`, `Arc<T>`) needs no lifetime at all.
+
+      The two most common places for a lifetime you write by hand are a function that returns a reference and has more than one reference parameter, and a struct that holds a reference. The lifetimes lesson covers both, and more.
+
+      If your own code starts to feel like pointer gymnastics, returning an owned value is often a way out. Making an owned copy of borrowed data costs an allocation and a copy; that is usually fine until a measurement says otherwise.
+gotcha:
+  title: "Returning a reference to something made inside the function"
+  verdict: "rust-rule"
+  looks_fine: >-
+    In Go, Python, TypeScript and C#, returning something you made inside the function is
+    normal: the garbage collector keeps it alive for as long as anything refers to it.
+    In C and C++ the same shape is a bug that the compiler only warns about.
+  rust_sees: >-
+    `s` is owned by `make_greeting`, so it is freed at the closing `}`. A reference to
+    it would point at memory that no longer holds the string.
+  why: >-
+    Rust has no garbage collector to keep `s` alive, and it does not move values to the heap on
+    its own. `s` is freed at the closing `}`, so a reference to it would really dangle. That is
+    the bug the C and C++ versions below get from this same code, and Rust turns it into a
+    compile error. Nothing is wrong with the habit in a garbage-collected language; here you
+    say who owns the result: return the `String` itself, which moves ownership to the caller
+    without copying the text, or return a `&str` that points into an input.
+  langs:
+    go:
+      status: "runs"
+      says: >-
+        Go runs this and prints hello rust. Go sees that `s` outlives the function and
+        allocates it on the heap, so the pointer stays valid.
+    kotlin:
+      status: "runs"
+      says: >-
+        Kotlin prints hello rust. Objects stay alive while something refers to them, so
+        returning one made inside a function just works.
+    python:
+      status: "runs"
+      says: >-
+        Python prints hello rust. The function returns the string object itself, and
+        Python keeps it alive for as long as anything refers to it.
+    typescript:
+      status: "runs"
+      says: >-
+        Prints hello rust. The garbage collector keeps the string alive for as long as
+        anything refers to it.
+    java:
+      status: "runs"
+      says: >-
+        Java prints hello rust. Objects stay alive while something refers to them, so
+        returning one made inside a method just works.
+    csharp:
+      status: "runs"
+      says: >-
+        Strings live on the garbage-collected heap, so returning one made inside the
+        method works and prints hello rust.
+    c:
+      status: "crash"
+      mode: "asan"
+      says: >-
+        gcc warns that the function returns the address of a local array, then returns
+        NULL in its place. Printing it crashes, and AddressSanitizer reports a read from
+        the zero page (a null pointer). That substitution is gcc 14's; undefined behaviour
+        could as well print garbage or appear to work.
+    cpp:
+      status: "crash"
+      mode: "asan"
+      says: >-
+        g++ warns about returning a reference to a local, but builds it. It even swaps
+        the reference for a null one, so AddressSanitizer reports a SEGV when `cout`
+        reads it. Returning `std::string` by value, which is what `-> String` is, is the
+        usual fix in C++ too.

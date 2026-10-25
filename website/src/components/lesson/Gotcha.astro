@@ -1,0 +1,109 @@
+---
+// The "gotcha" half of a lesson: code that looks fine and works in the reader's
+// language, the real compiler error, why Rust says no, and the fix.
+//
+// The label and the "what happens in X" text depend on the reader's language, so all
+// eight are rendered and CSS shows one (see FromStyles).
+import CodePanel from './CodePanel.astro'
+import Compare, { type Side } from './Compare.astro'
+import RustError from './RustError.astro'
+import { LANG, OTHERS, STATUS, VERDICT, type Lang, type Status, type Verdict } from '../../lib/langs'
+import { inline } from '../../lib/md'
+
+interface Props {
+  g: {
+    title: string; verdict: Verdict; looks_fine?: string; rust_sees: string; why: string
+    code: string; error?: string; error_code?: string
+    // Guide pages add two kinds: code that compiles but behaves differently
+    // (`runtime`, with `out`), and Cargo refusing a manifest (`cargo`).
+    kind?: 'compile' | 'runtime' | 'cargo'; out?: string; error_cmd?: string
+    code_name?: string; code_lang?: string
+    fixed: { code: string; out?: string; name?: string; lang?: string; cmd?: string }
+    proof?: { code: string; out?: string }
+    langs: Partial<Record<Lang, Side>>
+  }
+}
+const { g } = Astro.props
+const listJoin = (xs: string[]) => (xs.length < 2 ? xs.join('') : xs.slice(0, -1).join(', ') + ' and ' + xs.at(-1))
+
+// "Looks fine: in Go and Python it runs fine; in C it crashes at runtime. Rust won't compile it."
+const groups: Partial<Record<Status, string[]>> = {}
+for (const k of OTHERS) {
+  const s = g.langs[k]
+  if (!s || s.code == null || s.error != null || !s.status || !STATUS[s.status].phrase) continue
+  ;(groups[s.status] ??= []).push(LANG[k].name)
+}
+const parts = (['runs', 'wrong', 'race', 'crash'] as Status[]).filter(k => groups[k]).map(k => `in ${listJoin(groups[k]!)} ${STATUS[k].phrase}`)
+const kind = g.kind ?? 'compile'
+const looks =
+  kind === 'runtime' ? 'Looks fine, and it compiles in Rust too. But the two give different results.'
+  : kind === 'cargo' ? 'Nothing in your code changed, but Cargo stops and asks a question.'
+  : parts.length ? `Looks fine: ${parts.join('; ')}. Rust won't compile it.` : "Looks right at a glance, but Rust won't compile it."
+
+function verdictFor(k: Lang): { cls: Verdict; label: string } {
+  const s = g.langs[k]
+  const L = LANG[k].name
+  // A reader whose language has no entry is told so, rather than being handed a claim
+  // (fine, broken, or just a rule) that nobody ran or checked for their language.
+  if (!s?.status) return { cls: 'different-result', label: `Not run in ${L} on this page.` }
+  if (s.status === 'refuses') return { cls: 'rust-rule', label: `${L} refuses this too. Same idea, different words.` }
+  if (s.status === 'none') return { cls: 'rust-rule', label: kind === 'compile' ? `No direct equivalent in ${L}. Just a Rust rule.` : `No direct equivalent in ${L}.` }
+  // A run-time or Cargo gotcha has one story for every language that ran it.
+  // In a run-time gotcha a language whose run gave the same result as Rust's has the same trap.
+  if (kind === 'runtime' && s.status === 'runs') return { cls: 'different-result', label: `Same result in ${L}. The same trap.` }
+  if (kind !== 'compile') return { cls: g.verdict, label: VERDICT[g.verdict].label }
+  if (['wrong', 'race', 'crash'].includes(s.status)) return { cls: 'broken-elsewhere', label: `Broken in ${L}. Rust catches it.` }
+  if (g.verdict === 'rust-rule') return { cls: 'rust-rule', label: `Works in ${L}. In Rust it's just a rule.` }
+  return { cls: 'fine-elsewhere', label: `Fine in ${L}. Rust can't prove it's safe.` }
+}
+const verdicts = Object.fromEntries(OTHERS.map(k => [k, verdictFor(k)]))
+const vAttrs = Object.fromEntries(OTHERS.map(k => [`data-v-${k}`, verdicts[k].cls]))
+---
+<section class="lr-trap not-content" aria-labelledby="gotcha" {...vAttrs}>
+  <div class="lr-trap-head">
+    <span class="lr-eyebrow">Gotcha</span>
+    <h2 id="gotcha" set:html={inline(g.title)} />
+    <p class="lr-looks">{looks}</p>
+    {OTHERS.map(k => <span class="lr-badge" data-for={k}>{verdicts[k].label}</span>)}
+  </div>
+  <div class="lr-trap-body">
+    <div class="lr-compare">
+      <CodePanel lang="rust" code={g.code} file={g.code_name} hl={g.code_lang}
+        status={kind === 'runtime' ? { cls: 'warn', chip: '✓ compiles · different result' } : kind === 'cargo' ? { cls: 'bad', chip: '✗ cargo refuses' } : { cls: 'bad', chip: "✗ won't compile" }} />
+      <Compare sides={g.langs} label="The same code in" />
+    </div>
+    <div class="lr-trap-grid">
+      {kind === 'runtime'
+        ? <div class="lr-term"><div class="lr-term-head"><span>{g.error_cmd ?? '$ cargo run'}</span></div><pre>{(g.out ?? '').replace(/\n+$/, '')}</pre></div>
+        : (
+          <details class="lr-guess">
+            <summary>What does the compiler say? <span>Guess first, then open.</span></summary>
+            <RustError text={g.error ?? ''} code={g.error_code} cmd={g.error_cmd} />
+          </details>
+        )}
+      <div class="lr-why">
+        {OTHERS.map(k => {
+          const says = g.langs[k]?.says
+          return (
+            <div data-for={k}>
+              <span class="lr-lbl" style={`color:${LANG[k].color}`}>{says ? `What happens in ${LANG[k].name}` : 'Why it looks fine'}</span>
+              <p set:html={inline(says ?? g.looks_fine ?? '')} />
+            </div>
+          )
+        })}
+        <div><span class="lr-lbl lr-rs">What Rust sees</span><p set:html={inline(g.rust_sees)} /></div>
+        <div class="lr-so"><span class="lr-lbl">Why Rust says no</span><p set:html={inline(g.why)} /></div>
+      </div>
+    </div>
+    {g.proof && (
+      <div class="lr-sub-block">
+        <div class="lr-sub"><h3>Proof in Go</h3><p>The same code with one change, and its real output. This is the bug Rust is protecting you from.</p></div>
+        <CodePanel lang="go" code={g.proof.code} out={g.proof.out} />
+      </div>
+    )}
+    <div class="lr-sub-block lr-fix">
+      <div class="lr-sub"><h3>The fix</h3><p>Compiles and runs.</p></div>
+      <CodePanel lang="rust" title="Rust, fixed" code={g.fixed.code} out={g.fixed.out} file={g.fixed.name} hl={g.fixed.lang} cmd={g.fixed.cmd} playground={!g.fixed.name || g.fixed.name === 'src/main.rs'} />
+    </div>
+  </div>
+</section>

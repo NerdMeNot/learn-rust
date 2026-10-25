@@ -1,0 +1,289 @@
+<p class="lr-layer">The toolkit</p>
+
+Outputs come from Linux on 64-bit ARM with Rust 1.99.1, debug build. Only the Python lost-update totals change from run to run, and the text says so.
+
+## Two questions about a type
+
+Threads share one address space, so a type that is fine on one thread can cause a **data race** on two: both use the same memory, at least one writes, nothing orders them. Safe Rust rules that out in two halves. One is the borrow rules: a `&mut` is exclusive ([Mutable borrows](/learn/mutable-borrows/)). The other is two **marker traits**, traits with no methods that state a fact about a type:
+
+- **`Send`**: a value of this type may be moved to another thread.
+- **`Sync`**: a `&T` may be used by several threads at once. The [standard library's definition](https://doc.rust-lang.org/std/marker/trait.Sync.html) is "`T` is `Sync` if and only if `&T` is `Send`".
+
+Nearly everything has both; the exceptions change data without telling anyone, or count owners without locking. If you share data by never changing it, `Sync` is the compiler-checked version: nothing changes a `Vec<String>` through a `&`, so threads can read an `Arc<Vec<String>>` with no lock.
+
+A function asks for the trait in a bound, as `thread::spawn` does ([Reading signatures](/learn/reading-signatures/#threadspawn-three-bounds-at-once)). To ask the compiler yourself, state a bound in a function that does nothing:
+
+<Snippet file="assert-helpers.rs" />
+
+Each call compiles only if the bound holds. `Job` has no `impl Send`: the compiler worked it out from its fields. Two types that fail:
+
+<Snippet file="rc-not-send.fail.rs" />
+
+An `Rc` updates its count without locking, so [the standard library](https://doc.rust-lang.org/std/marker/trait.Send.html) says two threads cloning it could corrupt the count. A `Cell` may move to another thread but not be shared, because `Cell::set` takes `&self`:
+
+<Snippet file="cell-not-sync.fail.rs" />
+
+## The types you meet
+
+Which of the two does a thread call ask for? Look at what happens to the value. Error messages use the same words: "cannot be **sent**" is `Send`, "cannot be **shared**" is `Sync`.
+
+- It is **moved** to another thread: `thread::spawn(move || ...)`, a channel's `send`, a thread's return value. That needs `Send`.
+- Several threads look at it **through a reference**: a `thread::scope` borrow, a `static`, the `T` inside an `Arc<T>`. That needs `Sync`. (The `Arc` itself is moved too, so it needs `Send`.)
+
+| Type | `Send` | `Sync` | Because |
+|---|---|---|---|
+| `i32`, `String`, `Vec<String>` | yes | yes | plain owned data; a `Vec<T>` is as good as its `T` |
+| `Rc<i32>` | no | no | the count is not atomic |
+| `Arc<i32>` | yes | yes | the count is atomic; `Arc<T>` needs `T` to be both `Send` and `Sync` |
+| `Cell<i32>`, `RefCell<i32>` | yes | no | change through `&self` with no synchronization |
+| `Mutex<i32>` | yes | yes | access is one thread at a time; needs `T: Send` |
+| `Mutex<Rc<i32>>` | no | no | `T: Send` fails: clones of the `Rc` escape the lock |
+| `MutexGuard<'_, i32>` | no | yes | pthreads release a lock on the thread that took it ([docs](https://doc.rust-lang.org/std/sync/struct.MutexGuard.html)) |
+| `*const i32`, `*mut i32` | no | no | a lint ([Going deeper](#making-the-promise-yourself)) |
+| `&T` | if `T: Sync` | if `T: Sync` | sending a `&T` is sharing the `T` |
+| `&mut T` | if `T: Send` | if `T: Sync` | sending a `&mut T` hands the `T` over |
+| `&mut Rc<i32>` | no | no | the `T` is not `Send` |
+| `Arc<RefCell<i32>>` | no | no | `RefCell` is not `Sync`, so the `Arc` is not `Send` |
+| `Arc<Mutex<i32>>` | yes | yes | the pattern for shared, changeable data |
+| `RwLock<Cell<i32>>` | yes | no | many readers hold `&T` at once, so `T` must be `Sync` too |
+| `Receiver<i32>` | yes | no | one consumer ([Channels](/learn/channels/)) |
+
+`check-table.rs` asks the compiler about every row, both columns, and fails if one differs. It also checks that `&T` is `Send` exactly when `T` is `Sync`, for nine types.
+
+## They come from the fields
+
+`Send` and `Sync` are **auto traits**: the compiler gives a struct, tuple or closure the trait when all its fields have it, with no `impl`. So one bad field spoils every struct, tuple or closure that contains it. Types with their own rules, such as `Mutex`, `Arc` and `&T`, decide differently. Here `Job` holds a `Log`, which holds an `Rc` (the gotcha's `Job`, one level deeper):
+
+<Snippet file="nested-rc.fail.rs" />
+
+Read the message from the top. The first line names the field type, `Rc<RefCell<Vec<String>>>`, not `Job`. "Required because it appears within the type `Log`" and then `Job` walk up the containers, and "used within this closure" says the closure took the `Job`. A last note, trimmed from the display, points at the bound in `spawn`'s signature. Fix the field and the chain disappears:
+
+<Snippet file="nested-arc.rs" />
+
+Generic types pass the question on to their parameters, and the notes of the next error spell out the steps:
+
+<Snippet file="generic-fields.fail.rs" />
+
+An `Rc` is not `Send`, so `Mutex<Rc<i32>>` is not `Sync` (a `Mutex<T>` is `Sync` only when `T` is `Send`; see below), so `Arc<Mutex<Rc<i32>>>` is not `Send` (an `Arc` needs `Send` and `Sync` from its contents), so `Shared<Rc<i32>>` is not.
+
+## `Arc<RefCell<T>>` fails, `Arc<Mutex<T>>` works
+
+`Rc` to `Arc` is the obvious repair, and it is not enough ([Shared state](/learn/shared-state/) shows this error first):
+
+<Snippet file="arc-refcell.fail.rs" />
+
+The note says "required for `Arc<RefCell<i32>>` to implement `Send`". `Arc<T>` is `Send` only when `T` is `Send` and `Sync`, and each half has a reason. `Sync`: every thread holding the `Arc` gets a `&T`, and `RefCell` changes its borrow count through `&self` unsynchronized. `Send`: [`Arc::into_inner`](https://doc.rust-lang.org/std/sync/struct.Arc.html#method.into_inner) hands the `T` itself to whichever thread holds the last `Arc`. So `Arc<MutexGuard<i32>>` is not `Send`, though a `MutexGuard` is `Sync`.
+
+A `Mutex<T>` is `Sync` when `T` is `Send`, not when `T` is `Sync`. The lock makes access exclusive, so two threads never hold a `&T` together. But exclusive access is a `&mut T`, and a thread holding one can swap the `T` out or, for an `Rc`, clone it, and both leave the lock behind:
+
+<Snippet file="escape.rs" />
+
+Two threads could each keep such a clone and update one unlocked, non-atomic count. So a `Mutex` makes a `Send` type shareable, even a `Cell`, and does nothing for an `Rc`. An `RwLock` lets many readers hold a `&T` at once, so it asks for `Sync` too. The version that compiles:
+
+<Snippet file="arc-mutex.rs" />
+
+## What `spawn` and `scope` ask for
+
+[`thread::spawn`](/learn/reading-signatures/#threadspawn-three-bounds-at-once) wants the closure to be `Send + 'static`, and the thread's result to be `Send + 'static` ([Lifetimes](/learn/lifetimes/#static) explains `'static`). The result is a second crossing, back to the caller:
+
+<Snippet file="spawn-return.fail.rs" />
+
+[`thread::scope`](https://doc.rust-lang.org/std/thread/fn.scope.html) relaxes `'static`: its threads may borrow locals, because the scope waits for them ([Threads](/learn/threads/)). It does not relax `Send`: borrowing hands every thread a `&T`, so `T` must be `Sync`. Atomics and a `Vec` are fine (`Ordering::Relaxed`: [Shared state](/learn/shared-state/) covers orderings):
+
+<Snippet file="scope-ok.rs" />
+
+A `Cell` is not:
+
+<Snippet file="scope-cell.fail.rs" />
+
+"Required for `&Cell<i32>` to implement `Send`" is the `Sync` definition at work.
+
+A lock guard cannot move to another thread either. `Mutex` is `Sync`, but the `MutexGuard` that `lock()` returns is not `Send`:
+
+<Snippet file="guard-send.fail.rs" />
+
+Let the thread take the lock itself:
+
+<Snippet file="guard-inside.rs" />
+
+What a channel carries must be `Send` ([Channels](/learn/channels/#sending-moves-the-value) shows the error). A function that moves things to threads repeats these bounds (the third exercise), and a future held across an `.await` can face the same demand ([Async basics](/learn/async-basics/)).
+
+## `dyn Trait + Send`
+
+A trait object forgets the concrete type, and with it `Send`. `Box<dyn Fn() -> i32>` is not `Send`, even if the closure inside is. You write the bound into the type ([Trait objects](/learn/trait-objects/#bounds-on-the-box)):
+
+<Snippet file="dyn-send.fail.rs" />
+
+The `help:` suggests parentheses: rustc offers to call the closure because its result, an `i32`, would be `Send`. That is not what we want. The fix is `+ Send` in the type:
+
+<Snippet file="dyn-send.rs" />
+
+## Statics must be `Sync`
+
+A `static` lives for the whole program and every thread can reach it, so its type must be `Sync`:
+
+<Snippet file="static-cell.fail.rs" />
+
+An atomic is `Sync`, so four threads can add to it:
+
+<Snippet file="static-atomic.rs" />
+
+For state that belongs to one thread each, use `thread_local!` ([Threads](/learn/threads/)).
+
+## Fixing a `Send` or `Sync` error
+
+Read the first line for the type that is the problem, then use the table.
+
+| The message says | Usual fix |
+|---|---|
+| `Rc<T>` cannot be sent between threads safely | `Arc<T>` (`Mutex<Rc<T>>` does not help) |
+| `Cell<T>` or `RefCell<T>` cannot be shared between threads safely (also for a `static`) | replace it with `Mutex<T>`, `RwLock<T>` or an atomic; wrapping is not enough (`RwLock<Cell<T>>` is not `Sync`) |
+| `MutexGuard<..>` cannot be sent between threads safely | take the lock inside the thread |
+| `dyn Trait` cannot be sent between threads safely | `Box<dyn Trait + Send>` |
+| `*const T` cannot be sent between threads safely | a safe type; `unsafe impl` only if you can state why it is sound (Going deeper) |
+| "required because it appears within the type `X`" | one field of `X` is the cause: follow the chain up to it |
+
+## Translating from what you know
+
+In your language, which types may cross threads is mostly documentation or convention (this collection is not safe, immutable objects are). Rust works it out from the types and checks it at every thread call.
+
+<ForLang only="go">
+Go compiles racy code. Its race detector (`go run -race`) is a run-time tool: it reports accesses with no synchronization between them, not only ones that overlap in time, but only on executions you ran (the [docs](https://go.dev/doc/articles/race_detector): it "only finds races that happen at runtime"). [Shared state](/learn/shared-state/#translating-from-what-you-know) runs one. The Go [memory model](https://go.dev/ref/mem) says a racy read of a word-sized value sees a value some goroutine wrote, but for an interface, slice, map or string "such races can in turn lead to arbitrary memory corruption".
+
+| In Go | In Rust |
+|---|---|
+| a `sync.Mutex` field beside the data | `Mutex<T>` around the data |
+| `go run -race` | the compiler, for safe code, on every path. Neither flags a check-then-act bug in which every access is locked |
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+Racy code compiles: the gotcha at the top hands an `ArrayList` or `List<T>` to a thread, and the docs say neither is safe to share ([Java](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/ArrayList.html), [.NET](https://learn.microsoft.com/en-us/dotnet/api/system.collections.generic.list-1)). Annotations such as `@ThreadSafe`, `@Immutable` and `@GuardedBy` record intent, and a checker can enforce it: Error Prone's [`@Immutable`](https://errorprone.info/bugpattern/Immutable) is a compile-time error for a class that is not deeply immutable. They are opt-in per class; `Send` and `Sync` are worked out for every type, the library's too.
+</ForLang>
+
+<ForLang only="java kotlin">
+Java does not treat a race as undefined behavior, but "defined" is not "correct". The memory model limits what a racy read may see (JLS [17.4.5](https://docs.oracle.com/javase/specs/jls/se25/html/jls-17.html): an array cannot report a wrong length), yet [17.7](https://docs.oracle.com/javase/specs/jls/se25/html/jls-17.html#jls-17.7) lets a non-volatile `long` be written as two 32-bit halves, so a read can see a value no thread wrote. `volatile` makes each access visible, not a read followed by a write atomic. Eight threads add one a million times to a plain `int` and a `volatile int`. It printed `true` twice on every run I made, but the counts behind it differ from run to run and nothing promises it:
+
+<Snippet file="volatile-count.java" />
+
+The nearest thing to `MutexGuard` being `!Send` is a run-time check: unlocking a `ReentrantLock` from another thread throws. Rust refuses to compile the move.
+
+<Snippet file="unlock-other.java" />
+</ForLang>
+
+<ForLang only="csharp">
+.NET has the same run-time check for the `MutexGuard` rule: `Monitor.Exit` from a thread that does not hold the lock throws. Rust refuses to compile it.
+
+<Snippet file="unlock-other.cs" />
+
+Per-thread state is `[ThreadStatic]` (Java: `ThreadLocal`); Rust's is `thread_local!`. A second thread starts from the default:
+
+<Snippet file="thread-static.cs" />
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+| In Java, Kotlin, C# | In Rust |
+|---|---|
+| "not thread-safe" in the docs; `@ThreadSafe`, `@Immutable`, `@GuardedBy` | not `Send` or `Sync`: a compile error, worked out rather than declared |
+| `synchronized`, `lock`, `ReentrantLock` next to the data | `Mutex<T>` holds the data |
+| `volatile`, `@Volatile`, `AtomicInteger`, `Interlocked` | `AtomicI32` and friends, with an ordering |
+| immutable objects shared by many threads | `Arc<T>` with no lock |
+| `ThreadLocal`, `[ThreadStatic]` | `thread_local!` |
+</ForLang>
+
+<ForLang only="python">
+In the standard CPython build only one thread runs Python code at a time (the Global Interpreter Lock, released during blocking I/O and in many C extensions). That protects the interpreter's data, not your read-then-write: the [Python FAQ](https://docs.python.org/3/faq/library.html#what-kinds-of-global-value-mutation-are-thread-safe) lists `i = i+1` as not atomic and ends "When in doubt, use a mutex!". Four threads each add one two million times, with a function call between the read and the write. Updates are lost, and the total differs from run to run:
+
+<Snippet file="count-call.py" />
+
+The plain `count += 1` loop printed the right total on every run I made, but that is how this build behaves; the FAQ's atomic list does not include it:
+
+<Snippet file="count-plain.py" />
+
+Since 3.13 CPython also has [free-threaded builds](https://docs.python.org/3/howto/free-threading-python.html) with the lock disabled; this page did not run one, and code leaning on the lock loses it there. Rust has no such lock; the checks above stand in for it, before the program runs.
+</ForLang>
+
+<ForLang only="typescript">
+Worker threads do not share objects: `workerData` and messages are copied, unless you transfer an `ArrayBuffer` ([Channels](/learn/channels/)). The worker below changes its list, and the main thread's list is untouched.
+
+<Snippet file="copy.ts" />
+
+Sharing is opt-in: both sides see a `SharedArrayBuffer`, and `Atomics.add` adds to it ([Node docs](https://nodejs.org/docs/latest-v24.x/api/worker_threads.html)). Two workers add 1000 each:
+
+<Snippet file="shared.ts" />
+
+Rust threads live in one address space and can share memory, so Rust needs the rule you have just read.
+</ForLang>
+
+<ForLang only="python typescript">
+| In your language | In Rust |
+|---|---|
+| a `threading.Lock` next to the variable | `Mutex<T>` around the value |
+| a worker's copy of an object | `thread::spawn(move || ...)` moves the value in |
+| `SharedArrayBuffer` and `Atomics.add` | `Arc<AtomicU32>` |
+</ForLang>
+
+<ForLang only="c cpp">
+In C and C++ a data race is undefined behavior: cppreference says "if a data race occurs, the behavior of the program is undefined" for both [C](https://en.cppreference.com/w/c/language/memory_model) and [C++](https://en.cppreference.com/w/cpp/language/multithread). The compiler accepts the program below, and ThreadSanitizer reports the race when it runs. It was built with `gcc -g -fsanitize=thread` and run under `setarch -R` (address randomization off). The page build replaces addresses and ids with placeholders, which is why both threads show `tid=1`:
+
+<Snippet file="count.crash.tsan.c" />
+
+The report names both accesses and the line. It sees only the executions you ran, so it is a test-time tool; Rust's check covers every path of safe code.
+
+`Arc` is Rust's `shared_ptr` (an atomic count in practice) and `Rc` is one with a plain count, which Rust makes a type that cannot cross a thread ([Smart pointers](/learn/smart-pointers/)). Thread-bound locks are unchecked in C++: a `std::unique_lock` can be moved into a `std::thread` and that compiles, but cppreference says unlocking a `std::mutex` from a thread that does not own it is [undefined behavior](https://en.cppreference.com/w/cpp/thread/mutex/unlock), and ThreadSanitizer reports it. `MutexGuard` is `!Send` for this reason:
+
+<Snippet file="unlock-other.crash.tsan.cpp" />
+
+| In C, C++ | In Rust |
+|---|---|
+| a data race: undefined behavior | not possible in safe code ([Nomicon](https://doc.rust-lang.org/nomicon/races.html)) |
+| `pthread_mutex_t` or `std::mutex` beside the data | `Mutex<T>` around the data |
+</ForLang>
+
+<p class="lr-layer">Going deeper</p>
+
+## Making the promise yourself
+
+Both traits are `unsafe` to implement. `unsafe impl Send for T {}` tells the compiler "I checked, this is fine", and if you are wrong the result is undefined behavior ([Nomicon](https://doc.rust-lang.org/nomicon/send-and-sync.html)). A raw pointer is neither `Send` nor `Sync`, which the Nomicon calls "more of a lint": a type holding one has untracked ownership, and refusing by default stops it becoming thread-safe by accident. It is the `void *` of Rust, with a guard. So this type is refused even though it is harmless:
+
+<Snippet file="raw-no-send.fail.rs" />
+
+This version's claim covers every `Table` that can exist: the field is private and `new` takes a `&'static i32`, which is shared, read-only, never freed, and already `Send` and `Sync`. (Contrived: a `&'static i32` field needs no `unsafe`. It shows the form.)
+
+<Snippet file="unsafe-send.rs" />
+
+[`unsafe`](/learn/unsafe/) has its own lesson; the point is the size of the promise: nothing checks it, and it must hold for every value the type can have.
+
+To go the other way, `impl !Send for T {}` would be the direct form, but the compiler refuses it on stable:
+
+<Snippet file="negative.fail.rs" />
+
+What works today is a field that is not `Send`. `PhantomData<T>` stores no data; the compiler treats the struct as if it held a `T`, and its `Send` and `Sync` follow `T`'s ([docs](https://doc.rust-lang.org/std/marker/struct.PhantomData.html)). So `PhantomData<*const ()>` removes both traits (`Pinned` in `check-table.rs`).
+
+## What they do not prevent
+
+The Nomicon [is exact](https://doc.rust-lang.org/nomicon/races.html): safe Rust has no data races, and does not prevent "general race conditions". It also calls deadlock "safe" ([Shared state](/learn/shared-state/#what-rust-does-not-prevent) runs both). That page's check-then-act example uses an `Arc<Mutex<i32>>`, which the table shows is `Send` and `Sync`. Every access is locked, the types raise no objection, and two threads still lose an update, because the check and the change are separate steps. The cure is a design: one guard around both. The marker traits answer "may these threads touch this value", never "is the sequence of touches right".
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Each exercise has checks in `main`: replace the `todo!()` calls and run until it prints `all checks passed`. The starters compile and fail when run.
+
+<Exercise name="guess" title="Send, Sync, or neither">
+Fill in `guesses()`: for ten types, say whether each is `Send` and whether it is `Sync`. None is a row of the table above, so derive each from its fields and the rules (two are structs in the file). The checks name the wrong type, not the trait or the answer, and `guesses` cannot call the probes, which live inside `main`.
+</Exercise>
+
+<Exercise name="counter" title="A counter that threads can share">
+Write `hit_from_threads`: `threads` scoped threads that each call `counter.hit()` `times` times. With `Counter` as it is, the compiler refuses it (E0277), because the count lives in a `Cell`. Change that one field until it is accepted. `Counter` records which threads called `hit`, so a loop on one thread cannot pass, and every `Counter` counts separately, so a `static` cannot either. The file forbids `unsafe`. An atomic and a `Mutex` both pass: pick one and say why it is `Sync`.
+</Exercise>
+
+<Exercise name="run-all" title="Run every job on its own thread">
+Write `run_all`. The signature lacks the bounds `thread::spawn` demands of `F` and `T`: add them, guided by the compiler. Results must come back in job order, and the jobs must run at the same time: the checks use jobs that each wait for the other three to start.
+</Exercise>
+
+## Read more
+
+- [The Rust Book, chapter 16.4: Extensible Concurrency with `Sync` and `Send`](https://doc.rust-lang.org/book/ch16-04-extensible-concurrency-sync-and-send.html).
+- The standard library: [`Send`](https://doc.rust-lang.org/std/marker/trait.Send.html), [`Sync`](https://doc.rust-lang.org/std/marker/trait.Sync.html), [`thread::scope`](https://doc.rust-lang.org/std/thread/fn.scope.html), [`Mutex`](https://doc.rust-lang.org/std/sync/struct.Mutex.html).
+- The Rustonomicon: [Data races and race conditions](https://doc.rust-lang.org/nomicon/races.html) and [Send and Sync](https://doc.rust-lang.org/nomicon/send-and-sync.html).
+- Errors: [E0277](https://doc.rust-lang.org/error_codes/E0277.html), [E0658](https://doc.rust-lang.org/error_codes/E0658.html), or [this site's index](/errors/).

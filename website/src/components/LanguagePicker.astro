@@ -1,0 +1,105 @@
+---
+// "Coming from: Go". Choosing a language stores it (localStorage `lr:from`) and flips
+// <html data-from>, which every lesson panel reads through CSS.
+//
+// This file also holds the site's one small script: tab clicks (which change the
+// language everywhere, as in the first version), the picker, and Copy buttons.
+import { LANG, OTHERS } from '../lib/langs'
+---
+<div class="lr-picker">
+  <button class="lr-from-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="lr-from-menu">
+    <span class="lr-from-lbl">Coming from</span>
+    {OTHERS.map(k => <span class="lr-from-val" data-for={k} style={`--c:${LANG[k].color}`}>{LANG[k].name}</span>)}
+    <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
+  </button>
+  <div id="lr-from-menu" class="lr-from-menu" hidden>
+    <p>Which language do you know best? Every comparison shows it, and lessons add notes just for it. You can change this any time.</p>
+    <div class="lr-from-grid">
+      {OTHERS.map(k => (
+        <button class="lr-lang-btn" type="button" data-pick={k} style={`--c:${LANG[k].color}`}>{LANG[k].name}</button>
+      ))}
+    </div>
+  </div>
+</div>
+
+<script>
+  import { OTHERS } from '../lib/langs'
+
+  const root = document.documentElement
+  const menu = document.getElementById('lr-from-menu')!
+  const btn = document.querySelector<HTMLButtonElement>('.lr-from-btn')!
+
+  function setFrom(lang: string, anchor?: Element) {
+    if (!OTHERS.includes(lang as never) || root.dataset.from === lang) return
+    // Switching languages changes the height of panels above the one clicked. Keep the
+    // clicked element where it was on screen so the page does not jump.
+    const before = anchor?.getBoundingClientRect().top
+    // The panels that appear fade in for a moment (see styles/motion.css).
+    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      root.classList.add('lr-switching')
+      setTimeout(() => root.classList.remove('lr-switching'), 260)
+    }
+    root.dataset.from = lang
+    try { localStorage.setItem('lr:from', lang) } catch {}
+    if (anchor && before !== undefined) window.scrollBy(0, anchor.getBoundingClientRect().top - before)
+  }
+  const open = (yes: boolean) => { menu.hidden = !yes; btn.setAttribute('aria-expanded', String(yes)) }
+
+  document.addEventListener('click', e => {
+    const t = e.target as Element
+    if (t.closest('.lr-from-btn')) return open(menu.hidden)
+    const pick = t.closest<HTMLElement>('[data-pick]')
+    if (pick) {
+      setFrom(pick.dataset.pick!)
+      try { localStorage.setItem('lr:picked', '1') } catch {}
+      return open(false)
+    }
+    if (!t.closest('#lr-from-menu')) open(false)
+
+    // File tabs switch only their own panel.
+    const ftab = t.closest<HTMLElement>('.lr-ftab')
+    if (ftab) {
+      const panel = ftab.closest('.lr-panel')!
+      panel.querySelectorAll('.lr-ftab').forEach(b => b.setAttribute('aria-selected', String(b === ftab)))
+      panel.querySelectorAll<HTMLElement>('.lr-fpane').forEach(p => { p.hidden = p.dataset.i !== ftab.dataset.i })
+      return
+    }
+
+    const tab = t.closest<HTMLElement>('.lr-tab')
+    if (tab) return setFrom(tab.dataset.tab!, tab)
+
+    const copy = t.closest<HTMLButtonElement>('[data-copy]')
+    if (copy) {
+      const panel = copy.closest('.lr-panel')!
+      const code = [...panel.querySelectorAll<HTMLElement>('[data-code]')].find(el => el.offsetParent !== null)
+      const text = code?.querySelector('pre')?.innerText
+      if (!text) return
+      navigator.clipboard.writeText(text).then(
+        () => { copy.textContent = 'Copied'; setTimeout(() => (copy.textContent = 'Copy'), 1400) },
+        () => { copy.textContent = 'Press Ctrl+C'; setTimeout(() => (copy.textContent = 'Copy'), 2000) },
+      )
+    }
+  })
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') open(false) })
+
+  // In-page links (the table of contents, heading anchors) glide to their target instead
+  // of jumping. Only for clicks: back/forward and page loads keep the browser's own scrolling.
+  document.addEventListener('click', e => {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+    const a = (e.target as Element).closest<HTMLAnchorElement>('a[href*="#"]')
+    if (!a || a.origin !== location.origin || a.pathname !== location.pathname || !a.hash || a.hash === '#') return
+    const target = document.getElementById(decodeURIComponent(a.hash.slice(1)))
+    if (!target || matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    e.preventDefault()
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    history.pushState(null, '', a.hash)
+  })
+
+  // First visit: the comparisons default to Go, which is wrong for most readers. Open
+  // the picker once so they see it can be changed. Any choice, or closing it, counts.
+  const seen = (() => { try { return localStorage.getItem('lr:picked') || localStorage.getItem('lr:seen') } catch { return '1' } })()
+  if (!seen && document.querySelector('.lr-others, .lr-forlang')) {
+    open(true)
+    try { localStorage.setItem('lr:seen', '1') } catch {}
+  }
+</script>

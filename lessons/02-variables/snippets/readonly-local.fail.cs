@@ -1,0 +1,2 @@
+readonly int x = 1;
+Console.WriteLine(x);

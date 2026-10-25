@@ -1,0 +1,230 @@
+# Rust for TypeScript developers
+name: ts-habits
+sessions:
+  # Every TypeScript program on the page passes the compiler under `strict`.
+  check:
+    dir: ts
+    steps:
+      - cmd: tsc --version
+      - cmd: tsc
+        show: '$ tsc    # type-checks every file in the folder, using its tsconfig.json'
+  ts01:
+    dir: ts
+    steps:
+      - cmd: node h01.ts
+  ts02:
+    dir: ts
+    steps:
+      - cmd: node h02.ts
+  ts03:
+    dir: ts
+    steps:
+      - cmd: node h03.ts
+  ts04:
+    dir: ts
+    steps:
+      - cmd: node h04.ts
+  ts05:
+    dir: ts
+    steps:
+      - cmd: node h05.ts
+  ts06:
+    dir: ts
+    steps:
+      - cmd: node h06.ts
+  ts07:
+    dir: ts
+    steps:
+      - cmd: node h07.ts
+  ts08:
+    dir: ts
+    steps:
+      - cmd: node h08.ts
+  ts09:
+    dir: ts
+    steps:
+      - cmd: node h09.ts
+  ts10:
+    dir: ts
+    steps:
+      - cmd: node h10.ts
+  ts06-erased:
+    dir: ts
+    steps:
+      - cmd: tsc --noEmit false --outDir out
+        show: '$ tsc --noEmit false --outDir out    # the tsconfig says noEmit; this run writes the JavaScript'
+      - cmd: cat out/h06.js
+  ts07-never:
+    dir: ts-never
+    steps:
+      - cmd: tsc
+        expect: fail
+      - cmd: node never.js
+        show: '$ node never.js    # tsc still wrote the file'
+
+  rs01:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin h01
+        expect: fail
+  rs02:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin h02
+        expect: fail
+  rs03:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin h03
+        expect: fail
+  rs05:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin h05
+        expect: fail
+  rs07:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin h07
+        expect: fail
+  rs10:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin h10
+        expect: fail
+  rs06:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin h06
+  rs08:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin h08
+  rs09:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin h09
+  rs04:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin h04
+      - cmd: cargo run --bin h04b
+        expect: fail
+        varies: true
+  rs10-default:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin h10b
+  idioms-ts:
+    dir: ts
+    steps:
+      - cmd: node idioms.ts
+  idioms-rs:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin idioms
+  # What you will miss.
+  miss-emit-ts:
+    dir: ts-errors
+    steps:
+      - cmd: tsc
+        expect: fail
+        show: '$ tsc'
+      - cmd: ls
+      - cmd: node emit.js
+  miss-emit-rs:
+    dir: rust
+    local_target: true
+    steps:
+      - cmd: cargo build --bin emit
+        expect: fail
+      - cmd: ls target/debug/emit
+        expect: fail
+  miss-inspect-ts:
+    dir: ts
+    steps:
+      - cmd: node inspect.ts
+  miss-inspect-rs:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin nodebug
+        expect: fail
+  miss-union-ts:
+    dir: ts
+    steps:
+      - cmd: node union.ts
+  miss-union-rs:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin either
+  miss-repl:
+    dir: rust
+    steps:
+      - cmd: rustup component list --installed
+
+  # The toolchain map.
+  versions:
+    dir: ts
+    steps:
+      - cmd: node --version
+      - cmd: npm --version
+      - cmd: tsc --version
+      - cmd: cargo --version
+      - cmd: rustc --version
+      - cmd: cargo fmt --version
+      - cmd: cargo clippy --version
+      - cmd: command -v gdb lldb rust-gdb rust-lldb || true
+  # needs network: npm and cargo both download the package
+  npm:
+    dir: tool-ts
+    steps:
+      - cmd: npm init -y
+        cwd: slugify
+      - cmd: npm pkg set type=module
+        cwd: slugify
+      - cmd: npm install --silent is-number@7.0.0
+        cwd: slugify
+        show: '$ npm install is-number@7.0.0    # needs network'
+      - cmd: cat package.json
+        cwd: slugify
+      - cmd: ls
+        cwd: slugify
+      - cmd: node --test
+        cwd: slugify
+        varies: true
+  cargo-new:
+    dir: tool-ts
+    steps:
+      - cmd: cargo new hello --vcs none
+        raw: true
+      - cmd: cargo add itoa@1.0.15
+        cwd: hello
+        raw: true
+        show: '$ cargo add itoa@1.0.15    # needs network'
+      - cmd: cat Cargo.toml
+        cwd: hello
+  cargo:
+    dir: tool-rust
+    steps:
+      - cmd: cargo check
+        raw: true
+      - cmd: cargo fmt --check
+        expect: fail
+      - cmd: cargo fmt
+      - cmd: cargo fmt --check
+      - cmd: cargo clippy
+      - cmd: cargo test
+        varies: true
+      - cmd: cargo doc --no-deps
+  # Things to try: each step is one task from the page's "Try it yourself".
+  try:
+    dir: rust
+    overlay:
+      src/bin/h01.rs: fixes/h01.rs
+      src/bin/h02.rs: fixes/h02.rs
+      src/bin/h07.rs: fixes/h07.rs
+    steps:
+      - cmd: cargo run --bin h01
+      - cmd: cargo run --bin h02
+      - cmd: cargo run --bin h07
+

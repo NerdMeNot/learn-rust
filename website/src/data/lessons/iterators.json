@@ -1,0 +1,321 @@
+{
+ "id": "iterators",
+ "title": "Iterators",
+ "part": "collections",
+ "intro": "An iterator hands out items one at a time, and does nothing until something asks for them. You chain steps like `filter`, `map`, `zip` and `fold` onto it instead of writing the loop. The only surprise is how many `&` the closure receives.",
+ "coming_from": {
+  "go": "Go's standard library has no `map` or `filter` for slices, so this replaces a hand-written loop. The chain is lazy: nothing runs until `.collect()` or `.sum()`, and the closure often gets a reference, like `&i32`, instead of the number.",
+  "kotlin": "This is Kotlin's `filter` and `map`, but lazy like a `Sequence`: you start with `.iter()` and finish with `.collect()`. There is no `it`, and the closure gets references, so `filter` sees `&&i32`.",
+  "python": "A chain like `.iter().filter(...).map(...)` is lazy like a generator expression, and `.collect()` is `list(...)`. The surprise is that closures get references, so you write `|&&n|` or `**n` to reach the number.",
+  "typescript": "Array `filter` and `map` build a new array at each step, but a Rust chain is lazy until `.collect()` or `.sum()`. You start with `.iter()`, and the closure gets references (`&&i32` in `filter`) instead of plain numbers.",
+  "java": "`iter().filter().map().collect()` is a Stream pipeline ending in `toList()`, and it's just as lazy. The catch is that items are references, so `filter` gets `&&i32` and you peel them off with patterns like `|&&n|`.",
+  "csharp": "`filter` is `Where` and `map` is `Select`, lazy like LINQ, and `collect()` is the `ToList()` at the end that runs the whole chain. The catch is that `.iter()` yields references, so `filter` gets `&&i32` and you write `|&&n|` or `**n` to get the number.",
+  "c": "C has no closures or iterator chains, so you'd write one loop that tests and stores. Rust's chain compiles down to much the same loop; the cost is getting used to closures that receive references like `&&i32`.",
+  "cpp": "`filter` and `map` are `std::views::filter` and `std::views::transform`, lazy in the same way, and `collect()` is C++23's `std::ranges::to`. A C++ lambda taking `auto n` gets a copy of each int; Rust's `filter` lends you a reference to the item instead, so you write `|&&n|` to get the number."
+ },
+ "notes": [
+  "Why `&&`? `.iter()` lends you each item, so it is `&i32`. `filter` has to look at the item and then still pass it on, so it can't hand it over. It lends it to your closure again. A lend of a lend is `&&i32`.",
+  "`map` takes the item and returns something new, so it gets the item as-is (`&i32` here). Rule: `filter`, `find`, `take_while` get one extra `&`. `map`, `for_each`, `fold` don't.",
+  "`|&&n|` is a pattern that strips both `&` and gives you the plain number. The toolkit below explains references in iterators properly, and how to avoid them with `.copied()` or `.into_iter()`.",
+  "Chains are lazy. Nothing runs until `collect()` or `sum()`. In a release build they typically compile to the same code as a hand-written loop."
+ ],
+ "gotcha": {
+  "title": "Doing arithmetic on what `filter` hands you",
+  "verdict": "rust-rule",
+  "looks_fine": "In Kotlin, `it` inside `filter` is the element itself. You never think about references.",
+  "rust_sees": "Here `n` is `&&i32`, a reference to a reference to a number. `%` works on a number or on one reference to a number, but not through two.",
+  "why": "Method calls like `n.abs()` follow references automatically, any number of them. Arithmetic follows one `&`, and comparisons want the same type on both sides. So this only bites in closures that do arithmetic or comparisons on a `&&`. The toolkit below explains where the second `&` comes from, and how to avoid it.",
+  "langs": {
+   "go": {
+    "status": "none",
+    "says": "Go has no `filter` in its standard library. You would write a loop, where `n` is just the number."
+   },
+   "kotlin": {
+    "status": "runs",
+    "says": "Kotlin runs this and prints [2, 4, 6]. `n` is the number itself, so `n % 2` works with no references to follow.",
+    "code": "fun main() {\n    val nums = listOf(1, 2, 3, 4, 5, 6)\n    val evens = nums.filter { n -> n % 2 == 0 }\n    println(evens)\n}\n",
+    "out": "[2, 4, 6]\n"
+   },
+   "python": {
+    "status": "runs",
+    "says": "Python prints [2, 4, 6]. `n` is the number itself, so `n % 2` works with no references to follow.",
+    "code": "nums = [1, 2, 3, 4, 5, 6]\nevens = list(filter(lambda n: n % 2 == 0, nums))\nprint(evens)\n",
+    "out": "[2, 4, 6]\n"
+   },
+   "typescript": {
+    "status": "runs",
+    "says": "Prints [ 2, 4, 6 ]. In TypeScript `n` is the number itself, so `n % 2` works as written.",
+    "code": "const nums = [1, 2, 3, 4, 5, 6];\nconst evens = nums.filter((n) => n % 2 === 0);\nconsole.log(evens);\n",
+    "out": "[ 2, 4, 6 ]\n"
+   },
+   "java": {
+    "status": "runs",
+    "says": "This prints [2, 4, 6]. Java unboxes the Integer for `%` automatically, so there are no layers of references to think about.",
+    "code": "import java.util.List;\n\npublic class Main {\n    public static void main(String[] args) {\n        var nums = List.of(1, 2, 3, 4, 5, 6);\n        List<Integer> evens = nums.stream().filter(n -> n % 2 == 0).toList();\n        System.out.println(evens);\n    }\n}\n",
+    "out": "[2, 4, 6]\n"
+   },
+   "csharp": {
+    "status": "runs",
+    "says": "LINQ lambdas get the item itself, so `n % 2` works and prints [2, 4, 6]. Rust's `filter` hands you a reference to a reference, which is why the same line fails there.",
+    "code": "List<int> nums = [1, 2, 3, 4, 5, 6];\nvar evens = nums.Where(n => n % 2 == 0).ToList();\nConsole.WriteLine($\"[{string.Join(\", \", evens)}]\");\n",
+    "out": "[2, 4, 6]\n"
+   },
+   "c": {
+    "status": "none",
+    "says": "C has no closures or iterator chains. The C version is a plain loop over `nums[i]`, so this mix-up of `&&i32` and `i32` cannot happen."
+   },
+   "cpp": {
+    "status": "runs",
+    "says": "The lambda takes `auto n`, a copy of each int, so `n % 2` works and this prints `2 4 6`. Rust's `filter` lends the item instead of copying it, so the closure gets `&&i32` and you take the `&`s off yourself.",
+    "code": "#include <iostream>\n#include <ranges>\n#include <vector>\n\nint main() {\n    std::vector<int> nums{1, 2, 3, 4, 5, 6};\n    auto evens = nums | std::views::filter([](auto n) { return n % 2 == 0; });\n    for (auto n : evens) {\n        std::cout << n << \" \";\n    }\n    std::cout << \"\\n\";\n}\n",
+    "out": "2 4 6 \n"
+   }
+  },
+  "code": "fn main() {\n    let nums = vec![1, 2, 3, 4, 5, 6];\n    let evens: Vec<&i32> = nums.iter().filter(|n| n % 2 == 0).collect();\n    println!(\"{evens:?}\");\n}\n",
+  "error": "error[E0369]: cannot calculate the remainder of `&&{integer}` divided by `{integer}`\n --> src/main.rs:3:53\n  |\n3 |     let evens: Vec<&i32> = nums.iter().filter(|n| n % 2 == 0).collect();\n  |                                                   - ^ - {integer}\n  |                                                   |\n  |                                                   &&{integer}\n  |\nhelp: `%` can be used on `&{integer}` if you dereference the left-hand side\n  |\n3 |     let evens: Vec<&i32> = nums.iter().filter(|n| *n % 2 == 0).collect();\n  |                                                   +\n",
+  "error_code": "E0369",
+  "fixed": {
+   "code": "fn main() {\n    let nums = vec![1, 2, 3, 4, 5, 6];\n    let evens: Vec<&i32> = nums.iter().filter(|&&n| n % 2 == 0).collect();\n    println!(\"{evens:?}\");\n}\n",
+   "out": "[2, 4, 6]\n"
+  }
+ },
+ "order": 31,
+ "program": {
+  "rust": {
+   "code": "fn main() {\n    let nums = vec![1, 2, 3, 4, 5, 6];\n\n    let evens_squared: Vec<i32> = nums\n        .iter()                     // items are &i32 (borrowed from nums)\n        .filter(|&&n| n % 2 == 0)   // filter lends each item again: &&i32\n        .map(|n| n * n)             // map gets the item itself: &i32\n        .collect();                 // build a Vec from the results\n\n    let total: i32 = nums.iter().sum();\n    println!(\"{evens_squared:?} {total}\");\n}\n",
+   "out": "[4, 16, 36] 21\n"
+  },
+  "go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tnums := []int{1, 2, 3, 4, 5, 6}\n\n\tvar evensSquared []int\n\ttotal := 0\n\tfor _, n := range nums {\n\t\tif n%2 == 0 {\n\t\t\tevensSquared = append(evensSquared, n*n)\n\t\t}\n\t\ttotal += n\n\t}\n\tfmt.Println(evensSquared, total)\n}\n",
+   "out": "[4 16 36] 21\n"
+  },
+  "kotlin": {
+   "code": "fun main() {\n    val nums = listOf(1, 2, 3, 4, 5, 6)\n\n    val evensSquared = nums\n        .filter { it % 2 == 0 }\n        .map { it * it }\n\n    val total = nums.sum()\n    println(\"$evensSquared $total\")\n}\n",
+   "out": "[4, 16, 36] 21\n"
+  },
+  "python": {
+   "code": "nums = [1, 2, 3, 4, 5, 6]\n\nevens_squared = [n * n for n in nums if n % 2 == 0]\ntotal = sum(nums)\nprint(f\"{evens_squared} {total}\")\n",
+   "out": "[4, 16, 36] 21\n"
+  },
+  "typescript": {
+   "code": "const nums = [1, 2, 3, 4, 5, 6];\n\n// each step builds a new array right away (not lazy like Rust)\nconst evensSquared = nums\n  .filter((n) => n % 2 === 0)\n  .map((n) => n * n);\n\nconst total = nums.reduce((sum, n) => sum + n, 0);\nconsole.log(evensSquared, total);\n",
+   "out": "[ 4, 16, 36 ] 21\n"
+  },
+  "java": {
+   "code": "import java.util.List;\n\npublic class Main {\n    public static void main(String[] args) {\n        var nums = List.of(1, 2, 3, 4, 5, 6);\n\n        List<Integer> evensSquared = nums.stream()\n            .filter(n -> n % 2 == 0)\n            .map(n -> n * n)\n            .toList();\n\n        int total = nums.stream().mapToInt(Integer::intValue).sum();\n        System.out.println(evensSquared + \" \" + total);\n    }\n}\n",
+   "out": "[4, 16, 36] 21\n"
+  },
+  "csharp": {
+   "code": "List<int> nums = [1, 2, 3, 4, 5, 6];\n\nvar evensSquared = nums\n    .Where(n => n % 2 == 0)\n    .Select(n => n * n)\n    .ToList();                  // build a List from the results\n\nvar total = nums.Sum();\nConsole.WriteLine($\"[{string.Join(\", \", evensSquared)}] {total}\");\n",
+   "out": "[4, 16, 36] 21\n"
+  },
+  "c": {
+   "code": "#include <stdio.h>\n\nint main(void) {\n    int nums[] = {1, 2, 3, 4, 5, 6};\n\n    // C has no map/filter: one loop does the filter and the map\n    int evens_squared[6];\n    int count = 0;\n    for (int i = 0; i < 6; i++) {\n        if (nums[i] % 2 == 0) {\n            evens_squared[count++] = nums[i] * nums[i];\n        }\n    }\n\n    int total = 0;\n    for (int i = 0; i < 6; i++) {\n        total += nums[i];\n    }\n\n    printf(\"[\");\n    for (int i = 0; i < count; i++) {\n        printf(i ? \", %d\" : \"%d\", evens_squared[i]);\n    }\n    printf(\"] %d\\n\", total);\n    return 0;\n}\n",
+   "out": "[4, 16, 36] 21\n"
+  },
+  "cpp": {
+   "code": "#include <iostream>\n#include <numeric>\n#include <ranges>\n#include <vector>\n\nint main() {\n    std::vector<int> nums{1, 2, 3, 4, 5, 6};\n\n    auto view = nums\n        | std::views::filter([](int n) { return n % 2 == 0; })\n        | std::views::transform([](int n) { return n * n; });   // lazy, like a Rust iterator\n    std::vector<int> evens_squared(view.begin(), view.end());   // collect\n\n    int total = std::accumulate(nums.begin(), nums.end(), 0);\n    std::cout << \"[\";\n    for (std::size_t i = 0; i < evens_squared.size(); ++i) {\n        std::cout << (i ? \", \" : \"\") << evens_squared[i];\n    }\n    std::cout << \"] \" << total << \"\\n\";\n}\n",
+   "out": "[4, 16, 36] 21\n"
+  }
+ },
+ "faq": [],
+ "snippets": {
+  "chain-type.rs": {
+   "code": "use std::any::type_name_of_val;\n\nfn main() {\n    let nums = vec![1, 2, 3, 4, 5, 6];\n\n    // A chain is a value: a struct wrapping a struct wrapping the slice iterator.\n    let chain = nums.iter().filter(|&&n| n % 2 == 0).map(|n| n * n);\n\n    // type_name is for debugging; its exact text isn't guaranteed between versions.\n    println!(\"type: {}\", type_name_of_val(&chain));\n\n    // The closures capture nothing, so they take no space. What's left is the\n    // slice iterator's two pointers: no heap allocation, no list of steps.\n    println!(\"size: {} bytes\", size_of_val(&chain));\n\n    let result: Vec<i32> = chain.collect();\n    println!(\"result: {result:?}\");\n}\n",
+   "out": "type: core::iter::adapters::map::Map<core::iter::adapters::filter::Filter<core::slice::iter::Iter<'_, i32>, main::main::{{closure}}>, main::main::{{closure}}>\nsize: 16 bytes\nresult: [4, 16, 36]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-method-tables.rs": {
+   "code": "// Not shown on the page: this runs every \"Example -> result\" in the method tables, so the\n// extract fails if one of them stops being true. Each assert_eq! is one table cell.\nfn main() {\n    // Adaptors table\n    let squares: Vec<i32> = [1, 2, 3].iter().map(|n| n * n).collect();\n    assert_eq!(squares, [1, 4, 9]);\n\n    let parsed: Vec<i32> = [\"7\", \"x\", \"12\"]\n        .iter()\n        .filter_map(|s| s.parse().ok())\n        .collect();\n    assert_eq!(parsed, [7, 12]);\n\n    let letters: Vec<char> = [\"hi\", \"yo\"].iter().flat_map(|w| w.chars()).collect();\n    assert_eq!(letters, ['h', 'i', 'y', 'o']);\n\n    let flat: Vec<i32> = [Some(1), None, Some(3)].into_iter().flatten().collect();\n    assert_eq!(flat, [1, 3]);\n\n    let readings = [3, 8, 1, 9, 4, 7, 2];\n    let first_three: Vec<i32> = readings.iter().copied().take(3).collect();\n    assert_eq!(first_three, [3, 8, 1]);\n    let after_five: Vec<i32> = readings.iter().copied().skip(5).collect();\n    assert_eq!(after_five, [7, 2]);\n\n    let before_nine: Vec<i32> = readings.iter().copied().take_while(|&n| n < 9).collect();\n    assert_eq!(before_nine, [3, 8, 1]);\n    let from_nine: Vec<i32> = readings.iter().copied().skip_while(|&n| n < 9).collect();\n    assert_eq!(from_nine, [9, 4, 7, 2]);\n\n    let every_third: Vec<i32> = (0..10).step_by(3).collect();\n    assert_eq!(every_third, [0, 3, 6, 9]);\n\n    let numbered: Vec<(usize, &str)> = [\"ana\", \"bo\"].into_iter().enumerate().collect();\n    assert_eq!(numbered, [(0, \"ana\"), (1, \"bo\")]);\n\n    let zipped: Vec<(&str, i32)> = [\"ana\", \"bo\"].into_iter().zip([90, 75, 82]).collect();\n    assert_eq!(zipped, [(\"ana\", 90), (\"bo\", 75)]);\n\n    let chained: Vec<i32> = (1..=3).chain(7..=8).collect();\n    assert_eq!(chained, [1, 2, 3, 7, 8]);\n\n    // Searching and folding table\n    let list = [3, 8, 12, 5, 20];\n    assert!(list.iter().any(|&n| n > 10));\n    assert!(list.iter().all(|&n| n > 0));\n    assert_eq!(list.iter().find(|&&n| n > 10), Some(&12));\n    assert_eq!(list.iter().position(|&n| n > 10), Some(2));\n\n    let lines = [\"host=example.org\", \"port=8080\"];\n    let port = lines.iter().find_map(|l| l.strip_prefix(\"port=\"));\n    assert_eq!(port, Some(\"8080\"));\n\n    assert_eq!([3, 8, 1, 9].iter().nth(2), Some(&1));\n\n    let sum_of_squares = (1..=6).fold(0, |total, n| total + n * n);\n    assert_eq!(sum_of_squares, 91);\n    let empty: Vec<i32> = Vec::new();\n    assert_eq!(empty.into_iter().reduce(|a, b| a + b), None);\n\n    let (even, odd): (Vec<i32>, Vec<i32>) = (1..=6).partition(|n| n % 2 == 0);\n    assert_eq!(even, [2, 4, 6]);\n    assert_eq!(odd, [1, 3, 5]);\n\n    println!(\"every table claim holds\");\n}\n",
+   "out": "every table claim holds\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "closure-types.rs": {
+   "code": "fn main() {\n    let nums = vec![1, 2, 3, 4];\n\n    // Parameter types are written out here, so the compiler checks every claim.\n\n    // .iter() hands out &i32, and map gets each item as it is.\n    let a: Vec<i32> = nums.iter().map(|n: &i32| n * 10).collect();\n    // filter only looks, so it borrows the item: a & on top of &i32.\n    let b: Vec<&i32> = nums.iter().filter(|n: &&i32| **n > 2).collect();\n    println!(\"iter(): map {a:?}, filter {b:?}\");\n\n    // A pattern in the parameter peels the & off for you.\n    let c: Vec<&i32> = nums.iter().filter(|&&n| n > 2).collect();\n    println!(\"|&&n| pattern: {c:?}\");\n\n    // copied() turns &i32 into i32 first. Then there is one & less everywhere.\n    let d: Vec<i32> = nums.iter().copied().filter(|n: &i32| *n > 2).collect();\n    let e: Vec<i32> = nums.iter().copied().filter(|&n| n > 2).collect();\n    println!(\"copied(): {d:?} {e:?}\");\n\n    // For types that aren't Copy, cloned() makes owned copies.\n    let names = vec![String::from(\"ana\"), String::from(\"bo\")];\n    let owned: Vec<String> = names.iter().filter(|s| s.len() > 2).cloned().collect();\n    println!(\"cloned(): {owned:?}, names still here: {names:?}\");\n\n    // into_iter() on the Vec itself hands out the items, so there is nothing\n    // to copy, but `names` is used up.\n    let shouted: Vec<String> = names\n        .into_iter()\n        .map(|s: String| s.to_uppercase())\n        .collect();\n    println!(\"into_iter(): {shouted:?}\");\n}\n",
+   "out": "iter(): map [10, 20, 30, 40], filter [3, 4]\n|&&n| pattern: [3, 4]\ncopied(): [3, 4] [3, 4]\ncloned(): [\"ana\"], names still here: [\"ana\", \"bo\"]\ninto_iter(): [\"ANA\", \"BO\"]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "closures-quick.rs": {
+   "code": "fn main() {\n    // A closure is a small function you write inline: |parameters| body.\n    let double = |x: i32| x * 2;\n    println!(\"double(21): {}\", double(21));\n\n    // Types are usually inferred, and a body can be a block.\n    let describe = |n| {\n        if n % 2 == 0 { \"even\" } else { \"odd\" }\n    };\n    println!(\"describe(7): {}\", describe(7));\n\n    // Unlike a plain function, a closure can use variables around it.\n    let limit = 10;\n    let over = |x: i32| x > limit;\n    println!(\"over(12): {}\", over(12));\n\n    // Iterator methods take closures: \"do this to each item\".\n    let tripled: Vec<i32> = vec![1, 2, 3].into_iter().map(|x| x * 3).collect();\n    println!(\"tripled: {tripled:?}\");\n}\n",
+   "out": "double(21): 42\ndescribe(7): odd\nover(12): true\ntripled: [3, 6, 9]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "collect-into.rs": {
+   "code": "use std::collections::{BTreeSet, HashMap, HashSet};\n\nfn main() {\n    let words = [\"apple\", \"bob\", \"apple\", \"cat\"];\n\n    // The type you ask for decides what collect builds.\n    let v: Vec<&str> = words.iter().copied().collect();\n    println!(\"Vec: {v:?}\");\n\n    let s: String = words.iter().map(|w| w.chars().next().unwrap()).collect();\n    println!(\"String from chars: {s}\");\n\n    let joined: String = words.iter().copied().collect();\n    println!(\"String from &strs: {joined}\");\n\n    // A set drops duplicates. HashSet order is random, so we only print the length.\n    let unique: HashSet<&str> = words.iter().copied().collect();\n    println!(\"HashSet len: {}\", unique.len());\n    let sorted: BTreeSet<&str> = words.iter().copied().collect();\n    println!(\"BTreeSet: {sorted:?}\");\n\n    // Pairs collect into a map. A repeated key keeps the last value.\n    let lengths: HashMap<&str, usize> = words.iter().map(|w| (*w, w.len())).collect();\n    println!(\"HashMap[\\\"apple\\\"]: {}\", lengths[\"apple\"]);\n\n    // The turbofish ::<> says the same thing without a `let` type.\n    let n = (1..=3).collect::<Vec<i32>>();\n    // `_` lets Rust work out the item type: you only name the container.\n    let m: Vec<_> = (1..=3).map(|x| x * 10).collect();\n    println!(\"turbofish: {n:?}, with _: {m:?}\");\n}\n",
+   "out": "Vec: [\"apple\", \"bob\", \"apple\", \"cat\"]\nString from chars: abac\nString from &strs: applebobapplecat\nHashSet len: 3\nBTreeSet: {\"apple\", \"bob\", \"cat\"}\nHashMap[\"apple\"]: 5\nturbofish: [1, 2, 3], with _: [10, 20, 30]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "collect-result.rs": {
+   "code": "fn main() {\n    let good = [\"1\", \"2\", \"3\"];\n    let bad = [\"1\", \"two\", \"3\", \"four\"];\n\n    // Each parse gives a Result. Collecting into Vec<Result<..>> keeps them all.\n    let each: Vec<Result<i32, _>> = bad.iter().map(|s| s.parse::<i32>()).collect();\n    println!(\"Vec<Result>: {each:?}\");\n\n    // Collecting into Result<Vec<..>, ..> flips it: Ok with every value,\n    // or the first Err.\n    let all: Result<Vec<i32>, _> = good.iter().map(|s| s.parse::<i32>()).collect();\n    println!(\"good -> {all:?}\");\n\n    // It stops at the first Err. inspect shows \"3\" and \"four\" are never parsed.\n    let all: Result<Vec<i32>, _> = bad\n        .iter()\n        .inspect(|s| println!(\"  parsing {s:?}\"))\n        .map(|s| s.parse::<i32>())\n        .collect();\n    println!(\"bad  -> {all:?}\");\n\n    // Option works the same way: Some(Vec) only if every item is Some.\n    let firsts: Option<Vec<char>> = [\"ab\", \"cd\"].iter().map(|s| s.chars().next()).collect();\n    println!(\"all Some -> {firsts:?}\");\n    let firsts: Option<Vec<char>> = [\"ab\", \"\"].iter().map(|s| s.chars().next()).collect();\n    println!(\"one None -> {firsts:?}\");\n}\n",
+   "out": "Vec<Result>: [Ok(1), Err(ParseIntError { kind: InvalidDigit }), Ok(3), Err(ParseIntError { kind: InvalidDigit })]\ngood -> Ok([1, 2, 3])\n  parsing \"1\"\n  parsing \"two\"\nbad  -> Err(ParseIntError { kind: InvalidDigit })\nall Some -> Some(['a', 'c'])\none None -> None\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "counting.rs": {
+   "code": "fn main() {\n    let prices = [3, 4, 5];\n\n    // sum and product can produce several types, so name the one you want.\n    let total: i32 = prices.iter().sum();\n    let product = prices.iter().product::<i32>();\n    println!(\"sum: {total}, product: {product}\");\n\n    // An empty sum is 0 and an empty product is 1, not None.\n    let none: [i32; 0] = [];\n    println!(\"empty sum: {}\", none.iter().sum::<i32>());\n    println!(\"empty product: {}\", none.iter().product::<i32>());\n\n    // Floats work too.\n    let avg = [1.5, 2.5].iter().sum::<f64>() / 2.0;\n    println!(\"average: {avg}\");\n\n    // count walks the whole iterator.\n    println!(\n        \"count of evens: {}\",\n        (1..=10).filter(|n| n % 2 == 0).count()\n    );\n}\n",
+   "out": "sum: 12, product: 60\nempty sum: 0\nempty product: 1\naverage: 2\ncount of evens: 5\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "custom-iterator.rs": {
+   "code": "// Fibonacci numbers, one at a time. The struct holds the state between calls.\nstruct Fibonacci {\n    current: u64,\n    next: u64,\n}\n\nimpl Fibonacci {\n    fn new() -> Self {\n        Fibonacci {\n            current: 0,\n            next: 1,\n        }\n    }\n}\n\nimpl Iterator for Fibonacci {\n    type Item = u64; // what next() hands out\n\n    // The only method you have to write.\n    fn next(&mut self) -> Option<u64> {\n        let value = self.current;\n        // checked_add returns None on overflow, which ends the sequence.\n        let after = self.current.checked_add(self.next)?;\n        self.current = self.next;\n        self.next = after;\n        Some(value)\n    }\n}\n\nfn main() {\n    // Every adaptor and consumer now works, without writing any of them.\n    let first: Vec<u64> = Fibonacci::new().take(10).collect();\n    println!(\"take(10): {first:?}\");\n\n    let even_sum: u64 = Fibonacci::new()\n        .take_while(|&n| n < 4_000_000)\n        .filter(|n| n % 2 == 0)\n        .sum();\n    println!(\"sum of even ones under 4 million: {even_sum}\");\n\n    let first_big = Fibonacci::new().position(|n| n > 1000);\n    println!(\"position of first > 1000: {first_big:?}\");\n\n    for (i, n) in Fibonacci::new().enumerate().skip(20).step_by(10) {\n        println!(\"fib({i}) = {n}\");\n    }\n\n    // It stops by itself before u64 overflows.\n    println!(\n        \"count (it stops before u64 overflows): {}\",\n        Fibonacci::new().count()\n    );\n}\n",
+   "out": "take(10): [0, 1, 1, 2, 3, 5, 8, 13, 21, 34]\nsum of even ones under 4 million: 4613732\nposition of first > 1000: Some(17)\nfib(20) = 6765\nfib(30) = 832040\nfib(40) = 102334155\nfib(50) = 12586269025\nfib(60) = 1548008755920\nfib(70) = 190392490709135\nfib(80) = 23416728348467685\nfib(90) = 2880067194370816120\ncount (it stops before u64 overflows): 92\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "folding.rs": {
+   "code": "fn main() {\n    let nums = [1, 2, 3, 4, 5, 6];\n\n    // fold: start with a value and combine every item into it.\n    let sum_of_squares = nums.iter().fold(0, |acc, n| acc + n * n);\n    println!(\"fold sum of squares: {sum_of_squares}\");\n    let csv = nums.iter().fold(String::new(), |mut acc, n| {\n        if !acc.is_empty() {\n            acc.push(',');\n        }\n        acc.push_str(&n.to_string());\n        acc\n    });\n    println!(\"fold into a String: {csv}\");\n\n    // reduce: like fold, but the first item is the start. None if empty.\n    println!(\"reduce: {:?}\", nums.iter().copied().reduce(|a, b| a * b));\n\n    // partition: split into two collections by a test.\n    let (even, odd): (Vec<i32>, Vec<i32>) = nums.iter().partition(|&&n| n % 2 == 0);\n    println!(\"partition: even {even:?}, odd {odd:?}\");\n\n    // unzip: a list of pairs into a pair of lists.\n    let pairs = [(\"ana\", 28), (\"bo\", 31)];\n    let (names, ages): (Vec<&str>, Vec<i32>) = pairs.iter().copied().unzip();\n    println!(\"unzip: {names:?} {ages:?}\");\n\n    // for_each: run a closure on every item. Same as a for loop;\n    // handy at the end of a long chain.\n    nums.iter()\n        .filter(|&&n| n > 4)\n        .for_each(|n| println!(\"for_each: {n}\"));\n}\n",
+   "out": "fold sum of squares: 91\nfold into a String: 1,2,3,4,5,6\nreduce: Some(720)\npartition: even [2, 4, 6], odd [1, 3, 5]\nunzip: [\"ana\", \"bo\"] [28, 31]\nfor_each: 5\nfor_each: 6\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "grouping.rs": {
+   "code": "use std::collections::{BTreeMap, HashMap};\n\nfn main() {\n    let text = \"the cat and the hat and the bat\";\n\n    // Counting: entry finds the key or inserts 0, and gives you the value to change.\n    let mut counts: HashMap<&str, usize> = HashMap::new();\n    for word in text.split_whitespace() {\n        *counts.entry(word).or_insert(0) += 1;\n    }\n    // HashMap order is random. Collect and sort to print it in a fixed order.\n    let mut by_count: Vec<(&str, usize)> = counts.into_iter().collect();\n    by_count.sort_by_key(|&(word, n)| (std::cmp::Reverse(n), word));\n    println!(\"counts: {by_count:?}\");\n\n    // Grouping: or_default() starts each group with an empty Vec.\n    // A BTreeMap keeps the keys sorted.\n    let mut by_len: BTreeMap<usize, Vec<&str>> = BTreeMap::new();\n    for word in [\"fig\", \"kiwi\", \"pear\", \"yam\", \"plum\"] {\n        by_len.entry(word.len()).or_default().push(word);\n    }\n    println!(\"grouped by length: {by_len:?}\");\n\n    // Runs of neighbours that belong together: chunk_by on a slice.\n    // Only neighbours are grouped, like Unix `uniq`.\n    let readings = [1, 2, 3, 7, 8, 12];\n    let runs: Vec<&[i32]> = readings.chunk_by(|a, b| b - a == 1).collect();\n    println!(\"chunk_by consecutive: {runs:?}\");\n}\n",
+   "out": "counts: [(\"the\", 3), (\"and\", 2), (\"bat\", 1), (\"cat\", 1), (\"hat\", 1)]\ngrouped by length: {3: [\"fig\", \"yam\"], 4: [\"kiwi\", \"pear\", \"plum\"]}\nchunk_by consecutive: [[1, 2, 3], [7, 8], [12]]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "inspect-scan.rs": {
+   "code": "fn main() {\n    // inspect runs a closure on each item as it passes, and changes nothing.\n    // It is for debugging a chain without taking it apart.\n    let total: i32 = [1, 2, 3, 4]\n        .iter()\n        .inspect(|n| println!(\"  before filter: {n}\"))\n        .filter(|&&n| n % 2 == 0)\n        .inspect(|n| println!(\"  after filter: {n}\"))\n        .sum();\n    println!(\"total: {total}\");\n\n    // scan is map with a running state: here, a running balance.\n    let changes = [100, -30, -50, 20];\n    let balances: Vec<i32> = changes\n        .iter()\n        .scan(0, |balance, change| {\n            *balance += change;\n            Some(*balance) // return None to stop early\n        })\n        .collect();\n    println!(\"scan balances: {balances:?}\");\n}\n",
+   "out": "  before filter: 1\n  before filter: 2\n  after filter: 2\n  before filter: 3\n  before filter: 4\n  after filter: 4\ntotal: 6\nscan balances: [100, 70, 20, 40]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "into-iter-moves.fail.rs": {
+   "code": "fn main() {\n    let names = vec![String::from(\"ana\"), String::from(\"bo\")];\n    let upper: Vec<String> = names.into_iter().map(|s| s.to_uppercase()).collect();\n    println!(\"{upper:?}\");\n    println!(\"{names:?}\"); // into_iter() took the Vec\n}\n",
+   "error": "error[E0382]: borrow of moved value: `names`\n --> src/main.rs:5:16\n  |\n2 |     let names = vec![String::from(\"ana\"), String::from(\"bo\")];\n  |         ----- move occurs because `names` has type `Vec<String>`, which does not implement the `Copy` trait\n3 |     let upper: Vec<String> = names.into_iter().map(|s| s.to_uppercase()).collect();\n  |                                    ----------- `names` moved due to this method call\n4 |     println!(\"{upper:?}\");\n5 |     println!(\"{names:?}\"); // into_iter() took the Vec\n  |                ^^^^^ value borrowed here after move\n  |\nhelp: you can `clone` the value and consume it, but this might not be your desired behavior\n  |\n3 |     let upper: Vec<String> = names.clone().into_iter().map(|s| s.to_uppercase()).collect();\n  |                                   ++++++++\n\n  ... (notes pointing into the standard library trimmed)",
+   "lang": "rust"
+  },
+  "into-iterator.rs": {
+   "code": "use std::collections::BTreeSet;\n\n// Accepts anything a `for` loop accepts, as long as it yields i32.\nfn total(items: impl IntoIterator<Item = i32>) -> i32 {\n    let mut sum = 0;\n    for n in items {\n        sum += n;\n    }\n    sum\n}\n\nfn main() {\n    println!(\"Vec: {}\", total(vec![1, 2, 3]));\n    println!(\"array: {}\", total([4, 5]));\n    println!(\"range: {}\", total(1..=10));\n    println!(\"set: {}\", total(BTreeSet::from([7, 7, 8])));\n    println!(\"chain: {}\", total((1..=3).map(|n| n * n)));\n\n    // `for x in v` is `IntoIterator::into_iter(v)` plus a loop over next().\n    // Written out by hand:\n    let v = vec![\"a\", \"b\"];\n    let mut it = IntoIterator::into_iter(v);\n    while let Some(x) = it.next() {\n        println!(\"by hand: {x}\");\n    }\n\n    // &Vec and &mut Vec implement IntoIterator too. That is why\n    // `for x in &v` borrows and `for x in &mut v` lets you change items.\n    let mut w = vec![1, 2];\n    for x in &mut w {\n        *x *= 100;\n    }\n    for x in &w {\n        println!(\"after &mut loop: {x}\");\n    }\n}\n",
+   "out": "Vec: 6\narray: 9\nrange: 55\nset: 15\nchain: 14\nby hand: a\nby hand: b\nafter &mut loop: 100\nafter &mut loop: 200\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "lazy.rs": {
+   "code": "fn main() {\n    let nums = vec![1, 2, 3];\n\n    // Build a chain. The closure prints, so we can see when it runs.\n    let doubled = nums.iter().map(|n| {\n        println!(\"  map sees {n}\");\n        n * 2\n    });\n    println!(\"chain built, nothing has run yet\");\n\n    // collect pulls every item through the chain.\n    let result: Vec<i32> = doubled.collect();\n    println!(\"collected: {result:?}\");\n\n    // Under the hood, everything is calls to next().\n    let mut it = nums.iter();\n    println!(\"next: {:?}\", it.next());\n    println!(\"next: {:?}\", it.next());\n    println!(\"next: {:?}\", it.next());\n    println!(\"next: {:?}\", it.next()); // used up: None from now on\n}\n",
+   "out": "chain built, nothing has run yet\n  map sees 1\n  map sees 2\n  map sees 3\ncollected: [2, 4, 6]\nnext: Some(1)\nnext: Some(2)\nnext: Some(3)\nnext: None\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "max-float.fail.rs": {
+   "code": "fn main() {\n    let temps: [f64; 3] = [21.5, 19.0, 23.25];\n    let hottest = temps.iter().max();\n    println!(\"{hottest:?}\");\n}\n",
+   "error": "error[E0277]: the trait bound `f64: Ord` is not satisfied\n --> src/main.rs:3:32\n  |\n3 |     let hottest = temps.iter().max();\n  |                                ^^^ the trait `Ord` is not implemented for `f64`\n  |\n  = help: the following other types implement trait `Ord`:\n            i128\n            i16\n            i32\n            i64\n            i8\n            isize\n            u128\n            u16\n          and 4 others\n  = note: required for `&f64` to implement `Ord`\n  ... (notes pointing into the standard library trimmed)",
+   "lang": "rust"
+  },
+  "min-max.rs": {
+   "code": "fn main() {\n    let nums = [4, 9, 2, 9, 1];\n    // Option, because an empty iterator has no max.\n    println!(\"max: {:?}, min: {:?}\", nums.iter().max(), nums.iter().min());\n    let empty: [i32; 0] = [];\n    println!(\"max of empty: {:?}\", empty.iter().max());\n\n    // _by_key: compare by something computed from each item.\n    let words = [\"kiwi\", \"fig\", \"banana\", \"plum\"];\n    println!(\"longest: {:?}\", words.iter().max_by_key(|w| w.len()));\n    println!(\"shortest: {:?}\", words.iter().min_by_key(|w| w.len()));\n    // On a tie, max_ returns the last of the equals and min_ the first.\n    println!(\n        \"max_by_key tie (kiwi, plum): {:?}\",\n        [\"kiwi\", \"plum\"].iter().max_by_key(|w| w.len())\n    );\n\n    // f64 is not Ord (NaN isn't bigger or smaller than anything),\n    // so max() won't compile. total_cmp gives floats a full order.\n    let temps: [f64; 3] = [21.5, 19.0, 23.25];\n    let hottest = temps.iter().copied().max_by(|a, b| a.total_cmp(b));\n    println!(\"hottest: {hottest:?}\");\n\n    // Or fold with f64::min (or f64::max), which ignore NaN.\n    let coldest = temps.iter().copied().fold(f64::INFINITY, f64::min);\n    println!(\"coldest: {coldest}\");\n\n    // Floats by key: compare with total_cmp inside max_by.\n    let cities: [(&str, f64); 3] = [(\"Oslo\", 4.5), (\"Lima\", 19.0), (\"Rome\", 15.5)];\n    let warmest = cities.iter().max_by(|a, b| a.1.total_cmp(&b.1));\n    println!(\"warmest city: {warmest:?}\");\n}\n",
+   "out": "max: Some(9), min: Some(1)\nmax of empty: None\nlongest: Some(\"banana\")\nshortest: Some(\"fig\")\nmax_by_key tie (kiwi, plum): Some(\"plum\")\nhottest: Some(23.25)\ncoldest: 19\nwarmest city: Some((\"Lima\", 19.0))\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "pattern-move.fail.rs": {
+   "code": "fn main() {\n    let names = vec![String::from(\"ana\"), String::from(\"bo\")];\n    // |&s| tries to take the String out from behind the reference.\n    let copies: Vec<String> = names.iter().map(|&s| s).collect();\n    println!(\"{copies:?}\");\n}\n",
+   "error": "error[E0507]: cannot move out of a shared reference\n --> src/main.rs:4:49\n  |\n4 |     let copies: Vec<String> = names.iter().map(|&s| s).collect();\n  |                                                 ^-\n  |                                                  |\n  |                                                  data moved here because `s` has type `String`, which does not implement the `Copy` trait\n  |\nhelp: consider removing the borrow\n  |\n4 -     let copies: Vec<String> = names.iter().map(|&s| s).collect();\n4 +     let copies: Vec<String> = names.iter().map(|s| s).collect();",
+   "lang": "rust"
+  },
+  "peeking.rs": {
+   "code": "fn main() {\n    // peekable lets you look at the next item without taking it.\n    // Here: split \"aaabccdd\" into runs of the same letter.\n    let mut chars = \"aaabccdd\".chars().peekable();\n    let mut runs = Vec::new();\n    while let Some(c) = chars.next() {\n        let mut len = 1;\n        while chars.peek() == Some(&c) {\n            chars.next();\n            len += 1;\n        }\n        runs.push(format!(\"{c}{len}\"));\n    }\n    println!(\"runs: {}\", runs.join(\" \"));\n\n    // next_if takes the next item only if it passes the test.\n    let mut it = \"123abc\".chars().peekable();\n    let mut digits = String::new();\n    while let Some(d) = it.next_if(|c| c.is_ascii_digit()) {\n        digits.push(d);\n    }\n    println!(\"digits: {digits}, left over: {}\", it.collect::<String>());\n\n    // windows and chunks are methods on slices (and so on Vec and arrays),\n    // not on iterators. They hand out sub-slices without copying.\n    let temps = [12, 14, 13, 17, 21];\n    let rises: Vec<i32> = temps.windows(2).map(|w| w[1] - w[0]).collect();\n    println!(\"windows(2) differences: {rises:?}\");\n\n    for chunk in temps.chunks(2) {\n        println!(\"chunks(2): {chunk:?}\"); // the last chunk can be shorter\n    }\n    println!(\n        \"chunks_exact(2) remainder: {:?}\",\n        temps.chunks_exact(2).remainder()\n    );\n}\n",
+   "out": "runs: a3 b1 c2 d2\ndigits: 123, left over: abc\nwindows(2) differences: [2, -1, 4, 4]\nchunks(2): [12, 14]\nchunks(2): [13, 17]\nchunks(2): [21]\nchunks_exact(2) remainder: [21]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "push-fixed.rs": {
+   "code": "fn main() {\n    // Fix 1: work out what to add, then add it. The borrow has ended by then.\n    let mut queue = vec![1, 2];\n    let extra: Vec<i32> = queue.iter().filter(|&&n| n < 20).map(|n| n * 3).collect();\n    queue.extend(extra);\n    println!(\"collect, then extend: {queue:?}\");\n\n    // Fix 2: loop by index, when the new items should be visited too.\n    // queue.len() is read again on every pass, so the loop sees what was pushed.\n    let mut queue = vec![1, 2];\n    let mut i = 0;\n    while i < queue.len() {\n        if queue[i] < 20 {\n            queue.push(queue[i] * 3);\n        }\n        i += 1;\n    }\n    println!(\"index loop: {queue:?}\");\n\n    // Changing items in place is fine: iter_mut borrows each one mutably.\n    let mut prices = vec![10, 20, 30];\n    for p in prices.iter_mut() {\n        *p += 1;\n    }\n    println!(\"iter_mut: {prices:?}\");\n\n    // Removing as you go: retain does it in one pass.\n    let mut nums = vec![1, 2, 3, 4, 5, 6];\n    nums.retain(|n| n % 3 != 0);\n    println!(\"retain: {nums:?}\");\n}\n",
+   "out": "collect, then extend: [1, 2, 3, 6]\nindex loop: [1, 2, 3, 6, 9, 18, 27, 54]\niter_mut: [11, 21, 31]\nretain: [1, 2, 4, 5]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "push-while-iterating.fail.rs": {
+   "code": "fn main() {\n    let mut queue = vec![1, 2];\n    for n in &queue {\n        if *n < 20 {\n            queue.push(n * 3);\n        }\n    }\n    println!(\"{queue:?}\");\n}\n",
+   "error": "error[E0502]: cannot borrow `queue` as mutable because it is also borrowed as immutable\n --> src/main.rs:5:13\n  |\n3 |       for n in &queue {\n  |       -        ------\n  |       |        |\n  |       |        immutable borrow occurs here\n  |  _____|        immutable borrow later used here\n  | |\n4 | |         if *n < 20 {\n5 | |             queue.push(n * 3);\n  | |             ^^^^^^^^^^^^^^^^^ mutable borrow occurs here\n6 | |         }\n7 | |     }\n  | |_____- this for loop borrows `queue` immutably, preventing mutation within its body\n  |\n  = help: consider using an index-based loop instead, or collecting modifications into a separate collection\n",
+   "lang": "rust"
+  },
+  "refs-double.fail.rs": {
+   "code": "fn main() {\n    let nums = vec![1, 2, 3, 4];\n    let evens: Vec<&i32> = nums.iter().filter(|n| n % 2 == 0).collect();\n    println!(\"{evens:?}\");\n}\n",
+   "error": "error[E0369]: cannot calculate the remainder of `&&{integer}` divided by `{integer}`\n --> src/main.rs:3:53\n  |\n3 |     let evens: Vec<&i32> = nums.iter().filter(|n| n % 2 == 0).collect();\n  |                                                   - ^ - {integer}\n  |                                                   |\n  |                                                   &&{integer}\n  |\nhelp: `%` can be used on `&{integer}` if you dereference the left-hand side\n  |\n3 |     let evens: Vec<&i32> = nums.iter().filter(|n| *n % 2 == 0).collect();\n  |                                                   +\n",
+   "lang": "rust"
+  },
+  "refs-memory.rs": {
+   "code": "fn main() {\n    let names = vec![String::from(\"ana\"), String::from(\"bo\"), String::from(\"cy\")];\n\n    let first: &String = names.iter().next().unwrap();\n    // The item points at the String inside the Vec. It is not a copy.\n    println!(\"points into the Vec: {}\", std::ptr::eq(first, &names[0]));\n    println!(\"a &String is {} bytes\", size_of::<&String>());\n    println!(\n        \"a String is {} bytes, plus its text on the heap\",\n        size_of::<String>()\n    );\n}\n",
+   "out": "points into the Vec: true\na &String is 8 bytes\na String is 24 bytes, plus its text on the heap\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "refs-types.rs": {
+   "code": "use std::any::type_name_of_val as type_of;\n\nfn main() {\n    let nums = vec![10, 20, 30];\n\n    // Each line asks the compiler for the real type of what the closure receives.\n    let first = nums.iter().next().unwrap();\n    println!(\"iter() hands out           {}\", type_of(&first));\n\n    let _ = nums\n        .iter()\n        .map(|n| println!(\"map's closure gets         {}\", type_of(&n)))\n        .next();\n    let _ = nums\n        .iter()\n        .filter(|n| {\n            println!(\"filter's closure gets      {}\", type_of(&n));\n            true\n        })\n        .next();\n    let _ = nums\n        .iter()\n        .copied()\n        .filter(|n| {\n            println!(\"after copied(), filter gets {}\", type_of(&n));\n            true\n        })\n        .next();\n    let _ = nums\n        .clone()\n        .into_iter()\n        .map(|n| println!(\"into_iter(), map gets      {}\", type_of(&n)))\n        .next();\n}\n",
+   "out": "iter() hands out           &i32\nmap's closure gets         &i32\nfilter's closure gets      &&i32\nafter copied(), filter gets &i32\ninto_iter(), map gets      i32\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "refs-using.rs": {
+   "code": "fn main() {\n    let nums = vec![3, 8, 12];\n    let n: &i32 = &nums[1];\n\n    // Arithmetic works through one &: Rust defines `&i32 * i32` and friends.\n    println!(\"n * 2: {}\", n * 2);\n    println!(\"n % 3: {}\", n % 3);\n\n    // Method calls follow references automatically, however many there are.\n    println!(\"n.pow(2): {}\", n.pow(2));\n    let nn: &&i32 = &n;\n    println!(\"nn.is_positive(): {}\", nn.is_positive());\n\n    // Comparisons need the same type on both sides.\n    println!(\"n == &8: {}\", n == &8);\n    println!(\"*n == 8: {}\", *n == 8);\n\n    // * follows a reference to the value. For an i32, that's a copy of the number.\n    let value: i32 = *n;\n    println!(\"*n: {value}\");\n    println!(\"**nn: {}\", **nn);\n\n    // A pattern in a closure's parameter does the same: |&&x| takes both & off.\n    let big: Vec<&i32> = nums.iter().filter(|&&x| x > 5).collect();\n    println!(\"filter(|&&x| x > 5): {big:?}\");\n}\n",
+   "out": "n * 2: 16\nn % 3: 2\nn.pow(2): 64\nnn.is_positive(): true\nn == &8: true\n*n == 8: true\n*n: 8\n**nn: 8\nfilter(|&&x| x > 5): [8, 12]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "refs-why.rs": {
+   "code": "// A photo is big: its pixels live on the heap. Cloning one prints, so you can see it.\nstruct Photo {\n    name: String,\n    pixels: Vec<u8>,\n}\n\nimpl Clone for Photo {\n    fn clone(&self) -> Self {\n        println!(\n            \"  cloning {}: copying {} bytes\",\n            self.name,\n            self.pixels.len()\n        );\n        Photo {\n            name: self.name.clone(),\n            pixels: self.pixels.clone(),\n        }\n    }\n}\n\nfn main() {\n    let photos = vec![\n        Photo {\n            name: \"beach\".into(),\n            pixels: vec![0; 3_000_000],\n        },\n        Photo {\n            name: \"city\".into(),\n            pixels: vec![0; 5_000_000],\n        },\n        Photo {\n            name: \"dog\".into(),\n            pixels: vec![0; 2_000_000],\n        },\n    ];\n\n    println!(\"iter(): borrow each photo\");\n    let total: usize = photos.iter().map(|p| p.pixels.len()).sum();\n    println!(\"  total size: {total} bytes, and nothing was copied\");\n    println!(\"  photos is still usable: {} photos\", photos.len());\n    println!(\n        \"  each item handed out: {} bytes (a &Photo), not {} (a Photo) plus its pixels\",\n        size_of::<&Photo>(),\n        size_of::<Photo>()\n    );\n\n    println!(\"cloned(): an owned copy of each\");\n    let copies: Vec<Photo> = photos.iter().cloned().collect();\n    println!(\"  made {} copies\", copies.len());\n\n    println!(\"into_iter(): take the photos themselves, no copies\");\n    let names: Vec<String> = photos.into_iter().map(|p| p.name).collect();\n    println!(\"  {names:?}\");\n}\n",
+   "out": "iter(): borrow each photo\n  total size: 10000000 bytes, and nothing was copied\n  photos is still usable: 3 photos\n  each item handed out: 8 bytes (a &Photo), not 48 (a Photo) plus its pixels\ncloned(): an owned copy of each\n  cloning beach: copying 3000000 bytes\n  cloning city: copying 5000000 bytes\n  cloning dog: copying 2000000 bytes\n  made 3 copies\ninto_iter(): take the photos themselves, no copies\n  [\"beach\", \"city\", \"dog\"]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "searching.rs": {
+   "code": "fn main() {\n    let nums = [3, 8, 12, 5, 20];\n\n    println!(\"any > 10: {}\", nums.iter().any(|&n| n > 10));\n    println!(\"all > 0: {}\", nums.iter().all(|&n| n > 0));\n    // On an empty iterator, any is false and all is true.\n    let empty: [i32; 0] = [];\n    println!(\n        \"empty any: {}, empty all: {}\",\n        empty.iter().any(|&n| n > 0),\n        empty.iter().all(|&n| n > 0)\n    );\n\n    // find returns the first match; position returns its index.\n    println!(\"find > 10: {:?}\", nums.iter().find(|&&n| n > 10));\n    println!(\"position > 10: {:?}\", nums.iter().position(|&n| n > 10));\n    println!(\"find > 100: {:?}\", nums.iter().find(|&&n| n > 100));\n    println!(\"rposition > 10: {:?}\", nums.iter().rposition(|&n| n > 10));\n\n    // find_map: the first item for which the closure returns Some.\n    let lines = [\"# comment\", \"port=8080\", \"host=x\"];\n    let port = lines.iter().find_map(|l| l.strip_prefix(\"port=\"));\n    println!(\"find_map port: {port:?}\");\n\n    // contains is on slices, not iterators.\n    println!(\"contains(&12): {}\", nums.contains(&12));\n}\n",
+   "out": "any > 10: true\nall > 0: true\nempty any: false, empty all: true\nfind > 10: Some(12)\nposition > 10: Some(2)\nfind > 100: None\nrposition > 10: Some(4)\nfind_map port: Some(\"8080\")\ncontains(&12): true\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "sources.rs": {
+   "code": "use std::collections::BTreeMap;\nuse std::iter;\n\nfn main() {\n    // Ranges are iterators already.\n    let up: Vec<i32> = (1..5).collect();\n    let up_to: Vec<i32> = (1..=5).collect();\n    println!(\"1..5: {up:?}   1..=5: {up_to:?}\");\n\n    // Text: see the strings lesson for more.\n    let text = \"one two\\nthree\";\n    println!(\"chars: {:?}\", \"héllo\".chars().collect::<Vec<_>>());\n    println!(\"lines: {:?}\", text.lines().collect::<Vec<_>>());\n    println!(\"split: {:?}\", \"a,b,,c\".split(',').collect::<Vec<_>>());\n\n    // Maps give (key, value) pairs. BTreeMap keeps keys sorted;\n    // a HashMap gives them in an order that changes from run to run.\n    let ages = BTreeMap::from([(\"bo\", 31), (\"ana\", 28)]);\n    for (name, age) in &ages {\n        println!(\"map: {name} is {age}\");\n    }\n    println!(\"keys: {:?}\", ages.keys().collect::<Vec<_>>());\n    println!(\"values: {:?}\", ages.values().collect::<Vec<_>>());\n\n    // Making iterators from nothing.\n    let dashes: String = iter::repeat('-').take(5).collect();\n    println!(\"repeat: {dashes}\");\n    println!(\n        \"repeat_n: {:?}\",\n        iter::repeat_n(\"hi\", 3).collect::<Vec<_>>()\n    );\n    println!(\"once: {:?}\", iter::once(42).collect::<Vec<_>>());\n\n    // successors: each item is computed from the previous one.\n    // checked_mul returns None on overflow, which ends the sequence.\n    let powers: Vec<u16> = iter::successors(Some(1u16), |&n| n.checked_mul(10)).collect();\n    println!(\"successors: {powers:?}\");\n\n    // from_fn: a closure that returns Some(item) or None to stop.\n    let mut count = 0;\n    let counter = iter::from_fn(|| {\n        count += 1;\n        if count <= 3 { Some(count) } else { None }\n    });\n    println!(\"from_fn: {:?}\", counter.collect::<Vec<_>>());\n}\n",
+   "out": "1..5: [1, 2, 3, 4]   1..=5: [1, 2, 3, 4, 5]\nchars: ['h', 'é', 'l', 'l', 'o']\nlines: [\"one two\", \"three\"]\nsplit: [\"a\", \"b\", \"\", \"c\"]\nmap: ana is 28\nmap: bo is 31\nkeys: [\"ana\", \"bo\"]\nvalues: [28, 31]\nrepeat: -----\nrepeat_n: [\"hi\", \"hi\", \"hi\"]\nonce: [42]\nsuccessors: [1, 10, 100, 1000, 10000]\nfrom_fn: [1, 2, 3]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "sum-untyped.fail.rs": {
+   "code": "fn main() {\n    let prices = [3, 4, 5];\n    let total = prices.iter().sum();\n    println!(\"{total}\");\n}\n",
+   "error": "error[E0283]: type annotations needed\n --> src/main.rs:3:9\n  |\n3 |     let total = prices.iter().sum();\n  |         ^^^^^                 --- type must be known at this point\n  |\n  = note: the type must implement `Sum<&i32>`\n  = help: the following types implement trait `Sum<A>`:\n            `Duration` implements `Sum<&'a Duration>`\n            `Duration` implements `Sum`\n            `Option<T>` implements `Sum<Option<U>>`\n            `Result<T, E>` implements `Sum<Result<U, E>>`\n            `Saturating<u128>` implements `Sum<&'a Saturating<u128>>`\n            `Saturating<u128>` implements `Sum`\n            `Saturating<u16>` implements `Sum<&'a Saturating<u16>>`\n            `Saturating<u16>` implements `Sum`\n          and 88 others\nhelp: consider giving `total` an explicit type\n  |\n3 |     let total: /* Type */ = prices.iter().sum();\n  |              ++++++++++++\n\n  ... (notes pointing into the standard library trimmed)",
+   "lang": "rust"
+  },
+  "take-while-eats.rs": {
+   "code": "fn main() {\n    // take_while has to pull the first failing item to see that it fails.\n    // That item is then gone.\n    let mut it = [1, 2, 10, 3, 4].into_iter();\n    let small: Vec<i32> = it.by_ref().take_while(|&n| n < 5).collect();\n    let rest: Vec<i32> = it.collect();\n    println!(\"take_while: {small:?}, rest: {rest:?}\"); // the 10 is lost\n\n    // peekable + next_if looks first and leaves the failing item in place.\n    let mut it = [1, 2, 10, 3, 4].into_iter().peekable();\n    let mut small = Vec::new();\n    while let Some(n) = it.next_if(|&n| n < 5) {\n        small.push(n);\n    }\n    let rest: Vec<i32> = it.collect();\n    println!(\"next_if: {small:?}, rest: {rest:?}\");\n}\n",
+   "out": "take_while: [1, 2], rest: [3, 4]\nnext_if: [1, 2], rest: [10, 3, 4]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "used-up.fail.rs": {
+   "code": "fn main() {\n    let nums = vec![1, 2, 3];\n    let evens = nums.iter().filter(|&&n| n % 2 == 0);\n    let how_many = evens.count();\n    let total: i32 = evens.sum();\n    println!(\"{how_many} {total}\");\n}\n",
+   "error": "error[E0382]: use of moved value: `evens`\n --> src/main.rs:5:22\n  |\n3 |     let evens = nums.iter().filter(|&&n| n % 2 == 0);\n  |         ----- move occurs because `evens` has type `Filter<std::slice::Iter<'_, i32>, {closure@src/main.rs:3:36: 3:41}>`, which does not implement the `Copy` trait\n4 |     let how_many = evens.count();\n  |                          ------- `evens` moved due to this method call\n5 |     let total: i32 = evens.sum();\n  |                      ^^^^^ value used here after move\n  |\nhelp: you can `clone` the value and consume it, but this might not be your desired behavior\n  |\n4 |     let how_many = evens.clone().count();\n  |                         ++++++++\n\n  ... (notes pointing into the standard library trimmed)",
+   "lang": "rust"
+  }
+ },
+ "exercises": {
+  "longest-rise": {
+   "starter": "/// The length of the longest stretch where every reading is higher than the one\n/// before it. A single reading on its own is a stretch of 1.\nfn longest_rise(readings: &[i32]) -> usize {\n    todo!(\"chunk_by(|a, b| a < b), then the longest chunk\")\n}\n\nfn main() {\n    assert_eq!(longest_rise(&[1, 2, 3, 1, 2]), 3);\n    assert_eq!(longest_rise(&[3, 1, 2, 3, 4, 0]), 4);\n    assert_eq!(longest_rise(&[5, 4, 3]), 1);\n    // Equal is not rising.\n    assert_eq!(longest_rise(&[2, 2, 2]), 1);\n    assert_eq!(longest_rise(&[7]), 1);\n    // No readings, no run.\n    assert_eq!(longest_rise(&[]), 0);\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "/// The length of the longest stretch where every reading is higher than the one\n/// before it. A single reading on its own is a stretch of 1.\nfn longest_rise(readings: &[i32]) -> usize {\n    readings\n        .chunk_by(|a, b| a < b)\n        .map(|run| run.len())\n        .max()\n        .unwrap_or(0)\n}\n\nfn main() {\n    assert_eq!(longest_rise(&[1, 2, 3, 1, 2]), 3);\n    assert_eq!(longest_rise(&[3, 1, 2, 3, 4, 0]), 4);\n    assert_eq!(longest_rise(&[5, 4, 3]), 1);\n    // Equal is not rising.\n    assert_eq!(longest_rise(&[2, 2, 2]), 1);\n    assert_eq!(longest_rise(&[7]), 1);\n    // No readings, no run.\n    assert_eq!(longest_rise(&[]), 0);\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "parse-list": {
+   "starter": "/// Parse \"3, 4,5\" into [3, 4, 5]. Spaces around each number are ignored.\n/// If any piece is not a whole number, return Err(\"bad number: \\\"<piece>\\\"\")\n/// for the first such piece, with the piece trimmed.\nfn parse_list(text: &str) -> Result<Vec<i32>, String> {\n    todo!(\"split on ',', trim, parse, map_err, then collect into Result<Vec<_>, _>\")\n}\n\nfn main() {\n    assert_eq!(parse_list(\"3, 4,5\"), Ok(vec![3, 4, 5]));\n    assert_eq!(parse_list(\" -4 , +5 \"), Ok(vec![-4, 5]));\n    // The first bad piece is the one reported.\n    assert_eq!(parse_list(\"1, x, y\"), Err(\"bad number: \\\"x\\\"\".to_string()));\n    assert_eq!(parse_list(\"1, 2.5\"), Err(\"bad number: \\\"2.5\\\"\".to_string()));\n    // Empty input is an empty list, not an error.\n    assert_eq!(parse_list(\"\"), Ok(vec![]));\n    assert_eq!(parse_list(\"   \"), Ok(vec![]));\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "/// Parse \"3, 4,5\" into [3, 4, 5]. Spaces around each number are ignored.\n/// If any piece is not a whole number, return Err(\"bad number: \\\"<piece>\\\"\")\n/// for the first such piece, with the piece trimmed.\nfn parse_list(text: &str) -> Result<Vec<i32>, String> {\n    if text.trim().is_empty() {\n        return Ok(Vec::new());\n    }\n    text.split(',')\n        .map(str::trim)\n        .map(|piece| {\n            piece\n                .parse::<i32>()\n                .map_err(|_| format!(\"bad number: {piece:?}\"))\n        })\n        .collect()\n}\n\nfn main() {\n    assert_eq!(parse_list(\"3, 4,5\"), Ok(vec![3, 4, 5]));\n    assert_eq!(parse_list(\" -4 , +5 \"), Ok(vec![-4, 5]));\n    // The first bad piece is the one reported.\n    assert_eq!(parse_list(\"1, x, y\"), Err(\"bad number: \\\"x\\\"\".to_string()));\n    assert_eq!(parse_list(\"1, 2.5\"), Err(\"bad number: \\\"2.5\\\"\".to_string()));\n    // Empty input is an empty list, not an error.\n    assert_eq!(parse_list(\"\"), Ok(vec![]));\n    assert_eq!(parse_list(\"   \"), Ok(vec![]));\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "word-frequency": {
+   "starter": "/// The `n` most common words in `text`, most common first, as (word, count).\n/// A word is a run of letters (`char::is_alphabetic`), compared in lowercase.\n/// Words with the same count are sorted alphabetically.\nfn top_words(text: &str, n: usize) -> Vec<(String, usize)> {\n    todo!(\"count with a HashMap and entry(), then collect, sort and take(n)\")\n}\n\nfn main() {\n    // Ties are broken alphabetically: \"and\" comes before \"cat\" and \"hat\".\n    assert_eq!(\n        top_words(\"the cat and the hat\", 2),\n        vec![(\"the\".to_string(), 2), (\"and\".to_string(), 1)]\n    );\n    // Case and punctuation do not make a different word.\n    assert_eq!(\n        top_words(\"Go, go! GO? rust.\", 1),\n        vec![(\"go\".to_string(), 3)]\n    );\n    // Letters outside English are letters too.\n    assert_eq!(\n        top_words(\"Ölçek ölçek straße\", 5),\n        vec![(\"ölçek\".to_string(), 2), (\"straße\".to_string(), 1)]\n    );\n    // No words at all, not one empty word.\n    assert_eq!(top_words(\"\", 3), vec![]);\n    assert_eq!(top_words(\"  ... !!! \", 3), vec![]);\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "use std::collections::HashMap;\n\n/// The `n` most common words in `text`, most common first, as (word, count).\n/// A word is a run of letters (`char::is_alphabetic`), compared in lowercase.\n/// Words with the same count are sorted alphabetically.\nfn top_words(text: &str, n: usize) -> Vec<(String, usize)> {\n    let mut counts: HashMap<String, usize> = HashMap::new();\n    for word in text\n        .split(|c: char| !c.is_alphabetic())\n        .filter(|w| !w.is_empty())\n    {\n        *counts.entry(word.to_lowercase()).or_insert(0) += 1;\n    }\n\n    let mut ranked: Vec<(String, usize)> = counts.into_iter().collect();\n    ranked.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));\n    ranked.into_iter().take(n).collect()\n}\n\nfn main() {\n    // Ties are broken alphabetically: \"and\" comes before \"cat\" and \"hat\".\n    assert_eq!(\n        top_words(\"the cat and the hat\", 2),\n        vec![(\"the\".to_string(), 2), (\"and\".to_string(), 1)]\n    );\n    // Case and punctuation do not make a different word.\n    assert_eq!(\n        top_words(\"Go, go! GO? rust.\", 1),\n        vec![(\"go\".to_string(), 3)]\n    );\n    // Letters outside English are letters too.\n    assert_eq!(\n        top_words(\"Ölçek ölçek straße\", 5),\n        vec![(\"ölçek\".to_string(), 2), (\"straße\".to_string(), 1)]\n    );\n    // No words at all, not one empty word.\n    assert_eq!(top_words(\"\", 3), vec![]);\n    assert_eq!(top_words(\"  ... !!! \", 3), vec![]);\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}

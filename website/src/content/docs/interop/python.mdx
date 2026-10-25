@@ -1,0 +1,152 @@
+---
+title: "Use Rust from Python"
+description: "Build a Rust function and class into a Python module with PyO3 and maturin, call it from Python, and see what happens to lists, strings, exceptions, panics and the GIL. The commands ran in a pinned image, and what did not run is named."
+---
+
+import { Files, Remember, Session, Tree } from '../../../components/guide'
+
+Python can import a compiled Rust library like a Python file. This page builds one, `wordstats`, with [PyO3](https://pyo3.rs/v0.30.1/) (the Rust side) and [maturin](https://www.maturin.rs/) (the build tool), and calls it from Python. It ran with PyO3 0.30.1 and maturin 1.15.0 in the image behind this site:
+
+<Session guide="interop-python" run="versions" />
+
+Every step that downloads something (`get-pip.py`, maturin, the PyO3 crates) is labelled *needs network*.
+
+<Remember>PyO3 turns Rust functions and structs into Python functions and classes, and maturin builds the file that Python imports.</Remember>
+
+## The project
+
+<Tree guide="interop-python" dir="rust" name="wordstats" title="Project layout" notes={{"src/lib.rs":"the Rust code on this page","py":"Python scripts that call it","pyproject.toml":"tells Python tools to build with maturin","Cargo.toml":"a cdylib that depends on PyO3","Cargo.lock":"created by Cargo"}} />
+
+<Files guide="interop-python" dir="rust" files={["Cargo.toml", "pyproject.toml"]} />
+
+`crate-type = ["cdylib"]` asks for a shared library, the kind of file Python can load. `pyo3 = "=0.30.1"` pins one exact version.
+
+One function per idea on this page:
+
+<Files guide="interop-python" dir="rust" files={["src/lib.rs"]} />
+
+`#[pyfunction]` marks a function for Python, and the `#[pymodule]` block at the bottom lists what the module contains ([PyO3: modules](https://pyo3.rs/v0.30.1/module.html)). Older tutorials add a `pyo3/extension-module` feature; the [PyO3 guide](https://pyo3.rs/v0.30.1/building-and-distribution.html) says projects are encouraged to migrate off that feature (its [FAQ](https://pyo3.rs/v0.30.1/faq.html) calls it "now deprecated"), and that maturin 1.9.4 and later sets the `PYO3_BUILD_EXTENSION_MODULE` variable for you.
+
+## Build it and import it
+
+A plain `python3 -m venv .venv` fails in this image (no `ensurepip`), so the page makes the environment without pip and adds pip with `get-pip.py`, as the [Python phrasebook](/for/python/#toolchain-map) does. Elsewhere, `python3 -m venv .venv` and `pip install maturin` should be enough to start (not run here), given Rust.
+
+<Session guide="interop-python" run="build" title="terminal" only={[0, 1, 2, 3, 4]} />
+
+`maturin develop` builds the crate and installs it into the virtual environment. Its [docs](https://www.maturin.rs/local_development.html) say it builds in debug mode by default. The `Built wheel` line names a temporary folder, so the output varies.
+
+A plain `cargo build` stops at the link step in this image. `PYO3_BUILD_EXTENSION_MODULE=1`, the variable maturin sets, lets it finish:
+
+<Session guide="interop-python" run="plain-cargo" />
+
+## Call it from Python
+
+<Files guide="interop-python" dir="rust" files={["py/calls.py"]} lang="python" />
+
+<Session guide="interop-python" run="build" only={[5]} />
+
+- A Python `int` became an `i64`, and a `str` a `&str` that Rust upper-cased (`é` became `É`).
+- The `BTreeMap<String, usize>` came back as a `dict` in the map's sorted order. The `Vec<f64>` parameter accepted `[1, 2, 3]`, so an `int` converts to `f64` ([PyO3's table](https://pyo3.rs/v0.30.1/conversions/tables.html)).
+
+## Errors become exceptions
+
+<Files guide="interop-python" dir="rust" files={["py/mistakes.py"]} lang="python" />
+
+<Session guide="interop-python" run="build" only={[6]} />
+
+The first five failures happen while PyO3 converts an argument, before the body of the function runs. A number too big for `i64` is an `OverflowError`, and a `str` where an `int` belongs is a `TypeError`. A `str` is refused as a `Vec` although it is iterable. A lone surrogate such as `"\ud800"` is a valid Python string but not valid UTF-8, so it cannot become a `&str`.
+
+For your own failures, return a `PyResult`. `parse_pair` builds a `ValueError` itself for `'34'`. For `'3,x'` the `?` converted a `ParseIntError`: PyO3 accepts any error type with `From<E> for PyErr`, and that one has it ([PyO3: error handling](https://pyo3.rs/v0.30.1/function/error-handling.html); [Errors](/learn/errors/#when-the-error-types-differ) covers `From` and `?` in plain Rust).
+
+A panic is a different case. `explode` calls `unwrap` on a failed parse:
+
+<Session guide="interop-python" run="build" only={[7]} />
+
+Rust's panic hook printed the message, and Python received a `PanicException`. It derives from `BaseException`, so `except Exception` did not catch it; the [PyO3 docs](https://docs.rs/pyo3/0.30.1/pyo3/panic/struct.PanicException.html) say this is "so that it will typically propagate all the way through the stack and cause the Python interpreter to exit". See [Errors](/learn/errors/#panics-when-the-thread-stops) for panics.
+
+## A Rust struct as a Python class
+
+`Counter` in the file above is a `#[pyclass]`, with a `#[new]` constructor, a `#[getter]` and a `__repr__`.
+
+<Files guide="interop-python" dir="rust" files={["py/counter.py"]} lang="python" />
+
+<Session guide="interop-python" run="build" only={[8]} />
+
+`distinct` has a getter and no setter, so assigning to it is an `AttributeError`. The `RuntimeError` is the interesting line. `c.merge(c)` passes the same object as `&mut self` and as the `other` argument, which Rust's borrowing rules forbid. The compiler cannot see that call, so PyO3 checks the rule at run time, in a way its [guide](https://pyo3.rs/v0.30.1/class.html) calls "very similar to `std::cell::RefCell<T>`" ([`RefCell`](/learn/smart-pointers/#cell-and-refcell-change-it-through-a-shared-reference)). The same page says a `#[pyclass]` type must be `Send` and `Sync` ([Send and Sync](/learn/send-sync/)).
+
+## Letting other Python threads run
+
+The PyO3 guide says CPython "was limited by the global interpreter lock (GIL), which only allowed a single thread to drive the Python interpreter at a time" ([PyO3: parallelism](https://pyo3.rs/v0.30.1/parallelism.html)). While your Rust function runs, it holds that lock, and no other Python thread runs. `Python::detach` releases the lock for the length of a closure. Before 0.26.0 it was `allow_threads`, so older tutorials use the old name ([migration guide](https://pyo3.rs/v0.30.1/migration.html)).
+
+The two `wait_*` functions at the end of `lib.rs` wait for a flag with a timeout, and differ only in `py.detach`. The script gives them 1,000 ms. A helper thread sets the flag after 0.1 seconds, and needs the lock to do so:
+
+<Files guide="interop-python" dir="rust" files={["py/gil.py"]} lang="python" />
+
+<Session guide="interop-python" run="build" only={[9]} />
+
+With the lock held, the helper could not run, so the wait timed out and returned `False`. With `detach`, the helper ran in the meantime and the wait returned `True`. The result shows who could run, not how long anything took (it assumes an idle machine). The `versions` session above shows that this CPython has the GIL; I did not run a free-threaded build.
+
+What may go into the closure is limited. A `Bound<PyList>` carries a `Python` token, which on this build stands for holding the lock, so it cannot cross:
+
+<Session guide="interop-python" run="detach-error" />
+
+The docs for [`detach`](https://docs.rs/pyo3/0.30.1/pyo3/marker/struct.Python.html) say "Only types that implement `Ungil` can cross the closure" (`Ungil` is the marker for types that may leave the lock behind). The fix is to copy the Python list into plain Rust data first, here a `Vec<String>` parameter, then move that into the closure:
+
+<Files guide="interop-python" dir="fixes" files={["detach_fixed.rs"]} run="detach-fixed" />
+
+These two use `cargo check` because of the link error above.
+
+## Ship a wheel
+
+`maturin develop` is for your own machine. A wheel is the file `pip` installs; `maturin build` makes one:
+
+<Session guide="interop-python" run="build" only={[10, 11]} />
+
+`maturin build --release` makes an optimised wheel. The name follows the [wheel tag format](https://packaging.python.org/en/latest/specifications/platform-compatibility-tags/): `cp313` is CPython 3.13 for both the Python tag and the ABI tag, and `manylinux_2_34_aarch64` is the platform tag, which the spec says should work on distributions with glibc 2.34 or newer. A fresh environment installs the wheel and imports it from `site-packages`:
+
+<Session guide="interop-python" run="build" only={[12, 13]} />
+
+Not run: what publishing needs. The [maturin docs](https://www.maturin.rs/distribution.html) say that to publish Linux wheels on PyPI you use a manylinux Docker image or build with zig. The PyO3 guide describes `abi3` wheels, usable on several Python versions. This wheel was built outside a manylinux image, so the page makes no claim about where it will run.
+
+## ctypes, cffi and Cython
+
+A second route skips PyO3: export a plain C function and let Python call it:
+
+<Files guide="interop-python" dir="cabi" files={["src/lib.rs"]} />
+
+`#[unsafe(no_mangle)]` keeps the function's name in the library; the Rust Reference says that from the 2024 edition the attribute must be marked `unsafe` ([`no_mangle`](https://doc.rust-lang.org/reference/abi.html#the-no_mangle-attribute)); the [C and C++ page](/interop/c-cpp/) goes further. Two Python tools can load the resulting `libcabi.so`:
+
+<Files guide="interop-python" dir="cabi" files={["py/use_ctypes.py", "py/use_cffi.py"]} lang="python" run="c-abi" />
+
+| Tool | How it knows the signature | Run on this page |
+| --- | --- | --- |
+| PyO3 and maturin | The Rust types, checked by the compiler | Yes, above |
+| `ctypes` (standard library) | You set `argtypes` and `restype` in Python | Yes |
+| `cffi`, ABI mode | You write a `cdef` string in Python | Yes, installed with pip |
+| `cffi`, API mode, and Cython | A C compiler builds a module against Python's headers | Not run |
+
+The `ctypes` docs say "their value is masked to fit into the C type" and, without `argtypes`, "the number of arguments is not checked". So `2**40` was cut to 32 bits and the answer was `1`; once the signature was declared, it was right. The `cffi` run printed the full `1099511627777`, and rejected `2**63` with an `OverflowError`, since it checks values against the declared `int64_t`. The `cffi` docs say ABI mode "will crash if you call some function or access some fields of a structure that was slightly misdeclared in the cdef()". Its API mode and [Cython](https://cython.readthedocs.io/en/latest/src/quickstart/build.html) go through a C compiler, which needs `Python.h`, and the image has none.
+
+With `ctypes` or `cffi` you describe the Rust function again in Python, and nothing checks that description against the Rust code (`ctypes` without `argtypes` cut `2**40` above). With PyO3 the signature is Rust code and the macro writes the conversions. The C-ABI route has upsides: the `cabi` crate built with plain `cargo build`, and its library does not name a Python version, while the PyO3 wheel is tagged `cp313` and the [PyO3 guide](https://pyo3.rs/v0.30.1/building-and-distribution.html) says modules by default "can only be used with the same Python version they were compiled against". ABI means application binary interface, the binary-level contract between compiled code. The same question for other targets has its own page: [Node](/interop/node/), [C and C++](/interop/c-cpp/) and [WebAssembly](/interop/wasm/).
+
+## Try it yourself
+
+All three ran in the image, in one session that builds the environment again (needs network).
+
+1. **Release build.** Save the output of `py/calls.py` after `.venv/bin/maturin develop` and again after `maturin develop --release`, and `diff` them. The diff printed nothing and its exit code was 0, and `target` had both `debug` and `release` folders. This page makes no claim about speed.
+2. **Return an `Option`.** Copy `try_option.rs` over `src/lib.rs`, run `.venv/bin/maturin develop`, then `print(wordstats.longest(['a', 'abc', 'ab']))` and `print(wordstats.longest([]))` in Python. The first printed `abc`, and the empty list gave `None`.
+3. **Your own exception.** Copy `try_exception.rs` over `src/lib.rs`, run `.venv/bin/maturin develop`, then run `py/try_exception.py`. `create_exception!` makes `EmptyText`, a subclass of `ValueError`. Catching it by name worked, and `isinstance(e, ValueError)` was `True`.
+
+<Files guide="interop-python" dir="fixes" files={["try_option.rs", "try_exception.rs"]} />
+
+<Files guide="interop-python" dir="rust" files={["py/try_exception.py"]} lang="python" />
+
+<Session guide="interop-python" run="try" only={[1, 2, 3]} />
+
+## Read more
+
+- [PyO3 user guide, version 0.30.1](https://pyo3.rs/v0.30.1/), with [exceptions](https://pyo3.rs/v0.30.1/exception.html) and [building and distribution](https://pyo3.rs/v0.30.1/building-and-distribution.html)
+- [The maturin user guide](https://www.maturin.rs/)
+- [`ctypes`](https://docs.python.org/3/library/ctypes.html) in the Python documentation, and the [cffi overview](https://cffi.readthedocs.io/en/stable/overview.html)
+- [Rust for Python developers](/for/python/)
+- [Send and Sync](/learn/send-sync/) and [Shared state](/learn/shared-state/#condvar-wait-until-something-is-true), for the types and the `Condvar` used in the GIL example

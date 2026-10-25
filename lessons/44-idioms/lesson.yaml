@@ -1,0 +1,129 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Idioms and design patterns"
+part: "further"
+intro: >-
+  An idiom is the way Rust code usually says a common thing: wrap a number in a type of its
+  own, build a value in one place that checks it, make a wrong state impossible to write.
+  Many are design patterns you already know, trimmed because enums, traits and ownership do
+  part of the work. This page shows the ones you will read most, the compiler error each one
+  turns a mistake into, and the habits that look like idioms and are not.
+coming_from:
+  go: >-
+    A defined type (`type UserID int`) is the newtype, and functional options are the cousin of
+    the Rust builder. Go chose the zero value on purpose (`var p Port` is `0`), and most Go types are
+    designed so it is valid; the cost shows when it should not be, so "a `Port` that cannot be invalid"
+    is a convention there. A Rust type has no zero value unless you write one, so a `Port` comes from
+    the function you wrote. Cleanup is also
+    different: `defer` runs at the end of the function, a Rust `Drop` guard at the end of its scope.
+  kotlin: >-
+    `value class` is the newtype, default and named arguments plus `copy` do much of what a Rust
+    builder or `..Default::default()` does, and a `sealed` hierarchy is an enum. Rust has no named
+    or default arguments, so the builder is more common than in Kotlin. `use {}` is the nearest to
+    a `Drop` guard, but it is written by the caller at each use; a Rust guard runs without it.
+  python: >-
+    The same designs exist, checked by the compiler where Python relies on convention.
+    `typing.NewType` is erased at run time (the page below passes an order id to a function
+    that wants a user id, and it runs). A class that checks in `__init__` or `__post_init__` is the nearest
+    Python form of "parse, don't validate": no invalid `Port` gets built, but the failure is an
+    exception, so nothing makes the caller handle it. A `with` block is the nearest to a `Drop` guard,
+    but the caller has to write it.
+  typescript: >-
+    Branded types and discriminated unions are your newtype and enum, and `tsc --strict` checks
+    them. They are erased when the program runs (the page below prints `typeof` of a branded id: `number`).
+    A Rust newtype takes no more space than its field, so it is gone at run time too; what differs is
+    the build, where no cast turns a number into a `Port`.
+  java: >-
+    A `record` around one field is the newtype, a nested `Builder` class is the builder, and `sealed` interfaces with a `switch` are enums. A
+    Strategy is already an interface or a lambda in Java, and a Rust trait or closure is the same
+    thing; State has no base class to subclass per state, so it is an enum or a typestate.
+    `try`-with-resources is the nearest to `Drop`, but you can forget to write the `try`.
+  csharp: >-
+    A `readonly record struct` is the newtype, `init` properties with `with` expressions do the job
+    of a builder and `..Default::default()`, and `using` is the nearest to a `Drop` guard. A Rust
+    type has no constructors: an associated function such as `new` or `parse` is an ordinary
+    function that returns the value, so it can return a `Result`.
+  c: >-
+    `typedef int UserId;` names a type without making one: the page below passes an order id to a
+    function that wants a user id, and it compiles under `-Wall -Wextra`. A one-field Rust struct
+    is a new type. Designated initializers (`{.port = 9000}`) give C zero for everything you leave out, and cleanup is
+    `goto cleanup` by hand, where Rust runs `Drop` for you.
+  cpp: >-
+    RAII is where `Drop` comes from, an `explicit` one-field struct is the newtype, and
+    `std::variant` is an enum. What changes is that a Rust function builds the value, so it can return
+    a `Result` the caller has to handle (a C++ constructor has no return value, so it throws), and a
+    moved-from value cannot be used.
+notes:
+  - >-
+    A newtype is a struct with one field. It is a different type from the field's type, so the
+    compiler refuses to mix them up, and its field can be private so that your own functions build it.
+  - >-
+    "Parse, don't validate": turn loosely typed input into a type that cannot be invalid, once, at the
+    edge; everything after takes the strong type.
+  - >-
+    Enums with data make illegal states unrepresentable: a download that is both done and failed has
+    no spelling. A typestate goes further and puts the state in the type, so calling `send` before
+    `connect` is a compile error.
+  - >-
+    `Default` with `..Default::default()` and a builder stand in for the named and default arguments
+    that Rust does not have. A guard type with a `Drop` impl ties cleanup to a scope.
+  - >-
+    Some habits look like idioms and are not: a `.clone()` that silences the borrow checker, `unwrap()`
+    in a library, `Rc<RefCell<_>>` for everything, text where an enum belongs, generics nobody uses, and
+    `Box<dyn Error>` as a library's error type. Each has a before and an after below.
+gotcha:
+  title: "Copying a struct with `..` and then using the original"
+  verdict: "rust-rule"
+  looks_fine: >-
+    Copying a struct and changing one field leaves the original alone and usable: `copy(port = 9000)`
+    in Kotlin, `replace` in Python, `{...base}` in TypeScript, `with` in C#, `test := base` in Go.
+  rust_sees: >-
+    `..base` takes the fields you did not name: `name` and `verbose`. `verbose` is `Copy`, so it is
+    copied, but `name` is a `String`, so it is moved into `test`. `base` is now partly moved, and
+    printing all of it is an error.
+  why: >-
+    A `String` has one owner, and a copy that allocates is something Rust makes you ask for with `.clone()`.
+    So `..base` moves what it cannot copy, and `base` stays whole when the fields taken were all `Copy`
+    (name the `String` yourself and it works; [Structs](/learn/structs/) shows the same rule). The fix is `..base.clone()` when you want a full copy, or
+    `..Default::default()` when you only wanted defaults.
+  langs:
+    go:
+      status: "runs"
+      says: >-
+        Go runs this and prints both structs. `test := base` copies the three fields. The string is
+        shared, which is fine because a Go string cannot change.
+    kotlin:
+      status: "runs"
+      says: >-
+        Kotlin runs this and prints both. `copy(port = 9000)` makes a new `Config`; the `String` is
+        immutable, so the two share it.
+    python:
+      status: "runs"
+      says: >-
+        Python runs this and prints both. `dataclasses.replace` builds a new `Config`; the `str` is
+        immutable, so the two share it.
+    typescript:
+      status: "runs"
+      says: >-
+        TypeScript runs this and prints both. The spread copies the properties one level deep; the
+        string is a primitive. An object-valued property would be shared by both.
+    java:
+      status: "runs"
+      says: >-
+        Java runs this and prints both. A record has no copy-with, so you pass the fields you keep by
+        hand; the `String` is immutable and shared.
+    csharp:
+      status: "runs"
+      says: >-
+        C# runs this and prints both. `with` copies the record and changes `Port`; the `string` is
+        immutable and shared.
+    c:
+      status: "runs"
+      says: >-
+        C runs this and prints both. The struct assignment copies the fields, and here `name` is a
+        pointer to a string literal that both copies share. With a `malloc`ed name, freeing both copies
+        would free it twice (not run).
+    cpp:
+      status: "runs"
+      says: >-
+        C++ runs this and prints both. The copy duplicates the `std::string` too, so both are whole;
+        the allocation is the cost Rust asks you to write as `.clone()`.

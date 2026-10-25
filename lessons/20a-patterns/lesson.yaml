@@ -1,0 +1,123 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Patterns"
+part: "data"
+intro: >-
+  A pattern is a shape that a value is taken apart by (destructuring), with a name
+  wherever you want to keep a part. `match` is where you meet them, but they also stand
+  in `let`, `for`, function parameters and `if let`. The compiler checks that a pattern
+  which must always fit does, and what a pattern does to ownership is worth knowing.
+coming_from:
+  go: >-
+    Go has no way to take a struct or an array apart: you read `p.x` and `a[0]`, and the
+    nearest things are `a, b := f()`, `for i, v := range` and `v, ok := m[k]`. A Rust
+    pattern does those jobs and also takes structs, tuples and enums apart, in `let`,
+    `for`, parameters and `if let`.
+  kotlin: >-
+    This is the idea behind `val (a, b) = pair` and `for ((k, v) in map)`, with three
+    differences: a struct pattern matches fields by name where Kotlin goes by position
+    (by default), patterns nest, and a pattern can fail (`if let`), where a destructuring
+    declaration never tests the shape (on a `List` it calls `component2()` and can throw).
+  python: >-
+    This is tuple unpacking (`a, b = pair`, `first, *rest = xs`, `for k, v in d.items()`),
+    extended to structs and enums. A pattern can also fail on purpose (`if let`), where
+    unpacking the wrong number of items raises `ValueError` at run time.
+  typescript: >-
+    This is destructuring (`const { x, y } = p`, `const [a, b] = pair`), but a Rust
+    pattern also tests the shape (`Some(n)`), and the compiler checks the length of an
+    array and the variants instead of leaving a missing item `undefined`. A pattern has
+    no default values and no object rest, and matching moves where destructuring only
+    adds names.
+  java: >-
+    Java 21's record patterns (`p instanceof Point(int x, int y)`) are the nearest
+    thing, and they only appear in `instanceof` and `switch`. Rust's work on structs,
+    tuples, arrays and enums, and also stand in `let`, `for` and function parameters.
+  csharp: >-
+    C# deconstruction (`var (x, y) = p`) and its positional, property and list patterns
+    are the nearest thing. Rust patterns also stand in function and closure parameters
+    and in `let ... else`, and have `|` and ranges but no `and` or `not`.
+  c: >-
+    C has no destructuring: you read `p.x` and `a[0]` one at a time (`int x = p.x, y =
+    p.y;`). A Rust pattern takes a value apart in one step, and the compiler checks that
+    the places where it cannot fail really cannot.
+  cpp: >-
+    C++17 structured bindings (`auto [x, y] = p;`) are the nearest thing: by position, no
+    nesting, and no way to test a shape. Rust's patterns nest, bind struct fields by
+    name, and `if let` tests the shape and takes it apart in one go.
+notes:
+  - >-
+    A pattern is a shape with names in it. When the value fits, each name holds its part.
+  - >-
+    Patterns stand wherever Rust introduces a variable: `let`, parameters, `for`,
+    `if let`, `while let`, `let ... else`, `matches!` and `match`.
+  - >-
+    `let`, parameters and `for` need a pattern that always fits. A pattern that can fail
+    belongs in `if let`, `let ... else` or `match`.
+  - >-
+    Matching a value moves a part that is not `Copy`, where destructuring in Python or
+    Kotlin only adds names. Match a reference (`&opt`, `opt.as_ref()`) to borrow instead.
+  - >-
+    `_` ignores a part and does not move it. `_name` is a variable that does.
+gotcha:
+  title: "Taking something apart that might not be there"
+  verdict: "broken-elsewhere"
+  looks_fine: >-
+    A `name=value` line splits into two halves, and you name both. It works for every
+    line that has an `=`, and nothing in the code says what should happen for a line
+    that has none.
+  rust_sees: >-
+    `split_once` returns an `Option`: `None` when the line has no `=`. A `let` pattern
+    has to fit every value it can be given, and `Some((key, value))` does not fit
+    `None`, so Rust refuses (E0005) and suggests `let ... else`.
+  why: >-
+    The line `mode` has no `=`. In the other languages the check for that is a step you can
+    leave out, and nothing complains; the programs here leave it out and were run with
+    that line: a wrong value, `undefined`, an exception, or a crash. Careful code
+    checks (the layer-1 programs do), and C# 11's list pattern makes you. Rust makes the
+    check part of the pattern, so leaving it out does not build.
+  langs:
+    go:
+      status: "wrong"
+      says: >-
+        `strings.Cut` returns a `found` flag, but `key, value, _ :=` throws it away; the
+        layer-1 program keeps it with `if ...; found`. `go vet` accepts this version. For
+        `mode` it prints `mode -> ` with an empty value and no error.
+    kotlin:
+      status: "crash"
+      says: >-
+        `val (key, value) = line.split("=")` calls `component2()` on a list with one item,
+        and throws `IndexOutOfBoundsException`.
+    python:
+      status: "crash"
+      says: >-
+        `key, value = line.split("=")` raises `ValueError: not enough values to unpack`.
+        Unpacking checks the count, but at run time.
+    typescript:
+      status: "wrong"
+      says: >-
+        TypeScript accepts this under `--strict`: `value` has type `string`, and at run
+        time it is `undefined`, so the program prints `mode -> undefined`. The option
+        `--noUncheckedIndexedAccess`, which `--strict` does not include, types `value` as
+        `string | undefined` and then refuses `value.toUpperCase()`: the question Rust asks.
+    java:
+      status: "crash"
+      says: >-
+        Java has no array pattern, so this indexes: `parts[1]` throws
+        `ArrayIndexOutOfBoundsException` for the one-item array that `split` gives back.
+    csharp:
+      status: "crash"
+      says: >-
+        This indexes, it is not a pattern: `parts[1]` throws `IndexOutOfRangeException`. C# 11's
+        list pattern, `line.Split('=') is [var key, var value]`, has the shape of Rust's and
+        is a test with an `else`, so it cannot crash.
+    c:
+      status: "crash"
+      says: >-
+        `strchr` returns `NULL` when there is no `=`; the layer-1 program checks that, and
+        this version leaves the check out, so `eq - line` and `eq + 1` are arithmetic on a
+        null pointer. Undefined behaviour: on this machine the program
+        died with a segmentation fault.
+    cpp:
+      status: "wrong"
+      says: >-
+        `find` returns `npos` when there is no `=` (the layer-1 program checks it; this
+        version does not), and `npos + 1` wraps to 0, so the value half is the whole line. The program prints `mode -> mode` with no error.

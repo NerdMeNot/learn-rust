@@ -1,0 +1,26 @@
+---
+import CodePanel from './CodePanel.astro'
+import RustError from './RustError.astro'
+import { block, inline } from '../../lib/md'
+
+interface Props {
+  items: { q: string; a: string; bad?: { code: string; error?: string }; good?: { code: string; out?: string } }[]
+}
+const { items } = Astro.props
+---
+<section class="lr-faq" aria-labelledby="questions">
+  <h2 id="questions">Questions people ask</h2>
+  {items.map(f => (
+    <div class="lr-qa not-content">
+      <h3 set:html={inline(f.q)} />
+      <div class="lr-ans" set:html={block(f.a)} />
+      {f.bad && (
+        <div class="lr-faq-bad">
+          <CodePanel lang="rust" code={f.bad.code} status={{ cls: 'bad', chip: "✗ won't compile" }} />
+          <RustError text={f.bad.error ?? ''} />
+        </div>
+      )}
+      {f.good && <CodePanel lang="rust" code={f.good.code} out={f.good.out} status={{ cls: 'ok', chip: '✓ compiles and runs' }} />}
+    </div>
+  ))}
+</section>

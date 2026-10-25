@@ -1,0 +1,117 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Enums"
+part: "data"
+intro: >-
+  A Rust enum is a type with a fixed list of variants, and each variant can carry its
+  own data. The compiler knows the full list, so it can check that you handled every
+  variant.
+coming_from:
+  go: >-
+    Go has no sum types. The closest is an interface plus a type switch (or `iota`
+    constants, when there is no data). An interface is open: anyone can add a type, and Go
+    does not check that a type switch covers them all. A Rust enum is a closed list of
+    variants, and `match` won't compile until every variant is handled.
+  kotlin: >-
+    A Rust enum is your sealed class, and each variant is like a data subclass, with
+    `match` checking every case the way `when` does. One difference: a variant is not
+    its own type, so you can't have a parameter of type `Shape::Circle`.
+  python: >-
+    This is your union of dataclasses (`Circle | Rect`) plus `match`, in one
+    declaration. The compiler checks that every variant is handled, and Python's `Enum`
+    only covers variants that all hold the same kind of data, not different data per variant.
+  typescript: >-
+    A Rust enum is your discriminated union, but the compiler keeps the tag for you, so
+    there is no `kind` field to write. `match` checks every variant without the `never`
+    trick, and a `_` arm turns that check off the way `default:` does.
+  java: >-
+    A Rust `enum` with data is a `sealed interface` plus one `record` per variant, and
+    `match` is the exhaustive pattern `switch`. Rust needs no separate types; the
+    variants live inside the enum itself, as plain values rather than objects, and a
+    variant is not a type of its own.
+  csharp: >-
+    A data-carrying `enum` is an `abstract record` with one derived record per case, and
+    `match` is the positional pattern `switch`. On .NET 10 (C# 14) the compiler does not
+    know that list is complete, so a missing case is a CS8509 warning and a run-time
+    exception. In Rust it is a compile error. C# 15 adds `union` and `closed` types for this.
+  c: >-
+    A Rust `enum` is a tagged union (an `enum` tag plus a `union`) that the compiler
+    manages for you. You can't read the wrong field for the current tag, and a `match`
+    that forgets a variant doesn't compile.
+  cpp: >-
+    A Rust `enum` is a `std::variant`, except each alternative is a named variant, not a
+    separate type, and `match` replaces `std::visit` with the `overloaded` helper. A
+    missing case gets a short, clear error instead of a long template error.
+notes:
+  - >-
+    In a language without a closed list of cases, you fake it with an interface or base
+    class plus type checks, and nothing makes sure you handled every case. In Rust,
+    `match` checks that you did.
+  - >-
+    Rust's `match` pulls the data out of the variant: `Shape::Rect(w, h)` gives you `w`
+    and `h`.
+  - >-
+    A variant is not a type of its own: `Shape::Circle` names a value, so a function
+    can take a `Shape` but not a `Shape::Circle`.
+  - >-
+    An enum with no data works like a C enum: `Level::Mid as i32` gives its number.
+  - >-
+    Option and Result, in the next lessons, are ordinary enums like this one.
+gotcha:
+  title: "Adding a variant and forgetting a case"
+  verdict: "broken-elsewhere"
+  looks_fine: >-
+    In Go you add `type Triangle struct{...}` and every type switch keeps compiling. A
+    Triangle falls through to `return 0`, and the area is silently wrong.
+  rust_sees: >-
+    Rust knows the full list of variants, so it checks every `match` against it.
+  why: >-
+    This is the good kind of error. Add a variant, and the compiler gives you a to-do
+    list of every place that needs updating.
+  langs:
+    go:
+      status: "wrong"
+      says: >-
+        Go runs this and prints 0, which is wrong. The compiler does not check that a type
+        switch is complete, so `Triangle` falls through to `return 0` with no warning.
+        A `default:` that panics would make it loud, if you remember to write one.
+    kotlin:
+      status: "refuses"
+      says: >-
+        Kotlin refuses this too: a `when` over a sealed class must cover every subclass,
+        so adding `Triangle` breaks the build until you handle it. An `else ->` branch
+        would silence the check.
+    python:
+      status: "wrong"
+      says: >-
+        Python prints None. No case matches the new Triangle, so `area` falls off the
+        end and returns None instead of a number. Python itself gives no warning.
+    typescript:
+      status: "refuses"
+      says: >-
+        TypeScript refuses this too, because the `default` branch assigns the leftover
+        value to `never` and a `triangle` is not `never` (TS2322). Without that `default`
+        line, a function that returns a `number` still fails under `strict` (TS2366), but a
+        function that returns nothing compiles, and the missing case goes unnoticed.
+    java:
+      status: "refuses"
+      says: >-
+        Java refuses this too: a switch expression over a sealed interface must cover
+        every permitted type, so adding Triangle breaks the build until you handle it.
+        The javac message does not name `Triangle`; Rust's E0004 does.
+    csharp:
+      status: "crash"
+      says: >-
+        The compiler only warns that the switch is not exhaustive (CS8509). It cannot
+        name `Triangle`, because a record hierarchy is not a closed list. The program
+        builds, then throws a SwitchExpressionException when a Triangle comes in.
+    c:
+      status: "wrong"
+      says: >-
+        gcc warns that TRIANGLE is not handled in the switch, but builds it anyway. The
+        triangle falls through to `return 0`, so its area is 0.
+    cpp:
+      status: "refuses"
+      says: >-
+        C++ refuses this too when you use `std::visit`: no lambda accepts a `Triangle`,
+        so it fails to compile, with a long template error. A plain `enum` plus `switch`
+        would only get a `-Wswitch` warning.

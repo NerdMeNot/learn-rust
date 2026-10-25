@@ -1,0 +1,170 @@
+---
+title: "How Rust wants you to think"
+description: "Before any syntax, here's the mindset. Once this clicks, most of Rust's \"weird\" rules stop feeling weird."
+---
+
+import { Files, Remember, Session } from '../../../components/guide'
+
+Before any syntax, here's the mindset. Once this clicks, most of Rust's "weird" rules stop feeling weird.
+
+<Remember>Rust would rather say no today than let your program crash tomorrow.</Remember>
+
+## Rust isn't low level the way C is
+
+People often call Rust "low level", and it can feel that way when you arrive from Python, Go, Java or TypeScript. But in everyday Rust you don't call `free()` or track memory by hand. The compiler arranges the cleanup.
+
+What feels low level is that Rust makes you say things other languages leave to the runtime: when data is copied, when it's moved, who may change it, and when it's cleaned up. And it checks those choices before your program runs.
+
+| Language | Who frees memory |
+| --- | --- |
+| C | You, with `free` |
+| C++ | You, with `delete`, or a destructor that does it (RAII) |
+| Go | Go's garbage collector, while the program runs |
+| Java, Kotlin (JVM), C# | The runtime's garbage collector, while the program runs |
+| TypeScript | The JavaScript engine's garbage collector, while the program runs |
+| Python (CPython) | Reference counting, plus a collector for cycles ([`gc`](https://docs.python.org/3/library/gc.html)) |
+| Rust | The compiler inserts the cleanup call where the owner goes out of scope (the end of the block it was declared in) |
+
+The full table, with examples, is in [Ownership](/learn/ownership/#why-rust-does-this).
+
+## The ten ideas behind most rules
+
+Most of the rules you'll meet come from one of these. (Some, like module privacy, lifetime elision or `Send` and `Sync`, have their own lessons.) Each one comes with a tiny Rust program and what the compiler really said about it. When an error confuses you later, come back here and ask which idea it's about.
+
+### 1. Prove it or refuse
+
+The compiler has to be sure your code is safe. If it can't be sure, it says no, even when your program would have worked. Here `ready` is `true`, so `port` gets a value every time. But the compiler only sees an `if` with no `else`, and its own note says it doesn't evaluate the conditions.
+
+<Files guide="how-rust-thinks" dir="prove-it" files={["src/main.rs"]} />
+<Session guide="how-rust-thinks" run="prove-it" />
+
+The fix is to make every path give `port` a value: `let port = if ready { 8080 } else { 3000 };`. A red squiggle now beats a surprise at 2 a.m.
+
+### 2. It reads the shape, not the values
+
+The compiler doesn't run your code, so it doesn't know what's inside your variables. You know `dice` is 1 to 6. The compiler only knows it's a `u8`, which can be anything from 0 to 255, so it asks what should happen for the rest.
+
+<Files guide="how-rust-thinks" dir="shape-not-values" files={["src/main.rs"]} />
+<Session guide="how-rust-thinks" run="shape-not-values" />
+
+Add a last arm, `_ => "not a dice roll"`, and it compiles. More in [Match](/learn/match/#every-case-must-be-covered).
+
+### 3. Every value has one owner
+
+When the owner goes out of scope, the value is cleaned up, at a point you can read in the code. That's how Rust manages memory without a garbage collector. Assigning a value that isn't `Copy` (a `String`, a `Vec`) to another variable *moves* it: the new variable becomes the owner. This program prints when each value is cleaned up, so you can watch it happen.
+
+<Files guide="how-rust-thinks" dir="one-owner" files={["src/main.rs"]} run="one-owner" />
+
+`a` was cleaned up once, at the end, under its new name `c`. Leaking on purpose is possible ([a cycle of `Rc`s](/learn/smart-pointers/#cycles-and-weakt), the shared-ownership pointer), so the rule is about who cleans up, not a promise that cleanup always happens. More in [Stack and heap](/learn/stack-heap/) and [Ownership and Moves](/learn/ownership/).
+
+### 4. Many readers or one writer, never both
+
+You can have as many read-only references to a value as you like, or one reference that can change it, but not both at the same time. Reading and then writing is fine. Keeping a reader alive *while* you write is not.
+
+<Files guide="how-rust-thinks" dir="readers-or-writer" files={["src/main.rs"]} />
+<Session guide="how-rust-thinks" run="readers-or-writer" />
+
+`clear()` would leave `first` pointing at an element that no longer exists, so it's refused. The same rule is how safe Rust (all code outside `unsafe` blocks, the marked places where you take over the compiler's checks) [prevents data races at compile time](https://doc.rust-lang.org/book/ch04-02-references-and-borrowing.html). Logic bugs, like two threads doing the right things in the wrong order, are still yours. (`Cell`, `RefCell` and `Mutex` are types that let you change a value through a shared reference, checking at run time instead: [Smart pointers](/learn/smart-pointers/#cell-and-refcell-change-it-through-a-shared-reference).) More in [Mutable Borrows](/learn/mutable-borrows/).
+
+### 5. Less happens behind your back
+
+Rust does fewer things silently than most languages. Mixing an integer and a float doesn't quietly convert one of them:
+
+<Files guide="how-rust-thinks" dir="no-silent-conversion" files={["src/main.rs"]} />
+<Session guide="how-rust-thinks" run="no-silent-conversion" />
+
+<Files guide="how-rust-thinks" dir="visible-conversion" files={["src/main.rs"]} run="visible-conversion" />
+
+`as` and `.clone()` are written out on purpose, so you can search for conversions and copies of heap data. It isn't total: integers are copied by plain assignment, `?` converts error types, and `String::from` or `vec!` allocate without saying so. More in [Numbers and Types](/learn/types/#no-implicit-widening).
+
+### 6. If it can fail, it says so
+
+In safe code there's no null, and ordinary errors aren't exceptions. Something that can fail returns a `Result`, and something that might be missing returns an `Option`. You can't use the value without deciding what happens otherwise, even if you decide on `.unwrap()`, which panics (stops the program with an error message) when it's wrong and is easy to search for. Ignoring a `Result` gets a warning, shown at the top of the output below.
+
+<Files guide="how-rust-thinks" dir="can-fail" files={["src/main.rs"]} run="can-fail" />
+
+A bug, like an index out of range, is a *panic* instead ([Errors](/learn/errors/#panics-when-the-thread-stops)). More in [Option](/learn/option/) and [Errors and Result](/learn/errors/).
+
+### 7. Changes are marked
+
+Variables can't change unless you say so with `mut`. That way you can spot the places where something might change at a glance. (`Cell`, `RefCell` and `Mutex` are the marked exceptions: you see them in the type.)
+
+<Files guide="how-rust-thinks" dir="changes-marked" files={["src/main.rs"]} />
+<Session guide="how-rust-thinks" run="changes-marked" />
+
+The compiler even shows you where to add `mut`. More in [Variables](/learn/variables/#frozen-unless-you-say-mut).
+
+### 8. Wrong states should be hard to write
+
+An `enum` lists every kind of thing a value can be, and each kind carries only its own data. A card payment has a card number, cash doesn't. A `match` has to handle every kind, so adding a new kind later shows you the places that need updating.
+
+<Files guide="how-rust-thinks" dir="wrong-states" files={["src/main.rs"]} run="wrong-states" />
+
+Add a `Crypto(String)` kind and leave `describe` alone, and the build stops:
+
+<Session guide="how-rust-thinks" run="new-kind" />
+
+A `_` arm switches this help off for the kinds it catches ([Enums](/learn/enums/#the-_-arm-turns-the-check-off)). More in [Enums](/learn/enums/).
+
+### 9. Nice code shouldn't cost extra
+
+Rust aims for abstractions that cost no more than the code you'd write by hand. This iterator chain does the same job as the loop under it, and the two agree:
+
+<Files guide="how-rust-thinks" dir="nice-and-fast" files={["src/main.rs"]} run="nice-and-fast" />
+
+The Rust Book says iterators "get compiled down to roughly the same code as if you'd written the lower-level code yourself" ([Loops vs. Iterators](https://doc.rust-lang.org/book/ch13-04-performance.html)). That is about optimized builds: `cargo run` makes a debug build, so this page times nothing. In debug and release builds alike, each step is a lazy adaptor (it does no work until something asks for the result) and no temporary list is built ([what a chain compiles to](/learn/iterators/#what-a-chain-compiles-to)). More in [Iterators](/learn/iterators/).
+
+### 10. The compiler is your pair programmer
+
+Rust's errors are often long because they're trying to help. They show where things went wrong and often suggest a fix. Read each one top to bottom, starting with the first error, and look for the `help:` lines. The [error index](/errors/) explains each code.
+
+<Files guide="how-rust-thinks" dir="pair-programmer" files={["src/main.rs"]} />
+<Session guide="how-rust-thinks" run="pair-programmer" />
+
+For style suggestions on code that already compiles, run `cargo clippy`. There's an example in [Your first project](/start/first-project/).
+
+## Why the compiler seems so strict
+
+Most languages check some things before running and leave the rest to the program while it runs. Rust asks a harder question about ownership, borrowing and missing cases: *can I prove this can never go wrong?*
+
+That's why perfectly reasonable code sometimes fails, like the first two examples above. The compiler isn't saying your code is wrong. It's saying it can't prove your code is right. Usually there's a small change that lets it prove it, and that's what the gotchas at the end of each lesson teach.
+
+:::tip[We've got you]
+Your habits aren't wrong. They were right for the language you learned them in. We'll point out each habit as it comes up, say why it made sense there, and show you the Rust way. That's what "we've got you" means.
+:::
+
+## The same job in your language
+
+You may know some of this already. These are the same three small mistakes, run in each language in this site's image (Go 1.27, Java 25, Kotlin 2.4, .NET 10, TypeScript 7 with `--strict`, Python 3.13, gcc 14 with `-Wall -Wextra`):
+
+| Language | A variable that may not be set | `int` times `float` | Changing what you didn't mark |
+| --- | --- | --- | --- |
+| Rust | Refused (E0381) | Refused (E0277) | Refused (E0384); `mut` is the mark |
+| Go | Can't happen: starts at zero | Refused: mismatched types | Allowed; only `const` is refused |
+| Java | Refused | Allowed | Allowed; only `final` is refused |
+| Kotlin | Refused | Allowed | `val` refused, `var` allowed |
+| C# | Refused (CS0165) | Allowed | Allowed; only `const` is refused |
+| Python | Runs; `NameError` only if the branch is skipped | Allowed | Allowed, even to another type |
+| TypeScript | Refused (TS2454) | Allowed (one `number` type) | `const` refused, `let` allowed |
+| C, C++ | Compiles with no warning here (the C++ run is the same C program built with g++) | Allowed | Allowed; only `const` is refused |
+
+So the first example isn't new: Java, Kotlin, C# and TypeScript refuse it too. What Rust adds is the same kind of check for who owns a value and who may change it.
+
+## What you get, and what it costs
+
+- **You get:** in safe code, no use-after-free, no dangling references, no data races, and no garbage collector, so no collector pauses. (`unwrap()` on a `None` still panics.)
+- **You pay:** a learning curve, and errors up front instead of later. Some correct programs are refused until you restructure them. The rest of this site exists to make that curve gentler, and [Why Rust](/start/why-rust/) weighs the costs.
+
+## Try it yourself
+
+Copy a program above into a project ([Your first project](/start/first-project/)) and change it.
+
+1. In idea 1, use `let port = if ready { 8080 } else { 3000 };`. It builds and prints `listening on 8080`.
+2. In idea 2, add the `_` arm. It prints `three`. Change `dice` to `9`: it still builds, and prints `not a dice roll`.
+3. In idea 8, add `Crypto(String)` to `Payment` and leave `describe` alone. The build fails with E0004, naming the missing kind.
+
+## Read more
+
+- [What is Ownership?](https://doc.rust-lang.org/book/ch04-01-what-is-ownership.html) and [References and Borrowing](https://doc.rust-lang.org/book/ch04-02-references-and-borrowing.html), the Rust Book: ideas 3 and 4 in full.
+- [The Drop trait](https://doc.rust-lang.org/book/ch15-03-drop.html) (Rust Book) and [RAII](https://doc.rust-lang.org/rust-by-example/scope/raii.html) (Rust by Example): the cleanup calls. [Error Handling](https://doc.rust-lang.org/book/ch09-00-error-handling.html): `Result` and panics.
+- [The error index](https://doc.rust-lang.org/error_codes/): each code on this page, such as [E0381](https://doc.rust-lang.org/error_codes/E0381.html) and [E0004](https://doc.rust-lang.org/error_codes/E0004.html).

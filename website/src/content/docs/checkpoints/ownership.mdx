@@ -1,0 +1,145 @@
+---
+title: "Checkpoint: Ownership"
+description: "Eight short programs about moves, copies, drops and borrows. Predict the output or the error code, then compare with a real run."
+---
+
+import { Files, Remember, Session } from '../../../components/guide'
+
+Eight short programs, one question each, from the Ownership lessons (Stack and heap through Mutable borrows) and the parts before them. Decide first: does it compile, and what does it print? If it does not compile, which error code?
+
+<Remember>Ask the same three questions of every line: who owns this value, who is borrowing it, and for how long?</Remember>
+
+Each program is a file in a Cargo project (`src/bin/q1.rs` and so on) and runs with `cargo run --bin q1`. The answers are real runs in the page's image (Rust 1.99.1, edition 2024).
+
+### 1. Which error code?
+
+<Files guide="checkpoint-ownership" dir="rust" files={["src/bin/q1.rs"]} />
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-ownership" run="q1" />
+
+`consume` takes a `String` by value, so the first call moves `s` into it. The second trip round the loop has nothing left to pass, and the label under the arrow says so: "value moved here, in previous iteration of loop". Borrow with `&String` or `&str` when the function only reads. See [Everywhere a value can move](/learn/ownership/#everywhere-a-value-can-move).
+
+</details>
+
+### 2. What does it print?
+
+<Files guide="checkpoint-ownership" dir="rust" files={["src/bin/q2.rs"]} />
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-ownership" run="q2" />
+
+`let _ = Noisy("b")` binds nothing, so the value is dropped on that line. `take(a2)` moves `a2` into the function, which drops it when it returns, before `end`. Shadowing hides the first `_a` but does not drop it. At the closing brace the remaining variables drop in reverse order: the shadowing `_a`, `_c`, then the first `_a`. See [Scopes, drop order and `let _`](/learn/ownership/#scopes-drop-order-and-let-_).
+
+</details>
+
+### 3. What does it print?
+
+<Files guide="checkpoint-ownership" dir="rust" files={["src/bin/q3.rs"]} />
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-ownership" run="q3" />
+
+An `i32` and an array of `i32` are `Copy`, so `bump` received copies and the caller's `x` and `arr` are unchanged. The `Vec` was lent with `&mut`, so `list[0] += 10` reached the caller's list. See [Copy types](/learn/ownership/#copy-types) and [`&mut`: lend a value to be changed](/learn/mutable-borrows/#mut-lend-a-value-to-be-changed).
+
+</details>
+
+### 4. Which error code?
+
+<Files guide="checkpoint-ownership" dir="rust" files={["src/bin/q4.rs"]} />
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-ownership" run="q4" />
+
+Both references borrow the whole `Vec`, not one slot, and `first` is still used after `second` is created. The compiler's help line names a method for getting two separate pieces. See [Changing two parts at once](/learn/mutable-borrows/#changing-two-parts-at-once).
+
+</details>
+
+### 5. Which error code?
+
+<Files guide="checkpoint-ownership" dir="rust" files={["src/bin/q5.rs"]} />
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-ownership" run="q5" />
+
+It is E0505, not E0382: `s` is never used after the move, but `r` is still borrowing it when `println!` reads `r`. A move needs no borrow to be alive. See [How long a borrow lasts](/learn/borrowing/#how-long-a-borrow-lasts).
+
+</details>
+
+### 6. Which error code, and how many changes?
+
+<Files guide="checkpoint-ownership" dir="rust" files={["src/bin/q6.rs"]} />
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-ownership" run="q6" />
+
+`&Vec<i32>` is a read-only borrow, and `push` needs a `&mut`. Two changes: the parameter type becomes `&mut Vec<i32>` and the call becomes `&mut items`. The `mut` in `let mut items` is already written, and it is what allows `&mut items`:
+
+<Files guide="checkpoint-ownership" dir="fixes" files={["q6.rs"]} run="q6-fixed" />
+
+See [`&mut`: lend a value to be changed](/learn/mutable-borrows/#mut-lend-a-value-to-be-changed).
+
+</details>
+
+### 7. Fix it
+
+This does not compile. What is the error code, and what do you change?
+
+<Files guide="checkpoint-ownership" dir="rust" files={["src/bin/q7.rs"]} />
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-ownership" run="q7" />
+
+`for x in &v` holds a read-only borrow of `v` for the whole loop, and `push` needs a mutable one. Looping over positions instead borrows `v` again on each line. `0..v.len()` is worked out once, so the pushed item is not visited. `v.push(v[i] * 10)` is accepted because the index is read before the push starts:
+
+<Files guide="checkpoint-ownership" dir="fixes" files={["q7.rs"]} run="q7-fixed" />
+
+See [Changing a list while looping over it](/learn/mutable-borrows/#changing-a-list-while-looping-over-it).
+
+</details>
+
+### 8. Does it compile? What does it print?
+
+<Files guide="checkpoint-ownership" dir="rust" files={["src/bin/q8.rs"]} />
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-ownership" run="q8" />
+
+It compiles. Moving one field out of a tuple you own leaves the other field usable: that is a partial move. Using the whole tuple afterwards is refused. Swapping the last line for `println!("{l} {pair:?}");` gives:
+
+<Session guide="checkpoint-ownership" run="q8-whole" />
+
+A tuple's fields are separate places, like a struct's. See [Moving out of a struct](/learn/ownership/#moving-out-of-a-struct), which shows the same rule on a struct.
+
+</details>
+
+## How to score yourself
+
+Count a question as right when you gave the correct output, or the correct error code and the reason. The error questions use five codes that name five different problems: E0382 (use after a move), E0499 (two writers), E0502 (a writer while a reader is alive), E0505 (a move while a borrow is alive) and E0596 (writing through a `&`). If you mixed two of them up, compare their messages side by side: each one names what is borrowed or moved, and the line where the other use happens.
+
+Question 2 and question 8 are about what the compiler does when nothing is wrong: the drop order and the partial move are rules, not mistakes, and they run the same way each time. Question 3 shows the difference between a value that is copied and a value that is lent.
+
+## If you missed one
+
+- Questions 1, 2, 5 and 8: [Ownership](/learn/ownership/) and [Borrowing](/learn/borrowing/)
+- Question 3: [Ownership](/learn/ownership/) (Copy types) and [Copy or reference](/learn/copy-or-reference/)
+- Questions 4, 6 and 7: [Mutable borrows](/learn/mutable-borrows/)
+- Stack, heap and why a move is cheap: [Stack and heap](/learn/stack-heap/)
+
+The next part of the course starts with [Structs](/learn/structs/), and ends with [Checkpoint: Data](/checkpoints/data/).

@@ -1,0 +1,351 @@
+<p class="lr-layer">The toolkit</p>
+
+## The three rules
+
+Everything in this lesson follows from three rules:
+
+1. **Every value has an owner**: the variable, struct field or collection that holds it.
+2. **There is one owner at a time.** Handing a value to someone else moves it, and the old owner can't use it any more.
+3. **When the owner goes out of scope, the value is dropped**: its destructor runs and its memory is freed, right there.
+
+A **scope** is the block a variable was declared in, usually the nearest `{ … }`. You can watch rule 3 happen. `Drop` is Rust's destructor: give a type a `drop` method and Rust calls it when the value's owner goes away. Here it just prints.
+
+<Snippet file="drop-scope.rs" />
+
+`inner` is freed when its block ends, `outer` when `main` ends. Nobody called `free`, and no garbage collector came along later: the compiler put each drop at the end of its scope, because by the rules nothing else can still be using the value. A file, a socket or a lock works the same way.
+
+<ForLang only="go">
+`Drop` is what replaces `defer f.Close()` and `defer mu.Unlock()`. A file closes itself, and a lock guard unlocks itself, when the variable holding it goes out of scope. There's nothing to forget to write.
+</ForLang>
+
+We'll reuse `Noisy` below whenever the question is *when* something is freed.
+
+## Stack and heap
+
+A program keeps its data in two places. The **stack** holds each function call's local variables: it's set aside when the function starts and given back when it returns, so it's fast and needs no cleanup. Everything on it must have a size known when the program is compiled. (That's the model to think in; the optimiser may keep a variable in a register or remove it.)
+
+The **heap** is for everything else: data whose size is only known at runtime, like the items of a list or the text of a string, and data that must outlive the function that made it. The program asks for heap memory while it runs, and something has to give it back.
+
+So a `Vec` or a `String` comes in two parts: a small, fixed-size header in the variable (a pointer to the data, a length and a capacity), and the data itself on the heap. Ownership is mostly about that second part: who gives the heap memory back, and when.
+
+<ForLang only="go">
+A `Vec`'s header (pointer, length, capacity) is exactly a Go slice header. What differs is who decides where data goes. In Go, escape analysis decides for you whether something lives on the stack or the heap. In Rust the type decides: a plain value lives where its variable is, and `Box`, `Vec` and `String` own data on the heap.
+</ForLang>
+
+## A variable holds the value
+
+In Java, Kotlin, Python or JavaScript, a variable that holds a list holds a *reference*: an arrow to an object that lives somewhere else. `b = a` copies the arrow, and both names lead to the same object. C# works that way for classes.
+
+In Rust a variable holds the value itself, the way a C# `struct` or a C local does. For a `Vec`, that value is the header. Go is in between: a slice variable holds its header by value, but `b := a` copies the header, so both point at one shared array.
+
+So `let b = a;` has to do something with the value itself. It either **copies** it or **moves** it, and the type decides which.
+
+## Moves
+
+Assigning a `Vec`, a `String` or any type that owns heap memory doesn't copy it and doesn't share it. It **moves** it: the new variable becomes the owner, and the old name is dead.
+
+<Memory
+  title="let a = vec![1, 2, 3];"
+  stack={[
+    { name: 'a', type: 'Vec<i32>', cells: ['ptr', 'len 3', 'cap 3'], to: 'buf' },
+  ]}
+  heap={[{ id: 'buf', cells: ['1', '2', '3'] }]}
+  caption="Before the move: `a` owns the Vec. On the stack it is three numbers: a pointer to the elements on the heap, the length and the capacity."
+/>
+
+<Memory
+  title="let b = a;"
+  stack={[
+    { name: 'a', type: 'Vec<i32>', cells: ['ptr', 'len 3', 'cap 3'], to: 'buf', gone: 'moved', note: 'unusable: the compiler stops any use of a' },
+    { name: 'b', type: 'Vec<i32>', cells: ['ptr', 'len 3', 'cap 3'], to: 'buf' },
+  ]}
+  heap={[{ id: 'buf', cells: ['1', '2', '3'] }]}
+  caption="After the move: the three header values were copied into `b`, and the elements on the heap stayed where they were. `a`'s old bits may still be there, but the compiler won't let you use them, and it won't drop them. Only `b` will free the buffer."
+/>
+
+This program checks that `b` really uses the buffer `a` had:
+
+<Snippet file="move.rs" />
+
+Using `a` after the move is a compile error, not a crash and not a silent bug:
+
+<Snippet file="use-after-move.fail.rs" />
+
+Read the error from the top: why `a` moves ("does not implement the `Copy` trait"), where it moved, and where you used it afterwards. The compiler suggests `a.clone()`, which works but is often not what you want. If you only need a second name to *look* at the list, borrow it with `&a`: that's [the next lesson](/learn/borrowing/).
+
+<ForLang only="python typescript">
+In Python and TypeScript, `b = a` gives one list two names. That's documented behaviour, and it's how you pass a list around without copying it. Rust splits it into two separate things. If `b` should take the list over, `let b = a;` moves it. If `b` only needs to look at it, or change it for a while, `let b = &a;` or `&mut a` borrows it. What you'd write as `list(a)`, `[...a]` or `copy.deepcopy(a)` is `a.clone()`.
+</ForLang>
+
+### Everywhere a value can move
+
+A value also moves when you pass it to a function, return it, push it into a `Vec`, or put it in a struct field. Watch where each `Noisy` is dropped:
+
+<Snippet file="move-places.rs" />
+
+`consume(a)` took `a` away, and the function was its last owner, so it was dropped when the function returned. `pass_back` and `make` returned their value, which is how a function gives ownership back. A `Vec` or struct owns what's in it, and dropping the container drops its contents. At the end of `main` the four owners still alive are dropped, newest first ([more below](#scopes-drop-order-and-let-_)).
+
+The function case catches everyone. A function that takes `String` takes the caller's string away:
+
+<Snippet file="move-into-fn.fail.rs" />
+
+The compiler's `note:` is the real fix: `count_words` only reads the text, so it should take `&str` (see [functions](#functions-own-borrow-or-borrow-mutably)). Loops catch people too, because the compiler counts every pass:
+
+<Snippet file="move-in-loop.fail.rs" />
+
+The first pass moves `name` into the Vec, so the second has nothing to move. Here `clone()` is the right fix: you really do want three separate strings.
+
+## Copy types
+
+Not everything moves. Some types are **copied**, and both names stay usable. A type can be `Copy` when a plain bit-for-bit copy of it gives a complete, independent value, and it has no `Drop`, so there's nothing to clean up:
+
+<Snippet file="copy.rs" />
+
+| Type | `Copy`? | Why |
+|---|---|---|
+| integers, floats, `bool`, `char` | yes | plain bits |
+| `&T` | yes | the value is somewhere else; copying the reference gives a second way to look at it, not a second value |
+| tuples and arrays | yes, if every element is | size doesn't matter: the 8,000-byte array above is `Copy` |
+| your own struct or enum | yes, with `#[derive(Clone, Copy)]` and all fields `Copy` | you opt in |
+| `String`, `Vec`, `Box` | no | copying the bytes would give two owners of one heap buffer |
+| `&mut T` | no | two mutable references to one value is what [mutable borrows](/learn/mutable-borrows/) forbid |
+
+The compiler refuses a `Copy` struct with a `String` field:
+
+<Snippet file="copy-string.fail.rs" />
+
+<ForLang only="c cpp" title="For C and C++ readers">
+`Copy` is roughly "trivially copyable *and* trivially destructible": `memcpy` makes a valid copy, and there's no destructor to run. A type with a `Drop` can never be `Copy`.
+</ForLang>
+
+<Aside type="tip" title="Should my struct be Copy?">
+Derive `Copy` for small, plain values like a point, a colour or an ID. Leave it off for anything that owns heap data, and for types you might later add a `String` field to: removing `Copy` again breaks every caller that relied on it.
+</Aside>
+
+## Clone
+
+`clone()` is the explicit copy. For a `Vec` or a `String` it allocates a new heap buffer and copies everything into it, so the two are fully independent:
+
+<Memory
+  title="let a = vec![1, 2, 3];   let mut b = a.clone();   b.push(4);"
+  stack={[
+    { name: 'a', type: 'Vec<i32>', cells: ['ptr', 'len 3', 'cap 3'], to: 'one' },
+    { name: 'b', type: 'Vec<i32>', cells: ['ptr', 'len 4', 'cap 6'], to: 'two' },
+  ]}
+  heap={[
+    { id: 'one', label: "a's buffer", cells: ['1', '2', '3'] },
+    { id: 'two', label: "b's buffer", cells: ['1', '2', '3', '4', '', ''] },
+  ]}
+  caption="Two owners, two buffers. Changing `b` can't change `a`. (`b` grew when 4 was pushed, so it has spare room; the exact capacity is up to `Vec`.)"
+/>
+
+<Snippet file="clone.rs" />
+
+How deep a clone goes depends on the type. `#[derive(Clone)]` writes `clone` for your types by cloning each field, so a clone goes exactly as deep as its fields' own `clone`. A `Vec<String>` clones every `String`, which is why `names[0]` and `copy[0]` point at different text. An `Rc`'s clone, [below](#shared-ownership-rc-and-arc), copies nothing but a pointer.
+
+Cloning is often fine. Cloning a short string per request, or a small config at startup, costs nothing you'll ever measure, and it's better than contorting your code to avoid it. Take a second look when you clone to silence the compiler without knowing why it complained (a borrow would usually do), when you clone something large or inside a hot loop, or when you clone so two parts of the program can "update the same thing". They won't: they'll update two copies. For shared state, see [shared ownership](#shared-ownership-rc-and-arc).
+
+## Functions: own, borrow, or borrow mutably
+
+A function's parameter types say what it will do with your value:
+
+| The function… | Parameter | The caller writes | Afterwards the caller… |
+|---|---|---|---|
+| only reads it | `&T` (or `&str`, `&[T]`) | `f(&value)` | still has it |
+| changes it in place | `&mut T` | `f(&mut value)` | still has it, changed |
+| keeps it, or consumes it | `T` | `f(value)` | has given it away |
+
+<Snippet file="params.rs" />
+
+The [strings lesson](/learn/strings/)'s rule, "take `&str`, store `String`", is this table applied to text. In general: **borrow in parameters, own in struct fields and return values**. Take ownership only when the function stores the value, returns it inside something else, or sends it to another thread. Borrowing has its own lessons: [Borrowing](/learn/borrowing/) and [Mutable borrows](/learn/mutable-borrows/).
+
+<ForLang only="go">
+Moving a value into a thread is how Rust makes handing data to another thread safe. In Go you pass a value to a goroutine and trust that nobody else keeps changing it. In Rust, once the thread owns the value, nothing else can touch it, so there's no data race to have. [Threads](/learn/threads/) shows it.
+</ForLang>
+
+## Moving out of things
+
+You can move a value out of a variable, but not out of the middle of a `Vec`. That would leave a hole: the `Vec` still owns that slot and would drop it again later.
+
+<Snippet file="index-move.fail.rs" />
+
+E0507, "cannot move out of", is the error you'll get whenever you try to take something out of a place you don't own outright: an index, a field behind a `&` or `&mut`, a value inside an `Rc`. The fixes are always one of these:
+
+<Snippet file="move-out.rs" />
+
+| You want | Use | What's left behind |
+|---|---|---|
+| a copy, keep the original | `v[i].clone()` | the original |
+| the item, and the Vec closes the gap | `v.remove(i)` | a shorter Vec (shifts everything after `i`) |
+| the item, order doesn't matter | `v.swap_remove(i)` | a shorter Vec (the last item fills the gap, no shifting) |
+| the item, leave an empty one | `std::mem::take(&mut v[i])` | the type's `Default`: `""`, an empty `Vec`, `0`, `None` |
+| the item, leave one you choose | `std::mem::replace(&mut v[i], new)` | `new` |
+| what's in an `Option` | `opt.take()` | `None` |
+| every item, done with the Vec | `for x in v` | nothing: the Vec is consumed |
+| just to look at it | `&v[i]` | everything: nothing moved |
+
+`mem::take` and `Option::take` matter most inside methods that take `&mut self`. You can't move a field out of `self` there, because `self` is only borrowed, but you can swap an empty value in and walk off with the old one. The first exercise needs exactly that.
+
+### Moving out of a struct
+
+A struct you own outright is different: you can move single fields out of it. That's a **partial move**:
+
+<Snippet file="partial-move.rs" />
+
+After `let name = user.name;`, the other fields are still usable, but `user` as a whole isn't. Destructuring with `let User { id, email, .. } = other;` moves fields out in one go, and is the tidy way to take a struct apart. One limit: you can't move a field out of a type that has its own `Drop`, since its `drop` would then see a half-empty value. Clone the field, or use `std::mem::take(&mut session.user)`, which leaves an empty `String` behind.
+
+<Snippet file="partial-move-drop.fail.rs" />
+
+## Scopes, drop order and `let _`
+
+Values are dropped at the end of their scope, in **reverse order of declaration**: the newest first. That's what you want, because something declared later may depend on something declared earlier. You can also end a value early.
+
+<Snippet file="drop-order.rs" />
+
+`drop(c)` is an ordinary function that takes ownership and does nothing, so `c` dies at the end of it. Use it to release a lock or close a file early. Assigning a new value to `d` dropped the old one on the spot. At the end of `main`, variables went newest first, but inside the `Vec` and the struct, items were dropped first to last.
+
+`_` isn't a variable; it binds nothing. So `let _ = Noisy("unnamed");`, a new value that nothing holds, was dropped at the end of that line. `let _kept = …` binds a real variable that just happens to start with `_`, and it lives to the end of the scope. The twist is `let _ = x;` with an existing variable:
+
+<Snippet file="let-underscore.rs" />
+
+That does nothing at all: it doesn't move `x` and doesn't drop it. Only a new value that nothing holds is dropped at once. That bit so many people holding locks, thinking `let _ = mutex.lock()` kept the lock, that the compiler refuses that line by default. It's a lint, `let_underscore_lock`, that is set to deny:
+
+<Snippet file="let-underscore.fail.rs" />
+
+One corner case: when a value is moved on only one path, as in an `if`, Rust keeps a hidden **drop flag** to remember whether it still owns the value, and drops it at the end of the scope only if so. A moved-from variable is not zeroed or emptied; Rust just stops you using it.
+
+<Snippet file="drop-flag.rs" />
+
+<p class="lr-layer">Going deeper</p>
+
+## Why a move is cheap
+
+Here are the sizes of a plain value, a `Box` and a `Vec`:
+
+<Memory
+  title="let n: u64 = 7;   let boxed = Box::new([0u8; 4096]);   let big = vec![7u64; 1_000_000];   let moved = big;"
+  stack={[
+    { name: 'n', type: 'u64', cells: ['7'] },
+    { name: 'boxed', type: 'Box<[u8; 4096]>', cells: ['ptr'], to: 'arr' },
+    { name: 'big', type: 'Vec<u64>', cells: ['ptr', 'len 1000000', 'cap 1000000'], to: 'big', gone: 'moved' },
+    { name: 'moved', type: 'Vec<u64>', cells: ['ptr', 'len 1000000', 'cap 1000000'], to: 'big' },
+  ]}
+  heap={[
+    { id: 'arr', label: '4096 bytes', cells: ['0', '0', '0', '…'] },
+    { id: 'big', label: '1,000,000 × u64 = 8 MB', cells: ['7', '7', '7', '…'] },
+  ]}
+  caption="`n` is all on the stack. `big` is 24 bytes on the stack and 8 MB on the heap. Moving it to `moved` copied the 24 bytes; the 8 MB didn't move."
+/>
+
+<Snippet file="stack-heap.rs" />
+
+A move costs the same whatever the size of the data: it copies a few machine words, and nothing is allocated or freed. That's why passing a huge `Vec` to a function by value is fine.
+
+## Why Rust does this
+
+Every language has to answer one question: when is it safe to free this memory? Rust's answer is that the compiler knows each value's one owner at every line, so it inserts the drop where the owner goes away. The memory is freed exactly once, at a known time, with no collector running. The price is the rules in this lesson, checked at compile time.
+
+| | Who frees memory | When | `b = a` on a list | What can go wrong |
+|---|---|---|---|---|
+| **Rust** | the compiler inserts the drop | when the owner goes out of scope | moves it; `a` is unusable | leaks are possible (an `Rc` cycle), but no double free or use-after-free in safe code |
+| **Go** | garbage collector | some time after it's unreachable | shares the backing array | aliasing; files closed by `defer` |
+| **Java, Kotlin** | garbage collector | some time after it's unreachable | shares the object | aliasing; resources need `try`-with-resources or `use` |
+| **C#** | garbage collector | some time after it's unreachable | shares a class object, copies a `struct` | aliasing; resources need `using` |
+| **Python** | reference counting, plus a cycle collector | usually as soon as the last reference goes | shares the object | aliasing; cycles wait for the collector |
+| **TypeScript** | garbage collector | some time after it's unreachable | shares the object | aliasing |
+| **C** | you, with `free` | when you call it | copies the pointer: two owners | double free, use-after-free, leaks |
+| **C++** | destructors (RAII) | when the owner goes out of scope | deep-copies (`auto b = a;` copies a `std::vector`); `std::move` to move | use-after-move compiles; dangling references |
+
+Aliasing means that after `b = a`, a change through `b` shows up in `a`. In C++ a move is opt-in, and using a moved-from object compiles: it's in a "valid but unspecified state", and its destructor still runs.
+
+<ForLang only="c cpp" title="For C and C++ readers">
+- A Rust move is always a plain copy of the bytes. There are no move constructors and no `noexcept` to remember, and a type can't run code when it's moved.
+- The moved-from value's destructor does not run. There is no moved-from state to keep valid.
+- `Clone` is an explicit copy constructor. Nothing is copied implicitly except `Copy` types.
+- `Box<T>` is `std::unique_ptr<T>` without the null state, and `Rc<T>`/`Arc<T>` are close to `std::shared_ptr<T>`. Their sections below have the differences.
+</ForLang>
+
+One honest note: ownership guarantees memory is freed *at most* once and never used after it's freed. It doesn't promise it's freed at all. Leaking memory is safe in Rust: `Box::leak` and `std::mem::forget` exist on purpose, and an `Rc` cycle leaks just as it would with `shared_ptr`.
+
+## `Box<T>`: one value on the heap
+
+`Box::new(value)` puts one value on the heap and gives you a single owner of it. When the box is dropped, the value inside is dropped and the memory freed. Use it for a recursive type (a node that holds the next node, which would otherwise have an infinite size), a value too big for the stack, or a trait object (`Box<dyn Trait>`, coming in [Trait objects](/learn/trait-objects/)).
+
+<Snippet file="boxed.rs" />
+
+<ForLang only="c cpp" title="For C and C++ readers">
+`Box::new(x)` builds `x` first and then moves it to the heap. The optimiser often removes that copy, but not always: in a debug build, `Box::new([0u8; 10_000_000])` can overflow the stack before the box exists. There is no placement new. For big buffers, use a `Vec` (`vec![0u8; n]` allocates directly).
+</ForLang>
+
+## Shared ownership: `Rc` and `Arc`
+
+Sometimes one owner isn't enough: a graph, a cache, or a config shared by many components. `Rc<T>` is a reference-counted pointer: `Rc::clone` doesn't copy the value, it adds an owner, and the value is freed when the last owner goes. Every owner gets shared, read-only access, like a `&T`. To change the value you put it in a `RefCell` (or a `Mutex`, across threads).
+
+<Memory
+  title={'let first = Rc::new(Noisy("config"));   let second = Rc::clone(&first);'}
+  stack={[
+    { name: 'first', type: 'Rc<Noisy>', cells: ['ptr'], to: 'rc' },
+    { name: 'second', type: 'Rc<Noisy>', cells: ['ptr'], to: 'rc' },
+  ]}
+  heap={[{ id: 'rc', label: 'one allocation: the counts, then the value', cells: ['strong 2', 'weak', 'Noisy("config")'] }]}
+  caption="Two owners of one value. The count of owners (strong) lives on the heap next to the value. Dropping either owner lowers it; dropping the last one frees the value. The weak cell counts `Weak` pointers, which don't own; there are none here, and `Rc::weak_count` says 0."
+/>
+
+<Snippet file="rc.rs" />
+
+`Rc` is for one thread; the thread-safe version is `Arc`, covered in [Shared state](/learn/shared-state/). Use them when the data really is shared, not to make the compiler stop complaining.
+
+<ForLang only="c cpp" title="For C and C++ readers">
+`Rc<T>` and `Arc<T>` are close to `std::shared_ptr<T>` made with `make_shared`: the counts live in the same allocation as the value. But an `Rc` is one pointer, 8 bytes (the snippet prints it), not two. There's no aliasing constructor and no custom deleter. And a `shared_ptr<T>` lets every owner change the value; an `Rc<T>` doesn't. `Arc` counts atomically, as `shared_ptr` does; `Rc` is the cheaper non-atomic version, which C++ has no standard equivalent of.
+</ForLang>
+
+## When ownership feels like a fight
+
+The compiler sometimes rejects code that would be fine in your old language. The most common cause is **holding a reference into something you're changing**:
+
+<Snippet file="fight-index.fail.rs" />
+
+`push` may move the elements to a bigger buffer and free the old one, and `best` would then point at freed memory. In C and C++ that's a real bug that compiles. In Go it's a quieter one: after `best := &s[2]; s = append(s, 40)`, `best` may point into the old array, so writes through it are lost. The [borrowing lesson](/learn/borrowing/) shows it with real output, in its Go box "Why bother, when Go has pointers?". In Java, Kotlin, C#, Python or TypeScript the problem doesn't come up: `best = list.get(2)` holds the element itself (or a copy of a number), not a slot in the list's storage. The fixes:
+
+<Snippet file="fight-fixes.rs" />
+
+- **Use an index instead of a reference.** An index is a plain number; it doesn't borrow anything. It's also how people build graphs and trees in Rust: nodes in a `Vec`, links as indices.
+- **Copy out the small thing you need** (here, `top_score`) before changing the original.
+- **Return owned values** when a function builds something new; it can't return a reference to its own local ([returning references](/learn/returning-references/)).
+- **Restructure**: read first and change second, or split a struct into parts you can borrow separately.
+
+**Wanting two owners.** Ask who really owns the thing. Usually one struct does, and the other can keep an ID, an index or a key and look the value up when it needs it. If there's honestly no single owner, that's what `Rc` (or `Arc`) is for.
+
+<ForLang only="java kotlin csharp" title="Object graphs and back-references">
+In Java, Kotlin or C# you'd model a parent and its children, or a subject and its listeners, as objects that point at each other, and let the collector sort it out. In Rust, give the data one owner and refer to it by ID or index: the parent holds its children in a `Vec`, and a child stores its parent's index, or all nodes live in one `Vec` and links are indices. When you truly need shared ownership, `Rc` (or `Arc`) is the closest thing to a Java reference, minus cycle collection: a back-pointer must be a `Weak`, or the cycle leaks. The ID approach is usually simpler: no counts, no cycles, the data is easy to serialise, and the borrow checker has nothing to untangle.
+</ForLang>
+
+Stuck on an error you can't fix? See [Working with the Borrow Checker](/learn/borrow-checker/#from-error-to-fix). Cloning to get unstuck is fine while you learn. What helps most is planning who owns each piece of data before you write the code: the owner holds `T`, everyone else borrows `&T` for as long as they need it.
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Each exercise is a small program with checks in `main`. Open it in the Playground, replace the `todo!()`, and run it until it prints `all checks passed`. Some checks compare heap addresses with `as_ptr()`, so a solution that clones instead of moving will fail.
+
+<Exercise name="inbox" title="Empty the inbox">
+Write two methods on `Inbox`. `take_oldest` removes and returns the first message, or `None` when there are none. `take_all` hands over every message and leaves the inbox empty but usable. Both take `&mut self`, so you can't simply move `self.unread` out; see [moving out of things](#moving-out-of-things).
+</Exercise>
+
+<Exercise name="split-by-length" title="Sort words into two piles">
+Move each word into a "short" or a "long" list, keeping their order, without cloning a single `String`. A word is short if it has at most `max` characters. Watch out: `"café"` is four characters but five bytes.
+</Exercise>
+
+<Exercise name="hand-over" title="Hand over an item">
+Move one player's item to another, and return whatever the receiver was holding. If the giver has nothing, nothing changes. Both players are `&mut` borrowed, so you'll need to take the item out of an `Option` rather than move it. It fits in two lines.
+</Exercise>
+
+## Read more
+
+- [The Rust Book, chapter 4.1: What Is Ownership?](https://doc.rust-lang.org/book/ch04-01-what-is-ownership.html) The original explanation, with its own stack and heap diagrams.
+- [The `Drop` trait](https://doc.rust-lang.org/std/ops/trait.Drop.html), including the exact drop order rules.
+- [`std::mem::take`](https://doc.rust-lang.org/std/mem/fn.take.html), [`std::mem::replace`](https://doc.rust-lang.org/std/mem/fn.replace.html) and [`Option::take`](https://doc.rust-lang.org/std/option/enum.Option.html#method.take).
+- [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html) and [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html): what each means, and when a type can be `Copy`.
+- [`Box`](https://doc.rust-lang.org/std/boxed/struct.Box.html) and [`Rc`](https://doc.rust-lang.org/std/rc/struct.Rc.html) in the standard library docs.
+- [Rust by Example: Ownership and moves](https://doc.rust-lang.org/rust-by-example/scope/move.html) and [Partial moves](https://doc.rust-lang.org/rust-by-example/scope/move/partial_move.html).
+- [The Rust Reference: Destructors](https://doc.rust-lang.org/reference/destructors.html), for the full rules on when things are dropped.

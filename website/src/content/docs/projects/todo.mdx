@@ -1,0 +1,121 @@
+---
+title: "Project: a todo CLI"
+description: "Build a small command-line to-do list step by step: a library crate for the rules, a JSON file for storage, clap for the command line, anyhow for errors, and tests that run the real binary."
+---
+
+import { Files, Remember, Session, Tree } from '../../../components/guide'
+
+This page builds one small program from an empty folder to a tested command-line tool, `todo`. It does not teach the pieces again. Each step names the lesson or guide that does, and shows what the code and the compiler did in the pinned image (Rust 1.99.1, Linux ARM64). A first build on a fresh machine downloads the crates (needs network); the dependency versions are fixed by the `Cargo.lock` that comes with the project. The sessions leave out Cargo's `Compiling`, `Checking` and `Finished` lines.
+
+<Remember>Put the rules in `src/lib.rs`, keep `src/main.rs` thin (parse arguments, call the library, print), and test the library with unit tests and the binary with tests that run it.</Remember>
+
+<Tree guide="project-todo" dir="rust" name="todo" title="Project layout" notes={{"Cargo.toml":"the four dependencies","src/lib.rs":"the rules: Task and List","src/store.rs":"reading and writing the JSON file","src/main.rs":"the command line","tests/cli.rs":"tests that run the binary","Cargo.lock":"committed: pins every version"}} />
+
+<Files guide="project-todo" dir="rust" files={["Cargo.toml"]} />
+
+`cargo new todo` makes the package, and `cargo add` writes the dependency lines ([Using crates](/start/using-crates/#adding-it)). There are four: **clap** for arguments, **serde** and **serde_json** for the file, **anyhow** for errors.
+
+## Why two crates in one package
+
+A package with both `src/lib.rs` and `src/main.rs` builds a library and a program that uses it. The Rust Book gives the reason in its testing chapter: a project with only `src/main.rs` cannot have integration tests that `use` its functions, so "Rust projects that provide a binary have a straightforward `src/main.rs` file that calls logic that lives in the `src/lib.rs` file" ([chapter 11.3](https://doc.rust-lang.org/book/ch11-03-test-organization.html#integration-tests-for-binary-crates)). [Project structure](/further/project-structure/#a-library-and-programs-in-one-package) shows the layout in a larger package. Here it gives the split: everything that decides what a to-do list is goes in the library, and everything about the terminal goes in `main.rs`.
+
+## Step 1: the rules, with no input or output
+
+<Files guide="project-todo" dir="stage1" files={["lib.rs"]} run="model" />
+
+This file is `src/lib.rs` after step 1. There is no file and no command line yet, so a test can build a `List` in memory and check it.
+
+- `List` keeps its fields private, so the only way to add a task in code is `add`, which checks the rules: some text, a priority from 1 to 3 ([Modules](/learn/modules/#private-by-default)). That covers code that calls the library. A file read by `load` in step 2 is not checked at all; the limits section runs an example.
+- `add` and `complete` return `Result<&Task>`: a reference into the list, which the caller can print and must drop before changing the list again ([Borrowing](/learn/borrowing/)).
+- `bail!` and `Result` come from anyhow, which fits an application: it holds any error and prints a message ([Errors in real apps](/build/app-errors/)). A library that others depend on is often better off with its own error type; the "what to try next" list has that.
+- `let ... else` returns early when the id is not found ([Option](/learn/option/#getting-the-value-out)).
+- `next_id` only goes up, so removing task 2 and adding another gives task 3. The first test checks it.
+- The two `derive` lines for serde are there for step 2. The tests sit in a child module with `#[cfg(test)]` ([Modules](/learn/modules/#tests-live-in-a-child-module)).
+
+## Step 2: the file
+
+<Files guide="project-todo" dir="rust" files={["src/store.rs"]} run="store" />
+
+`lib.rs` gains two lines to use it, `mod store;` and `pub use store::{load, save};`, so callers write `todo::load`. The two derives let serde turn a `List` into JSON text and back ([serde guide](/build/serde/)), which is what `to_string_pretty` and `from_str` do.
+
+- A file that does not exist is an empty list. Any other failure to read is an error, and the match on `ErrorKind::NotFound` is how the code tells them apart ([Files and I/O](/learn/files-io/#errors-ioerror-and-errorkind)).
+- `.with_context(...)` wraps the cause with a message that names the file, so the user sees which file was bad, not only that the JSON was.
+- `save` writes `<file>.tmp` and then renames it over the real file. That is a shorter form of the idiom in [Replacing a file safely](/learn/files-io/#replacing-a-file-safely), without its `sync_all`, so the page says nothing about a power cut. The rename happens after the write call returns, which is the order of the program and nothing more. No test here interrupts a write. The test only checks the temporary file is gone after a save.
+- The storage tests use a folder under `std::env::temp_dir()` named with the process id, and a `Drop` that removes it, as in [Temporary files that clean up](/learn/files-io/#temporary-files-that-clean-up).
+
+Seven unit tests now cover the model and the file, and none of them needed a terminal.
+
+## Step 3: the command line
+
+<Files guide="project-todo" dir="rust" files={["src/main.rs"]} run="run" />
+
+Each `cargo run` above is a new process that reads `todo.json`, does one thing and writes the file back, which the `cat` shows. The derive attributes are the [clap guide](/build/clap/)'s; what is specific here:
+
+- `global = true` on `--file` lets it go before or after the subcommand (the session runs `list --file todo.json`), and it shows up in the help of `add` (the [clap guide](/build/clap/) explains global flags).
+- `main` returns `anyhow::Result<()>`. If it returns `Err`, the runtime prints `Error:` and the error's debug form and exits with status 1 ([Errors, `main` can return a `Result`](/learn/errors/#main-can-return-a-result)). anyhow's docs say that is the form you get by default when `fn main` returns an error.
+- The `match` on `Command` has no `_` arm, so adding a command later without handling it is a compile error ([Enums](/learn/enums/#match-must-cover-every-variant)).
+- `main` is short glue. The rules it relies on are covered by the tests from steps 1 and 2.
+
+## Step 4: when things go wrong
+
+<Session guide="project-todo" run="errors" />
+
+The first two messages come from the library's `bail!`. The third shows the chain: the outer message names the file, and `Caused by` is serde_json's own message. The last one is clap's: it exits with status 2 for a usage error, our errors exit with 1. The first three stop before `save` is reached, so they wrote nothing; the fourth never gets past clap.
+
+## Step 5: tests that run the program
+
+<Files guide="project-todo" dir="rust" files={["tests/cli.rs"]} run="test" />
+
+Each file in `tests/` is its own crate, built with the library and the binary. Cargo sets `CARGO_BIN_EXE_<name>` while compiling an integration test: "the absolute path to a binary target's executable", usable with the `env!` macro ([Cargo environment variables](https://doc.rust-lang.org/cargo/reference/environment-variables.html#environment-variables-cargo-sets-for-crates)). So the tests need only `std::process::Command`: no test-helper crate.
+
+- Each test gets its own `Sandbox` folder and passes `--file` into it, so tests do not share a list file. `--test-threads=1` is in the command only so the lines print in the same order each time; the second step runs the tests five times with the default thread count and they passed each time ([Testing](/build/testing/)).
+- They check what a user sees: standard output, standard error, and the exit status (`Some(1)` for our errors, `Some(2)` for clap's).
+- `a_bad_priority_is_refused_and_nothing_is_saved` checks the file does not exist afterwards.
+
+Why bother when the unit tests pass? Here is a bug in `main.rs` that the library tests cannot see: the `done` arm forgets to call `save`. The first step below deletes that line, then both test sets run:
+
+<Session guide="project-todo" run="break" />
+
+The seven library tests still pass, because the library is fine. The CLI test that marks a task done and then lists the open ones fails, and its message shows both tasks still open. Finally, `cargo fmt --check` and `cargo clippy --all-targets` have nothing to say about the finished project:
+
+<Session guide="project-todo" run="lint" />
+
+(Empty output and a successful exit mean no complaints: `cargo fmt --check` printed nothing and clippy printed no warnings.)
+
+## Where each technique is taught
+
+| In this project | Where it is explained |
+| --- | --- |
+| `lib.rs` and `main.rs` in one package | [Project structure](/further/project-structure/) |
+| `derive(Parser)`, subcommands, `global` flags | [clap](/build/clap/) |
+| `derive(Serialize, Deserialize)`, `serde_json` | [serde](/build/serde/) |
+| `anyhow::Result`, `bail!`, `.with_context` | [Errors in real apps](/build/app-errors/), [Errors](/learn/errors/) |
+| `ErrorKind`, temp files, replacing a file | [Files and I/O](/learn/files-io/) |
+| unit tests, `tests/`, `Command` | [Testing](/build/testing/) |
+| `pub`, private fields, `mod`, `pub use` | [Modules](/learn/modules/) |
+
+## What this project does not do
+
+Everything ran on one machine, Linux ARM64, so nothing here shows how `fs::rename` behaves on other systems. Limits of the code as written:
+
+- `load` trusts the file: it checks no text, no priority and no id. Changing `next_id` back by hand makes the next `add` reuse an id, and a hand-written file with empty text and priority 9 loads and lists:
+
+<Session guide="project-todo" run="limits" />
+
+- Two `todo` processes at the same moment could each read the old list, and the second save would overwrite the first. Nothing here locks the file (not run).
+- The `.tmp` file would be left behind if `rename` failed (not run).
+
+## What to try next
+
+1. **Close the id hole.** Make `load` return an error when two tasks share an id or `next_id` is not above every id, and add a unit test that feeds it such a file.
+2. **Give the library its own error type.** Replace `anyhow` in `lib.rs` with an enum written with `thiserror`, keeping anyhow in `main.rs` and `store.rs` (it needs `cargo add thiserror`, which needs network and changes `Cargo.lock`). The `rules_are_enforced` test can then match on a variant instead of a message ([app-errors](/build/app-errors/)).
+3. **Read the file name from the environment.** clap can read an argument from an environment variable when its `env` feature is on (see the `env` attribute in the [derive reference](https://docs.rs/clap/4.6.7/clap/_derive/index.html)). Decide which wins, the flag or the variable, and write a test for it ([environment variables](/learn/env-time-process/#environment-variables)).
+4. **Add a command.** Add `edit <id> <text>` to the enum and watch the compiler list what is missing. Then write its unit test and its CLI test before the implementation.
+5. **Split into a workspace.** Move the library to its own package and keep the binary as the second ([project structure](/further/project-structure/#a-workspace-shares-what-should-be-shared)).
+
+## Read more
+
+- [The Rust Book, chapter 12.3](https://doc.rust-lang.org/book/ch12-03-improving-error-handling-and-modularity.html): the same split (thin `main`, logic in a library) in a longer example
+- [The Rust Book, chapter 11.3](https://doc.rust-lang.org/book/ch11-03-test-organization.html): unit tests, integration tests, and why binary crates are tested through a library
+- [The Cargo Book: targets](https://doc.rust-lang.org/cargo/reference/cargo-targets.html): what `src/lib.rs`, `src/main.rs` and `tests/` mean to Cargo
+- [anyhow's `Error`](https://docs.rs/anyhow/1.0.104/anyhow/struct.Error.html) and [clap's derive tutorial](https://docs.rs/clap/4.6.7/clap/_derive/_tutorial/index.html), for the versions this page pins

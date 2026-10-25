@@ -1,0 +1,346 @@
+---
+title: "Rust for Go developers"
+description: "A phrasebook for Go programmers: what carries over, ten habits that Rust's compiler will stop, a Go-to-Rust table of everyday idioms, the toolchain side by side, and the order to read the lessons in."
+---
+
+import { Files, Remember, Session } from '../../../components/guide'
+
+You know Go. This page lists what you can keep, ten habits that will meet a compiler error, and where each is taught. Both languages ran in one image (Go 1.27.3, Rust 1.99.1, Linux ARM64), and all output and compiler messages are what the runs printed.
+
+<Remember>Go trusts you with sharing and changing, and leaves the rest to `go vet`, the race detector and tests. Rust asks who owns a value, who may read it and who may change it, and refuses the program when the answer is unclear.</Remember>
+
+## What carries over
+
+- **Errors are values.** A failing call returns its error and you decide. `Result<T, E>` holds either the value or the error, where Go returns both ([Errors and Result](/learn/errors/)).
+- **Structs and methods, no classes.** Data in a struct, methods in an `impl` block ([Structs](/learn/structs/), [Methods](/learn/methods/)).
+- **A slice is a pointer, a length and a capacity.** A `Vec` has the same three words ([Ownership](/learn/ownership/)), and `&v[1..3]` is a window like `v[1:3]`.
+- **Interfaces name what a function needs.** A trait does that job, and also works as a generic bound ([Traits](/learn/traits/)).
+- **One tool does the chores.** `cargo` builds, runs, tests and formats like `go` (toolchain table below).
+
+## Ten habits to unlearn
+
+Each habit shows a Go program, the Rust that replaces it, and the compiler's message where Rust refuses.
+
+### 1. `range` hands you a copy
+
+In Go, `p` in `for _, p := range people` is a copy, so `p.Age++` changes the copy (the first line below shows the ages unchanged); you fix it by indexing. In Rust the loop says what you get: `&people` lends each element read-only, `&mut people` lends it for changing, and plain `people` moves the elements out.
+
+<div class="lr-compare">
+<Files guide="for-go" dir="lab" files={["go/h01/main.go"]} run="h01-go" lang="go" />
+<Files guide="for-go" dir="lab" files={["rust/src/bin/h01.rs"]} run="h01-rs" />
+</div>
+
+The loop a Go programmer writes first, `for p in &people` with `p.age += 1`, is refused: a `&` reference cannot write.
+
+<Session guide="for-go" run="h01-fail" />
+
+<details>
+<summary>The whole failing program</summary>
+
+<Files guide="for-go" dir="fails" files={["h01.rs"]} />
+
+</details>
+
+Taught in [Looping over collections](/learn/for-collections/#three-forms-of-the-loop) and [Copy or reference](/learn/copy-or-reference/#loops).
+
+### 2. `nil` is a value you can forget to check
+
+Go compiled `u.Name` on a `nil` `*User` and crashed at run time. In Rust, references and `Box` cannot be null: "maybe no user" is the type `Option<User>`, and the field is out of reach until you match.
+
+<div class="lr-compare">
+<Files guide="for-go" dir="lab" files={["go/h02/main.go"]} run="h02-go" lang="go" />
+<Files guide="for-go" dir="lab" files={["rust/src/bin/h02.rs"]} run="h02-rs" />
+</div>
+
+Reading `u.name` straight off the `Option` is the same mistake; the build stops it:
+
+<Session guide="for-go" run="h02-fail" />
+
+<details>
+<summary>The whole failing program</summary>
+
+<Files guide="for-go" dir="fails" files={["h02.rs"]} />
+
+</details>
+
+`unwrap()` is there when you want a crash, but you write it (task 1 below). Taught in [Option](/learn/option/#you-cant-use-an-option-as-the-value).
+
+### 3. `if err != nil` becomes a type, and `_` gets louder
+
+`n, _ := strconv.Atoi("abc")` throws the error away: `n` is 0 and the program printed 1. In Rust, `parse` returns a `Result<i32, ParseIntError>`, which does not compile where an `i32` is wanted. `?` is close to a one-character `if err != nil { return err }`, and it converts the error type if needed.
+
+<div class="lr-compare">
+<Files guide="for-go" dir="lab" files={["go/h03/main.go"]} run="h03-go" lang="go" />
+<Files guide="for-go" dir="lab" files={["rust/src/bin/h03.rs"]} run="h03-rs" />
+</div>
+
+<Session guide="for-go" run="h03-fail" />
+
+<details>
+<summary>The whole failing program</summary>
+
+<Files guide="for-go" dir="fails" files={["h03.rs"]} />
+
+</details>
+
+Taught in [Errors and Result](/learn/errors/#-pass-the-error-up), which also shows the warning for [ignoring a `Result`](/learn/errors/#do-not-ignore-a-result).
+
+### 4. A type fits an interface by having the methods
+
+In Go, `Robot` has a `Speak` method, so it is a `Speaker`. In Rust only `impl Speaker for Robot` makes it one; a method with the same name outside that block does not count.
+
+<div class="lr-compare">
+<Files guide="for-go" dir="lab" files={["go/h04/main.go"]} run="h04-go" lang="go" />
+<Files guide="for-go" dir="lab" files={["rust/src/bin/h04.rs"]} run="h04-rs" />
+</div>
+
+<Session guide="for-go" run="h04-fail" />
+
+<details>
+<summary>The whole failing program</summary>
+
+<Files guide="for-go" dir="fails" files={["h04.rs"]} />
+
+</details>
+
+The `impl` costs a line. In return you can implement your own trait for a type you did not write, `i32` included, which Go does not allow. Rust refuses someone else's trait on someone else's type (the orphan rule). Both are in [Traits](/learn/traits/#traits-for-types-you-did-not-write).
+
+### 5. Slices share an array; a `Vec` owns its items
+
+In Go, `b := a[:2]` is a window onto `a`'s array, and `append(b, 99)` found room there and overwrote `a[2]`. In Rust a slice borrows from the `Vec`, which cannot grow while the borrow is alive. For an independent list you write `to_vec()`.
+
+<div class="lr-compare">
+<Files guide="for-go" dir="lab" files={["go/h05/main.go"]} run="h05-go" lang="go" />
+<Files guide="for-go" dir="lab" files={["rust/src/bin/h05.rs"]} run="h05-rs" />
+</div>
+
+<Session guide="for-go" run="h05-fail" />
+
+<details>
+<summary>The whole failing program</summary>
+
+<Files guide="for-go" dir="fails" files={["h05.rs"]} />
+
+</details>
+
+Taught in [Vectors](/learn/vectors/#changing-a-list-you-are-reading) and [Borrowing](/learn/borrowing/).
+
+### 6. Fields have no automatic zero value
+
+`User{Name: "ana"}` in Go fills the other fields with zeros, and Go code often relies on that zero value. In Rust, leaving a field out does not build. `..Default::default()` asks for the zeros, for a type that implements `Default`.
+
+<div class="lr-compare">
+<Files guide="for-go" dir="lab" files={["go/h06/main.go"]} run="h06-go" lang="go" />
+<Files guide="for-go" dir="lab" files={["rust/src/bin/h06.rs"]} run="h06-rs" />
+</div>
+
+<Session guide="for-go" run="h06-fail" />
+
+<details>
+<summary>The whole failing program</summary>
+
+<Files guide="for-go" dir="fails" files={["h06.rs"]} />
+
+</details>
+
+For an absent field, Go reaches for a pointer and Rust for `Option` (habit 2). Taught in [Structs](/learn/structs/).
+
+### 7. Embedding does not exist
+
+Go promoted `Name` and `Describe` from `Animal` to `Dog`. In Rust `Dog` holds an `Animal` in a named field, and you reach through it or write a forwarding method. Shared behaviour goes in a trait, optionally with default methods ([Traits](/learn/traits/)).
+
+<div class="lr-compare">
+<Files guide="for-go" dir="lab" files={["go/h07/main.go"]} run="h07-go" lang="go" />
+<Files guide="for-go" dir="lab" files={["rust/src/bin/h07.rs"]} run="h07-rs" />
+</div>
+
+<Session guide="for-go" run="h07-fail" />
+
+<details>
+<summary>The whole failing program</summary>
+
+<Files guide="for-go" dir="fails" files={["h07.rs"]} />
+
+</details>
+
+Forwarding is more typing, and that is the cost. Both messages name the field.
+
+### 8. `defer` runs at the end of the function; `Drop` runs at the end of the scope
+
+Go ran the three deferred prints after the body of `main`, last one first. A Rust value with a `Drop` impl is cleaned up when its scope ends, here one loop iteration, and the cleanup belongs to the type.
+
+<div class="lr-compare">
+<Files guide="for-go" dir="lab" files={["go/h08/main.go"]} run="h08-go" lang="go" />
+<Files guide="for-go" dir="lab" files={["rust/src/bin/h08.rs"]} run="h08-rs" />
+</div>
+
+Taught in [Common traits](/learn/common-traits/#drop-the-trait-behind-scope-exit). The [Rust Reference](https://doc.rust-lang.org/reference/destructors.html) defines drop scopes; the Go spec [defines `defer`](https://go.dev/ref/spec#Defer_statements) as running when the surrounding function returns. Task 2 drops a value at once.
+
+### 9. Goroutines can share whatever they can reach
+
+Two goroutines added to one `count`. Go compiled it, and `count++` is a read, an add and a write, so updates were lost: the first step below printed a total under 2,000,000 (it changes from run to run), and the second shows the race detector's first line. In Rust, two closures that both change `count` do not build; the fix is to put the data inside a lock, which is a type.
+
+<div class="lr-compare">
+<Files guide="for-go" dir="lab" files={["go/h09/main.go"]} run="h09-go" lang="go" />
+<Files guide="for-go" dir="lab" files={["rust/src/bin/h09.rs"]} run="h09-rs" />
+</div>
+
+<Session guide="for-go" run="h09-fail" />
+
+<details>
+<summary>The whole failing program</summary>
+
+<Files guide="for-go" dir="fails" files={["h09.rs"]} />
+
+</details>
+
+`thread::spawn` starts an operating-system thread, where `go` hands a function to Go's scheduler ([Threads](/learn/threads/) counts both). Async code needs a runtime you choose. Taught in [Shared state](/learn/shared-state/#what-rust-refuses), [Send and Sync](/learn/send-sync/) and [Async basics](/learn/async-basics/).
+
+### 10. Go has one `string`; Rust has two, and neither is indexed by byte
+
+A Go `string` is bytes: `len(s)` counts them, `s[1]` is one of them, and `s[:2]` cut the `é` in half without a word (`"h\xc3"` is not valid UTF-8). Rust has `String` (owns the text) and `&str` (borrows it). `s[1]` does not compile. `&s[..2]` does compile, and panics at run time when 2 falls inside a character; `get` is the form that returns an `Option`, so that cut is `None`.
+
+<div class="lr-compare">
+<Files guide="for-go" dir="lab" files={["go/h10/main.go"]} run="h10-go" lang="go" />
+<Files guide="for-go" dir="lab" files={["rust/src/bin/h10.rs"]} run="h10-rs" />
+</div>
+
+<Session guide="for-go" run="h10-fail" />
+
+The slicing form a Go programmer types next builds, and stops the program:
+
+<Session guide="for-go" run="h10-slice" />
+
+<details>
+<summary>The whole failing program</summary>
+
+<Files guide="for-go" dir="fails" files={["h10.rs"]} />
+
+</details>
+
+A function that only reads text takes `&str`. Taught in [Strings](/learn/strings/#why-s0-doesnt-compile).
+
+Smaller changes: a capital letter exports a Go name and `pub` does it in Rust ([Modules](/learn/modules/)), and a struct tag like `json:"name"` becomes an attribute ([Serde](/build/serde/)).
+
+## Idiom by idiom
+
+The two programs behind this table print the same 20 lines, which the last run below checks with `diff`.
+
+| You write in Go | In Rust | Read |
+| --- | --- | --- |
+| `x := 5` then `x = x + 1` | `let mut x = 5;` then `x += 1;` | [Variables](/learn/variables/) |
+| `var zero int` | `let zero = i32::default();` | [Common traits](/learn/common-traits/) |
+| `for i := 0; i < 3; i++ { sum += i }` | `for i in 0..3 { sum += i; }` | [Loops](/learn/loops/) |
+| `for i, w := range words { total += i * len(w) }` | `for (i, w) in words.iter().enumerate() { total += i * w.len(); }` | [Looping over collections](/learn/for-collections/) |
+| `switch day { case "sat", "sun": kind = "weekend" }` | `let kind = match day { "sat" \| "sun" => "weekend", _ => "weekday" };` | [Match](/learn/match/) |
+| `if v, ok := ages["ana"]; ok { ... }` | `if let Some(v) = ages.get("ana") { ... }` | [Maps](/learn/maps/) |
+| `counts["the"]++` | `*counts.entry("the").or_insert(0) += 1;` | [Maps](/learn/maps/) |
+| `v = append(v, 2)` | `v.push(2);` | [Vectors](/learn/vectors/) |
+| `len(s)` (bytes) | `s.len()` (bytes) | [Strings](/learn/strings/) |
+| `len([]rune(s))` | `s.chars().count()` | [Strings](/learn/strings/) |
+| `len(strings.Fields("a b"))` | `"a b".split_whitespace().count()` | [Text](/learn/text/) |
+| `n, err := strconv.Atoi("42")` | `"42".parse::<i32>()`, a `Result` | [Errors and Result](/learn/errors/) |
+| `fmt.Sprintf("%s-%d", a, b)` | `format!("{a}-{b}")` | [Formatting](/learn/formatting/) |
+| `sort.Ints(v)` | `v.sort();` | [Vectors](/learn/vectors/) |
+| `strings.ToUpper("ana")` (ASCII here) | `"ana".to_uppercase()` | [Text](/learn/text/) |
+| `a, b = b, a` | `(a, b) = (b, a);` | [Tuples](/learn/tuples/) |
+| `min(p, q)` | `p.min(q)` | [Common traits](/learn/common-traits/) |
+| `type Celsius float64` | `struct Celsius(f64);`, read as `c.0`; no arithmetic until you add it | [Structs](/learn/structs/) |
+| `errors.New("bad input")` | `let e: Box<dyn Error> = "bad input".into();` | [Errors and Result](/learn/errors/) |
+| `func (c *Counter) Inc() { c.n++ }` | `fn inc(&mut self) { self.n += 1; }` | [Methods](/learn/methods/) |
+
+<details>
+<summary>The two programs and their runs</summary>
+
+<Files guide="for-go" dir="lab" files={["go/idioms/main.go"]} run="idioms-go" lang="go" />
+
+<Files guide="for-go" dir="lab" files={["rust/src/bin/idioms.rs"]} run="idioms-rs" />
+
+<Session guide="for-go" run="idioms-diff" />
+
+</details>
+
+## The toolchain, side by side
+
+| Job | Go | Rust |
+| --- | --- | --- |
+| New project | `go mod init example.com/demo` | `cargo new demo` |
+| Add a dependency | `go get` (not run) | `cargo add` (needs the network; not run, see [Finding and using crates](/start/using-crates/)) |
+| Build | `go build ./...` | `cargo build` |
+| Run | `go run .` | `cargo run` |
+| Test | `go test ./...` | `cargo test`, which also runs the examples in doc comments |
+| Format | `gofmt -l .` | `cargo fmt --check` |
+| Lint | `go vet ./...` | `cargo clippy` |
+| Docs | `go doc strings.Fields` | `cargo doc --no-deps`, which writes HTML |
+| Debugger | [Delve](https://github.com/go-delve/delve), `dlv` (not in the image) | `rust-gdb` or `rust-lldb` from the Rust install, or gdb or lldb directly (not run) |
+| Other platforms | `GOOS=windows go build` | `cargo build --target ...` (see below) |
+
+<details>
+<summary>What the commands printed</summary>
+
+<Session guide="for-go" run="tools-new" />
+
+<Session guide="for-go" run="tools-go" />
+
+<Session guide="for-go" run="tools-rust" />
+
+</details>
+
+`gofmt -l`, `go vet` and `cargo fmt --check` print nothing when they find nothing. `dlv`, `gdb` and `lldb` were missing in the image, so no debugger ran. See [Your first project](/start/first-project/) for the Rust commands and [Testing](/build/testing/) for more on `cargo test`.
+
+## A reading path
+
+1. [Rust at a glance](/learn/rust-at-a-glance/): a Go table of the syntax.
+2. [What Rust lacks](/learn/what-rust-lacks/): what you give up (`nil`, `defer`, `goto`) and what replaces it.
+3. [Copy or reference](/learn/copy-or-reference/): range copies, slice headers, closures.
+4. [Ownership](/learn/ownership/): the move, which Go has no word for, and the type, not escape analysis, decides stack or heap.
+5. [Borrowing](/learn/borrowing/) and [Mutable borrows](/learn/mutable-borrows/): read and write, split apart.
+6. [Option](/learn/option/) and [Errors and Result](/learn/errors/): for `nil` and `if err != nil`.
+7. [Enums](/learn/enums/): a closed list, which a type switch is not.
+8. [Traits](/learn/traits/) and [Trait objects](/learn/trait-objects/): interfaces you declare, and the `dyn` form.
+9. [Vectors](/learn/vectors/) and [Strings](/learn/strings/): slice and string habits.
+10. [Returning references](/learn/returning-references/) and [Lifetimes](/learn/lifetimes/): why returning a pointer to a local is fine in Go and refused here.
+11. [Working with the borrow checker](/learn/borrow-checker/): fixes for when the compiler says no.
+12. [Threads](/learn/threads/), [Shared state](/learn/shared-state/), [Channels](/learn/channels/), [Send and Sync](/learn/send-sync/): goroutines.
+13. [Async basics](/learn/async-basics/), then [Async with Tokio](/build/tokio/): Go has no async/await; goroutines and channels do that job.
+14. [Modules](/learn/modules/) and [Idioms and design patterns](/learn/idioms/): packages versus modules, then common shapes.
+
+## What you will miss
+
+Each point is backed by a run, a source or a lesson:
+
+- **Cross-compiling with two variables.** Go built a Windows executable here with `GOOS=windows`. The image's Rust had one target, and asking for Windows failed. The [rustup book](https://rust-lang.github.io/rustup/cross-compilation.html) says `rustup target add` installs the standard library for a target and that you usually need a linker too. These steps need the network and were not run.
+- **JSON in the standard library.** Go marshals a struct with `encoding/json` (below). Rust's `std` has no JSON; the usual answer is `serde` ([Serde](/build/serde/), [A map of crates](/build/crates-map/)).
+- **Pointers that go anywhere.** Go keeps what is reachable alive. Rust's answers for graphs and parent links (indices, `Rc`, `Weak`) are in [Working with the borrow checker](/learn/borrow-checker/) and [Smart pointers](/learn/smart-pointers/).
+- **`select`.** Channels in `std` have none ([Channels](/learn/channels/)).
+- **Joining two third-party pieces.** In Go a type can satisfy an interface neither of you wrote. Rust's orphan rule (habit 4) refuses that impl; a newtype is the way round ([Traits](/learn/traits/#traits-for-types-you-did-not-write)).
+
+<Session guide="for-go" run="cross-go" />
+
+<Session guide="for-go" run="cross-rust" />
+
+<Files guide="for-go" dir="lab" files={["go/json/main.go"]} run="json-go" lang="go" />
+
+This page says nothing about compile times: they were not measured.
+
+## Try it yourself
+
+Each task edits a program above; the sessions below ran in the image.
+
+1. In habit 2, replace the `match` with `find(2).unwrap()`. It builds, then panics with ``called `Option::unwrap()` on a `None` value``: Go's nil crash again, but you wrote the word that allows it.
+2. In habit 8, change `let _g = Guard(i);` to `let _ = Guard(i);`. Each `dropped` line now comes before its `loop` line: `_` does not bind the value, so nothing keeps it alive ([Patterns](/learn/patterns/)).
+3. In the failing program of habit 9, put `move` on the closures and keep the plain `count`. It builds with two warnings and prints 0: each closure got its own copy of an `i32`. Safe Rust refuses data races; it does not refuse a program that gives the wrong answer.
+
+<Session guide="for-go" run="try-unwrap" />
+
+<Session guide="for-go" run="try-underscore" />
+
+<Session guide="for-go" run="try-move" />
+
+## Read more
+
+- [The Rust Book, chapter 4: Understanding Ownership](https://doc.rust-lang.org/book/ch04-00-understanding-ownership.html) and [chapter 9: Error Handling](https://doc.rust-lang.org/book/ch09-00-error-handling.html)
+- [The Cargo Book](https://doc.rust-lang.org/cargo/): the `cargo` commands in the toolchain table
+- [`Option`](https://doc.rust-lang.org/std/option/enum.Option.html) and [`Mutex`](https://doc.rust-lang.org/std/sync/struct.Mutex.html) in the std docs
+- Go: [the Data Race Detector](https://go.dev/doc/articles/race_detector) and [`encoding/json`](https://pkg.go.dev/encoding/json), both used above
+- [Glossary](/start/glossary/): the Rust words, with the closest Go idea for each

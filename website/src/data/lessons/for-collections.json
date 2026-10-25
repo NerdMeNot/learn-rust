@@ -1,0 +1,367 @@
+{
+ "id": "for-collections",
+ "title": "Looping Over a Collection",
+ "part": "collections",
+ "intro": "Rust has three ways to write `for x in …` over a list, and they differ in who owns the items afterwards. One borrows the list, one borrows it to change it, and one uses it up.",
+ "coming_from": {
+  "go": "`for n in &names` is `for _, n := range names`, and `v.iter().enumerate()` gives `i, n`. In Go `n` is a copy of the item, so you change items through the index. In Rust `for n in &mut nums` gives you a `&mut` reference to the item in the list (`*n *= 10` writes through it). `for n in names` (no `&`) has no Go counterpart: for a `Vec` it moves the items out, and `names` is gone.",
+  "kotlin": "`for n in &names` is `for (n in names)`, and `v.iter().enumerate()` is `withIndex()`. The loop variable in Kotlin is a `val` you cannot assign to; in Rust `for n in &mut nums` gives you a `&mut` reference to change the item through. Leave off the `&` and the loop takes ownership of a `Vec`, so you can't use it afterwards.",
+  "python": "`for n in &names` is Python's `for n in names`, and `v.iter().enumerate()` is `enumerate(names)`. In Python `n *= 10` only rebinds the name `n`; in Rust `for n in &mut nums` gives you a `&mut` reference to the item (`*n *= 10` writes through it). Leaving off the `&` moves the list into the loop, and `names` can no longer be used.",
+  "typescript": "`for n in &names` is `for (const n of names)`, and `v.iter().enumerate()` is `names.entries()`. In `for...of` a number `n` is a copy, so you assign through the index; in Rust `for n in &mut nums` gives you a `&mut` reference to the item (`*n *= 10` writes through it). Without the `&` the loop moves the list in, and it can't be used afterwards.",
+  "java": "`for n in &names` is your for-each: it reads each item and leaves the list alone. `for n in names` (no `&`) consumes the list, which a for-each never does. For numbers a Java loop variable is a copy, so you call `set(i, …)`; in Rust `for n in &mut nums` gives you a `&mut` reference to the item. Changing the objects in a list (`p.age++`) needs that `&mut` form too: `&names` is read-only.",
+  "csharp": "`for n in &names` is `foreach`, and `for n in &mut nums` changes items in place, where `foreach` does not let you assign to the loop variable. Writing `for n in names` without `&` uses a `Vec` up, so `names` is gone after the loop.",
+  "c": "Instead of an index loop, `for n in &nums` reads each item and `for n in &mut nums` hands you a `&mut` reference to change it in place. The length travels with the list, so there is no separate count to get wrong. Without the `&` the loop takes ownership of a `Vec`, and it can't be used afterwards.",
+  "cpp": "`for n in &v` is `for (const auto& n : v)`, and `for n in &mut v` is `for (auto& n : v)`. `for n in v` is the odd one: for a `Vec` it moves the items out and consumes `v`, rather than copying each one like `for (auto n : v)`."
+ },
+ "notes": [
+  "`for x in v` takes each item out of `v`; a `Vec` is used up (an array of numbers is copied, so it stays). `for x in &v` borrows each item; `v` stays. `for x in &mut v` borrows each item so you can change it.",
+  "`&v` is the same as `v.iter()`, and `&mut v` is the same as `v.iter_mut()`. With the borrowing forms `x` is a reference, so you may need `*x` to get the value.",
+  "Use the first form when you are done with the list and want to move its items somewhere else without copying them.",
+  "Do not add to or remove from a list inside a `for` over it: Rust refuses to compile it, and `retain` or a list of positions are the usual fixes."
+ ],
+ "gotcha": {
+  "title": "Looping, then using the list again",
+  "verdict": "rust-rule",
+  "looks_fine": "In the other languages, a `for` loop over a list reads its items and the list is still there afterwards.",
+  "rust_sees": "`for n in names` (no `&`) hands the whole list to the loop. Each pass moves one `String` out into `n`, and the list's buffer is freed when the loop ends, so `names` cannot be used afterwards.",
+  "why": "This is the same move as in the Ownership lesson, hidden inside a loop. Rust makes you choose: add one `&` and the loop borrows, or leave it off to give the list away.",
+  "langs": {
+   "go": {
+    "status": "runs",
+    "says": "Go runs this and prints both names, then 2 names. `range` leaves the slice alone, so it is still there afterwards.",
+    "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tnames := []string{\"ana\", \"bo\"}\n\tfor _, n := range names {\n\t\tfmt.Println(\"hi\", n)\n\t}\n\tfmt.Println(len(names), \"names\")\n}\n",
+    "out": "hi ana\nhi bo\n2 names\n"
+   },
+   "kotlin": {
+    "status": "runs",
+    "says": "Kotlin runs this and prints both names, then 2 names. A `for` loop does not take the list away, so it is still there afterwards.",
+    "code": "fun main() {\n    val names = listOf(\"ana\", \"bo\")\n    for (n in names) {\n        println(\"hi $n\")\n    }\n    println(\"${names.size} names\")\n}\n",
+    "out": "hi ana\nhi bo\n2 names\n"
+   },
+   "python": {
+    "status": "runs",
+    "says": "Python prints both names and then 2 names. A `for` loop does not take the list away, so it is still there afterwards.",
+    "code": "names = [\"ana\", \"bo\"]\nfor n in names:\n    print(f\"hi {n}\")\nprint(f\"{len(names)} names\")\n",
+    "out": "hi ana\nhi bo\n2 names\n"
+   },
+   "typescript": {
+    "status": "runs",
+    "says": "Prints both names, then 2 names. `for...of` does not take the array away, so it is still there afterwards.",
+    "code": "const names = [\"ana\", \"bo\"];\nfor (const n of names) {\n  console.log(`hi ${n}`);\n}\nconsole.log(`${names.length} names`);\n",
+    "out": "hi ana\nhi bo\n2 names\n"
+   },
+   "java": {
+    "status": "runs",
+    "says": "A for-each loop in Java does not take the list away, so `names` is still there afterwards. Rust's `for n in names` uses the list up instead.",
+    "code": "import java.util.List;\n\npublic class Main {\n    public static void main(String[] args) {\n        var names = List.of(\"ana\", \"bo\");\n        for (var n : names) {\n            System.out.println(\"hi \" + n);\n        }\n        System.out.println(names.size() + \" names\");\n    }\n}\n",
+    "out": "hi ana\nhi bo\n2 names\n"
+   },
+   "csharp": {
+    "status": "runs",
+    "says": "`foreach` does not take the list away, so `names` is still there afterwards and this prints 2 names.",
+    "code": "List<string> names = [\"ana\", \"bo\"];\nforeach (var n in names)\n{\n    Console.WriteLine($\"hi {n}\");\n}\nConsole.WriteLine($\"{names.Count} names\");\n",
+    "out": "hi ana\nhi bo\n2 names\n"
+   },
+   "c": {
+    "status": "runs",
+    "says": "A C index loop reads the array and nothing about it makes `names` unusable, so the length is still 2 afterwards.",
+    "code": "#include <stdio.h>\n\nint main(void) {\n    const char *names[] = {\"ana\", \"bo\"};\n    size_t len = sizeof names / sizeof names[0];\n    for (size_t i = 0; i < len; i++) {\n        printf(\"hi %s\\n\", names[i]);\n    }\n    printf(\"%zu names\\n\", len);\n    return 0;\n}\n",
+    "out": "hi ana\nhi bo\n2 names\n"
+   },
+   "cpp": {
+    "status": "runs",
+    "says": "`for (auto n : names)` copies each string, so `names` is untouched and still has 2 items. Rust's `for n in names` moves them out instead.",
+    "code": "#include <iostream>\n#include <string>\n#include <vector>\n\nint main() {\n    std::vector<std::string> names{\"ana\", \"bo\"};\n    for (auto n : names) {\n        std::cout << \"hi \" << n << \"\\n\";\n    }\n    std::cout << names.size() << \" names\\n\";\n}\n",
+    "out": "hi ana\nhi bo\n2 names\n"
+   }
+  },
+  "code": "fn main() {\n    let names = vec![String::from(\"ana\"), String::from(\"bo\")];\n    for n in names {\n        println!(\"hi {n}\");\n    }\n    println!(\"{} names\", names.len());\n}\n",
+  "error": "error[E0382]: borrow of moved value: `names`\n --> src/main.rs:6:26\n  |\n2 |     let names = vec![String::from(\"ana\"), String::from(\"bo\")];\n  |         ----- move occurs because `names` has type `Vec<String>`, which does not implement the `Copy` trait\n3 |     for n in names {\n  |              ----- `names` moved due to this implicit call to `.into_iter()`\n...\n6 |     println!(\"{} names\", names.len());\n  |                          ^^^^^ value borrowed here after move\n  |\nhelp: consider iterating over a slice of the `Vec<String>`'s content to avoid moving into the `for` loop\n  |\n3 |     for n in &names {\n  |              +\n\n  ... (notes pointing into the standard library trimmed)",
+  "error_code": "E0382",
+  "fixed": {
+   "code": "fn main() {\n    let names = vec![String::from(\"ana\"), String::from(\"bo\")];\n    for n in &names {\n        println!(\"hi {n}\");\n    }\n    println!(\"{} names\", names.len());\n}\n",
+   "out": "hi ana\nhi bo\n2 names\n"
+  }
+ },
+ "order": 29,
+ "program": {
+  "rust": {
+   "code": "fn main() {\n    let names = vec![String::from(\"ana\"), String::from(\"bo\")];\n\n    // Borrow each item: names stays usable.\n    for n in &names {\n        println!(\"hi {n}\");\n    }\n\n    let mut nums = vec![1, 2, 3];\n    // Borrow each item so it can be changed.\n    for n in &mut nums {\n        *n *= 10;\n    }\n\n    // Each item with its position.\n    for (i, n) in nums.iter().enumerate() {\n        println!(\"{i}: {n}\");\n    }\n    println!(\"{} names, {nums:?}\", names.len());\n}\n",
+   "out": "hi ana\nhi bo\n0: 10\n1: 20\n2: 30\n2 names, [10, 20, 30]\n"
+  },
+  "go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tnames := []string{\"ana\", \"bo\"}\n\tfor _, n := range names {\n\t\tfmt.Println(\"hi\", n)\n\t}\n\n\tnums := []int{1, 2, 3}\n\tfor i := range nums {\n\t\tnums[i] *= 10\n\t}\n\n\tfor i, n := range nums {\n\t\tfmt.Printf(\"%d: %d\\n\", i, n)\n\t}\n\tfmt.Println(len(names), \"names,\", nums)\n}\n",
+   "out": "hi ana\nhi bo\n0: 10\n1: 20\n2: 30\n2 names, [10 20 30]\n"
+  },
+  "kotlin": {
+   "code": "fun main() {\n    val names = listOf(\"ana\", \"bo\")\n    for (n in names) {\n        println(\"hi $n\")\n    }\n\n    val nums = mutableListOf(1, 2, 3)\n    for (i in nums.indices) {\n        nums[i] *= 10\n    }\n\n    for ((i, n) in nums.withIndex()) {\n        println(\"$i: $n\")\n    }\n    println(\"${names.size} names, $nums\")\n}\n",
+   "out": "hi ana\nhi bo\n0: 10\n1: 20\n2: 30\n2 names, [10, 20, 30]\n"
+  },
+  "python": {
+   "code": "names = [\"ana\", \"bo\"]\n\nfor n in names:\n    print(f\"hi {n}\")\n\nnums = [1, 2, 3]\nfor i in range(len(nums)):  # \"n *= 10\" would only rebind n, so assign through the index\n    nums[i] *= 10\n\nfor i, n in enumerate(nums):\n    print(f\"{i}: {n}\")\nprint(f\"{len(names)} names, {nums}\")\n",
+   "out": "hi ana\nhi bo\n0: 10\n1: 20\n2: 30\n2 names, [10, 20, 30]\n"
+  },
+  "typescript": {
+   "code": "const names = [\"ana\", \"bo\"];\n\nfor (const n of names) {\n  console.log(`hi ${n}`);\n}\n\nconst nums = [1, 2, 3];\nfor (let i = 0; i < nums.length; i++) { // n holds a copy of each number, so assign through the index\n  nums[i] *= 10;\n}\n\nfor (const [i, n] of nums.entries()) { // with the position\n  console.log(`${i}: ${n}`);\n}\nconsole.log(`${names.length} names,`, nums);\n",
+   "out": "hi ana\nhi bo\n0: 10\n1: 20\n2: 30\n2 names, [ 10, 20, 30 ]\n"
+  },
+  "java": {
+   "code": "import java.util.ArrayList;\nimport java.util.List;\n\npublic class Main {\n    public static void main(String[] args) {\n        var names = List.of(\"ana\", \"bo\");\n        for (var n : names) {\n            System.out.println(\"hi \" + n);\n        }\n\n        var nums = new ArrayList<>(List.of(1, 2, 3));\n        for (int i = 0; i < nums.size(); i++) {   // change items by index\n            nums.set(i, nums.get(i) * 10);\n        }\n\n        for (int i = 0; i < nums.size(); i++) {   // with index\n            System.out.println(i + \": \" + nums.get(i));\n        }\n        System.out.println(names.size() + \" names, \" + nums);\n    }\n}\n",
+   "out": "hi ana\nhi bo\n0: 10\n1: 20\n2: 30\n2 names, [10, 20, 30]\n"
+  },
+  "csharp": {
+   "code": "List<string> names = [\"ana\", \"bo\"];\n\nforeach (var n in names)\n{\n    Console.WriteLine($\"hi {n}\");\n}\n\nList<int> nums = [1, 2, 3];\nfor (var i = 0; i < nums.Count; i++)   // foreach can't change items, so use an index\n{\n    nums[i] *= 10;\n}\n\nforeach (var (n, i) in nums.Select((n, i) => (n, i)))   // with index\n{\n    Console.WriteLine($\"{i}: {n}\");\n}\nConsole.WriteLine($\"{names.Count} names, [{string.Join(\", \", nums)}]\");\n",
+   "out": "hi ana\nhi bo\n0: 10\n1: 20\n2: 30\n2 names, [10, 20, 30]\n"
+  },
+  "c": {
+   "code": "#include <stdio.h>\n\nint main(void) {\n    const char *names[] = {\"ana\", \"bo\"};\n    size_t names_len = sizeof names / sizeof names[0];\n\n    for (size_t i = 0; i < names_len; i++) {\n        printf(\"hi %s\\n\", names[i]);\n    }\n\n    int nums[] = {1, 2, 3};\n    for (size_t i = 0; i < 3; i++) {\n        nums[i] *= 10;          // change each item through its index\n    }\n\n    for (size_t i = 0; i < 3; i++) {\n        printf(\"%zu: %d\\n\", i, nums[i]);\n    }\n    printf(\"%zu names, [%d, %d, %d]\\n\", names_len, nums[0], nums[1], nums[2]);\n    return 0;\n}\n",
+   "out": "hi ana\nhi bo\n0: 10\n1: 20\n2: 30\n2 names, [10, 20, 30]\n"
+  },
+  "cpp": {
+   "code": "#include <iostream>\n#include <string>\n#include <vector>\n\nint main() {\n    std::vector<std::string> names{\"ana\", \"bo\"};\n\n    for (const auto& n : names) {     // const reference: no copy, no change\n        std::cout << \"hi \" << n << \"\\n\";\n    }\n\n    std::vector<int> nums{1, 2, 3};\n    for (auto& n : nums) {            // reference: change each item in place\n        n *= 10;\n    }\n\n    for (std::size_t i = 0; i < nums.size(); ++i) {   // with an index\n        std::cout << i << \": \" << nums[i] << \"\\n\";\n    }\n    std::cout << names.size() << \" names, [\";\n    for (std::size_t i = 0; i < nums.size(); ++i) {\n        std::cout << (i ? \", \" : \"\") << nums[i];\n    }\n    std::cout << \"]\\n\";\n}\n",
+   "out": "hi ana\nhi bo\n0: 10\n1: 20\n2: 30\n2 names, [10, 20, 30]\n"
+  }
+ },
+ "faq": [],
+ "snippets": {
+  "borrow-break.rs": {
+   "code": "struct Noisy(&'static str);\n\nimpl Drop for Noisy {\n    fn drop(&mut self) {\n        println!(\"  dropped {}\", self.0);\n    }\n}\n\nfn main() {\n    let items = vec![Noisy(\"a\"), Noisy(\"b\"), Noisy(\"c\")];\n\n    for item in &items {\n        println!(\"  saw {}\", item.0);\n        if item.0 == \"b\" {\n            break;\n        }\n    }\n    println!(\"loop is over, items still here: {}\", items.len());\n}\n",
+   "out": "  saw a\n  saw b\nloop is over, items still here: 3\n  dropped a\n  dropped b\n  dropped c\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-array-string.fail.rs": {
+   "code": "// Backs \"an array of Strings is moved like a Vec\". Never shown.\nfn main() {\n    let names = [String::from(\"ana\"), String::from(\"bo\")];\n    for n in names {\n        println!(\"hi {n}\");\n    }\n    println!(\"{} names\", names.len());\n}\n",
+   "error": "error[E0382]: borrow of moved value: `names`\n --> src/main.rs:7:26\n  |\n3 |     let names = [String::from(\"ana\"), String::from(\"bo\")];\n  |         ----- move occurs because `names` has type `[String; 2]`, which does not implement the `Copy` trait\n4 |     for n in names {\n  |              ----- `names` moved due to this implicit call to `.into_iter()`\n...\n7 |     println!(\"{} names\", names.len());\n  |                          ^^^^^ value borrowed here after move\n  |\nhelp: consider iterating over a slice of the `[String; 2]`'s content to avoid moving into the `for` loop\n  |\n4 |     for n in &names {\n  |              +\n\n  ... (notes pointing into the standard library trimmed)",
+   "lang": "rust"
+  },
+  "check-forms.rs": {
+   "code": "// Backs the table cells in lesson.mdx. Never shown.\nfn type_of<T>(_: &T) -> &'static str {\n    std::any::type_name::<T>()\n}\n\nfn through_mut_ref(v: &mut Vec<i32>) {\n    for x in v {\n        assert_eq!(type_of(&x), \"&mut i32\");\n    }\n}\n\nfn over_slice(s: &[i32]) {\n    for x in s {\n        assert_eq!(type_of(&x), \"&i32\");\n    }\n}\n\nfn drain_all(v: &mut Vec<String>) -> usize {\n    let mut n = 0;\n    for s in v.drain(..) {\n        n += s.len();\n    }\n    n\n}\n\nstruct Person {\n    age: u32,\n}\n\nfn main() {\n    let mut v = vec![1, 2, 3];\n    through_mut_ref(&mut v);\n\n    // an array of Copy items is copied into the loop and stays usable; a slice is a reference\n    let arr = [1, 2, 3];\n    for x in arr {\n        assert_eq!(type_of(&x), \"i32\");\n    }\n    assert_eq!(arr.len(), 3);\n    over_slice(&arr);\n    over_slice(&v);\n\n    // cloned() works for Strings; copied() is the same for Copy items\n    let words = vec![String::from(\"a\"), String::from(\"bc\")];\n    let c: Vec<String> = words.iter().cloned().collect();\n    assert_eq!(c, words);\n    let n: Vec<i32> = v.iter().copied().collect();\n    assert_eq!(n, v);\n\n    // drain(..) and mem::take both give owned items from a &mut Vec; drain + break empties it\n    let mut w = words.clone();\n    assert_eq!(drain_all(&mut w), 3);\n    assert!(w.is_empty());\n    let mut w = words.clone();\n    let mut total = 0;\n    for s in std::mem::take(&mut w) {\n        total += s.len();\n    }\n    assert_eq!(total, 3);\n    assert!(w.is_empty());\n    let mut w = words.clone();\n    for _s in w.drain(..) {\n        break;\n    }\n    assert!(w.is_empty());\n\n    // &mut list lets you change each object; HashMap::retain\n    let mut people = vec![Person { age: 1 }];\n    for p in &mut people {\n        p.age += 1;\n    }\n    assert_eq!(people[0].age, 2);\n    let mut ages = std::collections::HashMap::from([(\"a\", 1), (\"b\", 2)]);\n    ages.retain(|_, a| *a > 1);\n    assert_eq!(ages.len(), 1);\n\n    // the three forms and what x is\n    for x in &v {\n        assert_eq!(type_of(&x), \"&i32\");\n    }\n    for x in &mut v {\n        assert_eq!(type_of(&x), \"&mut i32\");\n    }\n    for x in v.clone() {\n        assert_eq!(type_of(&x), \"i32\");\n    }\n    // arrays and ranges loop by value\n    for x in [1, 2] {\n        assert_eq!(type_of(&x), \"i32\");\n    }\n    for x in 0..2 {\n        assert_eq!(type_of(&x), \"i32\");\n    }\n\n    // cloned() copies each item out of the list\n    let copies: Vec<i32> = v.iter().cloned().collect();\n    assert_eq!(copies, v);\n    // &v is v.iter(), &mut v is v.iter_mut(), v is v.into_iter()\n    let a: Vec<&i32> = (&v).into_iter().collect();\n    let b: Vec<&i32> = v.iter().collect();\n    assert_eq!(a, b);\n    for x in v.iter_mut() {\n        *x += 1;\n    }\n    assert_eq!(v, [2, 3, 4]);\n\n    // enumerate, zip (stops at the shorter), rev, step_by, skip\n    let names = [\"ana\", \"bo\", \"cy\"];\n    let ages = [31, 27];\n    let e: Vec<(usize, &&str)> = names.iter().enumerate().collect();\n    assert_eq!(e, [(0, &\"ana\"), (1, &\"bo\"), (2, &\"cy\")]);\n    let z: Vec<(&&str, &i32)> = names.iter().zip(&ages).collect();\n    assert_eq!(z.len(), 2);\n    let r: Vec<&&str> = names.iter().rev().collect();\n    assert_eq!(r, [&\"cy\", &\"bo\", &\"ana\"]);\n    let s: Vec<&&str> = names.iter().step_by(2).collect();\n    assert_eq!(s, [&\"ana\", &\"cy\"]);\n    let k: Vec<&&str> = names.iter().skip(1).collect();\n    assert_eq!(k, [&\"bo\", &\"cy\"]);\n    let n = [1, 2, 3, 4, 5];\n    assert_eq!(n.windows(2).count(), 4);\n    assert_eq!(n.chunks(2).count(), 3);\n    assert_eq!(n.chunks(2).last(), Some(&[5][..]));\n    assert_eq!(n.chunks_exact(2).count(), 2);\n    // windows and chunks on a list shorter than the size\n    assert_eq!([1].windows(2).count(), 0);\n    assert_eq!(Vec::<i32>::new().chunks(2).count(), 0);\n    // iter_mut + enumerate\n    let mut m = [0, 0, 0];\n    for (i, x) in m.iter_mut().enumerate() {\n        *x = i * 10;\n    }\n    assert_eq!(m, [0, 10, 20]);\n    // the one-by-one loop and the index loop visit the same items\n    let mut by_index = vec![];\n    for i in 0..n.len() {\n        by_index.push(n[i]);\n    }\n    let by_ref: Vec<i32> = n.iter().copied().collect();\n    assert_eq!(by_index, by_ref);\n    // an empty list: 0..len is empty, but len - 1 underflows\n    assert_eq!((0..Vec::<i32>::new().len()).count(), 0);\n    assert_eq!(Vec::<i32>::new().len().checked_sub(1), None);\n    // a slice of a list loops too\n    let part: Vec<&i32> = n[1..3].iter().collect();\n    assert_eq!(part, [&2, &3]);\n\n    // retain, and (0..len).rev() removal\n    let mut w = vec![1, 2, 3, 4];\n    w.retain(|x| x % 2 == 1);\n    assert_eq!(w, [1, 3]);\n    // for (i, c) in char_indices: byte offsets\n    let offsets: Vec<usize> = \"héllo\".char_indices().map(|(i, _)| i).collect();\n    assert_eq!(offsets, [0, 1, 3, 4, 5]);\n    assert_eq!(\"héllo\".chars().count(), 5);\n    assert_eq!(\"héllo\".len(), 6);\n    // a HashMap: pairs of references, and &mut gives a writable value\n    let mut m = std::collections::HashMap::new();\n    m.insert(\"a\", 1);\n    for (k, c) in &m {\n        assert_eq!(type_of(&(k, c)), \"(&&str, &i32)\");\n    }\n    for (_, c) in &mut m {\n        *c += 1;\n    }\n    assert_eq!(m[\"a\"], 2);\n    println!(\"ok\");\n}\n",
+   "out": "ok\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-mutate-loop.fail.rs": {
+   "code": "// Backs \"Rust refuses a push or a map remove inside a loop over a borrow\". Never shown.\nuse std::collections::HashMap;\n\nfn main() {\n    let mut v = vec![1, 2, 3];\n    for x in &v {\n        if *x == 2 {\n            v.push(99);\n        }\n    }\n    let mut m = HashMap::from([(\"a\", 1), (\"b\", 2)]);\n    for (k, _) in &m {\n        m.remove(k);\n    }\n}\n",
+   "error": "error[E0502]: cannot borrow `v` as mutable because it is also borrowed as immutable\n  --> src/main.rs:8:13\n   |\n 6 |       for x in &v {\n   |       -        --\n   |       |        |\n   |       |        immutable borrow occurs here\n   |  _____|        immutable borrow later used here\n   | |\n 7 | |         if *x == 2 {\n 8 | |             v.push(99);\n   | |             ^^^^^^^^^^ mutable borrow occurs here\n 9 | |         }\n10 | |     }\n   | |_____- this for loop borrows `v` immutably, preventing mutation within its body\n   |\n   = help: consider using an index-based loop instead, or collecting modifications into a separate collection\n\nerror[E0502]: cannot borrow `m` as mutable because it is also borrowed as immutable\n  --> src/main.rs:13:9\n   |\n12 |       for (k, _) in &m {\n   |       -             --\n   |       |             |\n   |       |             immutable borrow occurs here\n   |  _____|             immutable borrow later used here\n   | |\n13 | |         m.remove(k);\n   | |         ^^^^^^^^^^^ mutable borrow occurs here\n14 | |     }\n   | |_____- this for loop borrows `m` immutably, preventing mutation within its body\n   |\n   = help: consider using an index-based loop instead, or collecting modifications into a separate collection\n",
+   "lang": "rust"
+  },
+  "check-values-string.fail.rs": {
+   "code": "fn main() {\n    let names = vec![String::from(\"ana\"), String::from(\"bo\")];\n    for &n in &names {\n        println!(\"hi {n}\");\n    }\n}\n",
+   "error": "error[E0507]: cannot move out of a shared reference\n --> src/main.rs:3:15\n  |\n3 |     for &n in &names {\n  |          -    ^^^^^^\n  |          |\n  |          data moved here because `n` has type `String`, which does not implement the `Copy` trait\n  |\nhelp: consider removing the borrow\n  |\n3 -     for &n in &names {\n3 +     for n in &names {",
+   "lang": "rust"
+  },
+  "consume-break.rs": {
+   "code": "struct Noisy(&'static str);\n\nimpl Drop for Noisy {\n    fn drop(&mut self) {\n        println!(\"  dropped {}\", self.0);\n    }\n}\n\nfn main() {\n    let items = vec![Noisy(\"a\"), Noisy(\"b\"), Noisy(\"c\"), Noisy(\"d\")];\n\n    println!(\"loop starts\");\n    for item in items {\n        println!(\"  got {}\", item.0);\n        if item.0 == \"b\" {\n            println!(\"  break\");\n            break;\n        }\n    }\n    println!(\"loop is over\");\n}\n",
+   "out": "loop starts\n  got a\n  dropped a\n  got b\n  break\n  dropped b\n  dropped c\n  dropped d\nloop is over\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "drain-break.rs": {
+   "code": "struct Noisy(&'static str);\n\nimpl Drop for Noisy {\n    fn drop(&mut self) {\n        println!(\"  dropped {}\", self.0);\n    }\n}\n\nfn main() {\n    let mut items = vec![Noisy(\"a\"), Noisy(\"b\"), Noisy(\"c\")];\n\n    for item in items.drain(..) {\n        println!(\"  got {}\", item.0);\n        if item.0 == \"b\" {\n            break;\n        }\n    }\n    println!(\"loop is over, items left: {}\", items.len());\n}\n",
+   "out": "  got a\n  dropped a\n  got b\n  dropped b\n  dropped c\nloop is over, items left: 0\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "enumerate-rev.rs": {
+   "code": "fn main() {\n    let names = [\"ana\", \"bo\", \"cy\"];\n\n    for (i, n) in names.iter().enumerate().rev() {\n        println!(\"enumerate().rev(): {i} is {n}\");\n    }\n\n    for (i, n) in names.iter().rev().enumerate() {\n        println!(\"rev().enumerate(): {i} is {n}\");\n    }\n}\n",
+   "out": "enumerate().rev(): 2 is cy\nenumerate().rev(): 1 is bo\nenumerate().rev(): 0 is ana\nrev().enumerate(): 0 is cy\nrev().enumerate(): 1 is bo\nrev().enumerate(): 2 is ana\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "forms.rs": {
+   "code": "use std::any::type_name_of_val;\n\nfn main() {\n    let mut nums = vec![10, 20];\n\n    for x in &nums {\n        println!(\"for x in &nums: x is {} ({x})\", type_name_of_val(&x));\n    }\n\n    for x in &mut nums {\n        *x += 1;\n        println!(\"for x in &mut nums: x is {} ({x})\", type_name_of_val(&x));\n    }\n\n    for x in nums {\n        println!(\"for x in nums: x is {} ({x})\", type_name_of_val(&x));\n    }\n}\n",
+   "out": "for x in &nums: x is &i32 (10)\nfor x in &nums: x is &i32 (20)\nfor x in &mut nums: x is &mut i32 (11)\nfor x in &mut nums: x is &mut i32 (21)\nfor x in nums: x is i32 (11)\nfor x in nums: x is i32 (21)\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "index-loops.rs": {
+   "code": "fn main() {\n    // Each total needs the one before it, so an index is the natural tool.\n    let mut totals = vec![3, 1, 4, 1, 5];\n    for i in 1..totals.len() {\n        totals[i] += totals[i - 1];\n    }\n    println!(\"running totals: {totals:?}\");\n\n    // On an empty list, 1..0 is an empty range: nothing runs, nothing panics.\n    let mut empty: Vec<i32> = vec![];\n    for i in 1..empty.len() {\n        empty[i] += empty[i - 1];\n    }\n    println!(\"empty: {empty:?}\");\n}\n",
+   "out": "running totals: [3, 4, 8, 9, 14]\nempty: []\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "maps-and-text.rs": {
+   "code": "use std::any::type_name_of_val;\nuse std::collections::HashMap;\n\nfn main() {\n    let mut stock = HashMap::new();\n    stock.insert(\"apple\", 3);\n    stock.insert(\"pear\", 0);\n\n    for pair in &stock {\n        println!(\"for pair in &stock: pair is {}\", type_name_of_val(&pair));\n        break;\n    }\n\n    for (_, count) in &mut stock {\n        *count += 10; // values can be changed; keys cannot\n    }\n    let mut totals: Vec<_> = stock.values().collect();\n    totals.sort();\n    println!(\"counts after +10: {totals:?}\");\n\n    for (i, c) in \"héllo\".char_indices() {\n        print!(\"{i}:{c} \");\n    }\n    println!();\n}\n",
+   "out": "for pair in &stock: pair is (&&str, &i32)\ncounts after +10: [10, 13]\n0:h 1:é 3:l 4:l 5:o \n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "modify-fixed.rs": {
+   "code": "fn main() {\n    // 1. Remove items: retain keeps the ones for which the closure says true.\n    let mut v = vec![1, 2, 3, 4, 5, 6];\n    v.retain(|x| x % 2 != 0);\n    println!(\"retain: {v:?}\");\n\n    // 2. Collect what to change first; the loop over `&v` has ended before the change.\n    let mut v = vec![1, 2, 3, 4, 5, 6];\n    let mut doomed = Vec::new();\n    for (i, x) in v.iter().enumerate() {\n        if x % 2 == 0 {\n            doomed.push(i);\n        }\n    }\n    for i in doomed.into_iter().rev() {\n        v.remove(i);\n    }\n    println!(\"collect, then apply: {v:?}\");\n\n    // 3. Loop over positions. The range is made once, so no borrow of `v` lasts across the body.\n    let mut v = vec![1, 2, 3, 4, 5, 6];\n    for i in (0..v.len()).rev() {\n        if v[i] % 2 == 0 {\n            v.remove(i);\n        }\n    }\n    println!(\"positions, backwards: {v:?}\");\n\n    // Changing the items is not a problem: `&mut` is the one writer.\n    let mut v = vec![1, 2, 3, 4, 5, 6];\n    for x in &mut v {\n        if *x % 2 == 0 {\n            *x = 0;\n        }\n    }\n    println!(\"&mut: {v:?}\");\n}\n",
+   "out": "retain: [1, 3, 5]\ncollect, then apply: [1, 3, 5]\npositions, backwards: [1, 3, 5]\n&mut: [1, 0, 3, 0, 5, 0]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "modify.fail.rs": {
+   "code": "fn main() {\n    let mut v = vec![1, 2, 3, 4];\n    for x in &v {\n        if x % 2 == 0 {\n            v.remove(0);\n        }\n    }\n    println!(\"v: {v:?}\");\n}\n",
+   "error": "error[E0502]: cannot borrow `v` as mutable because it is also borrowed as immutable\n --> src/main.rs:5:13\n  |\n3 |       for x in &v {\n  |       -        --\n  |       |        |\n  |       |        immutable borrow occurs here\n  |  _____|        immutable borrow later used here\n  | |\n4 | |         if x % 2 == 0 {\n5 | |             v.remove(0);\n  | |             ^^^^^^^^^^^ mutable borrow occurs here\n6 | |         }\n7 | |     }\n  | |_____- this for loop borrows `v` immutably, preventing mutation within its body\n  |\n  = help: consider using an index-based loop instead, or collecting modifications into a separate collection\n",
+   "lang": "rust"
+  },
+  "moved.fail.rs": {
+   "code": "fn main() {\n    let names = vec![String::from(\"ana\"), String::from(\"bo\")];\n    for n in names {\n        println!(\"hi {n}\");\n    }\n    println!(\"{} names\", names.len());\n}\n",
+   "error": "error[E0382]: borrow of moved value: `names`\n --> src/main.rs:6:26\n  |\n2 |     let names = vec![String::from(\"ana\"), String::from(\"bo\")];\n  |         ----- move occurs because `names` has type `Vec<String>`, which does not implement the `Copy` trait\n3 |     for n in names {\n  |              ----- `names` moved due to this implicit call to `.into_iter()`\n...\n6 |     println!(\"{} names\", names.len());\n  |                          ^^^^^ value borrowed here after move\n  |\nhelp: consider iterating over a slice of the `Vec<String>`'s content to avoid moving into the `for` loop\n  |\n3 |     for n in &names {\n  |              +\n\n  ... (notes pointing into the standard library trimmed)",
+   "lang": "rust"
+  },
+  "off-by-one.panic.rs": {
+   "code": "fn main() {\n    let v = vec![10, 20, 30];\n    for i in 0..=v.len() {\n        println!(\"v[{i}] = {}\", v[i]);\n    }\n}\n",
+   "out": "v[0] = 10\nv[1] = 20\nv[2] = 30\n\nthread 'main' (1) panicked at src/main.rs:4:34:\nindex out of bounds: the len is 3 but the index is 3\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+   "lang": "rust",
+   "exit": 101
+  },
+  "position.rs": {
+   "code": "fn main() {\n    let names = vec![\"ana\", \"bo\", \"cy\"];\n\n    for (i, n) in names.iter().enumerate() {\n        println!(\"enumerate: {i} is {n}\");\n    }\n\n    for n in names.iter().rev() {\n        println!(\"rev: {n}\");\n    }\n\n    for n in &names[1..] {\n        println!(\"slice [1..]: {n}\");\n    }\n\n    let mut scores = vec![5, 5, 5];\n    for (i, s) in scores.iter_mut().enumerate() {\n        *s += i * 10;\n    }\n    println!(\"iter_mut().enumerate(): {scores:?}\");\n}\n",
+   "out": "enumerate: 0 is ana\nenumerate: 1 is bo\nenumerate: 2 is cy\nrev: cy\nrev: bo\nrev: ana\nslice [1..]: bo\nslice [1..]: cy\niter_mut().enumerate(): [5, 15, 25]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "ref-field.fail.rs": {
+   "code": "struct Person {\n    name: String,\n    age: u32,\n}\n\nfn main() {\n    let mut people = vec![Person {\n        name: String::from(\"ana\"),\n        age: 30,\n    }];\n\n    for p in &people {\n        p.age += 1;\n        println!(\"{} is {}\", p.name, p.age);\n    }\n    people.clear();\n}\n",
+   "error": "error[E0594]: cannot assign to `p.age`, which is behind a `&` reference\n  --> src/main.rs:13:9\n   |\n12 |     for p in &people {\n   |              ------- this iterator yields `&` references\n13 |         p.age += 1;\n   |         ^^^^^^^^^^ `p` is a `&` reference, so it cannot be written to\n   |\nhelp: use a mutable iterator instead\n   |\n12 |     for p in &mut people {\n   |               +++\n",
+   "lang": "rust"
+  },
+  "same-as.rs": {
+   "code": "use std::any::type_name_of_val;\n\nfn main() {\n    let mut v = vec![1, 2, 3];\n\n    println!(\n        \"(&v).into_iter():     {}\",\n        type_name_of_val(&(&v).into_iter())\n    );\n    println!(\"v.iter():             {}\", type_name_of_val(&v.iter()));\n    println!(\n        \"(&mut v).into_iter(): {}\",\n        type_name_of_val(&(&mut v).into_iter())\n    );\n    println!(\"v.iter_mut():         {}\", type_name_of_val(&v.iter_mut()));\n    // clone() so that v can be used again below\n    println!(\n        \"v.clone().into_iter(): {}\",\n        type_name_of_val(&v.clone().into_iter())\n    );\n\n    let a: Vec<&i32> = (&v).into_iter().collect();\n    let b: Vec<&i32> = v.iter().collect();\n    println!(\"&v and v.iter() give the same items: {}\", a == b);\n}\n",
+   "out": "(&v).into_iter():     core::slice::iter::Iter<'_, i32>\nv.iter():             core::slice::iter::Iter<'_, i32>\n(&mut v).into_iter(): core::slice::iter::IterMut<'_, i32>\nv.iter_mut():         core::slice::iter::IterMut<'_, i32>\nv.clone().into_iter(): alloc::vec::into_iter::IntoIter<i32>\n&v and v.iter() give the same items: true\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "take-items.rs": {
+   "code": "// `for msg in outbox` would give `&mut String`, not owned strings.\n// take moves the whole list out and leaves an empty one in its place.\nfn send_all(outbox: &mut Vec<String>) {\n    for msg in std::mem::take(outbox) {\n        println!(\"sent {msg}\");\n    }\n}\n\nfn main() {\n    let mut names = vec![String::from(\"ana\"), String::from(\"bo\"), String::from(\"cy\")];\n\n    // drain(..2) moves the first two items out and leaves the rest in the list.\n    for n in names.drain(..2) {\n        println!(\"drained {n}\");\n    }\n    println!(\"left in the list: {names:?}\");\n\n    send_all(&mut names);\n    println!(\"names after send_all: {names:?}\");\n}\n",
+   "out": "drained ana\ndrained bo\nleft in the list: [\"cy\"]\nsent cy\nnames after send_all: []\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "values.rs": {
+   "code": "fn main() {\n    let nums = vec![10, 20, 30];\n\n    let mut total = 0;\n    for x in &nums {\n        total += *x; // `*x` follows the reference to the i32\n    }\n    println!(\"with *x: {total}\");\n\n    let mut total = 0;\n    for &x in &nums {\n        total += x; // the pattern `&x` does the same, once per item\n    }\n    println!(\"with &x: {total}\");\n\n    for x in &nums {\n        println!(\"x + 1: {}\", x + 1); // arithmetic works on a &i32 directly\n    }\n}\n",
+   "out": "with *x: 60\nwith &x: 60\nx + 1: 11\nx + 1: 21\nx + 1: 31\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-c.c": {
+   "code": "// Backs the C cells of the tables in lesson.mdx. Never shown.\n#include <assert.h>\n#include <stddef.h>\n#include <stdio.h>\n\nint main(void) {\n    int a[] = {1, 2, 3};\n    int sum = 0;\n    for (int *p = a; p < a + 3; p++) {\n        sum += *p;\n    }\n    assert(sum == 6);\n    int back = 0;\n    for (size_t i = 3; i-- > 0;) {\n        back = back * 10 + a[i];\n    }\n    assert(back == 321);\n    puts(\"ok\");\n    return 0;\n}\n",
+   "out": "ok\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "check-cpp.cpp": {
+   "code": "// Backs the C++ cells of the tables in lesson.mdx. Never shown.\n#include <algorithm>\n#include <cassert>\n#include <iostream>\n#include <ranges>\n#include <string>\n#include <vector>\n\nint main() {\n    std::vector<std::string> v{\"ana\", \"bo\", \"cy\"};\n    std::string seen;\n    for (const auto& x : v | std::views::reverse) {\n        seen += x;\n    }\n    assert(seen == \"cyboana\");\n    seen.clear();\n    for (std::size_t i = 0; i < v.size(); ++i) {\n        seen += v[i];\n    }\n    assert(seen == \"anabocy\");\n    std::vector<int> e{1, 2, 3, 4, 5, 6};\n    std::erase_if(e, [](int x) { return x % 2 == 0; });\n    assert((e == std::vector<int>{1, 3, 5}));\n    std::vector<int> r{1, 2, 3, 4, 5, 6};\n    r.erase(std::remove_if(r.begin(), r.end(), [](int x) { return x % 2 == 0; }), r.end());\n    assert((r == std::vector<int>{1, 3, 5}));\n    std::cout << \"ok\\n\";\n}\n",
+   "out": "ok\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "check-cs.cs": {
+   "code": "// Backs the C# cells of the tables in lesson.mdx. Never shown.\nvar v = new List<string> { \"ana\", \"bo\", \"cy\" };\nvar withIndex = v.Select((x, i) => $\"{i}{x}\").ToList();\nif (string.Join(\",\", withIndex) != \"0ana,1bo,2cy\") throw new Exception(\"select\");\nif (v.Zip(new[] { 31, 27 }).Count() != 2) throw new Exception(\"zip\");\nif (string.Join(\",\", Enumerable.Reverse(v)) != \"cy,bo,ana\") throw new Exception(\"reverse\");\nvar chunks = Enumerable.Range(1, 5).Chunk(2).ToList();\nif (chunks.Count != 3 || chunks[2].Length != 1) throw new Exception(\"chunk\");\nvar nums = new List<int> { 1, 2, 3, 4 };\nnums.RemoveAll(x => x % 2 == 0);\nif (string.Join(\",\", nums) != \"1,3\") throw new Exception(\"removeall\");\nvar grow = new List<int> { 1, 2, 3, 4 };\ntry\n{\n    foreach (var x in grow)\n    {\n        if (x == 2) grow.Add(99);\n    }\n    throw new Exception(\"no exception\");\n}\ncatch (InvalidOperationException)\n{\n}\nConsole.WriteLine(\"ok\");\n",
+   "out": "ok\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "check-go.go": {
+   "code": "// Backs the Go cells of the tables in lesson.mdx. Never shown.\npackage main\n\nimport (\n\t\"fmt\"\n\t\"slices\"\n)\n\nfunc main() {\n\tv := []string{\"ana\", \"bo\"}\n\tvar got []string\n\tfor i, n := range v {\n\t\tgot = append(got, fmt.Sprint(i, n))\n\t}\n\tif fmt.Sprint(got) != \"[0ana 1bo]\" {\n\t\tpanic(got)\n\t}\n\tm := map[string]int{\"a\": 1}\n\tfor k, c := range m {\n\t\tif k != \"a\" || c != 1 {\n\t\t\tpanic(\"map\")\n\t\t}\n\t}\n\tvar rev []string\n\tfor i := len(v) - 1; i >= 0; i-- {\n\t\trev = append(rev, v[i])\n\t}\n\tif fmt.Sprint(rev) != \"[bo ana]\" {\n\t\tpanic(rev)\n\t}\n\t// filter in place: slices.DeleteFunc, or the out := v[:0] idiom\n\tw := []int{1, 2, 3, 4, 5, 6}\n\tw = slices.DeleteFunc(w, func(x int) bool { return x%2 == 0 })\n\tif fmt.Sprint(w) != \"[1 3 5]\" {\n\t\tpanic(w)\n\t}\n\tu := []int{1, 2, 3, 4, 5, 6}\n\tout := u[:0]\n\tfor _, x := range u {\n\t\tif x%2 != 0 {\n\t\t\tout = append(out, x)\n\t\t}\n\t}\n\tif fmt.Sprint(out) != \"[1 3 5]\" {\n\t\tpanic(out)\n\t}\n\t// delete during range over a map is allowed\n\td := map[string]int{\"a\": 1, \"b\": 2, \"c\": 3}\n\tfor k := range d {\n\t\tdelete(d, k)\n\t}\n\tif len(d) != 0 {\n\t\tpanic(d)\n\t}\n\tfmt.Println(\"ok\")\n}\n",
+   "out": "ok\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "check-java.java": {
+   "code": "// Backs the Java cells of the tables in lesson.mdx. Never shown.\nimport java.util.ArrayList;\nimport java.util.List;\n\npublic class Main {\n    public static void main(String[] args) {\n        List<Integer> v = new ArrayList<>(List.of(1, 2, 3, 4));\n        v.removeIf(x -> x % 2 == 0);\n        if (!v.equals(List.of(1, 3))) throw new AssertionError(v);\n        var it = v.iterator();\n        while (it.hasNext()) {\n            if (it.next() == 1) it.remove();\n        }\n        if (!v.equals(List.of(3))) throw new AssertionError(v);\n        // adding while looping throws; removing the second-to-last item does not\n        List<Integer> w = new ArrayList<>(List.of(1, 2, 3, 4));\n        try {\n            for (int x : w) {\n                if (x == 2) w.add(99);\n            }\n            throw new AssertionError(\"no exception\");\n        } catch (java.util.ConcurrentModificationException e) {\n            // expected\n        }\n        List<Integer> q = new ArrayList<>(List.of(1, 2, 3, 4));\n        List<Integer> seen = new ArrayList<>();\n        for (int x : q) {\n            seen.add(x);\n            if (x == 3) q.remove(Integer.valueOf(3));\n        }\n        if (!q.equals(List.of(1, 2, 4))) throw new AssertionError(q);\n        if (!seen.equals(List.of(1, 2, 3))) throw new AssertionError(seen);\n        System.out.println(\"ok\");\n    }\n}\n",
+   "out": "ok\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "check-kt.kt": {
+   "code": "// Backs the Kotlin cells of the tables in lesson.mdx. Never shown.\nfun main() {\n    val v = listOf(\"ana\", \"bo\", \"cy\")\n    check(v.withIndex().map { \"${it.index}${it.value}\" } == listOf(\"0ana\", \"1bo\", \"2cy\"))\n    check(v.zip(listOf(31, 27)).size == 2)\n    check(v.reversed() == listOf(\"cy\", \"bo\", \"ana\"))\n    check(listOf(1, 2, 3, 4, 5).windowed(2).size == 4)\n    check(listOf(1, 2, 3, 4, 5).chunked(2).last() == listOf(5))\n    val m = mutableListOf(1, 2, 3, 4)\n    m.removeAll { it % 2 == 0 }\n    check(m == listOf(1, 3))\n    val l = mutableListOf(1, 2, 3, 4)\n    try {\n        for (x in l) {\n            if (x == 2) l.add(99)\n        }\n        error(\"no exception\")\n    } catch (e: ConcurrentModificationException) {\n        // expected\n    }\n    println(\"ok\")\n}\n",
+   "out": "ok\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "check-py.py": {
+   "code": "# Backs the Python cells of the tables in lesson.mdx. Never shown.\nv = [\"ana\", \"bo\", \"cy\"]\nassert list(enumerate(v)) == [(0, \"ana\"), (1, \"bo\"), (2, \"cy\")]\nassert list(zip(v, [31, 27])) == [(\"ana\", 31), (\"bo\", 27)]\nassert list(reversed(v)) == [\"cy\", \"bo\", \"ana\"]\nassert v[::2] == [\"ana\", \"cy\"]\ntry:\n    list(zip(v, [31, 27], strict=True))\n    raise SystemExit(\"strict zip should raise\")\nexcept ValueError:\n    pass\n# removing the current item skips the next one, silently\nv = [1, 2, 3, 4]\nsaw = []\nfor x in v:\n    saw.append(x)\n    if x == 2:\n        v.remove(x)\nassert v == [1, 3, 4] and saw == [1, 2, 4]\n# appending: the loop reaches the new item\nv = [1, 2, 3, 4]\nsaw = []\nfor x in v:\n    saw.append(x)\n    if x == 2:\n        v.append(99)\nassert saw == [1, 2, 3, 4, 99]\n# a string loops over code points; a dict keeps insertion order\nassert list(\"h\\u00e9llo\\U0001F600\") == [\"h\", \"\\u00e9\", \"l\", \"l\", \"o\", \"\\U0001F600\"]\nassert list({\"b\": 1, \"a\": 2, \"c\": 3}) == [\"b\", \"a\", \"c\"]\nprint(\"ok\")\n",
+   "out": "ok\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "check-ts.ts": {
+   "code": "// Backs the TypeScript cells of the tables in lesson.mdx. Never shown.\nconst v = [\"ana\", \"bo\", \"cy\"];\nconst entries = [...v.entries()].map(([i, x]) => `${i}${x}`).join(\",\");\nif (entries !== \"0ana,1bo,2cy\") throw new Error(entries);\nif ([...v].reverse().join(\",\") !== \"cy,bo,ana\") throw new Error(\"reverse\");\nif (v.filter((_, i) => i % 2 === 0).join(\",\") !== \"ana,cy\") throw new Error(\"every other\");\nlet seen = \"\";\nv.forEach((x) => {\n  seen += x;\n});\nif (seen !== \"anabocy\") throw new Error(seen);\n// removing the current item skips the next one; appending is seen by the loop\nconst removing = [1, 2, 3, 4];\nconst sawRemove: number[] = [];\nfor (const x of removing) {\n  sawRemove.push(x);\n  if (x === 2) removing.splice(removing.indexOf(2), 1);\n}\nif (JSON.stringify(removing) !== \"[1,3,4]\" || JSON.stringify(sawRemove) !== \"[1,2,4]\") throw new Error(\"remove\");\nconst appending = [1, 2, 3, 4];\nconst sawAppend: number[] = [];\nfor (const x of appending) {\n  sawAppend.push(x);\n  if (x === 2) appending.push(99);\n}\nif (JSON.stringify(sawAppend) !== \"[1,2,3,4,99]\") throw new Error(\"append\");\n// a string loops over code points; a Map keeps insertion order\nif ([...\"h\\u00e9llo\\u{1F600}\"].length !== 6) throw new Error(\"string\");\nif ([...new Map([[\"b\", 1], [\"a\", 2], [\"c\", 3]]).keys()].join(\"\") !== \"bac\") throw new Error(\"map\");\nconsole.log(\"ok\");\n",
+   "out": "ok\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "copy-vs-ref.cpp": {
+   "code": "#include <iostream>\n#include <vector>\n\nint main() {\n    std::vector<int> v{1, 2, 3};\n\n    for (auto x : v) {\n        x *= 10; // x is a copy\n    }\n    std::cout << \"after auto x: \" << v[0] << \" \" << v[1] << \" \" << v[2] << \"\\n\";\n\n    for (auto& x : v) {\n        x *= 10; // x refers to the item\n    }\n    std::cout << \"after auto& x: \" << v[0] << \" \" << v[1] << \" \" << v[2] << \"\\n\";\n}\n",
+   "out": "after auto x: 1 2 3\nafter auto& x: 10 20 30\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "for-in.ts": {
+   "code": "const names = [\"ana\", \"bo\"];\n\nfor (const i in names) {\n  console.log(`for...in: ${JSON.stringify(i)} is a ${typeof i}`);\n}\nfor (const [i, n] of names.entries()) {\n  console.log(`entries(): ${JSON.stringify(i)} is a ${typeof i}, item ${n}`);\n}\n\nconst nums = [1, 2, 3];\nfor (let n of nums) {\n  n *= 10; // changes the local n only\n}\nconsole.log(\"after n *= 10:\", nums);\n",
+   "out": "for...in: \"0\" is a string\nfor...in: \"1\" is a string\nentries(): 0 is a number, item ana\nentries(): 1 is a number, item bo\nafter n *= 10: [ 1, 2, 3 ]\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "foreach-assign.fail.cs": {
+   "code": "var nums = new List<int> { 1, 2, 3 };\nforeach (var n in nums)\n{\n    n *= 10;\n}\nConsole.WriteLine(string.Join(\", \", nums));\n",
+   "error": "Program.cs(4,5): error CS1656: Cannot assign to 'n' because it is a 'foreach iteration variable'",
+   "lang": "csharp"
+  },
+  "foreach-assign.fail.kt": {
+   "code": "fun main() {\n    val nums = mutableListOf(1, 2, 3)\n    for (n in nums) {\n        n *= 10\n    }\n    println(nums)\n}\n",
+   "error": "Main.kt:4:9: error: 'val' cannot be reassigned.\n        n *= 10\n        ^",
+   "lang": "kotlin"
+  },
+  "foreach-assign.java": {
+   "code": "import java.util.ArrayList;\nimport java.util.List;\n\npublic class Main {\n    public static void main(String[] args) {\n        List<Integer> nums = new ArrayList<>(List.of(1, 2, 3));\n        for (int n : nums) {\n            n *= 10; // compiles: n is a local copy\n        }\n        System.out.println(\"after n *= 10: \" + nums);\n\n        List<StringBuilder> texts = List.of(new StringBuilder(\"a\"), new StringBuilder(\"b\"));\n        for (StringBuilder t : texts) {\n            t.append(\"!\"); // changes the object the list refers to\n        }\n        System.out.println(\"after t.append: \" + texts);\n    }\n}\n",
+   "out": "after n *= 10: [1, 2, 3]\nafter t.append: [a!, b!]\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "range-copy.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tnums := []int{1, 2, 3}\n\tfor _, n := range nums {\n\t\tn *= 10 // n is a copy of the item\n\t}\n\tfmt.Println(\"after range with n *= 10:\", nums)\n\n\tfor i := range nums {\n\t\tnums[i] *= 10\n\t}\n\tfmt.Println(\"after nums[i] *= 10:      \", nums)\n\n\tfor i, r := range \"héllo\" {\n\t\tfmt.Print(i, \":\", string(r), \" \")\n\t}\n\tfmt.Println()\n}\n",
+   "out": "after range with n *= 10: [1 2 3]\nafter nums[i] *= 10:       [10 20 30]\n0:h 1:é 3:l 4:l 5:o \n",
+   "lang": "go",
+   "exit": 0
+  },
+  "range-for-mutate.asan.cpp": {
+   "code": "#include <algorithm>\n#include <iostream>\n#include <vector>\n\nint main() {\n    // Room to spare: push_back does not reallocate, yet the loop cached end() before it started.\n    std::vector<int> v{1, 2, 3, 4, 5, 6};\n    v.reserve(100);\n    int passes = 0;\n    for (int x : v) {\n        passes++;\n        if (x == 2) v.push_back(99);\n    }\n    std::cout << \"push_back: \" << passes << \" passes, size \" << v.size() << \"\\n\";\n\n    // erase in a range-for: no sanitizer report either.\n    std::vector<int> w{1, 2, 3, 4, 5, 6};\n    for (int x : w) {\n        if (x % 2 == 0) w.erase(std::find(w.begin(), w.end(), x));\n    }\n    std::cout << \"erase evens, left:\";\n    for (int x : w) std::cout << \" \" << x;\n    std::cout << \"\\n\";\n}\n",
+   "out": "push_back: 6 passes, size 7\nerase evens, left: 1\n",
+   "lang": "cpp",
+   "mode": "asan",
+   "exit": 0
+  },
+  "rebind.py": {
+   "code": "nums = [1, 2, 3]\nfor n in nums:\n    n *= 10  # rebinds the name n; the list is untouched\nprint(\"after n *= 10:\", nums)\n\nrows = [[1], [2]]\nfor row in rows:\n    row.append(0)  # changes the list that row names\nprint(\"after row.append:\", rows)\n\nprint(\"zip stops at the shorter:\", list(zip([\"ana\", \"bo\", \"cy\"], [31, 27])))\n",
+   "out": "after n *= 10: [1, 2, 3]\nafter row.append: [[1, 0], [2, 0]]\nzip stops at the shorter: [('ana', 31), ('bo', 27)]\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "reversed.py": {
+   "code": "v = [\"ana\", \"bo\", \"cy\"]\ntry:\n    reversed(enumerate(v))\nexcept TypeError as e:\n    print(\"reversed(enumerate(v)):\", e)\nprint(\"reversed(list(enumerate(v))):\", list(reversed(list(enumerate(v)))))\n",
+   "out": "reversed(enumerate(v)): 'enumerate' object is not reversible\nreversed(list(enumerate(v))): [(2, 'cy'), (1, 'bo'), (0, 'ana')]\n",
+   "lang": "python",
+   "exit": 0
+  }
+ },
+ "exercises": {
+  "number": {
+   "starter": "// Put a number in front of every line, starting at 1, changing the list in place:\n// [\"a\", \"b\"] becomes [\"1: a\", \"2: b\"].\nfn number(lines: &mut Vec<String>) {\n    todo!(\"walk the lines together with their positions, and write each one back\")\n}\n\nfn main() {\n    let mut lines = vec![String::from(\"a\"), String::from(\"b\"), String::from(\"c\")];\n    number(&mut lines);\n    assert_eq!(lines, [\"1: a\", \"2: b\", \"3: c\"]);\n\n    let mut empty: Vec<String> = Vec::new();\n    number(&mut empty);\n    assert!(empty.is_empty());\n\n    let mut blank = vec![String::new(), String::from(\"x\")];\n    number(&mut blank);\n    assert_eq!(blank, [\"1: \", \"2: x\"]);\n\n    let mut many: Vec<String> = (0..12).map(|_| String::from(\"z\")).collect();\n    number(&mut many);\n    assert_eq!(many[9], \"10: z\");\n    assert_eq!(many[11], \"12: z\");\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "// Put a number in front of every line, starting at 1, changing the list in place:\n// [\"a\", \"b\"] becomes [\"1: a\", \"2: b\"].\nfn number(lines: &mut Vec<String>) {\n    for (i, line) in lines.iter_mut().enumerate() {\n        *line = format!(\"{}: {line}\", i + 1);\n    }\n}\n\nfn main() {\n    let mut lines = vec![String::from(\"a\"), String::from(\"b\"), String::from(\"c\")];\n    number(&mut lines);\n    assert_eq!(lines, [\"1: a\", \"2: b\", \"3: c\"]);\n\n    let mut empty: Vec<String> = Vec::new();\n    number(&mut empty);\n    assert!(empty.is_empty());\n\n    let mut blank = vec![String::new(), String::from(\"x\")];\n    number(&mut blank);\n    assert_eq!(blank, [\"1: \", \"2: x\"]);\n\n    let mut many: Vec<String> = (0..12).map(|_| String::from(\"z\")).collect();\n    number(&mut many);\n    assert_eq!(many[9], \"10: z\");\n    assert_eq!(many[11], \"12: z\");\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "take-long": {
+   "starter": "// A job cannot be cloned or copied: it can only be moved.\nstruct Job {\n    name: String,\n}\n\nfn job(name: &str) -> Job {\n    Job {\n        name: name.to_string(),\n    }\n}\n\n// Remove every job whose name is longer than `max` bytes and return those jobs,\n// in their original order. The jobs left in the list keep their order too.\nfn take_long(jobs: &mut Vec<Job>, max: usize) -> Vec<Job> {\n    todo!(\"move the jobs out of the list, then put the short ones back\")\n}\n\nfn names(jobs: &[Job]) -> Vec<&str> {\n    jobs.iter().map(|j| j.name.as_str()).collect()\n}\n\nfn main() {\n    let mut jobs = vec![job(\"a\"), job(\"backup\"), job(\"cd\"), job(\"deploy\")];\n    let long = take_long(&mut jobs, 2);\n    assert_eq!(names(&jobs), [\"a\", \"cd\"]);\n    assert_eq!(names(&long), [\"backup\", \"deploy\"]);\n\n    let mut none: Vec<Job> = Vec::new();\n    assert!(take_long(&mut none, 3).is_empty());\n    assert!(none.is_empty());\n\n    let mut all_short = vec![job(\"x\"), job(\"y\")];\n    assert!(take_long(&mut all_short, 5).is_empty());\n    assert_eq!(names(&all_short), [\"x\", \"y\"]);\n\n    let mut all_long = vec![job(\"alpha\"), job(\"beta\")];\n    let taken = take_long(&mut all_long, 1);\n    assert!(all_long.is_empty());\n    assert_eq!(names(&taken), [\"alpha\", \"beta\"]);\n\n    // the boundary is `> max` on bytes: not `> max + 1`, and not a count of chars\n    let mut edge = vec![job(\"abc\"), job(\"ab\"), job(\"éé\")];\n    let t = take_long(&mut edge, 2);\n    assert_eq!(names(&edge), [\"ab\"]);\n    assert_eq!(names(&t), [\"abc\", \"éé\"]);\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "// A job cannot be cloned or copied: it can only be moved.\nstruct Job {\n    name: String,\n}\n\nfn job(name: &str) -> Job {\n    Job {\n        name: name.to_string(),\n    }\n}\n\n// Remove every job whose name is longer than `max` bytes and return those jobs,\n// in their original order. The jobs left in the list keep their order too.\nfn take_long(jobs: &mut Vec<Job>, max: usize) -> Vec<Job> {\n    let mut kept = Vec::new();\n    let mut long = Vec::new();\n    for j in std::mem::take(jobs) {\n        if j.name.len() > max {\n            long.push(j);\n        } else {\n            kept.push(j);\n        }\n    }\n    *jobs = kept;\n    long\n}\n\nfn names(jobs: &[Job]) -> Vec<&str> {\n    jobs.iter().map(|j| j.name.as_str()).collect()\n}\n\nfn main() {\n    let mut jobs = vec![job(\"a\"), job(\"backup\"), job(\"cd\"), job(\"deploy\")];\n    let long = take_long(&mut jobs, 2);\n    assert_eq!(names(&jobs), [\"a\", \"cd\"]);\n    assert_eq!(names(&long), [\"backup\", \"deploy\"]);\n\n    let mut none: Vec<Job> = Vec::new();\n    assert!(take_long(&mut none, 3).is_empty());\n    assert!(none.is_empty());\n\n    let mut all_short = vec![job(\"x\"), job(\"y\")];\n    assert!(take_long(&mut all_short, 5).is_empty());\n    assert_eq!(names(&all_short), [\"x\", \"y\"]);\n\n    let mut all_long = vec![job(\"alpha\"), job(\"beta\")];\n    let taken = take_long(&mut all_long, 1);\n    assert!(all_long.is_empty());\n    assert_eq!(names(&taken), [\"alpha\", \"beta\"]);\n\n    // the boundary is `> max` on bytes: not `> max + 1`, and not a count of chars\n    let mut edge = vec![job(\"abc\"), job(\"ab\"), job(\"éé\")];\n    let t = take_long(&mut edge, 2);\n    assert_eq!(names(&edge), [\"ab\"]);\n    assert_eq!(names(&t), [\"abc\", \"éé\"]);\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "tidy": {
+   "starter": "// Trim the spaces around each name and make it lowercase, changing the list in place.\nfn tidy(names: &mut Vec<String>) {\n    todo!(\"loop over `&mut` items, or `names.iter_mut()`, and assign `*n = ...`\")\n}\n\nfn main() {\n    let mut names = vec![\n        String::from(\"  Ana \"),\n        String::from(\"BO\"),\n        String::from(\" ÉLAN\"),\n    ];\n    tidy(&mut names);\n    assert_eq!(names, [\"ana\", \"bo\", \"élan\"]);\n\n    let mut empty: Vec<String> = Vec::new();\n    tidy(&mut empty);\n    assert!(empty.is_empty());\n\n    let mut blanks = vec![String::from(\"   \"), String::from(\"x\")];\n    tidy(&mut blanks);\n    assert_eq!(blanks, [\"\", \"x\"]);\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "// Trim the spaces around each name and make it lowercase, changing the list in place.\nfn tidy(names: &mut Vec<String>) {\n    for n in names.iter_mut() {\n        *n = n.trim().to_lowercase();\n    }\n}\n\nfn main() {\n    let mut names = vec![\n        String::from(\"  Ana \"),\n        String::from(\"BO\"),\n        String::from(\" ÉLAN\"),\n    ];\n    tidy(&mut names);\n    assert_eq!(names, [\"ana\", \"bo\", \"élan\"]);\n\n    let mut empty: Vec<String> = Vec::new();\n    tidy(&mut empty);\n    assert!(empty.is_empty());\n\n    let mut blanks = vec![String::from(\"   \"), String::from(\"x\")];\n    tidy(&mut blanks);\n    assert_eq!(blanks, [\"\", \"x\"]);\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}

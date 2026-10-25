@@ -1,0 +1,78 @@
+---
+title: "Command-line tools with clap"
+description: "clap builds the whole command line from a struct: flags, arguments, subcommands, --help and error messages. Your doc comments become the help text."
+---
+
+import { Files, Remember, Session, Tree } from '../../../components/guide'
+
+clap builds the whole command line from a struct: flags, arguments, subcommands, `--help` and error messages. Your doc comments become the help text.
+
+<Remember>Describe your command line as a struct, derive `Parser`, and call `Cli::parse()`.</Remember>
+
+<Tree guide="clap" dir="rust" name="todo-cli" title="Project layout" notes={{"src/main.rs":"the program on this page","Cargo.lock":"created by Cargo","Cargo.toml":"dependencies go here"}} />
+
+<Files guide="clap" dir="rust" files={["Cargo.toml"]} />
+
+<Files guide="clap" dir="rust" files={["src/main.rs"]} />
+
+Here's what you get without writing any help text by hand. After `--`, the arguments go to your program instead of to Cargo:
+
+<Session guide="clap" run="run" />
+
+## The same tool in Go, with the standard flag package
+
+<Files guide="clap" dir="go" files={["main.go"]} run="go" lang="go" />
+
+The last command puts `-verbose` after the text. Go's `flag` package stops reading flags at the first argument that is not a flag ([docs](https://pkg.go.dev/flag)), so it did not complain and did not turn verbose mode on.
+
+- **Doc comments** (`///`) become the help text. The two `--help` runs above are built from them, so the description sits next to the code it describes.
+- **Types do the checking.** `priority: u8` is why `-p abc` is rejected with a clear message, and why `-p 300` is too (try it below). A `u8` allows 0 to 255, so "between 1 and 3" is still a rule you write yourself. `default_value_t = 2` shows up as `[default: 2]` in the help.
+- **Subcommands are an enum, so a `match` without a `_` arm must cover every one.** Add a `Done { id: u32 }` variant and leave `main` alone, and the build fails ([Enums](/learn/enums/#match-must-cover-every-variant) explains why):
+
+<Session guide="clap" run="new-command" />
+
+- **Global flags.** A flag on the top-level struct has to come before the subcommand unless it is marked `global = true`, which lets `--verbose` go anywhere. The first run on this page uses it after `add`. The session below takes `, global = true` out of a copy and runs it again: after `add` it is refused, and before `add` it works. Go's `flag` (above) and Python's `argparse` (in the table below) also need it first.
+
+<Session guide="clap" run="global" />
+- **Exit codes.** In these runs a usage error exited with code 2 and `--help` with 0. The clap docs for [`Error::exit`](https://docs.rs/clap/4.6.7/clap/error/struct.Error.html) say the same: status 2 when it prints to stderr, 0 when it prints to stdout.
+
+## The same job in your language
+
+Where the image has a parser that comes with the language or its runtime, I wrote the same to-do tool with it. The other cells only name the usual libraries; I did not run those.
+
+| Language | Built in, and run for this page | Libraries people use (named, not run) |
+| --- | --- | --- |
+| Rust | `std::env::args` is only the raw list of strings ([Arguments](/learn/env-time-process/#arguments)) | clap |
+| Go | `flag` (the program above) | cobra |
+| Python | `argparse` | Typer, Click |
+| TypeScript | `util.parseArgs`, built into Node (the version is the first line of the runs below) | commander, yargs |
+| Java | nothing run | picocli |
+| Kotlin | nothing run | Clikt |
+| C# | nothing run | System.CommandLine (a NuGet package, per Microsoft's docs) |
+| C | `getopt` (POSIX, from the C library; run with glibc, the GNU C library) | none named |
+| C++ | nothing run | CLI11, cxxopts |
+
+What the runs showed:
+
+<Session guide="clap" run="langs" />
+
+- `argparse` checks the number for you (`type=int`), like clap, and its subparsers also need `--verbose` before `add`.
+- `parseArgs` and `getopt` hand back text. The number check and the "invalid priority" message are code I wrote. Neither knows about subcommands, so `--verbose` and `-v` were accepted after the text. For `getopt` that is glibc's default (glibc is the GNU C library): it moves non-option arguments to the end as it scans, and `POSIXLY_CORRECT` or a leading `+` in the option string stops at the first one ([man page](https://man7.org/linux/man-pages/man3/getopt.3.html)).
+
+## Try it yourself
+
+Run each command in the project. The session below was run in the image.
+
+1. `cargo run -- --version`. It prints `todo-cli 0.1.0`, from `#[command(version)]` and the version in `Cargo.toml`.
+2. `cargo run -- add "learn clap" -p 300`. Look for `300 is not in 0..=255`: the `u8` type is the rule.
+3. `cargo run -- ad "learn clap"`. clap rejects the unknown subcommand and adds a tip that `add` is similar.
+4. `cargo run -- add "-draft"`. The text starts with a dash, so clap reads `-d` as a flag and says to use `-- -d`; with `--` before it, the same text is accepted as the task.
+
+<Session guide="clap" run="try" />
+
+## Read more
+
+- [clap's derive tutorial](https://docs.rs/clap/4.6.7/clap/_derive/_tutorial/index.html) and [derive reference](https://docs.rs/clap/4.6.7/clap/_derive/index.html), for the version this page pins (4.6.7)
+- [The Rust Book, chapter 12.1](https://doc.rust-lang.org/book/ch12-01-accepting-command-line-arguments.html): reading arguments by hand with `std::env::args`
+- [Command Line Applications in Rust](https://rust-cli.github.io/book/index.html): a tutorial book whose argument-parsing chapter uses clap
+- [Arguments, Environment, Time and Processes](/learn/env-time-process/): what `std` gives you without clap

@@ -1,0 +1,130 @@
+# Use Rust from Node.js and TypeScript: a napi-rs addon built and called in the image.
+#
+# NEEDS NETWORK: `npm ci` downloads @napi-rs/cli and @types/node (versions pinned in
+# package.json and package-lock.json; their own dependencies are pinned by the lock file),
+# and Cargo downloads napi, napi-derive and napi-build (pinned with `=` in Cargo.toml and
+# in Cargo.lock). The extract has no offline mode for sessions.
+name: textkit
+sessions:
+  # Build the addon and call it from Node.
+  build:
+    dir: addon
+    steps:
+      - cmd: npm ci --silent
+        show: '$ npm ci   # needs network: installs the pinned @napi-rs/cli and @types/node'
+        timeout: 600
+      - cmd: npm ls --depth=0 @napi-rs/cli @types/node
+      - cmd: npm run build 2>&1 | grep -v WARNING
+        show: '$ npm run build 2>&1 | grep -v WARNING'
+        timeout: 900
+      - cmd: ls
+        show: '$ ls   # the build added index.js, index.d.ts and the .node file'
+      - cmd: cat index.d.ts
+      - cmd: node demo.mjs
+  # The .node file is the library Cargo built, under another name.
+  library:
+    dir: addon
+    local_target: true
+    steps:
+      - cmd: npm ci --silent
+        show: '$ npm ci   # needs network'
+        timeout: 600
+      - cmd: npm run build 2>&1 | grep -v WARNING
+        show: '$ npm run build 2>&1 | grep -v WARNING'
+        timeout: 900
+      - cmd: cmp target/aarch64-unknown-linux-gnu/debug/libtextkit.so textkit.linux-arm64-gnu.node && echo identical
+  # The generated types, checked by tsc; and the same call without the types.
+  types:
+    dir: addon
+    steps:
+      - cmd: npm ci --silent
+        show: '$ npm ci   # needs network'
+        timeout: 600
+      - cmd: npm run build 2>&1 | grep -v WARNING
+        show: '$ npm run build 2>&1 | grep -v WARNING'
+        timeout: 900
+      - cmd: tsc --version
+        show: '$ tsc --version   # the compiler installed in this image, not in package.json'
+      - cmd: 'tsc -p . && echo "tsc: no errors"'
+        show: '$ tsc -p .   # demo.mts'
+      - cmd: node demo.mts
+      - cmd: tsc -p tsconfig.bad.json
+        expect: fail
+        show: '$ tsc -p tsconfig.bad.json   # bad.mts'
+      - cmd: node bad.mts
+        expect: fail
+  # Debug build, panic, release build.
+  release:
+    dir: addon
+    steps:
+      - cmd: npm ci --silent
+        show: '$ npm ci   # needs network'
+        timeout: 600
+      - cmd: npm run build 2>&1 | grep -v WARNING
+        show: '$ npm run build 2>&1 | grep -v WARNING'
+        timeout: 900
+      - cmd: stat -c '%s %n' textkit.linux-arm64-gnu.node
+        show: "$ stat -c '%s %n' textkit.linux-arm64-gnu.node   # size in bytes, name"
+      - cmd: |-
+          node -e "console.log(require('./index.js').add(2147483647, 1))"; echo "exit code: $?"
+        show: |-
+          $ node -e "console.log(require('./index.js').add(2147483647, 1))"; echo "exit code: $?"
+        varies: true
+      - cmd: |-
+          node -e "try { require('./index.js').addCaught(2147483647, 1) } catch (e) { console.log('caught:', e.code, '|', e.message) }"; echo "exit code: $?"
+        show: |-
+          $ node -e "try { addCaught(2147483647, 1) } catch (e) { console.log('caught:', e.code, '|', e.message) }"; echo "exit code: $?"
+        varies: true
+      - cmd: npm run build:release 2>&1 | grep -v WARNING
+        show: '$ npm run build:release 2>&1 | grep -v WARNING'
+        timeout: 900
+      - cmd: stat -c '%s %n' textkit.linux-arm64-gnu.node
+        show: "$ stat -c '%s %n' textkit.linux-arm64-gnu.node   # size in bytes, name"
+      - cmd: |-
+          node -e "console.log(require('./index.js').add(2147483647, 1))"; echo "exit code: $?"
+        show: |-
+          $ node -e "console.log(require('./index.js').add(2147483647, 1))"; echo "exit code: $?"
+  # The page's "Try it yourself".
+  try:
+    dir: addon
+    steps:
+      - cmd: npm ci --silent
+        show: '$ npm ci   # needs network'
+        timeout: 600
+      - cmd: npm run build 2>&1 | grep -v WARNING
+        show: '$ npm run build 2>&1 | grep -v WARNING'
+        timeout: 900
+      - cmd: |-
+          node -e "console.log(require('./index.js').stats([2147483647, 2147483647]))"
+      - cmd: |-
+          node -e "try { console.log(new (require('./index.js').Counter)(-1).count) } catch (e) { console.log(e.code, '|', e.message) }"
+      - cmd: |-
+          node -e "try { require('./index.js').countWords(42); console.log('returned a Promise') } catch (e) { console.log('threw', e.code, '|', e.message) }"
+      - cmd: |-
+          node -e "const { xorInPlace } = require('./index.js'); const u = new Uint8Array([1, 2, 3]); try { xorInPlace(u, 255); console.log(u) } catch (e) { console.log(e.code, '|', e.message) }"
+  # The same function as a hand-written C addon against node_api.h.
+  c-addon:
+    dir: c-addon
+    steps:
+      - cmd: gcc -Wall -shared -fPIC -I"$(dirname "$(command -v node)")/../include/node" -o add.node add.c
+        show: '$ gcc -Wall -shared -fPIC -I<node>/include/node -o add.node add.c'
+      - cmd: node demo.js
+      - cmd: wc -l add.c
+  # napi and napi-derive are released as a pair: this pair of pinned versions did not build.
+  mismatch:
+    dir: addon
+    overlay:
+      Cargo.toml: fixes/mismatch.Cargo.toml
+    steps:
+      - cmd: 'cargo build 2>&1 | head -10; echo "cargo exit status: ${PIPESTATUS[0]}"'
+        show: '$ cargo build   # first 10 lines'
+        timeout: 900
+  # Tools the page names and the image does not have.
+  missing:
+    dir: addon
+    steps:
+      - cmd: 'command -v make || echo "make: not found"'
+      - cmd: 'command -v node-gyp || echo "node-gyp: not on PATH"'
+      - cmd: 'ls "$(dirname "$(command -v node)")/../lib/node_modules/npm/node_modules" | grep -x node-gyp'
+        show: '$ ls <node>/lib/node_modules/npm/node_modules | grep -x node-gyp   # the copy that npm bundles'
+      - cmd: node -e "import('node:ffi').then(() => console.log('node:ffi loaded'), (e) => console.log(e.code))"

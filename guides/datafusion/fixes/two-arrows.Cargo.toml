@@ -1,0 +1,9 @@
+[package]
+name = "sales-report"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+datafusion = "55.2.0"
+tokio = { version = "1.54.1", features = ["full"] }
+arrow = "=60.0.0"

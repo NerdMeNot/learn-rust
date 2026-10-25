@@ -1,0 +1,57 @@
+# Testing
+#
+# Test output has three things that change from run to run: the hex after each test
+# binary's name, the timings, and (with several tests) the order in which parallel tests
+# finish. The page says so next to the outputs. Sessions that print several test lines
+# use --test-threads=1 where the order is the point; the page says that too.
+name: temperature
+sessions:
+  test:
+    dir: rust
+    steps:
+      # --test-threads=1: the tests of one binary run in parallel by default, so the order of
+      # their lines changes from run to run (seen in 25 runs); one thread keeps it fixed.
+      - cmd: cargo test -- --test-threads=1
+        raw: true # keep the "Running unittests src/lib.rs" headers: they show which file each block is from
+  go-test:
+    dir: go
+    steps:
+      - cmd: go test -v
+  # Try it #1: run a subset by name
+  filter:
+    dir: rust
+    steps:
+      - cmd: cargo test boiling
+        raw: true
+      - cmd: cargo test --doc
+  # Try it #2: println! output is captured unless the test fails or you ask for it
+  nocapture:
+    dir: rust
+    steps:
+      - cmd: cargo test --lib parses
+      - cmd: cargo test --lib parses -- --no-capture
+      - cmd: cargo test --lib parses -- --show-output
+      - cmd: cargo test --lib parses -- --nocapture
+  # Try it #3: break the code on purpose (23.0 instead of 32.0) and read the failure
+  fail:
+    dir: rust
+    overlay:
+      src/lib.rs: broken/src/lib.rs
+    steps:
+      - cmd: cargo test -- --test-threads=1
+        raw: true
+        expect: fail
+  # should_panic, a test that returns Result, #[ignore], and floats
+  attrs:
+    dir: attrs
+    steps:
+      - cmd: cargo test -- --test-threads=1
+      - cmd: cargo test -- --ignored
+  # The table row for Python and TypeScript: both ship a test runner
+  langs:
+    dir: langs
+    steps:
+      - cmd: python3 -m unittest -v
+        cwd: py
+      - cmd: node --test temperature.test.ts
+        cwd: ts

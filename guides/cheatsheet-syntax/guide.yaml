@@ -1,0 +1,36 @@
+# Rust syntax cheat sheet
+#
+# rust/src/bin/*.rs are the programs that compile; rust/fails/*.rs are the habits that do
+# not. One session compiles every fails/ file with rustc and prints the compiler's errors.
+name: cheatsheet-syntax
+sessions:
+  symbols:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin symbols
+  codes:
+    dir: rust
+    steps:
+      - cmd: |-
+          for f in fails/*.rs; do echo "== $f"; rustc --edition 2024 --emit=metadata --out-dir /tmp/o $f 2>&1 | grep '^error' | grep -v aborting; done; true
+        show: '$ for f in fails/*.rs; do rustc --edition 2024 $f; done   # first lines of each error'
+  fixes:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin fixes
+  exprs:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin exprs
+  sig:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin sig
+  fmt:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin fmt
+  naming:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin naming

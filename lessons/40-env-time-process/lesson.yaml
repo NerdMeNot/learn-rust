@@ -1,0 +1,139 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Arguments, Environment, Time and Processes"
+part: "std"
+intro: >-
+  Talking to the world outside your program: command-line arguments and environment
+  variables (`std::env`), measuring time (`std::time`), and running other programs
+  (`std::process`).
+coming_from:
+  go: >-
+    `env::args()` is `os.Args`, program name first. `Instant` is the monotonic reading
+    that a `time.Time` from `time.Now()` carries (`time.Since`), and `Command` is
+    `exec.Command`. Go has a `flag`
+    package in its standard library; Rust's has no flag parser (the `clap` crate does
+    that). `env::var` returns a `Result`, where `os.Getenv` returns an empty string.
+  kotlin: >-
+    `env::var` is `System.getenv`, with a `Result` instead of a platform-type `String!`
+    that may be `null`. Kotlin's `main` can
+    take `args` without the program name, while `env::args()` has it first. `Instant` is
+    `TimeSource.Monotonic` (or `System.nanoTime`), and `Command` is `ProcessBuilder`.
+  python: >-
+    `env::args()` is `sys.argv`, program first. `env::var` returns a `Result`, where
+    `os.environ.get` gives `None` and `os.environ[...]` raises `KeyError`. `Instant` is
+    `time.monotonic`, `SystemTime` is `time.time`, and `Command` is `subprocess.run`.
+  typescript: >-
+    `process.argv` starts with `node` and then your script; `env::args()` starts at your
+    program, so `argv.slice(2)` is `args().skip(1)`. `env::var` returns a `Result`
+    instead of `string | undefined`. `Instant` is `performance.now()`, `Command` is
+    `child_process.spawnSync`, and `thread::sleep` blocks its thread.
+  java: >-
+    `env::var` returns a `Result` instead of `null`. Java's `main(String[] args)` leaves
+    out the program name; `env::args()` has it first. `Instant` is `System.nanoTime()`,
+    not `java.time.Instant` (that one is wall-clock time, Rust's `SystemTime`). `Command`
+    is `ProcessBuilder`.
+  csharp: >-
+    `env::var` returns a `Result`, where `GetEnvironmentVariable` returns `null`. The
+    `args` of `Main` leave out the program name; `Environment.GetCommandLineArgs()` has
+    it first, like `env::args()`. `Instant` is `Stopwatch`, `SystemTime` is
+    `DateTime.UtcNow`, and `Command` is `Process` with `ProcessStartInfo`.
+  c: >-
+    `env::args()` is `argv`, program name first, and `env::var` is `getenv` with a
+    `Result` instead of `NULL`. `Instant` is `clock_gettime(CLOCK_MONOTONIC)` on Linux. `Command`
+    starts the program directly with separate arguments; `system` and `popen` hand one
+    string to `/bin/sh`.
+  cpp: >-
+    `Instant` is `std::chrono::steady_clock` and `SystemTime` is `system_clock`.
+    `env::var` is `std::getenv` with a `Result` instead of `nullptr`. The C++ standard
+    library can only run a program through `std::system`, which hands a string to the
+    shell; Rust's `Command` starts it directly, one argument at a time.
+notes:
+  - >-
+    `env::args()` includes the program name first, like `argv` in C, `sys.argv` in
+    Python and `os.Args` in Go. Java, Kotlin and C# `main` arrays leave it out. The
+    standard library does not parse flags: the [`clap` guide](/build/clap/) does.
+  - >-
+    `env::var` returns `Result<String, VarError>`, so "unset" is an error you can see,
+    separate from "set to empty". In many languages a missing variable comes back as an
+    empty string or null, and nothing makes you check. The gotcha below shows where that
+    bites.
+  - >-
+    `Instant` is for measuring: the docs call it a clock that is "monotonically
+    nondecreasing", so setting the system clock does not move it. `SystemTime` is
+    wall-clock time, for timestamps, and can go backwards. Neither knows about dates or
+    time zones: for those you need a crate such as `jiff`, `chrono` or `time`.
+  - >-
+    `Command` doesn't go through a shell. `Command::new("ls -la")` looks for a program
+    literally named `ls -la`. Pass each argument separately with `.arg()`. `.output()`
+    waits and captures, `.status()` waits and lets the child print straight to your
+    terminal, and `.spawn()` starts it and lets you carry on.
+  - >-
+    What a program prints is bytes, not a `String`: `String::from_utf8_lossy` turns the
+    bytes into text and replaces anything that isn't valid UTF-8. `std::process::exit(1)`
+    stops the program right away and skips cleanup (destructors don't run), so returning
+    from `main` is usually nicer.
+gotcha:
+  title: "Using an environment variable as if it's always set"
+  verdict: "broken-elsewhere"
+  looks_fine: >-
+    `os.Getenv("RBC_PORT")` gives back a string. If you forgot to set it, you get an
+    empty string, the program carries on, and it prints `listening on port` with nothing
+    after it.
+  rust_sees: >-
+    `env::var` returns a `Result`, because the variable might be missing or not valid
+    UTF-8. A `Result` can't be printed with `{}`, so you have to decide what missing
+    means.
+  why: >-
+    Run the versions in other languages: seven of them run and print a blank, `null`,
+    `None`, `undefined` or `(null)` where the port should be, and C++ aborts. That is the
+    classic bug that works on a machine where the variable is set and fails in a container
+    where it is not. In Rust you choose on purpose: a default with `unwrap_or_else`, or a
+    clear error with `?` or `expect`.
+  langs:
+    go:
+      status: "wrong"
+      says: >-
+        Go prints `listening on port ` with nothing after it. An unset variable comes
+        back as an empty string, with no error.
+    kotlin:
+      status: "wrong"
+      says: >-
+        Kotlin prints `listening on port null`. `System.getenv` is a Java method, so
+        Kotlin sees its result as a platform type `String!`: nothing makes you check for
+        null, and adding it to a string turns null into the text "null". `port.length`
+        would throw a NullPointerException instead.
+    python:
+      status: "wrong"
+      says: >-
+        Python prints `listening on port None`. `os.getenv` returns None for a missing
+        variable, and it prints happily. Writing `os.environ["RBC_PORT"]` instead would
+        crash with a KeyError.
+    typescript:
+      status: "wrong"
+      says: >-
+        Prints `listening on port undefined`. `process.env.RBC_PORT` is typed `string |
+        undefined`, but `console.log` takes anything, so TypeScript lets the missing
+        value through.
+    java:
+      status: "wrong"
+      says: >-
+        `getenv` returns null for a missing variable, and string concatenation turns it
+        into the text "null". It runs fine and prints `listening on port null`, just
+        like Kotlin.
+    csharp:
+      status: "wrong"
+      says: >-
+        `GetEnvironmentVariable` returns null for a missing variable, and string
+        interpolation prints null as nothing. It runs and prints `listening on port`
+        with an empty port, the same bug as Go.
+    c:
+      status: "wrong"
+      says: >-
+        `getenv` returns NULL for a missing variable, and passing NULL to `%s` is
+        undefined behaviour. glibc happens to print `listening on port (null)`; other C
+        libraries can crash, and gcc doesn't warn.
+    cpp:
+      status: "crash"
+      says: >-
+        `std::getenv` returns nullptr for a missing variable, and building a
+        `std::string` from it is undefined behaviour. libstdc++ catches it and throws
+        `std::logic_error`, so the program aborts before printing anything.

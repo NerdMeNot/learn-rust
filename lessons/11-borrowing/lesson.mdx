@@ -1,0 +1,305 @@
+<p class="lr-layer">The toolkit</p>
+
+## A reference is a read-only address
+
+A **reference** is the address of a value that already exists. `&x` makes one. Through it you can look at `x`, not change it. It copies nothing and it owns nothing: the value still belongs to its owner, who decides when it is dropped (freed at the end of its scope, as the [ownership lesson](/learn/ownership/) showed). Making a reference is called **borrowing**: you look at something that belongs to someone else.
+
+The borrow lasts until the **last use** of the reference, the last line that mentions it. That is the whole idea. The rest of this lesson is what it buys you, and the errors you get when you break it. The part of the compiler that checks it is the **borrow checker**.
+
+<Memory
+  title="let x = 42;   let r = &x;   let v = vec![1, 2, 3];   let rv = &v;"
+  stack={[
+    { name: 'x', type: 'i32', cells: ['42'] },
+    { name: 'r', type: '&i32', cells: ['address of x'], toVar: 'x' },
+    { name: 'v', type: 'Vec<i32>', cells: ['ptr', 'len 3', 'cap 3'], to: 'buf' },
+    { name: 'rv', type: '&Vec<i32>', cells: ['address of v'], toVar: 'v', note: 'points at v, not at the elements' },
+  ]}
+  heap={[{ id: 'buf', cells: ['1', '2', '3'] }]}
+  caption="`r` and `rv` are each one address. Nothing was copied: `x` is still the only 42, and `v` is still the only owner of the elements. (The arrows to `x` and `v` run between stack variables.)"
+/>
+
+<Snippet file="reference.rs" />
+
+A reference to an `i32` is 8 bytes, and so is a reference to a `Vec`, however much the `Vec` holds. (Sizes are for the 64-bit Linux ARM machine these outputs come from.) `ptr::eq` asks whether two references hold the same address: `r` points at `x` itself, not at a copy. [Values, the stack and the heap](/learn/stack-heap/) has more on sizes.
+
+## Reading through a reference
+
+Once you have a `&T`, you mostly use it as if it were the `T`:
+
+<Snippet file="through-ref.rs" />
+
+- **Method calls follow the reference**, and `println!` shows the value, not the address.
+- **`r + 1` works**: Rust defines arithmetic on `&i32`.
+- **`*r` follows the reference to the value** (for a number, a copy of it). Use it to compare a `&i32` with a plain `i32`: `*r == 5`. Or put `&` on the other side: `r == &5`.
+- **`==` on two references compares the values they point at.** `&a == &b` was true although `a` and `b` are different Strings at different addresses. To compare addresses, use `ptr::eq`.
+
+Comparing a reference with a plain number does not compile:
+
+<Snippet file="compare-types.fail.rs" />
+
+E0277 means a type can't do something the code asks of it (a missing *trait*; the [Traits lesson](/learn/traits/) explains). Here the message is "can't compare `&{integer}` with `{integer}`", where `{integer}` is the compiler's name for a number whose exact type isn't decided yet. The `help:` shows the fix.
+
+## Why borrow: nothing is copied
+
+A function that needs to look at your `Vec` has three ways to get it:
+
+| You write | What happens | Afterwards |
+|---|---|---|
+| `f(v)` | the `Vec` moves into `f` ([ownership](/learn/ownership/)) | you no longer have it |
+| `f(v.clone())` | a second buffer is allocated and every element copied | you have the original; the copy is freed when `f` is done with it |
+| `f(&v)` | `f` gets an address | you have it, and nothing was copied |
+
+Here is the difference for 10 MB of data. The function can tell whether it was handed the caller's buffer or a copy of it:
+
+<Snippet file="borrow-vs-clone.rs" />
+
+<Memory
+  title="let data = vec![1u8; 10_000_000];   let copy = data.clone();   report(…, &data, …)"
+  stack={[
+    { name: 'data', type: 'Vec<u8>', cells: ['ptr', 'len 10000000', 'cap 10000000'], to: 'orig' },
+    { name: 'copy', type: 'Vec<u8>', cells: ['ptr', 'len 10000000', 'cap 10000000'], to: 'dup', note: 'clone(): a second 10 MB buffer' },
+    { name: 'xs', type: '&[u8]', cells: ['address', 'len 10000000'], to: 'orig', note: 'borrowed: 16 bytes, the same buffer as data' },
+  ]}
+  heap={[
+    { id: 'orig', label: "data's buffer: 10,000,000 bytes", cells: ['1', '1', '1', '…'] },
+    { id: 'dup', label: "copy's buffer: 10,000,000 bytes", cells: ['1', '1', '1', '…'] },
+  ]}
+  caption="The borrow is a 16-byte address and length pointing into the buffer that is already there. The clone had to allocate and fill a whole new one."
+/>
+
+Cloning is not wrong: for a short string it costs nothing you will notice ([when to worry](/learn/ownership/#clone)). But borrowing is the default when a function only reads, because it copies nothing (just an address) and it keeps the caller in charge of the value.
+
+## Signatures: what a function may do with your value
+
+A function's parameter types tell the reader, and the compiler, what happens to the value you pass:
+
+- `fn f(x: T)` **takes** it. You lose it unless `f` returns it. Use this when the function keeps the value.
+- `fn f(x: &T)` **borrows it to read**. You keep it. This is the usual choice for a function that only looks.
+- `fn f(x: &mut T)` borrows it to change. You keep it. That is the [next lesson](/learn/mutable-borrows/).
+- A function that makes something new **returns** it as an owned value, so the caller owns the result.
+
+The [ownership lesson](/learn/ownership/#functions-own-borrow-or-borrow-mutably) has the full table.
+
+<ForLang only="python typescript">
+In Python and TypeScript every call hands the function the same object, and nothing in the signature says whether it will change it. In Rust the signature says so, and the compiler holds the function to it.
+</ForLang>
+
+Two conventions let a reading function accept the most callers: write **`&str` rather than `&String`**, and **`&[T]` rather than `&Vec<T>`**. A **slice**, `&[i32]`, is a view of numbers stored in a row: an address and a length. It can cover a whole `Vec`, an array, or part of one. `&str` is the same for text.
+
+<Snippet file="signatures.rs" />
+
+`largest` took a `Vec`, an array and part of a `Vec` with one signature. `is_greeting` took a `String`, a string literal and part of a `String`. `shout` builds new text, so it returns a `String` the caller owns. (Inside `largest`, `for x in xs` hands out each item as a reference, so `*x` is the number itself, as in the last section.) A slice in memory:
+
+<Memory
+  title="let v = vec![10, 20, 30, 40];   let all: &[i32] = &v;   let tail: &[i32] = &v[1..];"
+  stack={[
+    { name: 'v', type: 'Vec<i32>', cells: ['ptr', 'len 4', 'cap 4'], to: 'buf' },
+    { name: 'all', type: '&[i32]', cells: ['address', 'len 4'], to: 'buf', note: 'starts at the first element' },
+    { name: 'tail', type: '&[i32]', cells: ['address', 'len 3'], to: 'buf', note: 'starts at the second element, 4 bytes further on' },
+  ]}
+  heap={[{ id: 'buf', cells: ['10', '20', '30', '40'] }]}
+  caption="Two views of the same four numbers. Neither copied anything."
+/>
+
+<Snippet file="slices-view.rs" />
+
+A parameter of type `&Vec<i32>` or `&String` is narrower, and the compiler holds you to it:
+
+<Snippet file="vec-param.fail.rs" />
+
+<Snippet file="string-param.fail.rs" />
+
+A `&Vec<i32>` is a way to look at a `Vec`, and an array is not one. A `&[i32]` only needs numbers in a row. The same goes for `&String` and `&str`: a string literal is a `&str` and has no `String` behind it to point at.
+
+<ForLang only="go">
+A Go `[]int` is a pointer, a length and a capacity: the same three cells as the `Vec` in the diagrams. It acts like a `Vec` and like a `&mut [i32]` at once: a function that gets one can write to the elements and can `append`. Rust's `&[i32]` is the read-only form. A Go `string` is like a `&str`. Go copies a struct you pass by value; Rust moves it, so where Go passes a `*Config` to avoid the copy, Rust passes `&Config`.
+</ForLang>
+
+## How long a borrow lasts
+
+A borrow lasts from the `&` to the last use of the reference, not to the end of the block it was written in. Here `name` is borrowed and then moved. This compiles because `r` is not used after the move:
+
+<Snippet file="borrow-ends.rs" />
+
+Add one more line that uses `r` after the move, and the borrow is still alive when `name` moves:
+
+<Snippet file="borrow-still-used.fail.rs" />
+
+The error is E0505, "cannot move out of `name` because it is borrowed". Read it from the top: where `name` was borrowed, where it moved, and "borrow later used here", the line that keeps the borrow alive. The fix: use `r` before the move, or don't move `name`.
+
+```text
+let r = &name;               ─┐ borrow starts
+println!("r: {r}");          ─┘ last use of r: the borrow ends here
+let moved = name;               name can move: nothing borrows it
+
+let r = &name;               ─┐ borrow starts
+println!("r: {r}");           │
+let moved = name;             │  E0505: name moves while the borrow is alive
+println!("r again: {r}");    ─┘ last use of r
+```
+
+The other half of the rule: a reference must not outlive the value it points at. In this program `let r;` declares `r` with no value yet, and the inner block gives it one. The value `x` lives only inside that block:
+
+<Snippet file="dangling.fail.rs" />
+
+E0597, "`x` does not live long enough". `x` is dropped at the closing `}`, and `r` is used after it:
+
+<Memory
+  title={'after the closing brace:   }   println!("r: {r}");'}
+  stack={[
+    { name: 'r', type: '&i32', cells: ['address of x'], toVar: 'x', note: 'dangling: x is gone' },
+    { name: 'x', type: 'i32', cells: ['5'], gone: 'dropped' },
+  ]}
+  caption="`x` was dropped at `}`. `r` still holds its address, which now means nothing. The compiler refuses to compile a use of `r` here."
+/>
+
+The compiler knows where each value is dropped (the [ownership lesson](/learn/ownership/#scopes-drop-order-and-let-_) showed it with `Drop`). This program compiles, because each reference's last use comes before its value is dropped:
+
+<Snippet file="scope-extent.rs" />
+
+So the errors to recognise are E0382 (a value used after it moved: [the gotcha above](#gotcha), fixed by passing `&value`), E0505 and E0597. Each one shows where the borrow starts and the later line that uses it. A function that returns a reference can also fail with E0106, when the compiler can't tell which argument the result borrows from; [returning references](/learn/returning-references/) covers it. Stuck on an error you can't fix? See [Working with the Borrow Checker](/learn/borrow-checker/#from-error-to-fix).
+
+## Many readers, no writers
+
+Any number of `&` references to one value can exist at once. For ordinary types none of them can change the value, so they cannot disagree. A function that only reads can be called with each of them:
+
+<Snippet file="many-readers.rs" />
+
+`a`, `b` and `c` were all alive at the same time, and each function read through its own: many readers. (`largest` needs `*x` to compare numbers. `sum += x` in `total` compiles without a star, because Rust can add a `&i32` to an `i32`, as the program shows.)
+
+Through a `&` you can't change an ordinary value:
+
+<Snippet file="change-through-shared.fail.rs" />
+
+E0596 says `scores` is a `&` reference, and the `help:` is the answer: a `&mut`. The rules for `&mut` are the subject of the [next lesson](/learn/mutable-borrows/). In short, while a `&mut` exists, nothing else may use the value at all: many readers, or one writer, never both.
+
+<ForLang only="go" title="Why bother, when Go has pointers?">
+Go has pointers and slices, and a garbage collector keeps what they point at alive. What Go leaves to you is who may change the data while someone else holds a pointer into it. Both programs compile and run.
+
+<Snippet file="stale-pointer.go" />
+
+`p` points at `a[0]`. `a` had no spare room, so `append` copied the elements to a new array and `a` moved to it. `*p = 100` wrote into the old array, so `a[0]` is still 7. The garbage collector kept the old array alive, so nothing crashed; the program is just wrong.
+
+<Snippet file="capacity-aliasing.go" />
+
+`grow` appends and then writes to the first element. When the caller's slice is full (`full`), `append` makes a private copy, so the write is invisible: `[0 0 0]`. When it has spare capacity (`roomy`), `append` reuses the caller's array, so the write shows up: `[99 0 0]`. The signature `grow(xs []int)` doesn't tell you which one you will get.
+
+Rust's answer is the rule you just met: while a `&` exists, nothing may change the value. The same shape in Rust, a reference into a `Vec` and then a `push`, is a compile error:
+
+<Snippet file="push-while-borrowed.fail.rs" />
+
+E0502 is the next lesson's error: `push` needs to change `a` while `p` still reads it. Go gets its safety from the garbage collector, escape analysis and convention. Rust has no collector and checks the aliasing rule at compile time, on every path in safe code. Go's own tools are weaker: `go vet` is heuristic (its documentation says so), and `go run -race` only reports races that happen during that run. The same rule keeps two threads from changing data at once ([Shared state](/learn/shared-state/)). The price in Rust is that some fine code is rejected and you restructure it.
+</ForLang>
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Each exercise is a small program with checks in `main`. Open it in the Playground, replace the `todo!()`, and run it until it prints `all checks passed`. In all three the signatures are already right; the point is to write the bodies that read through the references and leave the caller's values alone.
+
+<Exercise name="count-words" title="Count the words">
+Count the words in a `&str` with a loop. Words are separated by any whitespace. The checks pass a literal, a borrowed `String` that must still be usable afterwards, part of a `String`, empty and blank text, and text that is not English.
+</Exercise>
+
+<Exercise name="count-matches" title="Count the matches">
+Count how many items of a `&[i32]` equal a `&i32`. Both are references, so `x` in your loop is a `&i32` too. Pay attention to the rules in [reading through a reference](#reading-through-a-reference). One of the checks passes a reference to an item of the same `Vec` it is searching.
+</Exercise>
+
+<Exercise name="report" title="Report on a player">
+Two functions that read a `Player` through `&Player`: `best` returns the highest score (0 when there are none), and `report` builds a `String` like `ana: best 95 in 3 games`, calling `best` along the way. Calling `best(player)` from inside `report` does not use `player` up. Why not? `player` is a `&Player`, and [any number of readers](#many-readers-no-writers) are allowed.
+</Exercise>
+
+<p class="lr-layer">Going deeper (optional)</p>
+
+Nothing here is needed for the exercises.
+
+## What the compiler is checking
+
+Every error above comes from two rules:
+
+1. **A reference must never outlive the value it points to.** (E0597, and E0515 when a function returns a reference to its own local.)
+2. **While a value is borrowed, nothing may change it, move it or drop it.** (E0505 for a move, E0502 and E0499 for a change; the next lesson.)
+
+Together they mean that in safe Rust, a reference you hold points at a value that still exists and that no other code changes, apart from the interior-mutability types. In safe Rust no reference can read freed memory. Those types change through a shared reference on purpose, and stay safe in other ways: `Cell` only copies values in and out, `RefCell` checks at run time, and `Mutex` and atomics coordinate threads ([Shared state](/learn/shared-state/)).
+
+The checks happen when the program is compiled and add no instructions to the running program: a reference is just an address. The checking is also **local**: the compiler looks at one function at a time, and a function's signature is all it knows about the others. That is why a function that returns a reference has to say which argument it borrows from, when more than one could be the source.
+
+One detail about "last use": if the reference sits inside a value that has a `Drop`, running the drop counts as a use. `Guard<'a>` holds a borrowed `name` (`'a` names how long the borrow lasts; [Lifetimes](/learn/lifetimes/) comes later). Moving `name` fails, because `guard`'s `drop` runs at the end of `main` and reads `name`:
+
+<Snippet file="drop-uses-borrow.fail.rs" />
+
+## `&String` becomes `&str` by itself
+
+Why did `is_greeting(&owned)` work when `owned` is a `String` and the parameter is a `&str`? Where the compiler knows which type a reference should have, such as a function argument or a `let` with a written type, it converts a `&String` to a `&str` for you. This is **deref coercion**. It works because `String` implements `Deref<Target = str>` ([Traits](/learn/traits/) explains). `&Vec<T>` to `&[T]` works the same way. The conversion goes from the type that implements `Deref` to its target, not back.
+
+<Snippet file="coercion.rs" />
+
+`r` really is a `&String` (`alloc::string::String` is the full name of `String`). Passing it to `show`, or storing it in a `&str`, gave a `&str` that points at the same bytes. Nothing was copied.
+
+Under the hood this is a **reborrow**: `*r` is the value `r` points at, and `&*r` borrows it again. You will see `&*name` in real code, to pick a type.
+
+<Snippet file="reborrow.rs" />
+
+## References are `Copy`
+
+A `&T` is `Copy`, like a number: passing it on, or assigning it to another variable, makes a second reference and leaves the first usable. A `String` owns its buffer, so copying it would mean two owners. A `&String` only points, so duplicating the pointer is harmless. `&T` is `Copy` so that many readers can share one value. (`&mut T` follows different rules: [next lesson](/learn/mutable-borrows/).)
+
+<Snippet file="ref-copy.rs" />
+
+## Borrowing in other languages
+
+<ForLang only="go">
+A Go pointer `*T` can be `nil`, so `*p` can fail at run time:
+
+<Snippet file="nil-deref.crash.go" />
+
+A Rust `&T` is never null. In safe Go a pointer can't dangle: if you return `&n` of a local, the Go compiler works out that `n` must outlive the call and keeps it on the garbage-collected heap, per the [Go FAQ](https://go.dev/doc/faq#stack_or_heap):
+
+<Snippet file="escape.go" />
+
+That is safe, but it costs a heap allocation and garbage-collector work. Rust has no collector, so returning a reference to a local is a compile error instead ([returning references](/learn/returning-references/)).
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+In Java, Kotlin and C# a variable of a class type already is a reference, and `b = a` copies the reference. Rust has no garbage collector, so the compiler checks that the owner outlives every reference. A Java reference can be `null`, and Kotlin tracks that in the type (`String?`). A Rust `&T` is never null; a value that may be missing is an `Option<&T>` ([Option](/learn/option/)).
+
+C# has the closest relative. `Span<T>` and `ReadOnlySpan<T>` are an address and a length, like `&mut [T]` and `&[T]`, and the compiler stops them escaping:
+
+<Snippet file="span-escape.fail.cs" />
+
+Rust does that for every reference, not just a few types. And a `ReadOnlySpan<T>` stops only this reference writing: another holder of the same array can still change it while you read.
+</ForLang>
+
+<ForLang only="python typescript">
+Every name for an object is a reference, and `b = a` makes two names for one object. Rust splits that into separate things: `let b = &a;` is a read-only second name, `&mut` is a second name that can change the value (with rules), and `let b = a;` moves the value.
+
+A Python hint such as `Sequence[int]` says the function won't change the data. Python does not check hints when the program runs, though a type checker such as mypy or pyright does. TypeScript's `readonly` is checked, but only for that name:
+
+<Snippet file="readonly-alias.ts" />
+
+`view` is `readonly`, yet it shows the `4` that `nums.push(4)` added. Rust's rule is about aliasing: while a `&` exists, no other reference can change the data.
+</ForLang>
+
+<ForLang only="c cpp">
+A Rust `&T` is a C `const T *` that is never null and never dangles, with the compiler proving both. In Rust `p.x` works through a reference, where C needs `p->x`. Comparing two C pointers compares addresses; `==` on two Rust references compares what they point at.
+
+A dangling pointer compiles in C and, here, appears to work:
+
+<Snippet file="dangling.c" />
+
+`x` is gone after the inner block, so this is undefined behaviour: any output would be allowed, and printing 5 is luck. The same is true of C++ views such as `std::string_view`:
+
+<Snippet file="view-dangling.cpp" />
+
+Rust rejects the same shape (E0597, above).
+</ForLang>
+
+## Read more
+
+- [Reading compiler errors](/errors/): how an error is laid out, and every error code on this site with what it means and where to see it.
+- [The Rust Book, chapter 4.2: References and Borrowing](https://doc.rust-lang.org/book/ch04-02-references-and-borrowing.html), which also introduces `&mut`.
+- [Rust by Example: Borrowing](https://doc.rust-lang.org/rust-by-example/scope/borrow.html), and its pages on the `ref` pattern and on lifetimes.
+- [The Rust Reference: Reference types](https://doc.rust-lang.org/reference/types/pointer.html#shared-references-), and [Type coercions](https://doc.rust-lang.org/reference/type-coercions.html) for the exact deref coercion rules.
+- [The `Deref` trait](https://doc.rust-lang.org/std/ops/trait.Deref.html), including its section on coercion.
+- [`std::ptr::eq`](https://doc.rust-lang.org/std/ptr/fn.eq.html), for comparing addresses.
+- [Error index: E0505](https://doc.rust-lang.org/error_codes/E0505.html) and [E0597](https://doc.rust-lang.org/error_codes/E0597.html).

@@ -1,0 +1,324 @@
+<p class="lr-layer">The toolkit</p>
+
+Outputs on this page come from Linux on 64-bit ARM (the VM had 8 cores) with Rust 1.99.1, built in debug mode. Every program here prints the same thing on every run: it joins its threads, then sorts or counts before it prints. The Rust tables are asserted by programs the site runs. Threads here are OS threads, not goroutines or virtual threads, and `recv` blocks one. [Threads](/learn/threads/) introduced `spawn` and `join`; [Shared state](/learn/shared-state/) covers `Arc` and `Mutex`.
+
+## A channel is a queue with two ends
+
+`mpsc::channel()` returns a pair: a `Sender` (`tx`) that puts values in, and a `Receiver` (`rx`) that takes them out, first in, first out. `mpsc` stands for "multiple producer, single consumer": you can clone the sender, never the receiver, so **one** thread receives. Go channels, Java queues and C# channels accept several consumers; `mpsc` does not, and the [pool](#a-pool-of-workers) shows what that costs.
+
+<Snippet file="basics.rs" />
+
+`send` and `recv` both return a `Result`. `recv` waits for a value, and returns `Err` only when the queue is empty and every sender is gone.
+
+## Sending moves the value
+
+`send(value)` takes `value` by value, so the sender no longer owns it ([the gotcha](#gotcha) is that error, with a `Vec`). A `Copy` integer is copied, so the variable stays usable. A `Vec` moves, and what moves is its three words; the numbers stay where they were:
+
+<Snippet file="travel.rs" />
+
+<Memory
+  title={'tx.send(v)   v is gone, the channel holds the Vec, the numbers never moved'}
+  stack={[
+    { name: 'v', type: 'Vec<i32>', cells: ['ptr', 'len 3', 'cap 3'], gone: 'moved into the channel' },
+  ]}
+  heap={[
+    { id: 'queue', label: 'in the channel: a queued message', cells: ['ptr', 'len 3', 'cap 3'], links: [{ cell: 0, to: 'buf' }] },
+    { id: 'buf', label: '3 × i32', cells: ['10', '20', '30'] },
+  ]}
+  caption="Between the send and the recv, the channel holds the three words of the Vec. The program printed same heap buffer after the trip: true. Where the channel keeps its queue is an implementation detail; this picture claims only what travel.rs printed."
+/>
+
+While a value is in flight one thread owns it, so it needs no lock. It must be `Send`, "allowed to move to another thread" ([Send and Sync](/learn/send-sync/)). An `Rc` is not, and the error comes from `thread::spawn`, because the closure holds the `Receiver`:
+
+<Snippet file="send-rc.fail.rs" />
+
+Read the notes in order: `Rc<i32>` is not `Send`, so `Receiver<Rc<i32>>` is not, so the closure that owns it is not, and `thread::spawn` demands a `Send` closure ([Reading signatures](/learn/reading-signatures/#threadspawn-three-bounds-at-once)).
+
+## Several producers
+
+`tx.clone()` makes another sender for the same channel. Give each thread its own (Go calls this fan-in):
+
+<Snippet file="producers.rs" />
+
+One sender's messages arrive in the order it sent them (the assertion checks it). Different senders interleave differently on every run, so the program sorts before it prints. If order matters, put it in the message, as the first exercise does with an index.
+
+## When does `for msg in rx` end?
+
+When the queue is empty and **every** sender has been dropped. The classic mistake is a main thread that keeps its own `tx` while it loops on `rx`: the workers finish, one sender is still alive, and the loop waits for a message that cannot come. No error is reported; the loop prints what arrived and then stops making progress. The `mpsc` docs say the program "will not complete" without the `drop`. A hang cannot be shown here, so this is the state just before it, measured with calls that give up:
+
+<Snippet file="loop-ends.rs" />
+
+`Empty` means "nothing now, but a sender exists", `Disconnected` "nothing, ever", and `Timeout` is `recv_timeout` giving up. All the ways to receive:
+
+| Call | Queue has a message | Empty, a sender exists | Empty, every sender dropped |
+|---|---|---|---|
+| `recv()` | the message | waits | `Err(RecvError)` |
+| `try_recv()` | the message | `Err(Empty)` | `Err(Disconnected)` |
+| `recv_timeout(d)` | the message | waits up to `d`, then `Err(Timeout)` | `Err(Disconnected)` |
+| `for m in rx`, `rx.iter()` | each message | waits | the loop ends |
+| `rx.try_iter()` | each queued message | ends | ends |
+
+"Waits" is the docs' word ("will always block the current thread"); every other cell is asserted. Whoever makes the channel holds the first `tx`: move it into the last worker or `drop(tx)` before you loop.
+
+## The other side can hang up too
+
+Dropping the receiver makes `send` fail, and the value comes back in the error:
+
+<Snippet file="send-error.rs" />
+
+Examples write `.unwrap()` after a send to mean "crash if nobody is listening"; a producer usually does better to treat the error as "stop" (the third exercise). A thread that panics drops what it owned, its senders included, and so does a function that returns early:
+
+<Snippet file="panicked-sender.rs" />
+
+(A panic hook silences the message. The loop ended, and `join` returned `Err`.)
+
+| What was dropped | The other side sees |
+|---|---|
+| one of several `Sender`s | nothing |
+| the last `Sender` | queued messages first, then `Err` / `Disconnected` / the loop ends |
+| the `Receiver` | `send` returns `Err(SendError(value))` on every clone of the sender |
+
+## Bounded channels and back-pressure
+
+The docs call `channel()` "infinitely buffered": a producer faster than its consumer makes the queue grow without a limit. `sync_channel(n)` holds at most `n` messages: `send` waits while it is full, and `try_send` returns `Full(value)` instead of waiting. With `0` it is a rendezvous: each send completes only when a receiver takes the value.
+
+<Snippet file="bounded.rs" />
+
+That limit is **back-pressure**: the producer is held to the consumer's pace. This program asserts it at every receive, for three bounds, then shows `channel()` letting the producer run ahead:
+
+<Snippet file="backpressure.rs" />
+
+`try_send` exists only on `SyncSender`, a different type from `Sender`: a function that takes one does not accept the other.
+
+## More than numbers
+
+A message is any `Send` value. A channel can even carry an `Arc<Mutex<..>>`, and then both threads share memory again, with the lock visible in the type; [Shared state](/learn/shared-state/) says when a lock is the simpler tool. Channels are a design tool:
+
+- an **enum** for several kinds of message, which also merges several sources into one receiver: one `tx` clone per source, the variant says who sent it;
+- a **`Sender` inside a request**, so the other thread knows where to reply;
+- a **`Result`**, so an error crosses to another thread as data;
+- a **boxed closure**, `Box<dyn FnOnce() + Send>`, for "run this" ([Closures](/learn/closures/), [Trait objects](/learn/trait-objects/)).
+
+Here one thread owns a `HashMap`, so no lock exists; other code asks it by message:
+
+<Snippet file="actor.rs" />
+
+## A pool of workers
+
+This is fan-out, with a cost. A `Receiver` cannot be cloned, so workers share one behind `Arc<Mutex<..>>` and take the lock only to receive the next job. Idle workers wait on the lock, not on the queue; a Java `ThreadPoolExecutor` or N Go goroutines on one channel need nothing like it. (`crossbeam-channel` has cloneable receivers; not run here.) Dropping `job_tx` ends the workers:
+
+<Snippet file="pool.rs" />
+
+The lock must be released before the job runs. In `let job = rx.lock().unwrap().recv();` the guard is a temporary and ends at the semicolon. In `while let Ok(job) = rx.lock().unwrap().recv() { .. }` it lives through the loop body, so no other worker can take a job while this one is busy (`try_lock` returns `Ok` only if the lock is free):
+
+<Snippet file="guard-held.rs" />
+
+That compiles and gives correct answers, but the pool runs one job at a time ([the Rust Book](https://doc.rust-lang.org/book/ch21-02-multithreaded.html) shows the same trap). The second exercise catches it.
+
+## Translating from what you know
+
+<ForLang only="go">
+Go has one channel type and puts the size in the `make`; Rust has two constructors. Go closes from the sending side; Rust has only the last drop.
+
+| In Go | In Rust |
+|---|---|
+| `make(chan T)`, unbuffered | `sync_channel(0)` |
+| `make(chan T, n)` | `sync_channel(n)` |
+| no unbounded channel built in | `channel()` |
+| `close(ch)` by a sender | drop the last `Sender` |
+| `v, ok := <-ch` | `rx.recv()`: `Ok(v)` or `Err` |
+| `for v := range ch` | `for v in rx` |
+| `select { case ch <- v: default: }` | `tx.try_send(v)`, on a `SyncSender` |
+| `select { case v := <-ch: default: }` | `rx.try_recv()` |
+| `case <-time.After(d)` | `rx.recv_timeout(d)` |
+| `sync.WaitGroup` and a closer goroutine | not needed: each producer owns a clone of `tx`; the last drop closes |
+| `close(done)` or `ctx.Done()`, a broadcast | no equivalent in `std`; see below |
+| `select` over several channels, `nil` to switch a case off | not in `std`: one `Receiver` fed by every sender, tagged by an enum; an `Option<Receiver>` for "off" |
+
+After `close`, a receive drains what is queued and then yields a zero value with `ok == false`; a send on a closed channel panics, and so does a second `close`. Rust has no send-after-close (`tx` is gone); sending after the receiver is dropped is an `Err`.
+
+<Snippet file="closed.go" />
+
+When the receiver leaves, a Go sender blocks for ever and nothing reports it; you stop it with a `done` channel or a `context`. In Rust `send` returns `Err`, which the hang-up exercise below turns into a stop, as `ctx.Done()` does. Dropping the last `Sender` ends every loop sharing one `Receiver`, much as `close(quit)` wakes every Go receiver; stopping a loop that is busy with something else needs an `AtomicBool` or a channel per worker.
+
+<Snippet file="abandoned.go" />
+
+If nobody closes, Go's runtime can report the hang when every goroutine is blocked, as here:
+
+<Snippet file="no-close.crash.go" />
+
+While any other goroutine can still run, it reports nothing. Here a sleeping goroutine ends the run after 300 ms; without it the program waits for ever (observed: killed by a timeout). The Rust docs call the same situation a program that "will not complete".
+
+<Snippet file="no-close-watchdog.go" />
+
+<Snippet file="select.go" />
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+Java's `BlockingQueue` family and C#'s `Channel<T>` and `BlockingCollection<T>` have the same three shapes: unbounded, bounded, hand-off. They take several consumers on one queue, which `mpsc` does not (three consumers took every item exactly once between them; a `ThreadPoolExecutor` is threads taking from a `LinkedBlockingQueue`). The Java queues have no close, hence the `"DONE"` marker in the Java and Kotlin programs at the top; C# has `Complete()` and `CompleteAdding()`. Kotlin's coroutine `Channel` has a close, and its own section is below.
+
+| In Java / C# | In Rust |
+|---|---|
+| `LinkedBlockingQueue<T>` / `Channel.CreateUnbounded<T>()` / `BlockingCollection<T>` | `channel()` |
+| `ArrayBlockingQueue<T>(n)` / `Channel.CreateBounded<T>(n)` / `BlockingCollection<T>(n)` | `sync_channel(n)` |
+| `SynchronousQueue<T>` / `Channel.CreateBounded<T>(0)` (.NET 10) | `sync_channel(0)` |
+| `put(x)` / `WriteAsync(x)` / `Add(x)` | `send(x)` |
+| `offer(x)` / `Writer.TryWrite(x)` / `TryAdd(x)` | `try_send(x)` |
+| `take()` / `await Reader.ReadAsync()` / `GetConsumingEnumerable()` | `recv()`, which blocks a thread |
+| `poll()` / `poll(d, unit)` | `try_recv()` / `recv_timeout(d)` |
+| the `"DONE"` marker / `Complete()` / `CompleteAdding()` | drop the last `Sender` |
+| `invokeAll(..)` and `Future.get()` | `thread::spawn` and `JoinHandle::join`: the first exercise |
+</ForLang>
+
+<ForLang only="java">
+<Snippet file="queues.java" />
+
+<Snippet file="consumers.java" />
+</ForLang>
+
+<ForLang only="kotlin">
+Kotlin's coroutine `Channel` comes from `kotlinx.coroutines`. `Channel()` is a rendezvous (capacity 0, like `sync_channel(0)`). `trySend` succeeds only if a receiver is already waiting, so the first line printed `false`. The sender suspended in `send` until `receive` took the value, while `main` carried on:
+
+<Snippet file="rendezvous.kt" />
+
+A positive capacity is `sync_channel(n)`, `trySend` is `try_send`, and the sender's `close()` lets queued items be read, then ends the `for` loop. The receiver's `cancel()` is dropping the `Receiver`: a later `trySend` reports closed, but `send` throws `CancellationException`, not the `ClosedSendChannelException` that `close()` gave. `Channel.UNLIMITED` is `channel()`.
+
+<Snippet file="buffered.kt" />
+
+Kotlin's `send` and `receive` suspend the coroutine; Rust's `recv`, and `send` on a bounded channel, block the thread. A `Channel` may have several receivers, like the Java queues, where a Rust `Receiver` cannot be shared: each item went to one of the two below. It closes only when something calls `close()`: there is no drop-the-last-sender rule, so `close()` takes the place of the `"DONE"` marker. Kotlin can also use the Java queues, as its program at the top does.
+
+<Snippet file="fanout.kt" />
+</ForLang>
+
+<ForLang only="csharp">
+`Complete()` is a close from the writer side, like Go's. Reads drain what was queued and then report the end, and a bound of 0 is a rendezvous:
+
+<Snippet file="bounded.cs" />
+
+`BlockingCollection` is the closer match to `mpsc`: it blocks a thread and it closes. `Channel` is built for `async` code (the [async lesson](/learn/async-basics/)).
+
+<Snippet file="blocking.cs" />
+</ForLang>
+
+<ForLang only="python">
+`queue.Queue` is the same idea, with differences you can run:
+
+<Snippet file="queues.py" />
+
+`queue.Queue` allows several consumers, so one `None` marker stops only one of them; dropping the last `Sender` stops every loop sharing the `Receiver`.
+
+<Snippet file="consumers.py" />
+
+| In Python | In Rust |
+|---|---|
+| `Queue()` | `channel()` |
+| `Queue(n)`, `n > 0` | `sync_channel(n)` |
+| `put_nowait(x)`, raises `queue.Full` | `try_send(x)`, `Err(Full(x))` |
+| `get_nowait()`, raises `queue.Empty` | `try_recv()`, `Err(Empty)` |
+| `get(timeout=t)`, raises `queue.Empty` | `recv_timeout(t)` |
+| a `None` marker, or `shutdown()` (either side may call it) | drop the last `Sender`, or the `Receiver` |
+| `multiprocessing.Queue`: pickles, so the receiver gets a copy | `send(x.clone())` |
+| `ThreadPoolExecutor.map`: results in input order | the first exercise |
+| `asyncio.Queue` | the [async lesson](/learn/async-basics/) |
+
+`Queue(maxsize=0)` means "no limit", where `sync_channel(0)` is a rendezvous. The `_nowait` calls raise where `try_send` and `try_recv` return an `Err`.
+
+<Snippet file="others.py" />
+</ForLang>
+
+<ForLang only="typescript">
+Worker ports are event-driven; Rust's `for msg in rx` is a loop that blocks a thread, with no callback. `postMessage` copies the data (structured clone), which is why the gotcha prints `[ 1, 2 ]`. An `ArrayBuffer` in the transfer list moves instead: the sender's copy is emptied, the nearest thing to Rust's `send`.
+
+<Snippet file="transfer.ts" />
+
+| In TypeScript | In Rust |
+|---|---|
+| `port.on("message", cb)` | `for msg in rx`, which blocks a thread |
+| `receiveMessageOnPort(port)`, a poll | `rx.try_recv()` |
+| `postMessage(x)`, a copy | `send(x.clone())` |
+| `postMessage(x, [x.buffer])`, a transfer: `ArrayBuffer` and `MessagePort` only | `send(x)`, a move |
+| `postMessage(sharedArrayBuffer)`: both sides see one memory | `send(Arc<..>)` |
+| a function: `DataCloneError`; a class instance arrives as a plain object | any `Send` value, with its type, closures included |
+| `port.close()`: closes both ends | drop the `Sender` and the `Receiver` |
+
+A `MessagePort` is one two-way endpoint with no sender count, so nothing ends a loop "when every producer is gone".
+
+<Snippet file="ports.ts" />
+</ForLang>
+
+<ForLang only="c cpp">
+Neither ISO C nor ISO C++ has a channel in its standard library. People use a library queue (TBB's `concurrent_bounded_queue`, Boost.Thread's `sync_queue`, folly's `MPMCQueue`; none run here); the lesson's first program shows the semantics with a mutex and condition variable. In C++ the compiler lets you use a variable after `std::move` (the gotcha shows the result); a linter such as clang-tidy's `bugprone-use-after-move` catches many cases (not run here).
+
+| In the C++ program | In Rust |
+|---|---|
+| `ch.send(std::move(v))`, then `v` is still usable | `tx.send(v)`, then the compiler refuses `v` |
+| `std::optional<T> recv()`, empty when closed and drained | `Result<T, RecvError>`, or `for m in rx` |
+| `cv.wait(lock, pred)` and `notify_one` | inside `send` and `recv`: no predicate loop to write |
+| `cv.wait_for(lock, d, pred)` | `recv_timeout(d)` |
+| `ch.close()`: set a flag under the lock, `notify_all` | drop the last `Sender`: its destructor closes, so an early return or panic closes too |
+| `send` after `close()` is accepted; nothing says the consumer left | `send` returns `Err(SendError(value))` |
+| a second condition, "not full", for a bounded queue | `sync_channel(n)` |
+
+<Snippet file="gaps.cpp" />
+
+The first program's `Channel` is never closed if the producer throws, so the receiver waits (a plain `recv` would wait for ever; this one gives up after 200 ms), and it accepts a send after `close()`. In C, `pthread_cond_broadcast` plays `notify_all`.
+
+C also has `pipe()`, which is POSIX, not ISO C. It sends bytes, so a message is a copy, and the reader sees end-of-file once every write end is closed, like "every `Sender` dropped":
+
+<Snippet file="pipe.c" />
+
+A pipe is also bounded. On this Linux it holds 65536 bytes; a non-blocking write to a full pipe fails with `EAGAIN` (`try_send`'s `Full`), and a write with no reader fails with `EPIPE` (`SendError`):
+
+<Snippet file="pipe-limits.c" />
+</ForLang>
+
+<p class="lr-layer">Going deeper</p>
+
+## What each end can do
+
+`Receiver` is neither `Clone` nor `Sync`: `rx.clone()` is E0599 and sharing `&rx` between threads is E0277, which is why the pool needs a `Mutex` around `rx`. `Sender` is `Clone`, and has been `Sync` since Rust 1.72 (the docs say so), so a `&Sender` may be shared between threads. [Send and Sync](/learn/send-sync/) explains the traits.
+
+## Pipelines and closing cascades
+
+Nobody calls `close` anywhere in a pipeline. Each stage loops until the stage before it drops its sender, then ends and drops its own, and the end of the input travels all the way to `main`:
+
+<Snippet file="pipeline.rs" />
+
+Hang-up travels backwards the same way. Here `main` takes three results and drops its receiver: the middle stage's `send` fails, it stops, its receiver drops, and the generator's `send` fails too:
+
+<Snippet file="pipeline-hangup.rs" />
+
+## What `std` does not have
+
+- **`select` over several receivers.** Use one receiver fed by many senders, tagged by an enum, or poll `try_recv` on each. `crossbeam-channel` provides `select`, and async runtimes such as Tokio bring their own channels ([Async basics](/learn/async-basics/)); neither is run here.
+- **Several consumers on one queue.** `std::sync::mpmc` exists but is unstable on 1.99.1 (as is `oneshot`):
+
+<Snippet file="mpmc.fail.rs" />
+
+- **A `close` call**, a sender count or a queue length: `rx.len()`, `tx.close()` and `tx.sender_count()` do not compile. A channel closes when you drop its ends. `is_disconnected` exists but is unstable on 1.99.1 (E0658).
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Replace the `todo!()` calls until `main` prints `all checks passed`. The starters compile and stop at the first `todo!()`. Checks that could hang run inside a helper that gives up after 20 seconds (it uses `recv_timeout`).
+
+<Exercise name="ordered-results" title="Results in input order">
+Write `parallel_map`: run `f` on every item, each on its own thread, and return the results in input order. Send `(index, result)` on a channel, so that arrival order does not matter. Clone the sender for each thread, and drop the original `Sender`: while it is alive the receiving loop never ends, for every input. Item 0 is the slowest and results fall and rise, so arrival order fails and so does sorting the values. (Joining `JoinHandle`s in order, Java's `Future`s or Python's `ThreadPoolExecutor.map` also pass; this exercise is for the channel and the loop that must end.)
+</Exercise>
+
+<Exercise name="worker-pool" title="A pool of boxed jobs">
+Finish `Pool`: `new` starts workers that share one `Receiver`, `run` sends a boxed closure, and `finish` lets the queued jobs run and joins the workers. `jobs` is an `Option` so that `finish` can take the `Sender` out and drop it while the workers still run. Two jobs wait for each other at a `Barrier` (`Barrier::new(2)`: the first `wait()` sleeps until a second arrives), so they finish only if two workers are inside a job at once; a worker that keeps the lock while it runs a job is caught, as are a thread per job and a `finish` that does not join. `finish` drains the queue and cannot abort it: Go would cancel with a `ctx`; here you would add a shared `AtomicBool` that workers check (not part of this exercise).
+</Exercise>
+
+<Exercise name="hang-up" title="Stop when nobody is listening">
+Write `count_up`: send 0, 2, 4, ... until `send` fails, and return how many sends succeeded and the value that bounced. A rendezvous channel makes the counts exact. A version that unwraps panics, and one that ignores the error never stops; the checks name both mistakes. This is what `ctx.Done()` does for a Go producer, done by the type.
+</Exercise>
+
+## Read more
+
+- [The Rust Book, chapter 16.2: Using Message Passing to Transfer Data Between Threads](https://doc.rust-lang.org/book/ch16-02-message-passing.html), and [chapter 21.2](https://doc.rust-lang.org/book/ch21-02-multithreaded.html) for the thread pool, including the `while let` trap.
+- The standard library: [`std::sync::mpsc`](https://doc.rust-lang.org/std/sync/mpsc/index.html), [`channel`](https://doc.rust-lang.org/std/sync/mpsc/fn.channel.html), [`sync_channel`](https://doc.rust-lang.org/std/sync/mpsc/fn.sync_channel.html), [`Sender`](https://doc.rust-lang.org/std/sync/mpsc/struct.Sender.html), [`SyncSender`](https://doc.rust-lang.org/std/sync/mpsc/struct.SyncSender.html), [`Receiver`](https://doc.rust-lang.org/std/sync/mpsc/struct.Receiver.html), [`TryRecvError`](https://doc.rust-lang.org/std/sync/mpsc/enum.TryRecvError.html), [`RecvTimeoutError`](https://doc.rust-lang.org/std/sync/mpsc/enum.RecvTimeoutError.html), [`SendError`](https://doc.rust-lang.org/std/sync/mpsc/struct.SendError.html).
+- [Rust by Example: Channels](https://doc.rust-lang.org/rust-by-example/std_misc/channels.html).
+- Go's take on the same design, "share memory by communicating": [Share Memory By Communicating](https://go.dev/blog/codelab-share).
+- Errors on this page: [E0382](https://doc.rust-lang.org/error_codes/E0382.html), [E0277](https://doc.rust-lang.org/error_codes/E0277.html), [E0599](https://doc.rust-lang.org/error_codes/E0599.html), [E0658](https://doc.rust-lang.org/error_codes/E0658.html), or [this site's index](/errors/).

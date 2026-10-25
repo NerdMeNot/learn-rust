@@ -1,0 +1,180 @@
+# Testing, further: what /build/testing/ leaves out.
+#
+# The main crate (rust/, package timekeep) uses only std, so most sessions need nothing but
+# the toolchain. Everything that needs a crate or a tool that is not in the image has its own
+# project and says so in its `show:` label: prop/ (proptest), snap/ (insta), bench/ (criterion),
+# the cargo-llvm-cov install, and langprop/ (hypothesis, fast-check). Cargo downloads crates in
+# every cargo session here; the labelled ones also download a tool or a package manager.
+#
+# Output that changes between runs carries `varies: true`: timings, the 20-run count of
+# which test failed first, criterion's numbers.
+name: timekeep
+sessions:
+  # The whole project, one test program per block. One thread keeps the order fixed
+  # (see /build/testing/ for the measurement).
+  test:
+    dir: rust
+    steps:
+      - cmd: cargo test -- --test-threads=1
+        raw: true
+        varies: true # the "finished in" times
+      # Every TempDir the tests made is gone again.
+      - cmd: ls /tmp | grep -c '^timekeep-' || true
+        show: "$ ls /tmp | grep -c '^timekeep-'   # temp folders left behind"
+  # Table-driven: two rows broken on purpose (the page's Try it 1). The sed edits a copy.
+  table-fail:
+    dir: rust
+    steps:
+      - cmd: |-
+          sed -i 's/("2m", Ok(120))/("2m", Ok(121))/; s/UnknownUnit(.x.)/UnknownUnit('"'"'y'"'"')/' src/lib.rs && cargo test --lib parse_duration_table
+        show: "$ cargo test --lib parse_duration_table   # after changing two expected values in the table"
+        expect: fail
+        varies: true # the number in the panic line, thread 'name' (N), differs every run
+  # Try it 2: the fake clock. Setting it to 1_060 instead of 1_059 breaks the "not expired" check.
+  clock-fail:
+    dir: rust
+    steps:
+      - cmd: |-
+          sed -i 's/now.set(1_059);/now.set(1_060);/' src/session.rs && cargo test --lib expires_after_the_ttl
+        show: "$ cargo test --lib expires_after_the_ttl   # after changing now.set(1_059) to now.set(1_060)"
+        expect: fail
+        varies: true
+  # Try it 3: another seed for the hand-made property test.
+  seed:
+    dir: rust
+    steps:
+      - cmd: |-
+          sed -i 's/const SEED: u64 = 42;/const SEED: u64 = 7;/' tests/property.rs && cargo test --test property -- --nocapture --test-threads=1
+        show: "$ cargo test --test property -- --nocapture --test-threads=1   # after changing the seed 42 to 7"
+  # Testing a private function from tests/ (overlay: tests/private.rs).
+  private:
+    dir: rust
+    overlay:
+      tests/private.rs: fail/private.rs
+    steps:
+      - cmd: cargo test --test private
+        expect: fail
+  # Changing the environment from a test, in edition 2024 (overlay: tests/env.rs).
+  env-unsafe:
+    dir: rust
+    overlay:
+      tests/env.rs: fail/env.rs
+    steps:
+      - cmd: cargo test --test env
+        expect: fail
+  # A shared counter in a test file. One thread: the second test in name order fails.
+  # Twenty runs on the default thread count: which one fails changes.
+  flaky:
+    dir: flaky
+    steps:
+      - cmd: cargo test --test ids -- --test-threads=1
+        expect: fail
+        varies: true # the thread number in the panic line
+      - cmd: cargo test --test ids --no-run -q
+        show: "$ cargo test --test ids --no-run   # build once, so the loop below only runs the tests"
+      - cmd: |-
+          for i in $(seq 100); do cargo test --test ids 2>&1 | grep '^test creates_.* FAILED'; done | sort | uniq -c
+        show: "$ for i in $(seq 100); do cargo test --test ids; done   # count which test failed, 100 runs, 8 cores"
+        varies: true
+  # Doc tests with attributes: no_run, compile_fail.
+  doctests:
+    dir: rust
+    steps:
+      - cmd: cargo test --doc -- --test-threads=1
+        raw: true
+        varies: true # the "finished in" and "ran in" times
+  # A property test by hand: seeded generator, loop, shrinking.
+  property:
+    dir: rust
+    steps:
+      - cmd: cargo test --test property -- --nocapture --test-threads=1
+  # proptest: needs the crate from crates.io (like every crate on these pages).
+  proptest:
+    dir: prop
+    steps:
+      - cmd: cargo test --test prop -- --nocapture --test-threads=1
+  proptest-fail:
+    dir: prop
+    overlay:
+      tests/prop_naive.rs: fail/prop_naive.rs
+    steps:
+      # Before the report, proptest prints one panic message for every try it made while
+      # shrinking (dozens of identical lines), so the page shows the last lines only.
+      - cmd: set -o pipefail; cargo test --test prop_naive 2>&1 | tail -n 19
+        show: "$ cargo test --test prop_naive   # the last 19 lines; before them come the panic messages from every shrinking try"
+        expect: fail
+        varies: true # the thread number in the panic line
+  # insta: the first run has no snapshot, so it fails; INSTA_UPDATE=always accepts it.
+  snapshot:
+    dir: snap
+    steps:
+      - cmd: cargo test --test snapshot
+        expect: fail
+        varies: true # thread number and times
+      - cmd: INSTA_UPDATE=always cargo test --test snapshot
+        varies: true
+      - cmd: cat tests/snapshots/snapshot__weekly_report.snap
+      - cmd: cargo test --test snapshot
+        varies: true
+      - cmd: |-
+          sed -i 's/h\\n"/ hours\\n"/' src/lib.rs && cargo test --test snapshot
+        show: "$ cargo test --test snapshot   # after changing the report's \"h\" to \" hours\""
+        expect: fail
+        varies: true
+  # Coverage. cargo-llvm-cov is not in the image: this session installs it.
+  coverage:
+    dir: rust
+    steps:
+      - cmd: rustup --quiet component add llvm-tools-preview && rustup component list --installed
+        timeout: 600
+        show: "$ rustup component add llvm-tools-preview   # needs network"
+        varies: true # the component names carry the host architecture
+      - cmd: cargo install cargo-llvm-cov --locked --version 0.9.1 && cargo llvm-cov --version
+        timeout: 1500
+        show: "$ cargo install cargo-llvm-cov --locked --version 0.9.1   # needs network"
+      - cmd: cargo llvm-cov --quiet --no-report >/dev/null && cargo llvm-cov report --show-missing-lines | cut -c1-68
+        timeout: 900
+        show: "$ cargo llvm-cov report --show-missing-lines   # after cargo llvm-cov --no-report; the table cut to its first columns"
+  # #[bench] on stable, and criterion.
+  bench-builtin:
+    dir: benchbad
+    steps:
+      - cmd: cargo bench
+        expect: fail
+  criterion:
+    dir: bench
+    # A target folder of its own: criterion compares with the previous run it finds in
+    # target/criterion, and a shared folder would print "change:" lines from an earlier run.
+    local_target: true
+    steps:
+      - cmd: cargo bench
+        timeout: 600
+        varies: true
+        show: "$ cargo bench   # one run on this VM, 8 cores (colima), varies"
+  # The table in "The same job in your language": each language's own runner, run here.
+  langs:
+    dir: langs
+    steps:
+      - cmd: go test -v
+        cwd: go
+        varies: true
+      - cmd: python3 -m unittest -v
+        cwd: py
+        varies: true
+      - cmd: node --test parse.test.ts
+        cwd: ts
+        varies: true
+  # Property tests in Python and TypeScript. NEEDS NETWORK: the image has no pip and no
+  # node_modules, so setup.sh fetches pip and installs the pinned hypothesis and fast-check.
+  langprop:
+    dir: langprop
+    steps:
+      - cmd: bash setup.sh
+        timeout: 900
+        show: "$ bash setup.sh   # needs network: installs hypothesis (pip) and fast-check (npm), pinned"
+      - cmd: PYTHONPATH=/tmp/pylibs python3 prop.py 2>&1 | grep -A2 'Failing test case'
+        cwd: py
+        show: "$ python3 prop.py 2>&1 | grep -A2 'Failing test case'   # Python, hypothesis"
+      - cmd: node prop.ts 2>&1 | grep -E 'Property failed|Counterexample|Shrunk'
+        cwd: ts
+        show: "$ node prop.ts 2>&1 | grep -E 'Property failed|Counterexample|Shrunk'   # TypeScript, fast-check"

@@ -1,0 +1,115 @@
+---
+title: "A gRPC service with tonic"
+description: "tonic is a Rust gRPC library built on Tokio. You write a .proto file, tonic generates the Rust types at build time, and you fill in the methods. It needs the protoc compiler installed."
+---
+
+import { Files, GuideGotcha, Remember, Session, Tree } from '../../../components/guide'
+
+gRPC is a way for programs to call each other. The grpc.io [introduction](https://grpc.io/docs/what-is-grpc/introduction/) puts it this way: "a client application can directly call a method on a server application on a different machine as if it were a local object". The methods are described in a `.proto` file (a protocol buffers file), and tools generate the client and server code from it. tonic is a Rust library for gRPC. Its [docs](https://docs.rs/tonic/0.14.6/tonic/) say its client and server are "built on top of tokio, hyper and tower" (hyper is an HTTP library, and tower a library of building blocks for network services), so the code on this page is async code that needs a runtime: [Async with Tokio](/build/tokio/) shows that runtime, and [Async Basics](/learn/async-basics/) explains futures first. You write a `.proto` file, tonic generates the Rust types at build time, and you fill in the methods.
+
+<Remember>`build.rs` turns the `.proto` into Rust code, and it needs `protoc` installed. You implement the generated trait for the server and call the generated client.</Remember>
+
+<Tree guide="grpc" dir="rust" name="greeter" title="Project layout" notes={{"proto/greeter.proto":"the service definition","src/bin/client.rs":"cargo run --bin client","src/bin/server.rs":"cargo run --bin server","src/lib.rs":"pulls in the generated code","Cargo.lock":"created by Cargo","Cargo.toml":"dependencies go here","build.rs":"runs before compiling: turns the .proto into Rust"}} />
+
+## You need `protoc` first
+
+:::caution[Install protoc before you build]
+The build step runs the protocol buffer compiler, `protoc`. The [prost-build docs](https://docs.rs/prost-build/0.14.4/prost_build/#sourcing-protoc) say it looks for `protoc` on your `PATH` (or at the path in the `PROTOC` environment variable) and that without one `compile_protos` "will fail". [protobuf.dev](https://protobuf.dev/installation/) lists `apt install -y protobuf-compiler` for Linux and `brew install protobuf` for macOS, and warns that package managers can ship old versions.
+:::
+
+The image that runs every session on this site installs Debian's `protobuf-compiler` package, and this is the version it has:
+
+<Session guide="grpc" run="protoc" />
+
+The build below worked with that version. protobuf.dev's comments say to expect 33.0 or newer, and I did not run a newer `protoc` here, so check yours with `protoc --version`. This is what the build prints when `protoc` is not found. (The session moves `protoc` aside for one build and puts it back. The folder name holds a hash that Cargo chooses and that can differ on your machine.)
+
+<Session guide="grpc" run="no-protoc" only={[2]} />
+
+## The project
+
+<Files guide="grpc" dir="rust" files={["proto/greeter.proto","Cargo.toml","build.rs","src/lib.rs"]} />
+
+The server and the client are two programs in the same project, which is the pattern from [More than one program](/start/several-programs/). The server prints the address it listens on. That port is written in `server.rs`, so the line is the same every run. The server keeps running after the client finishes: stop it with Ctrl-C when you try this yourself (the session runner stops it when the session ends).
+
+<Files guide="grpc" dir="rust" files={["src/bin/server.rs","src/bin/client.rs"]} run="server-and-client" />
+
+- **`build.rs`** runs before your code compiles. It calls `tonic_prost_build::compile_protos`, which turns `greeter.proto` into Rust structs (`HelloRequest`, `HelloReply`), a server trait (`Greeter`) and a client (`GreeterClient`).
+- **`tonic::include_proto!("greeter")`** pulls that generated code into a module. The argument is the proto `package` name, and the [macro docs](https://docs.rs/tonic/0.14.6/tonic/macro.include_proto.html) say it works while the output directory is the default one, `OUT_DIR`. Putting it in `lib.rs` lets both programs share it. You can read what it includes:
+
+<Session guide="grpc" run="generated" only={[1]} />
+
+- **Errors** are `Status` values with a gRPC code, like `Status::invalid_argument`, which shows up as `InvalidArgument` on the client. The codes are the variants of [`tonic::Code`](https://docs.rs/tonic/0.14.6/tonic/enum.Code.html).
+- **Streaming** RPCs exist: tonic has a [`Streaming`](https://docs.rs/tonic/0.14.6/tonic/struct.Streaming.html) type for a stream of messages, and the [routeguide tutorial](https://github.com/grpc/grpc-rust/blob/v0.14.x/examples/routeguide-tutorial.md) covers them. This page does not run a streaming example.
+
+### What is `#[tonic::async_trait]` for?
+
+The generated `Greeter` trait is declared with an `#[async_trait]` attribute, and its methods are `async fn`:
+
+<Session guide="grpc" run="generated" only={[2]} />
+
+tonic re-exports that attribute from the [async-trait](https://docs.rs/async-trait/0.1.92/async_trait/) crate. That crate's docs say an `async fn` in a trait became stable in Rust 1.75 without support for `dyn Trait`, that its macro rewrites each `async fn` into a method returning `Pin<Box<dyn Future + Send + 'async_trait>>`, and that you "write an `#[async_trait]` macro on top of traits and trait impls that contain async fn". A future that is `Send` is what `tokio::spawn` requires ([Send and Sync](/learn/send-sync/)). Leave the attribute off your `impl` and rustc rejects it (the `greeter-97760507d170f78c` folder name holds a hash that Cargo chooses and that can differ on your machine):
+
+<Session guide="grpc" run="no-async-trait" />
+
+So put `#[tonic::async_trait]` on your `impl` as well, so that it matches the trait. I did not look for why the generated trait uses the macro instead of plain `async fn`, and the page does not claim a reason beyond the crate's docs.
+
+## The same job in your language
+
+Where a row names a code generator, it starts from a `.proto` file; what differs is how the code is generated and which library carries the calls. I ran the Go row. For the other rows I checked that the packages exist (PyPI, npm, NuGet and Maven Central, on 25 October 2026) and read the pages named in the last column. I did not run them: the image has none of those libraries installed, and I did not add them.
+
+| Language | Library | Code comes from | What I did |
+| --- | --- | --- | --- |
+| Rust | tonic with prost | `build.rs` and `tonic-prost-build` | run above |
+| Go | [grpc-go](https://grpc.io/docs/languages/go/quickstart/) (`google.golang.org/grpc`) | `protoc` with the plugins `protoc-gen-go` and `protoc-gen-go-grpc` | run below |
+| Python | `grpcio` | `grpcio-tools`: the [quickstart](https://grpc.io/docs/languages/python/quickstart/) says Python's gRPC tools "include the protocol buffer compiler protoc" | docs read, not run |
+| TypeScript | `@grpc/grpc-js` ("gRPC Library for Node - pure JS implementation" on npm), or [Connect](https://connectrpc.com/), "a family of libraries for building browser and gRPC-compatible APIs" | `@grpc/proto-loader` ("for loading .proto files"); the [Node quickstart](https://grpc.io/docs/languages/node/quickstart/) uses a `dynamic_codegen` example | docs read, not run |
+| Java | [grpc-java](https://grpc.io/docs/languages/java/quickstart/) (`io.grpc` on Maven Central) | the build regenerates `GreeterGrpc.java` ([quickstart](https://grpc.io/docs/languages/java/quickstart/)) | docs read, not run |
+| Kotlin | [grpc-kotlin](https://grpc.io/docs/languages/kotlin/quickstart/) (`io.grpc:grpc-kotlin-stub`) | the build regenerates the Kotlin client and server classes ([quickstart](https://grpc.io/docs/languages/kotlin/quickstart/)) | docs read, not run |
+| C# | `Grpc.AspNetCore` for servers, `Grpc.Net.Client` for clients (grpc-dotnet) | `Grpc.Tools`: [Microsoft's gRPC docs](https://learn.microsoft.com/en-us/aspnet/core/grpc/basics) say it "is required to generate the C# assets from .proto files" | docs read, not run |
+| C | no entry in [grpc.io's language list](https://grpc.io/docs/languages/) or in the [gRPC README](https://github.com/grpc/grpc#to-start-using-grpc)'s list. The repository has [GRPC Core](https://grpc.github.io/grpc/core/), "a low-level library designed to be wrapped by higher level libraries" with its API in `grpc.h` | not covered by the pages I read | docs read, not run |
+| C++ | gRPC C++ | [the quickstart](https://grpc.io/docs/languages/cpp/quickstart/) builds and installs gRPC and Protocol Buffers with CMake | docs read, not run |
+
+The grpc.io site also has a [Rust page](https://grpc.io/docs/languages/rust/quickstart/). Its quickstart uses other generator tools (a `protoc-gen-rust-grpc` plugin and, it says, exactly `protoc` 34.0), so it is a different setup from this page, which is about tonic 0.14.6. tonic's repository is now [grpc/grpc-rust](https://github.com/grpc/grpc-rust) (github.com/hyperium/tonic redirects there), and its README says the `master` branch "is currently preparing breaking changes" and points to the `0.14.x` branch for released code. I did not run the grpc.io Rust quickstart.
+
+### Go, from the same `.proto`
+
+Go needs the same `protoc`, plus two plugins that `go install` puts in `$(go env GOPATH)/bin`, which has to be on your `PATH` ([quickstart](https://grpc.io/docs/languages/go/quickstart/)). The Go project uses the same `greeter.proto`, and `go mod tidy` downloads the gRPC and protobuf modules. The session below pins the plugin versions; the Go quickstart uses `@latest`. The `go.mod` file pins the modules, and says `go 1.27`; the image has Go 1.27.3. The `M` options on the `protoc` line tell the Go generators which Go package `greeter.proto` belongs to, because the shared `.proto` file has no `go_package` option. The `go install`, `go mod tidy` and `go build` lines hide Go's "downloading" messages, so the output does not depend on what was already cached.
+
+<Files guide="grpc" dir="go" files={["server/main.go","client/main.go","go.mod"]} run="go" lang="go" />
+
+## Try it yourself
+
+Each result below comes from a run in the image, in the project at the top of the page.
+
+1. **Change the status code.** In `src/bin/server.rs`, change `Status::invalid_argument` to `Status::not_found`, start the server and run the client. The last line of the client's output becomes `error NotFound: name is required`, the same message under a different code.
+
+<Session guide="grpc" run="status-code" />
+
+2. **Run the client with no server.** With nothing listening on the port, `cargo run --bin client` exits with status 1 and prints an `Error: tonic::transport::Error(...)` ending in `Connection refused`. No `server said:` line appears. Nothing is listening on the port, so the connection is refused. The type is `tonic::transport::Error`, which is what the generated `GreeterClient::connect` returns on failure, not a `Status`. Its signature, from the generated file:
+
+<Session guide="grpc" run="generated" only={[4]} />
+
+And the client run itself:
+
+<Session guide="grpc" run="no-server" />
+
+3. **Call the Rust server from the Go client.** The Go client is built from the same `greeter.proto` with the same `go install`, `protoc`, `go mod tidy` and `go build` steps as in the Go section above (this session hides all but the build of the client). It printed the same two lines against the Rust server:
+
+<Session guide="grpc" run="interop" only={[0,5,6]} />
+
+The generated client's `say_hello` takes `&mut self`, which matters for the gotcha below:
+
+<Session guide="grpc" run="generated" only={[3]} />
+
+<GuideGotcha guide="grpc" />
+
+## Read more
+
+- [`tonic` on docs.rs](https://docs.rs/tonic/0.14.6/tonic/), the version this page pins (0.14.6), and [`tonic-prost-build`](https://docs.rs/tonic-prost-build/0.14.6/tonic_prost_build/) for `compile_protos` and `configure`.
+- [Sourcing `protoc`](https://docs.rs/prost-build/0.14.4/prost_build/#sourcing-protoc) in the prost-build docs, and the [Protocol Buffer Compiler Installation](https://protobuf.dev/installation/) page.
+- The [tonic routeguide tutorial](https://github.com/grpc/grpc-rust/blob/v0.14.x/examples/routeguide-tutorial.md), which covers streaming, and the [examples](https://github.com/grpc/grpc-rust/tree/v0.14.x/examples).
+- [`async-trait` on docs.rs](https://docs.rs/async-trait/0.1.92/async_trait/), for what the attribute rewrites.
+- [Language Guides](https://grpc.io/docs/languages/) on grpc.io, one quickstart per language.
+- In this course: [Async with Tokio](/build/tokio/), [Async Basics](/learn/async-basics/), [Send and Sync](/learn/send-sync/) and [Mutable borrows](/learn/mutable-borrows/).
+
+<p class="lr-fine">The version this page is about is tonic 0.14.6 with prost 0.14.4 and tokio 1.54.1, as pinned in <code>Cargo.lock</code>. The image has protoc 3.21.12, Go modules grpc v1.84.0 and protobuf v1.36.12, protoc-gen-go v1.36.12 and protoc-gen-go-grpc v1.6.2.</p>

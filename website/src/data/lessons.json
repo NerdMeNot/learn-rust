@@ -1,0 +1,479 @@
+[
+ {
+  "id": "rust-at-a-glance",
+  "dir": "00a-rust-at-a-glance",
+  "title": "Rust at a glance",
+  "part": "syntax",
+  "order": 1,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "statements-expressions",
+  "dir": "00b-statements-expressions",
+  "title": "Statements and expressions",
+  "part": "syntax",
+  "order": 2,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "declarations-types",
+  "dir": "00c-declarations-types",
+  "title": "Declarations, literals and types",
+  "part": "syntax",
+  "order": 3,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "what-rust-lacks",
+  "dir": "00d-what-rust-lacks",
+  "title": "What Rust doesn't have",
+  "part": "syntax",
+  "order": 4,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "reading-signatures",
+  "dir": "00e-reading-signatures",
+  "title": "Reading a function signature",
+  "part": "syntax",
+  "order": 5,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "macros-attributes-naming",
+  "dir": "00f-macros-attributes-naming",
+  "title": "Macros, attributes and comments",
+  "part": "syntax",
+  "order": 6,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "hello-world",
+  "dir": "01-hello-world",
+  "title": "Hello World",
+  "part": "basics",
+  "order": 7,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "variables",
+  "dir": "02-variables",
+  "title": "Variables",
+  "part": "basics",
+  "order": 8,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "types",
+  "dir": "03-types",
+  "title": "Numbers and Types",
+  "part": "basics",
+  "order": 9,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "if-else",
+  "dir": "04-if-else",
+  "title": "If / Else",
+  "part": "basics",
+  "order": 10,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "loops",
+  "dir": "05-loops",
+  "title": "Loops",
+  "part": "basics",
+  "order": 11,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "match",
+  "dir": "06-match",
+  "title": "Match",
+  "part": "basics",
+  "order": 12,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "functions",
+  "dir": "07-functions",
+  "title": "Functions",
+  "part": "basics",
+  "order": 13,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "tuples",
+  "dir": "08-tuples",
+  "title": "Multiple Return Values",
+  "part": "basics",
+  "order": 14,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "stack-heap",
+  "dir": "09-stack-heap",
+  "title": "Values, the Stack and the Heap",
+  "part": "ownership",
+  "order": 15,
+  "verdict": null,
+  "mdx": true
+ },
+ {
+  "id": "copy-or-reference",
+  "dir": "09a-copy-or-reference",
+  "title": "Copy or reference? Telling them apart",
+  "part": "ownership",
+  "order": 16,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "ownership",
+  "dir": "10-ownership",
+  "title": "Ownership and Moves",
+  "part": "ownership",
+  "order": 17,
+  "verdict": "fine-elsewhere",
+  "mdx": true
+ },
+ {
+  "id": "borrowing",
+  "dir": "11-borrowing",
+  "title": "Borrowing",
+  "part": "ownership",
+  "order": 18,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "mutable-borrows",
+  "dir": "12-mutable-borrows",
+  "title": "Mutable Borrows",
+  "part": "ownership",
+  "order": 19,
+  "verdict": "fine-elsewhere",
+  "mdx": true
+ },
+ {
+  "id": "structs",
+  "dir": "13-structs",
+  "title": "Structs",
+  "part": "data",
+  "order": 20,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "methods",
+  "dir": "14-methods",
+  "title": "Methods",
+  "part": "data",
+  "order": 21,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "enums",
+  "dir": "15-enums",
+  "title": "Enums",
+  "part": "data",
+  "order": 22,
+  "verdict": "broken-elsewhere",
+  "mdx": true
+ },
+ {
+  "id": "option",
+  "dir": "16-option",
+  "title": "Option (instead of null)",
+  "part": "data",
+  "order": 23,
+  "verdict": "broken-elsewhere",
+  "mdx": true
+ },
+ {
+  "id": "errors",
+  "dir": "17-errors",
+  "title": "Errors and Result",
+  "part": "data",
+  "order": 24,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "strings",
+  "dir": "18-strings",
+  "title": "Strings",
+  "part": "data",
+  "order": 25,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "vectors",
+  "dir": "19-vectors",
+  "title": "Vectors and Slices",
+  "part": "data",
+  "order": 26,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "maps",
+  "dir": "20-maps",
+  "title": "Maps",
+  "part": "data",
+  "order": 27,
+  "verdict": "fine-elsewhere",
+  "mdx": true
+ },
+ {
+  "id": "patterns",
+  "dir": "20a-patterns",
+  "title": "Patterns",
+  "part": "data",
+  "order": 28,
+  "verdict": "broken-elsewhere",
+  "mdx": true
+ },
+ {
+  "id": "for-collections",
+  "dir": "21-for-collections",
+  "title": "Looping Over a Collection",
+  "part": "collections",
+  "order": 29,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "closures",
+  "dir": "22-closures",
+  "title": "Closures",
+  "part": "collections",
+  "order": 30,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "iterators",
+  "dir": "23-iterators",
+  "title": "Iterators",
+  "part": "collections",
+  "order": 31,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "traits",
+  "dir": "24-traits",
+  "title": "Traits (Interfaces)",
+  "part": "abstractions",
+  "order": 32,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "generics",
+  "dir": "25-generics",
+  "title": "Generics",
+  "part": "abstractions",
+  "order": 33,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "common-traits",
+  "dir": "26-common-traits",
+  "title": "Common Traits",
+  "part": "abstractions",
+  "order": 34,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "trait-objects",
+  "dir": "27-trait-objects",
+  "title": "Trait Objects (dyn)",
+  "part": "abstractions",
+  "order": 35,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "returning-references",
+  "dir": "28-returning-references",
+  "title": "Returning References",
+  "part": "abstractions",
+  "order": 36,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "lifetimes",
+  "dir": "29-lifetimes",
+  "title": "Lifetimes",
+  "part": "abstractions",
+  "order": 37,
+  "verdict": "fine-elsewhere",
+  "mdx": true
+ },
+ {
+  "id": "modules",
+  "dir": "29a-modules",
+  "title": "Modules and Visibility",
+  "part": "abstractions",
+  "order": 38,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "smart-pointers",
+  "dir": "30-smart-pointers",
+  "title": "Box, Rc and RefCell",
+  "part": "smart-pointers",
+  "order": 39,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "borrow-checker",
+  "dir": "31-borrow-checker",
+  "title": "Working with the Borrow Checker",
+  "part": "smart-pointers",
+  "order": 40,
+  "verdict": "fine-elsewhere",
+  "mdx": true
+ },
+ {
+  "id": "threads",
+  "dir": "32-threads",
+  "title": "Threads",
+  "part": "concurrency",
+  "order": 41,
+  "verdict": "fine-elsewhere",
+  "mdx": true
+ },
+ {
+  "id": "shared-state",
+  "dir": "33-shared-state",
+  "title": "Shared State: Arc and Mutex",
+  "part": "concurrency",
+  "order": 42,
+  "verdict": "broken-elsewhere",
+  "mdx": true
+ },
+ {
+  "id": "channels",
+  "dir": "34-channels",
+  "title": "Channels",
+  "part": "concurrency",
+  "order": 43,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "send-sync",
+  "dir": "35-send-sync",
+  "title": "Send and Sync",
+  "part": "concurrency",
+  "order": 44,
+  "verdict": "fine-elsewhere",
+  "mdx": true
+ },
+ {
+  "id": "async-basics",
+  "dir": "36-async-basics",
+  "title": "Async Basics",
+  "part": "concurrency",
+  "order": 45,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "files-io",
+  "dir": "37-files-io",
+  "title": "Files and I/O",
+  "part": "std",
+  "order": 46,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "collections",
+  "dir": "38-collections",
+  "title": "Collections: Maps, Sets, Queues and Heaps",
+  "part": "std",
+  "order": 47,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "text",
+  "dir": "39-text",
+  "title": "Working with Text",
+  "part": "std",
+  "order": 48,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "env-time-process",
+  "dir": "40-env-time-process",
+  "title": "Arguments, Environment, Time and Processes",
+  "part": "std",
+  "order": 49,
+  "verdict": "broken-elsewhere",
+  "mdx": true
+ },
+ {
+  "id": "formatting",
+  "dir": "41-formatting",
+  "title": "Printing and Formatting",
+  "part": "std",
+  "order": 50,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "reading-macros",
+  "dir": "42-reading-macros",
+  "title": "Macros you'll read",
+  "part": "further",
+  "order": 51,
+  "verdict": "rust-rule",
+  "mdx": true
+ },
+ {
+  "id": "unsafe",
+  "dir": "43-unsafe",
+  "title": "unsafe, honestly",
+  "part": "further",
+  "order": 52,
+  "verdict": "fine-elsewhere",
+  "mdx": true
+ },
+ {
+  "id": "idioms",
+  "dir": "44-idioms",
+  "title": "Idioms and design patterns",
+  "part": "further",
+  "order": 53,
+  "verdict": "rust-rule",
+  "mdx": true
+ }
+]

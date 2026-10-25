@@ -1,0 +1,10 @@
+---
+// A guide page's gotcha: the lesson Gotcha, fed from the guide's real sessions.
+import Gotcha from '../lesson/Gotcha.astro'
+import { guide } from './data'
+
+interface Props { guide: string }
+import { MISSING } from './data'
+const g = guide(Astro.props.guide).gotcha
+---
+{g ? <Gotcha g={g} /> : <p class="lr-fine">Gotcha: {MISSING}</p>}

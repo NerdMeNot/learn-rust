@@ -1,0 +1,114 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Maps"
+part: "data"
+intro: >-
+  `HashMap<K, V>` stores values by key. Looking up a key gives back an Option, because
+  the key might be missing.
+coming_from:
+  go: >-
+    `HashMap<K, V>` is your `map[K]V`, and its iteration order is also arbitrary, but you
+    import it with `use std::collections::HashMap`. `get` returns an `Option` instead of
+    a zero value, and `*counts.entry(k).or_insert(0) += 1` does what `counts[k]++`
+    does.
+  kotlin: >-
+    `HashMap<K, V>` is like `hashMapOf`, and `get` returns an `Option` where Kotlin
+    gives `Int?`. Kotlin's `mutableMapOf` remembers insertion order, but a Rust
+    `HashMap` does not, and its order can differ from one run to the next.
+  python: >-
+    `HashMap<K, V>` is your `dict`, and `get` returns an `Option` like `dict.get`
+    returns `None`. `map["zed"]` on a missing key panics like a KeyError, and the
+    iteration order is arbitrary, not insertion order.
+  typescript: >-
+    `HashMap<K, V>` is your `Map<K, V>`, with `insert` for `set`. `get` returns an
+    `Option` instead of `undefined`, and the order you get when you loop over it is
+    arbitrary, not insertion order.
+  java: >-
+    `HashMap<K, V>` is Java's `HashMap`, but `get` returns `Option<&V>` instead of a
+    value that may be null, so a missing key can't slip through as a `null`.
+    `entry(k).or_insert(0)` does the job of `merge` and `computeIfAbsent`.
+  csharp: >-
+    `HashMap<K, V>` is `Dictionary<K, V>`, and `get` returns an `Option` like
+    `TryGetValue` does, just as one value. `map[&k]` reads like the indexer and panics
+    on a missing key, but it only reads: you can't assign through it.
+  c: >-
+    The C standard library has no map; `HashMap<K, V>` is a full hash table in Rust's
+    standard library. `get` returns an `Option`, so the "pointer or NULL" check you
+    would write by hand is required by the compiler.
+  cpp: >-
+    `HashMap<K, V>` is `std::unordered_map`, and `get` is `find` with an `Option`
+    instead of comparing with `end()`. Unlike `operator[]`, Rust's `map[&k]` only reads
+    and panics on a missing key; `entry(k).or_insert(0)` is how you insert on purpose.
+notes:
+  - >-
+    `get` hands back `&u32`, a reference to the number inside the map. `.copied()` turns
+    it into a plain `u32`, which is cheap for a small number.
+  - >-
+    `counts["a"]` reads a value, but panics if the key is missing. Prefer `get` when you
+    are not sure.
+  - >-
+    `insert` moves the key and the value into the map. A `String` you inserted is the
+    map's now, and you can't use it afterwards.
+  - "Use `BTreeMap` when you want the keys kept in sorted order."
+gotcha:
+  title: "Treating a lookup as if the key is always there"
+  verdict: "fine-elsewhere"
+  looks_fine: >-
+    In several languages, `ages["ana"]` just hands you the value. You inserted "ana" one
+    line earlier, so it is obviously there.
+  rust_sees: >-
+    `get` returns an `Option<&u32>`, because the map might not hold the key. The
+    compiler does not track which keys you inserted, so it asks you to say what happens
+    when the key is missing. (Rust's `ages["ana"]` would compile too, and panic on a
+    missing key; `get` is the one that makes you decide.)
+  why: >-
+    Some languages answer a missing key with something that can look like a value: a 0,
+    a null, a crash, or undefined behaviour. A typo in a key then turns into a wrong
+    number or a crash far from the typo. Rust makes you say what a missing key means:
+    handle `None`, use `.unwrap_or(0)` for a default on purpose, or write `ages["ana"]`
+    or `unwrap` and accept a panic.
+  langs:
+    go:
+      status: "runs"
+      says: >-
+        Go runs this and prints 30. A missing key would quietly give 0, unless you write
+        the comma-ok form, `age, ok := ages["ana"]`, and check `ok`.
+    kotlin:
+      status: "refuses"
+      says: >-
+        Kotlin refuses this too: `ages["ana"]` is an `Int?`, so `val age: Int =
+        ages["ana"]` doesn't compile until you add a null check, `?:` or `!!`.
+    python:
+      status: "runs"
+      says: >-
+        Python prints 30 because the key is there. With a missing key, `ages["zed"]`
+        raises KeyError, and `ages.get("zed")` gives None, an optional value that nothing
+        forces you to check at run time.
+    typescript:
+      status: "refuses"
+      says: >-
+        TypeScript refuses this too, under `strict` (which the runner uses): `Map.get`
+        returns `number | undefined`, which does not fit in a `number` until you handle
+        the missing case.
+    java:
+      status: "runs"
+      says: >-
+        This prints 30 because `get` returns an Integer that Java unboxes for you. With
+        a missing key, `get` returns null and that same line throws a
+        NullPointerException.
+    csharp:
+      status: "runs"
+      says: >-
+        The indexer returns the value directly and prints 30. If the key were missing it
+        would throw a KeyNotFoundException, so use TryGetValue when you are not sure.
+    c:
+      status: "runs"
+      says: >-
+        C lets you use `*get(...)` without checking for NULL. It works because "ana" is
+        there; with a missing key it would dereference NULL, which is undefined
+        behaviour.
+    cpp:
+      status: "runs"
+      says: >-
+        `ages["ana"]` gives the value directly and prints 30. For a missing key it would
+        quietly insert a 0 into the map. Rust's `ages["ana"]` is closer to `at`: it only
+        reads, and panics on a missing key.

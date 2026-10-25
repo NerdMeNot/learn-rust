@@ -1,0 +1,38 @@
+/* Print: the page, not the site. Starlight already drops the sidebar and the table of
+   contents; this tidies the rest so a lesson or a cheat sheet prints on paper. */
+@media print {
+  :root, :root[data-theme='dark'] {
+    --sl-color-bg: #fff; --sl-color-text: #111; --sl-color-white: #000;
+    --lr-surface: #fff; --lr-soft: #f3f3f3; --lr-line: #bbb; --lr-ink: #111; --lr-muted: #444; --lr-code-bg: #f6f6f6;
+  }
+  body { background: #fff !important; color: #111 !important; font-size: 10pt; }
+  /* Chrome that does nothing on paper. */
+  header, .header, .lr-copy, .lr-from-btn, .lr-from-menu, .theme-toggle, .lr-run, .lr-ftabs, .pagination-links, footer,
+  .sl-markdown-content .sl-anchor-link, starlight-menu-button, .mobile-preferences { display: none !important; }
+  .main-pane, .main-frame, .content-panel, .sl-container { margin: 0 !important; padding: 0 !important; max-width: none !important; width: auto !important; }
+  .content-panel { border: 0 !important; }
+  /* Only the reader's own language tab: the others are not on paper. */
+  :root[data-from="go"] .lr-tab:not([data-tab="go"]) { display: none !important; }
+  :root[data-from="kotlin"] .lr-tab:not([data-tab="kotlin"]) { display: none !important; }
+  :root[data-from="python"] .lr-tab:not([data-tab="python"]) { display: none !important; }
+  :root[data-from="typescript"] .lr-tab:not([data-tab="typescript"]) { display: none !important; }
+  :root[data-from="java"] .lr-tab:not([data-tab="java"]) { display: none !important; }
+  :root[data-from="csharp"] .lr-tab:not([data-tab="csharp"]) { display: none !important; }
+  :root[data-from="c"] .lr-tab:not([data-tab="c"]) { display: none !important; }
+  :root[data-from="cpp"] .lr-tab:not([data-tab="cpp"]) { display: none !important; }
+  /* Never split a small unit across pages. */
+  .cheat-block, table, pre, figure, .lr-panel, .lr-trap, .expressive-code, blockquote, tr { break-inside: avoid; }
+  h1, h2, h3, h4 { break-after: avoid; }
+  table { font-size: 9pt; }
+  pre, code { font-size: 8.5pt; white-space: pre-wrap; word-break: break-word; }
+  /* Code: the dark theme's pale tokens vanish on paper, so print code in plain ink on a light panel. */
+  .expressive-code .frame, .expressive-code pre { background: #f6f6f6 !important; border-color: #bbb !important; }
+  .expressive-code pre code, .expressive-code pre code span, .lr-code span { color: #111 !important; font-weight: inherit; }
+  :not(pre) > code { background: #eee; color: #111; }
+  /* Answers stay folded unless the reader opened them. */
+  details:not([open]) > *:not(summary) { display: none; }
+  /* Show where a link goes when the text alone does not say. */
+  .sl-markdown-content :is(p, li, td) > a[href^='http']::after { content: ' (' attr(href) ')'; font-size: 8pt; color: #555; word-break: break-all; }
+  a { color: #111 !important; text-decoration: underline; }
+  @page { margin: 14mm; }
+}

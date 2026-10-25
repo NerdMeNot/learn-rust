@@ -1,0 +1,107 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Multiple Return Values"
+part: "basics"
+intro: >-
+  To return several values, a Rust function returns one tuple, and the caller unpacks
+  it.
+coming_from:
+  go: >-
+    Go returns several values, but Rust returns one tuple, `(i32, i32)`, and unpacks it
+    with `let (lo, hi) = ...`. Because it's one value, you can also keep it whole in a
+    variable and read `pair.0` and `pair.1`, which Go refuses. A Go `(value, err)` pair
+    is written as a `Result` in Rust, not as a tuple.
+  kotlin: >-
+    A tuple is like `Pair` or `Triple`, with as many slots as you write, and it is
+    destructured the same way. The fields are `.0` and `.1` rather than `first` and
+    `second`.
+  python: >-
+    Tuples work much like Python's: `(lo, hi)` to build, `let (lo, hi) = ...` to unpack,
+    `_` to skip. The type of each slot is fixed, and you read a slot with `t.0`, not
+    `t[0]`. A Rust tuple in a `mut` variable can change in place; a Python tuple cannot.
+  typescript: >-
+    `(i32, i32)` is your `[number, number]` tuple type. A Rust tuple isn't an array,
+    though: you read `t.0` and `t.1`, you can't loop over it, and you skip a slot with
+    `_` instead of leaving it empty.
+  java: >-
+    Java has no built-in tuple type, so you'd write a small `record`; Rust's `(i32, i32)` is that
+    record without a name or a declaration. You unpack it with `let (lo, hi) = ...`, and
+    `_` skips a value you don't need.
+  csharp: >-
+    `(i32, i32)` is your value tuple `(int, int)`, and `let (lo, hi) = ...` is
+    deconstruction with `_` as the discard. The difference is that Rust tuple fields
+    have no names: you use `.0` and `.1`, or reach for a struct.
+  c: >-
+    C has no tuples, so you return a small struct or write through pointers; Rust's
+    `(i32, i32)` is like an anonymous struct you never have to declare, but its layout is
+    not promised, so it is not a C struct. `let (lo, hi) = ...` unpacks it, and `_`
+    ignores a field.
+  cpp: >-
+    `(i32, i32)` is `std::pair<int, int>` (or `std::tuple`), and `let (lo, hi) = ...` is
+    a structured binding. `_` skips a slot without naming it, and `(a, b) = f();`
+    assigns into existing variables, as `std::tie` does.
+notes:
+  - >-
+    `&[i32]` is a slice: a borrowed view of some numbers. It accepts a Vec, an array, or
+    part of one. More in the Vectors and Borrowing lessons.
+  - >-
+    Tuples can hold mixed types: `let t: (i32, &str) = (1, "a");` then `t.0`, `t.1`.
+  - >-
+    Swapping needs no temporary variable: `(a, b) = (b, a);`.
+  - >-
+    Don't reach for a tuple to return a value plus an error, as in `(value, err)`. Rust
+    uses `Result` for that (see Errors).
+gotcha:
+  title: "Indexing a tuple like a list"
+  verdict: "rust-rule"
+  looks_fine: >-
+    Where a tuple or a fixed-size group is indexed with brackets, `t[0]` is the natural
+    way to read its first slot, and the habit comes along.
+  rust_sees: >-
+    A tuple's slots are fields, numbered from zero, and you reach them with a dot and a
+    literal number: `t.0`. Square brackets are not defined for a tuple.
+  why: >-
+    Each slot can have its own type. A bracket index whose number is only known when the
+    program runs would have to produce a different type for each number, and the compiler
+    has to know the type of every expression before the program runs. `t.0` names the slot
+    in the source, so its type is known. The compiler's `help:` shows the dot form.
+  langs:
+    go:
+      status: "none"
+      says: >-
+        Go has no tuple type. A function returns several values, and you name each one
+        at the call, so there is nothing to index.
+    kotlin:
+      status: "refuses"
+      says: >-
+        Kotlin refuses too: a `Pair` has no `get` operator, so `t[0]` is an error. You
+        write `t.first`, or destructure with `val (a, b) = t`.
+    python:
+      status: "runs"
+      says: >-
+        Python indexes a tuple with brackets, and the index can be a variable. It runs and
+        prints 3.
+    typescript:
+      status: "runs"
+      says: >-
+        A TypeScript tuple is an array with a fixed length and a type per slot, so `t[0]`
+        is fine and prints 3.
+    java:
+      status: "none"
+      says: >-
+        Java has no built-in tuple type. A `record` has accessor methods such as `r.lo()`,
+        and nothing to index.
+    csharp:
+      status: "refuses"
+      says: >-
+        C# refuses too (CS0021): a value tuple cannot be indexed. You write `t.Item1`,
+        or a name you gave the slot.
+    c:
+      status: "none"
+      says: >-
+        C has no tuple type. A `struct` has members you reach with a dot, and an array is
+        indexed with brackets.
+    cpp:
+      status: "refuses"
+      says: >-
+        C++ refuses too: `std::tuple` has no `operator[]`. You write `std::get<0>(t)`,
+        and the index has to be known at compile time (Rust is stricter: a literal).

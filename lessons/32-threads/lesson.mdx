@@ -1,0 +1,372 @@
+<p class="lr-layer">The toolkit</p>
+
+Outputs come from Linux on 64-bit ARM with Rust 1.99.1, debug mode. The operating system schedules threads, so every program here joins its threads before it prints, and prints the same lines each run unless the text says otherwise.
+
+## Start a thread, wait for it
+
+`thread::spawn` takes a closure, runs it on a new thread and returns a `JoinHandle<T>`, where `T` is what the closure returns. `join()` waits for the thread and gives that value back inside a `Result`:
+
+<Snippet file="join-result.rs" />
+
+Dropping a `JoinHandle` does not stop the thread: the [docs](https://doc.rust-lang.org/std/thread/struct.JoinHandle.html) say it *detaches* it, and nothing can wait for it afterwards. [Reading signatures](/learn/reading-signatures/#threadspawn-three-bounds-at-once) explains `spawn`'s bounds.
+
+## Many threads, results in order
+
+Start every thread first, keep the handles in a `Vec`, then join them in order. The results come out in input order whichever thread finished first:
+
+<Snippet file="many.rs" />
+
+Joining each handle right after spawning it would run the threads one after another.
+
+## `move`: the thread owns what it uses
+
+A thread may outlive the function that started it, so its closure cannot borrow that function's variables ([Closures](/learn/closures/#move-take-ownership) explains `move`). That is E0373, even for a loop counter:
+
+<Snippet file="loop-var.fail.rs" />
+
+`move` makes the closure own what it uses. A number is copied in. A `Vec` is moved, and then `main` cannot use it, which is E0382:
+
+<Snippet file="use-after-move.fail.rs" />
+
+To keep using a value, give the thread a clone, share it properly ([Shared state](/learn/shared-state/)), or lend it with `thread::scope` below:
+
+<Snippet file="share-by-clone.rs" />
+
+## Hand data in, get it back
+
+A `move` closure takes ownership, and its return value hands it back. A `Vec` can go to a thread, be changed there, and return, with no copy of the elements:
+
+<Snippet file="round-trip.rs" />
+
+One thread owns the `Vec` at a time, so no lock is needed. That is the idea behind [Channels](/learn/channels/) too.
+
+## A thread that panics
+
+By default a panic ends the thread, not the program (a build with `panic = "abort"` ends the process, as Go does: [Cargo profiles](https://doc.rust-lang.org/cargo/reference/profiles.html#panic)). `join()` returns `Err` holding the panic's payload, boxed as `Any`, so a handler asks for the type it expects. It is a `&str` for fixed text (the compiler folds even `panic!("boom {}", 1)`) and a `String` for a message built from a run-time value, so a handler tries both:
+
+<Snippet file="panic-join.rs" />
+
+The messages go to the error stream when the panics happen. `.unwrap()` on the `Err` starts a new panic in the joining thread, with a message about the `Err`; `let _ = handle.join();` discards the value and the news that the thread panicked:
+
+<Snippet file="join-unwrap.panic.rs" />
+
+If the work itself can fail ([Errors](/learn/errors/)), `join()` adds a layer: the outer `Result` says whether the thread panicked, the inner one is the job's own. `?` flattens them, once the outer error has a message:
+
+<Snippet file="nested-result.rs" />
+
+## Borrowing without `move`: `thread::scope`
+
+`thread::scope` runs a closure with a handle `s` that spawns threads which may borrow local variables. The scope joins them all before it returns, so no borrow outlives the variable. No `move`, no `Arc`:
+
+<Snippet file="scope.rs" />
+
+`spawn` insists that a closure owns what it uses, or borrows only data that lives for the whole program (`'static`, [Lifetimes](/learn/lifetimes/#static)). A scope lifts that, because it joins. The closure must still be `Send`, which marks the types that may move to another thread ([Send and Sync](/learn/send-sync/)).
+
+The borrowing rules still hold inside a scope. Two threads that both add to one counter are the classic data race, which C, Go and Java compile. Rust refuses it:
+
+<Snippet file="scope-mut.fail.rs" />
+
+Safe Rust has no data races ([Nomicon](https://doc.rust-lang.org/nomicon/races.html)); races in a program's logic are still yours ([Shared state](/learn/shared-state/#what-rust-refuses)). A scoped thread that panics and was not joined by hand makes the scope panic, while the other scoped threads still run to their end; join it inside the scope to see the `Err` ([`scope` docs](https://doc.rust-lang.org/std/thread/fn.scope.html); `check-scope-panic.rs` runs both).
+
+## Stopping a thread
+
+A `JoinHandle` has `join`, `thread` and `is_finished`, and nothing that stops the thread; `std` has no kill and no interrupt. A thread stops when its closure returns, so you ask it to: share a flag it checks between pieces of work (an `AtomicBool` is a `bool` threads may share, [Shared state](/learn/shared-state/)):
+
+<Snippet file="stop-flag.rs" />
+
+Or close the channel it reads from ([Channels](/learn/channels/)): the loop `for job in rx` ends when every sender is dropped.
+
+<Snippet file="stop-channel.rs" />
+
+## Names and stack sizes: `Builder`
+
+`thread::Builder` sets options before the thread starts. Its `spawn` returns an `io::Result`, because the operating system can refuse a thread:
+
+<Snippet file="builder.rs" />
+
+The name shows in panic messages, which makes a failing worker easy to find:
+
+<Snippet file="named-panic.panic.rs" />
+
+`stack_size` is in bytes; the [thread docs](https://doc.rust-lang.org/std/thread/index.html) give a platform-dependent default, currently 2 MiB on Tier 1 platforms. The module also has `thread_local!` (a variable each thread has its own copy of), `park` and `unpark` (sleep until woken), `yield_now` and unique `thread::current().id()`s; `check-others.rs` runs each.
+
+## How many threads?
+
+`available_parallelism()` estimates how many threads can run at once. The [docs](https://doc.rust-lang.org/std/thread/fn.available_parallelism.html) say VMs and containers may restrict it, it can change while the program runs, and on Linux it can overcount when the system will not say what limits apply (a sandbox, for example). So the program asserts only a bound:
+
+<Snippet file="parallelism.rs" />
+
+## What happens when `main` returns
+
+The [thread docs](https://doc.rust-lang.org/std/thread/index.html) say that when the main thread ends, the program shuts down even if other threads run, and destructors on their stacks may not run. This child holds a value whose `Drop` prints, parks forever, and has no handle. The program ends anyway, and this run printed nothing from the child:
+
+<Snippet file="main-returns.rs" />
+
+The channel only tells `main` the child is running. If the work matters, `join` it.
+
+<p class="lr-layer">Going deeper</p>
+
+## Can I start 100,000 threads?
+
+The Book says the standard library uses a 1:1 model: one operating-system thread per Rust thread ([chapter 16.1](https://doc.rust-lang.org/book/ch16-01-threads.html)). This program starts 10,000, each adding 1 to the total. A `Barrier` stops every thread that calls `wait()` until the agreed number have arrived, here the 10,000 workers and `main`, so when it opens all of them were alive at the same moment:
+
+<Snippet file="many-threads.rs" />
+
+That is a count, not a cost: nothing here measures time or memory, and it says nothing about 100,000. Each thread has a stack of its own, and the operating system can refuse another thread. `std` has no thread pool; crates provide them. Programs that wait on huge numbers of connections usually use async tasks ([Async Basics](/learn/async-basics/)).
+
+## Thread, scope, channel, lock or async?
+
+Five tools, with no claim about speed:
+
+| The job | Reach for |
+|---|---|
+| run something, then use its result | `spawn` and `join()` |
+| several threads read or change local data, all finished before the function returns | `thread::scope` |
+| a thread produces values that others consume | a channel ([Channels](/learn/channels/)) |
+| several threads read or change one value that outlives the function | `Arc<Mutex<T>>` or an atomic ([Shared state](/learn/shared-state/)) |
+| many tasks that mostly wait for I/O | async tasks ([Async Basics](/learn/async-basics/)) |
+
+## Translating from what you know
+
+<ForLang only="go">
+Go's runtime schedules goroutines onto a few operating-system threads. This program starts 1000 goroutines that wait on a channel and compares the process's thread count with 1000:
+
+<Snippet file="os-threads.go" />
+
+| In Go | In Rust |
+|---|---|
+| `go func() { ... }()` | `thread::spawn(move \|\| { ... })`: an operating-system thread |
+| `wg.Wait()` | keep the `JoinHandle`s, `join()` each; `thread::scope` is nearer to `wg.Go(f)` plus `wg.Wait()`, since it joins everything started inside it |
+| a result in a shared variable, or sent on a channel | the closure's return value through `join()`, or a [channel](/learn/channels/) |
+| `ctx.Done()`, `cancel()` | no kill: a flag or a closed channel |
+
+Since Go 1.22 each iteration of a `for` loop has its own `i` ([blog](https://go.dev/blog/loopvar-preview)); before, goroutines started in a loop shared one. A Rust closure borrows `i` and then outlives it: the E0373 above. `wg.Go(f)` (Go 1.25) starts `f` in a goroutine and counts it in the group:
+
+<Snippet file="loopvar.go" />
+
+A `context` is how Go asks a goroutine to stop:
+
+<Snippet file="cancel.go" />
+
+Two goroutines doing `count++` are a data race in Go; Rust refuses it (E0499 above). A panic in a goroutine ends the whole program, even if `main` is waiting, unless that goroutine recovers it. A Rust thread's panic is an `Err` from `join()` by default (a `panic = "abort"` build ends the process, as in Go). When `main` returns, Go ends the program, and here the goroutine's deferred call did not print. The first trace differs a little between runs (marked as varying), the second does not:
+
+<Snippet file="thread-panics.crash.go" />
+
+<Snippet file="main-returns.go" />
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+Your threads are operating-system threads when you create a `Thread` yourself, and your language also offers pools and tasks. `thread::spawn` is the first kind, and `std` has no pool. What `Future.get()` or `await` does for a pooled task, `join()` does for a Rust thread: it hands back the result, or the failure.
+</ForLang>
+
+<ForLang only="java">
+A `Thread` that throws prints a stack trace, and `join()` returns normally. A `Future` hands the exception back at `get()`, the shape of Rust's `join()`:
+
+<Snippet file="thread-panics.java" />
+
+A non-daemon thread keeps the JVM alive after `main` returns; a daemon thread does not. In Rust every thread is like a daemon one:
+
+<Snippet file="main-returns.java" />
+
+Virtual threads (final since Java 21, [JEP 444](https://openjdk.org/jeps/444)) run ordinary blocking code, scheduled by the JVM. Rust's `std` has no counterpart; async tasks are the nearest idea, but there each waiting point is marked with `.await` ([Async Basics](/learn/async-basics/)). This program starts 1000 virtual threads and compares the process's thread count with 1000:
+
+<Snippet file="virtual.java" />
+
+`interrupt()` wakes a thread blocked in `sleep` with an `InterruptedException`; `std` has no such call:
+
+<Snippet file="cancel.java" />
+
+| In Java | In Rust |
+|---|---|
+| `new Thread(r).start()`, `t.join()` | `thread::spawn(f)`, `handle.join()` |
+| `executor.submit(callable)`, `future.get()` | `spawn`, `join()` |
+| `ExecutionException` from `get()` | `Err` from `join()` |
+| `setDaemon(true)` | the default |
+| `Thread.ofVirtual().start(r)` | no counterpart; async tasks in a crate's runtime |
+| `StructuredTaskScope`, a preview feature in Java 25 ([docs](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/StructuredTaskScope.html)); not run here, since the page compiles without `--enable-preview` | `thread::scope`: both join before the block ends. By default Java's interrupts the others when one fails (docs); Rust's lets them finish |
+| `t.interrupt()` | a flag or a closed channel |
+| a lambda over an effectively final local | `move` closure, or `thread::scope` |
+</ForLang>
+
+<ForLang only="kotlin">
+`kotlin.concurrent.thread` starts a `java.lang.Thread`, so a thread that throws prints a stack trace, `join()` returns normally, and `interrupt()` works as in Java.
+
+<Snippet file="thread-panics.kt" />
+
+Kotlin's coroutines come from `kotlinx.coroutines`, which this site's image does not have, so the two coroutine rows are not run.
+
+| In Kotlin | In Rust |
+|---|---|
+| `thread { ... }`, `t.join()` | `thread::spawn(move \|\| ...)`, `handle.join()` |
+| an uncaught exception, `join()` returns | `Err` from `join()` |
+| `async { }.await()` on `Dispatchers.Default` (not run) | `spawn` and `join()` for CPU work; async tasks for waiting |
+| `Job.cancel()` (not run) | no kill: a flag or a closed channel |
+| a lambda that captures a `val` | `move` closure, or `thread::scope` |
+</ForLang>
+
+<ForLang only="csharp">
+`Task.Run` queues work on the thread pool; `new Thread` makes a thread of your own, which is what `spawn` is. An exception in a `Task` waits for `await`, like `join()`:
+
+<Snippet file="pool.cs" />
+
+An unhandled exception in a `Thread` ends the process:
+
+<Snippet file="thread-panics.crash.cs" />
+
+A foreground thread keeps the process alive after `Main` returns and a background thread does not. A Rust thread is the second kind:
+
+<Snippet file="main-returns.cs" />
+
+A `CancellationToken` asks a thread to stop; Rust has no such type, only a flag or a channel:
+
+<Snippet file="cancel.cs" />
+
+| In C# | In Rust |
+|---|---|
+| `new Thread(f); t.Start(); t.Join()` | `thread::spawn(f)`, `handle.join()` |
+| `Task.Run(f)`: CPU work queued on the pool | no pool in `std`; a crate's pool |
+| `await`: the thread is free while it waits | `.await` in an async function ([Async Basics](/learn/async-basics/)); `join()` holds the thread until the other is done |
+| a `Task` that throws, rethrown by `await` | `Err` from `join()` |
+| `IsBackground = true` | the default |
+| a lambda that captures a local | `move` closure, or `thread::scope` |
+</ForLang>
+
+<ForLang only="python">
+Python threads share all the program's data. In Rust a thread shares memory with the rest of the program too, and the compiler checks the sharing.
+
+This build (CPython 3.13.5) has the global interpreter lock enabled (`sys._is_gil_enabled()` prints `True`), which by design lets one thread at a time run Python bytecode. A thread releases it while it waits for I/O, and inside some C code such as hashing a large buffer ([hashlib docs](https://docs.python.org/3/library/hashlib.html)), so Python threads are fine for I/O. Pure-Python computation cannot use two cores, which is why the [threading docs](https://docs.python.org/3/library/threading.html) send CPU-bound code to `multiprocessing` or `concurrent.futures.ProcessPoolExecutor`. A Rust thread does that job in one process, sharing memory. These checks were measured in this image on this VM and print pass or fail, not speeds:
+
+<Snippet file="gil.py" />
+
+`concurrent.futures` hands a worker's exception back at `result()`, like `join()`'s `Err`; a bare thread's exception is only printed:
+
+<Snippet file="executor.py" />
+
+<Snippet file="thread-panics.py" />
+
+A non-daemon thread keeps the interpreter alive after the main program ends; a daemon one does not. Rust threads are like daemon ones:
+
+<Snippet file="main-returns.py" />
+
+A `threading.Event` is the usual flag for asking a Python thread to stop:
+
+<Snippet file="cancel.py" />
+
+| In Python | In Rust |
+|---|---|
+| `threading.Thread(target=f).start()`, `t.join()` | `thread::spawn(f)`, `handle.join()`; Python's `join()` returns `None`, Rust's returns the value |
+| `pool.submit(f)`, `future.result()` | `spawn`, `join()` (no pool in `std`) |
+| `pool.map(f, items)` | `thread::scope` with a `spawn` per item, or a crate such as rayon |
+| `multiprocessing`, `ProcessPoolExecutor` | threads of one process, sharing memory |
+| an exception in a thread, printed, `join()` quiet | `Err` from `join()` |
+| `daemon=True`; `os.cpu_count()` | the default; `available_parallelism()` |
+| a function that reads module globals | `move` closure, or `thread::scope` |
+</ForLang>
+
+<ForLang only="typescript">
+A `Worker` (Node 24 here) shares no JavaScript objects with the main thread: it runs a script in its own JavaScript environment. In Rust a thread shares memory with the rest of the program, and the compiler checks the sharing. `postMessage` and `workerData` make a structured clone: a copy, except for a `SharedArrayBuffer`, which is shared. Passing messages is also the style [Channels](/learn/channels/) teaches; a Rust thread can share memory as well. The [Node docs](https://nodejs.org/api/worker_threads.html) say workers help with CPU-intensive work, not much with I/O.
+
+<Snippet file="worker-copy.ts" />
+
+An error in a worker arrives as an `error` event:
+
+<Snippet file="thread-panics.ts" />
+
+Node keeps running until its workers exit, so a worker outliving the main file finishes. A Rust thread does not:
+
+<Snippet file="main-returns.ts" />
+
+Unlike a Rust thread, a worker can be stopped from outside:
+
+<Snippet file="terminate.ts" />
+
+| In TypeScript | In Rust |
+|---|---|
+| `new Worker(file, { workerData })` | `thread::spawn(move \|\| ...)`, the data moved in |
+| `worker.postMessage(x)`, `on("message")` | the return value of `join()`, or a [channel](/learn/channels/) |
+| `worker.on("error")` | `Err` from `join()` |
+| `worker.terminate()` | no kill: a flag or a closed channel |
+</ForLang>
+
+<ForLang only="c cpp">
+In C and C++ two threads that touch one variable with nothing ordering them are a data race, which is undefined behaviour. Safe Rust has no data races ([Nomicon](https://doc.rust-lang.org/nomicon/races.html)): the refusals above (E0373, E0499) are the checks. Races in a program's logic remain ([Shared state](/learn/shared-state/)).
+</ForLang>
+
+<ForLang only="c">
+`pthread_create` takes a function and a `void *`. When `main` returns, the process ends and takes the running threads with it. The same holds in Rust:
+
+<Snippet file="main-returns.c" />
+
+Calling `pthread_exit` in `main` instead is the exception: the process lives on until the other threads finish.
+
+<Snippet file="pthread-exit.c" />
+
+The `int` from `pthread_join` says only whether the join worked; the value is the `void *` out-parameter:
+
+<Snippet file="join-status.c" />
+
+A Rust closure is a typed capture, so nothing is cast.
+
+| In C | In Rust |
+|---|---|
+| `pthread_create(&t, NULL, f, arg)` | `thread::spawn(move \|\| ...)`, the data moved in |
+| `pthread_join(t, &result)`: the `int` is about the join | `handle.join()`: `Ok(value)`, or `Err` if the thread panicked |
+| `pthread_attr_setstacksize`, `pthread_setname_np` | `Builder::stack_size`, `Builder::name` |
+| `pthread_cancel(t)` | no kill: a flag or a closed channel |
+| a pointer to a local, valid while `main` waits | refused, unless `thread::scope` |
+</ForLang>
+
+<ForLang only="cpp">
+Destroying a `std::thread` that is still joinable calls `std::terminate`:
+
+<Snippet file="forgot-join.crash.cpp" />
+
+Rust's `JoinHandle` detaches instead (`main-returns.rs`). That is allowed because `spawn` insists the closure owns what it uses, where a `[&]` lambda on a detached C++ thread can dangle. C++20's `std::jthread` joins in its destructor; `std` has no such thread, and `thread::scope` joins at the end of a block.
+
+<Snippet file="jthread.cpp" />
+
+A `jthread` also has a stop token: `request_stop()` makes `stop_requested()` true in the worker, which has to look. Rust has no stop token; a flag or a closed channel does that job:
+
+<Snippet file="jthread-stop.cpp" />
+
+A `std::async` future destroyed unused waits for its task, so a call that looks asynchronous can run serially. A dropped Rust `JoinHandle` does not wait:
+
+<Snippet file="async-blocks.cpp" />
+
+An exception that leaves the thread's function calls `std::terminate` too, where Rust's panic comes back as an `Err`:
+
+<Snippet file="thread-panics.crash.cpp" />
+
+| In C++ | In Rust |
+|---|---|
+| `std::thread t(f); t.join();` | `thread::spawn(f)`, `handle.join()`: `Ok(value)`, or `Err` if the thread panicked |
+| `std::jthread`, `request_stop()` | no join-on-drop (`thread::scope` joins at the end of a block); a flag for stopping |
+| `std::async(...)`, `future.get()` | `spawn`, `join()`; a dropped handle never waits |
+| `t.detach()`; `hardware_concurrency()` | drop the `JoinHandle`; `available_parallelism()` |
+| a lambda with `[&]` | refused for `spawn`; `move`, or `thread::scope` |
+</ForLang>
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Replace the `todo!()` calls and run until each prints `all checks passed`. The checks record which thread ran each piece, and where it sits in memory, in a `static` `Mutex` (the next lesson; ignore it for now), so doing the work on the main thread fails, and so does copying the data. They cannot tell parallel from one-after-another without a clock, and they use none.
+
+<Exercise name="divide-all" title="One thread per input">
+Write `run_all`: call `work` on a new thread per input and give back one entry per input, in input order: `Ok(result)`, or `Err(message)` if that thread panicked. Two inputs panic, with two kinds of payload; the others must still be answered.
+</Exercise>
+
+<Exercise name="chunk-sums" title="Borrow the chunks">
+Write `chunk_results`: cut a borrowed slice into chunks, run `f` (a plain `fn`, no captures) on each chunk on its own thread, and give back the results in chunk order. The checks compare chunk addresses with `data`'s, so a copy fails. Empty input gives no chunks.
+</Exercise>
+
+<Exercise name="update-parts" title="A piece each to change">
+Write `update_parts`: the same with `&mut`, changing the data in place. Two threads cannot both hold `&mut data`: a first draft that borrows the whole slice fails with E0499.
+</Exercise>
+
+## Read more
+
+- [The Rust Book, chapter 16.1: Using Threads to Run Code Simultaneously](https://doc.rust-lang.org/book/ch16-01-threads.html).
+- The standard library: the [`std::thread` module](https://doc.rust-lang.org/std/thread/index.html), [`Builder`](https://doc.rust-lang.org/std/thread/struct.Builder.html), [`JoinHandle`](https://doc.rust-lang.org/std/thread/struct.JoinHandle.html), [`scope`](https://doc.rust-lang.org/std/thread/fn.scope.html), [`available_parallelism`](https://doc.rust-lang.org/std/thread/fn.available_parallelism.html).
+- [Rust by Example: Threads](https://doc.rust-lang.org/rust-by-example/std_misc/threads.html).
+- Next: [Shared state](/learn/shared-state/) and [Channels](/learn/channels/).

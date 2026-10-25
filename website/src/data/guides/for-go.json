@@ -1,0 +1,439 @@
+{
+ "id": "for-go",
+ "files": {
+  "fails": {
+   "h01.rs": "struct Person {\n    name: String,\n    age: u32,\n}\n\nfn main() {\n    let people = vec![Person {\n        name: \"ana\".into(),\n        age: 30,\n    }];\n    for p in &people {\n        p.age += 1;\n    }\n    println!(\"{}\", people[0].name);\n}\n",
+   "h02.rs": "struct User {\n    name: String,\n}\n\nfn find(id: u32) -> Option<User> {\n    if id == 1 {\n        Some(User { name: \"ana\".into() })\n    } else {\n        None\n    }\n}\n\nfn main() {\n    let u = find(2);\n    println!(\"{}\", u.name);\n}\n",
+   "h03.rs": "fn main() {\n    let n: i32 = \"abc\".parse();\n    println!(\"{}\", n + 1);\n}\n",
+   "h04.rs": "trait Speaker {\n    fn speak(&self) -> String;\n}\n\nstruct Robot;\n\nimpl Robot {\n    fn speak(&self) -> String {\n        \"beep\".to_string()\n    }\n}\n\nfn introduce(s: &impl Speaker) {\n    println!(\"{}\", s.speak());\n}\n\nfn main() {\n    introduce(&Robot);\n}\n",
+   "h05.rs": "fn main() {\n    let mut a = vec![1, 2, 3, 4];\n    let b = &a[..2];\n    a.push(99);\n    println!(\"{b:?}\");\n}\n",
+   "h06.rs": "struct User {\n    name: String,\n    age: u32,\n    active: bool,\n}\n\nfn main() {\n    let u = User { name: \"ana\".into() };\n    println!(\"{} {} {}\", u.name, u.age, u.active);\n}\n",
+   "h07.rs": "struct Animal {\n    name: String,\n}\n\nimpl Animal {\n    fn describe(&self) -> String {\n        format!(\"{} is an animal\", self.name)\n    }\n}\n\nstruct Dog {\n    animal: Animal,\n}\n\nfn main() {\n    let d = Dog {\n        animal: Animal { name: \"rex\".into() },\n    };\n    println!(\"{} | {}\", d.name, d.describe());\n}\n",
+   "h09.rs": "use std::thread;\n\nfn main() {\n    let mut count = 0;\n    thread::scope(|s| {\n        for _ in 0..2 {\n            s.spawn(|| {\n                for _ in 0..1_000_000 {\n                    count += 1;\n                }\n            });\n        }\n    });\n    println!(\"{count}\");\n}\n",
+   "h10.rs": "fn main() {\n    let s = \"héllo\";\n    let byte = s[1];\n    println!(\"{byte}\");\n}\n"
+  },
+  "lab": {
+   "go/go.mod": "module lab\n\ngo 1.27\n",
+   "go/h01/main.go": "package main\n\nimport \"fmt\"\n\ntype Person struct {\n\tName string\n\tAge  int\n}\n\nfunc main() {\n\tpeople := []Person{{\"ana\", 30}, {\"bo\", 41}}\n\tfor _, p := range people {\n\t\tp.Age++ // p is a copy of the element\n\t}\n\tfmt.Println(people)\n\tfor i := range people {\n\t\tpeople[i].Age++\n\t}\n\tfmt.Println(people)\n}\n",
+   "go/h02/main.go": "package main\n\nimport \"fmt\"\n\ntype User struct{ Name string }\n\nfunc find(id int) *User {\n\tif id == 1 {\n\t\treturn &User{\"ana\"}\n\t}\n\treturn nil\n}\n\nfunc main() {\n\tu := find(2)\n\tfmt.Println(u.Name)\n}\n",
+   "go/h03/main.go": "package main\n\nimport (\n\t\"fmt\"\n\t\"strconv\"\n)\n\nfunc main() {\n\tn, _ := strconv.Atoi(\"abc\")\n\tfmt.Println(n + 1)\n\n\tm, err := strconv.Atoi(\"abc\")\n\tfmt.Println(m, err)\n}\n",
+   "go/h04/main.go": "package main\n\nimport \"fmt\"\n\ntype Speaker interface{ Speak() string }\n\ntype Robot struct{}\n\nfunc (Robot) Speak() string { return \"beep\" }\n\nfunc introduce(s Speaker) { fmt.Println(s.Speak()) }\n\nfunc main() {\n\tintroduce(Robot{}) // Robot has Speak, so it is a Speaker\n}\n",
+   "go/h05/main.go": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\ta := []int{1, 2, 3, 4}\n\tb := a[:2]\n\tb = append(b, 99) // there is room in a's array\n\tfmt.Println(a, b)\n}\n",
+   "go/h06/main.go": "package main\n\nimport \"fmt\"\n\ntype User struct {\n\tName   string\n\tAge    int\n\tActive bool\n}\n\nfunc main() {\n\tu := User{Name: \"ana\"}\n\tfmt.Printf(\"%+v\\n\", u)\n}\n",
+   "go/h07/main.go": "package main\n\nimport \"fmt\"\n\ntype Animal struct{ Name string }\n\nfunc (a Animal) Describe() string { return a.Name + \" is an animal\" }\n\ntype Dog struct {\n\tAnimal\n\tTricks int\n}\n\nfunc main() {\n\td := Dog{Animal{\"rex\"}, 2}\n\tfmt.Println(d.Name, \"|\", d.Describe())\n}\n",
+   "go/h08/main.go": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfor i := 1; i <= 3; i++ {\n\t\tdefer fmt.Println(\"deferred\", i)\n\t\tfmt.Println(\"loop\", i)\n\t}\n\tfmt.Println(\"end of main\")\n}\n",
+   "go/h09/main.go": "package main\n\nimport (\n\t\"fmt\"\n\t\"sync\"\n)\n\nfunc main() {\n\tvar wg sync.WaitGroup\n\tcount := 0\n\tfor range 2 {\n\t\twg.Add(1)\n\t\tgo func() {\n\t\t\tdefer wg.Done()\n\t\t\tfor range 1_000_000 {\n\t\t\t\tcount++\n\t\t\t}\n\t\t}()\n\t}\n\twg.Wait()\n\tfmt.Println(count)\n}\n",
+   "go/h10/main.go": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\ts := \"héllo\"\n\tfmt.Println(len(s), len([]rune(s)), s[1])\n\tfmt.Printf(\"%q\\n\", s[:2])\n}\n",
+   "go/idioms/main.go": "package main\n\nimport (\n\t\"errors\"\n\t\"fmt\"\n\t\"sort\"\n\t\"strconv\"\n\t\"strings\"\n)\n\ntype Celsius float64\n\ntype Counter struct{ n int }\n\nfunc (c *Counter) Inc() { c.n++ }\n\nfunc main() {\n\tx := 5\n\tx = x + 1\n\tfmt.Println(\"reassign:\", x)\n\n\tvar zero int\n\tfmt.Println(\"zero:\", zero)\n\n\tsum := 0\n\tfor i := 0; i < 3; i++ {\n\t\tsum += i\n\t}\n\tfmt.Println(\"range:\", sum)\n\n\twords := []string{\"ana\", \"bo\", \"cy\"}\n\ttotal := 0\n\tfor i, w := range words {\n\t\ttotal += i * len(w)\n\t}\n\tfmt.Println(\"weighted:\", total)\n\n\tday := \"sat\"\n\tkind := \"weekday\"\n\tswitch day {\n\tcase \"sat\", \"sun\":\n\t\tkind = \"weekend\"\n\t}\n\tfmt.Println(\"kind:\", kind)\n\n\tages := map[string]int{\"ana\": 30}\n\tif v, ok := ages[\"ana\"]; ok {\n\t\tfmt.Println(\"lookup: found\", v)\n\t}\n\n\tcounts := map[string]int{}\n\tcounts[\"the\"]++\n\tcounts[\"the\"]++\n\tfmt.Println(\"count:\", counts[\"the\"])\n\n\tv := []int{3, 1}\n\tv = append(v, 2)\n\tfmt.Println(\"len:\", len(v))\n\n\ts := \"héllo\"\n\tfmt.Println(\"bytes:\", len(s))\n\tfmt.Println(\"chars:\", len([]rune(s)))\n\tfmt.Println(\"fields:\", len(strings.Fields(\"a b\")))\n\n\tif n, err := strconv.Atoi(\"42\"); err == nil {\n\t\tfmt.Println(\"parsed: ok\", n)\n\t}\n\n\tfmt.Println(\"formatted:\", fmt.Sprintf(\"%s-%d\", \"ana\", 7))\n\n\tsort.Ints(v)\n\tfmt.Println(\"smallest:\", v[0])\n\n\tfmt.Println(\"upper:\", strings.ToUpper(\"ana\"))\n\n\ta, b := 1, 2\n\ta, b = b, a\n\tfmt.Println(\"swapped:\", a, b)\n\n\tp, q := 3, 5\n\tfmt.Println(\"min:\", min(p, q))\n\n\tc := Celsius(21.5)\n\tfmt.Println(\"newtype:\", float64(c))\n\n\te := errors.New(\"bad input\")\n\tfmt.Println(\"error:\", e)\n\n\tvar ctr Counter\n\tctr.Inc()\n\tfmt.Println(\"method:\", ctr.n)\n}\n",
+   "go/json/main.go": "package main\n\nimport (\n\t\"encoding/json\"\n\t\"fmt\"\n)\n\ntype Item struct {\n\tName string `json:\"name\"`\n\tQty  int    `json:\"qty\"`\n}\n\nfunc main() {\n\tout, err := json.Marshal(Item{\"apple\", 3})\n\tfmt.Println(string(out), err)\n}\n",
+   "rust/Cargo.lock": "# This file is automatically @generated by Cargo.\n# It is not intended for manual editing.\nversion = 4\n\n[[package]]\nname = \"for-go\"\nversion = \"0.1.0\"\n",
+   "rust/Cargo.toml": "[package]\nname = \"for-go\"\nversion = \"0.1.0\"\nedition = \"2024\"\ndefault-run = \"for-go\"\n",
+   "rust/src/bin/h01.rs": "struct Person {\n    name: String,\n    age: u32,\n}\n\nfn main() {\n    let mut people = vec![\n        Person {\n            name: \"ana\".into(),\n            age: 30,\n        },\n        Person {\n            name: \"bo\".into(),\n            age: 41,\n        },\n    ];\n    for p in &mut people {\n        p.age += 1; // p is a &mut Person: it reaches the element itself\n    }\n    for p in &people {\n        println!(\"{} {}\", p.name, p.age);\n    }\n}\n",
+   "rust/src/bin/h02.rs": "struct User {\n    name: String,\n}\n\nfn find(id: u32) -> Option<User> {\n    if id == 1 {\n        Some(User { name: \"ana\".into() })\n    } else {\n        None\n    }\n}\n\nfn main() {\n    match find(2) {\n        Some(u) => println!(\"{}\", u.name),\n        None => println!(\"no such user\"),\n    }\n}\n",
+   "rust/src/bin/h03.rs": "use std::num::ParseIntError;\n\nfn double(s: &str) -> Result<i32, ParseIntError> {\n    let n: i32 = s.parse()?;\n    Ok(n * 2)\n}\n\nfn main() {\n    println!(\"{:?}\", double(\"21\"));\n    println!(\"{:?}\", double(\"abc\"));\n}\n",
+   "rust/src/bin/h04.rs": "trait Speaker {\n    fn speak(&self) -> String;\n}\n\nstruct Robot;\n\nimpl Speaker for Robot {\n    fn speak(&self) -> String {\n        \"beep\".to_string()\n    }\n}\n\nfn introduce(s: &impl Speaker) {\n    println!(\"{}\", s.speak());\n}\n\nfn main() {\n    introduce(&Robot);\n}\n",
+   "rust/src/bin/h05.rs": "fn main() {\n    let a = vec![1, 2, 3, 4];\n    let mut b = a[..2].to_vec(); // an explicit copy of two items\n    b.push(99);\n    println!(\"{a:?} {b:?}\");\n}\n",
+   "rust/src/bin/h06.rs": "#[derive(Default)]\nstruct User {\n    name: String,\n    age: u32,\n    active: bool,\n}\n\nfn main() {\n    let u = User {\n        name: \"ana\".into(),\n        ..Default::default()\n    };\n    println!(\"{} {} {}\", u.name, u.age, u.active);\n}\n",
+   "rust/src/bin/h07.rs": "struct Animal {\n    name: String,\n}\n\nimpl Animal {\n    fn describe(&self) -> String {\n        format!(\"{} is an animal\", self.name)\n    }\n}\n\nstruct Dog {\n    animal: Animal,\n    #[allow(dead_code)]\n    tricks: u32,\n}\n\nimpl Dog {\n    fn describe(&self) -> String {\n        self.animal.describe() // forward by hand\n    }\n}\n\nfn main() {\n    let d = Dog {\n        animal: Animal { name: \"rex\".into() },\n        tricks: 2,\n    };\n    println!(\"{} | {}\", d.animal.name, d.describe());\n}\n",
+   "rust/src/bin/h08.rs": "struct Guard(u32);\n\nimpl Drop for Guard {\n    fn drop(&mut self) {\n        println!(\"dropped {}\", self.0);\n    }\n}\n\nfn main() {\n    for i in 1..=3 {\n        let _g = Guard(i);\n        println!(\"loop {i}\");\n    }\n    println!(\"end of main\");\n}\n",
+   "rust/src/bin/h09.rs": "use std::sync::Mutex;\nuse std::thread;\n\nfn main() {\n    let count = Mutex::new(0);\n    thread::scope(|s| {\n        for _ in 0..2 {\n            s.spawn(|| {\n                for _ in 0..1_000_000 {\n                    *count.lock().unwrap() += 1;\n                }\n            });\n        }\n    });\n    println!(\"{}\", count.into_inner().unwrap());\n}\n",
+   "rust/src/bin/h10.rs": "fn main() {\n    let s = \"héllo\";\n    println!(\"{} {}\", s.len(), s.chars().count());\n    println!(\"{:?}\", s.get(..2));\n    println!(\"{:?}\", s.get(..3));\n}\n",
+   "rust/src/bin/h10slice.rs": "fn main() {\n    let s = \"héllo\";\n    println!(\"{}\", &s[..2]);\n}\n",
+   "rust/src/bin/idioms.rs": "use std::collections::HashMap;\nuse std::error::Error;\n\nstruct Celsius(f64);\n\nstruct Counter {\n    n: u32,\n}\n\nimpl Counter {\n    fn inc(&mut self) {\n        self.n += 1;\n    }\n}\n\nfn main() {\n    let mut x = 5;\n    x += 1;\n    println!(\"reassign: {x}\");\n\n    let zero = i32::default();\n    println!(\"zero: {zero}\");\n\n    let mut sum = 0;\n    for i in 0..3 {\n        sum += i;\n    }\n    println!(\"range: {sum}\");\n\n    let words = [\"ana\", \"bo\", \"cy\"];\n    let mut total = 0;\n    for (i, w) in words.iter().enumerate() {\n        total += i * w.len();\n    }\n    println!(\"weighted: {total}\");\n\n    let day = \"sat\";\n    let kind = match day {\n        \"sat\" | \"sun\" => \"weekend\",\n        _ => \"weekday\",\n    };\n    println!(\"kind: {kind}\");\n\n    let ages = HashMap::from([(\"ana\", 30)]);\n    if let Some(v) = ages.get(\"ana\") {\n        println!(\"lookup: found {v}\");\n    }\n\n    let mut counts: HashMap<&str, u32> = HashMap::new();\n    *counts.entry(\"the\").or_insert(0) += 1;\n    *counts.entry(\"the\").or_insert(0) += 1;\n    println!(\"count: {}\", counts[\"the\"]);\n\n    let mut v = vec![3, 1];\n    v.push(2);\n    println!(\"len: {}\", v.len());\n\n    let s = \"héllo\";\n    println!(\"bytes: {}\", s.len());\n    println!(\"chars: {}\", s.chars().count());\n    println!(\"fields: {}\", \"a b\".split_whitespace().count());\n\n    if let Ok(n) = \"42\".parse::<i32>() {\n        println!(\"parsed: ok {n}\");\n    }\n\n    let (a, b) = (\"ana\", 7);\n    let text = format!(\"{a}-{b}\");\n    println!(\"formatted: {text}\");\n\n    v.sort();\n    println!(\"smallest: {}\", v[0]);\n\n    println!(\"upper: {}\", \"ana\".to_uppercase());\n\n    let (mut a, mut b) = (1, 2);\n    (a, b) = (b, a);\n    println!(\"swapped: {a} {b}\");\n\n    let (p, q) = (3, 5);\n    println!(\"min: {}\", p.min(q));\n\n    let c = Celsius(21.5);\n    println!(\"newtype: {}\", c.0);\n\n    let e: Box<dyn Error> = \"bad input\".into();\n    println!(\"error: {e}\");\n\n    let mut ctr = Counter { n: 0 };\n    ctr.inc();\n    println!(\"method: {}\", ctr.n);\n}\n",
+   "rust/src/main.rs": "fn main() {\n    println!(\"pick a program: cargo run --bin h01 (h01 to h10, idioms)\");\n}\n"
+  },
+  "tool": {
+   "go/calc.go": "// Package calc has one function, to show the tools.\npackage calc\n\n// Add returns a + b.\nfunc Add(a, b int) int { return a + b }\n",
+   "go/calc_test.go": "package calc\n\nimport \"testing\"\n\nfunc TestAdd(t *testing.T) {\n\tif got := Add(2, 3); got != 5 {\n\t\tt.Errorf(\"Add(2, 3) = %d, want 5\", got)\n\t}\n}\n",
+   "go/go.mod": "module calc\n\ngo 1.27\n",
+   "rust/Cargo.lock": "# This file is automatically @generated by Cargo.\n# It is not intended for manual editing.\nversion = 4\n\n[[package]]\nname = \"calc\"\nversion = \"0.1.0\"\n",
+   "rust/Cargo.toml": "[package]\nname = \"calc\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+   "rust/src/lib.rs": "//! A library with one function, to show the tools.\n\n/// Returns `a + b`.\n///\n/// ```\n/// assert_eq!(calc::add(2, 3), 5);\n/// ```\npub fn add(a: i32, b: i32) -> i32 {\n    a + b\n}\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n\n    #[test]\n    fn adds() {\n        assert_eq!(add(2, 3), 5);\n    }\n}\n"
+  },
+  "try": {
+   "move.rs": "use std::thread;\n\nfn main() {\n    let mut count = 0;\n    thread::scope(|s| {\n        for _ in 0..2 {\n            s.spawn(move || {\n                for _ in 0..1_000_000 {\n                    count += 1;\n                }\n            });\n        }\n    });\n    println!(\"{count}\");\n}\n",
+   "underscore.rs": "struct Guard(u32);\n\nimpl Drop for Guard {\n    fn drop(&mut self) {\n        println!(\"dropped {}\", self.0);\n    }\n}\n\nfn main() {\n    for i in 1..=3 {\n        let _ = Guard(i);\n        println!(\"loop {i}\");\n    }\n    println!(\"end of main\");\n}\n",
+   "unwrap.rs": "struct User {\n    name: String,\n}\n\nfn find(id: u32) -> Option<User> {\n    if id == 1 {\n        Some(User { name: \"ana\".into() })\n    } else {\n        None\n    }\n}\n\nfn main() {\n    let u = find(2).unwrap();\n    println!(\"{}\", u.name);\n}\n"
+  }
+ },
+ "sessions": {
+  "h01-go": [
+   {
+    "show": "$ go run ./h01",
+    "out": "[{ana 30} {bo 41}]\n[{ana 31} {bo 42}]\n",
+    "exit": 0
+   }
+  ],
+  "h01-fail": [
+   {
+    "show": "$ cargo run",
+    "out": "error[E0594]: cannot assign to `p.age`, which is behind a `&` reference\n  --> src/main.rs:12:9\n   |\n11 |     for p in &people {\n   |              ------- this iterator yields `&` references\n12 |         p.age += 1;\n   |         ^^^^^^^^^^ `p` is a `&` reference, so it cannot be written to\n   |\nhelp: use a mutable iterator instead\n   |\n11 |     for p in &mut people {\n   |               +++\n\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "h01-rs": [
+   {
+    "show": "$ cargo run --bin h01",
+    "out": "ana 31\nbo 42\n",
+    "exit": 0
+   }
+  ],
+  "h02-go": [
+   {
+    "show": "$ go run ./h02",
+    "out": "panic: runtime error: invalid memory address or nil pointer dereference\n[signal SIGSEGV: segmentation violation code=0x1 addr=0x0 pc=0xa1ff0]\n\ngoroutine 1 [running]:\nmain.main()\n\t/home/you/for-go/go/h02/main.go:16 +0x20\nexit status 2\n",
+    "exit": 1,
+    "error": true,
+    "varies": true
+   }
+  ],
+  "h02-fail": [
+   {
+    "show": "$ cargo run",
+    "out": "error[E0609]: no field `name` on type `Option<User>`\n  --> src/main.rs:15:22\n   |\n15 |     println!(\"{}\", u.name);\n   |                      ^^^^ unknown field\n   |\nhelp: one of the expressions' fields has a field of the same name\n   |\n15 |     println!(\"{}\", u.unwrap().name);\n   |                      +++++++++\n\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "h02-rs": [
+   {
+    "show": "$ cargo run --bin h02",
+    "out": "no such user\n",
+    "exit": 0
+   }
+  ],
+  "h03-go": [
+   {
+    "show": "$ go run ./h03",
+    "out": "1\n0 strconv.Atoi: parsing \"abc\": invalid syntax\n",
+    "exit": 0
+   }
+  ],
+  "h03-fail": [
+   {
+    "show": "$ cargo run",
+    "out": "error[E0308]: mismatched types\n --> src/main.rs:2:18\n  |\n2 |     let n: i32 = \"abc\".parse();\n  |            ---   ^^^^^^^^^^^^^ expected `i32`, found `Result<_, _>`\n  |            |\n  |            expected due to this\n  |\n  = note: expected type `i32`\n             found enum `Result<_, _>`\nhelp: consider using `Result::expect` to unwrap the `Result<_, _>` value, panicking if the value is a `Result::Err`\n  |\n2 |     let n: i32 = \"abc\".parse().expect(\"REASON\");\n  |                               +++++++++++++++++\n\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "h03-rs": [
+   {
+    "show": "$ cargo run --bin h03",
+    "out": "Ok(42)\nErr(ParseIntError { kind: InvalidDigit })\n",
+    "exit": 0
+   }
+  ],
+  "h04-go": [
+   {
+    "show": "$ go run ./h04",
+    "out": "beep\n",
+    "exit": 0
+   }
+  ],
+  "h04-fail": [
+   {
+    "show": "$ cargo run",
+    "out": "error[E0277]: the trait bound `Robot: Speaker` is not satisfied\n  --> src/main.rs:18:15\n   |\n18 |     introduce(&Robot);\n   |     --------- ^^^^^^ unsatisfied trait bound\n   |     |\n   |     required by a bound introduced by this call\n   |\nhelp: the trait `Speaker` is not implemented for `Robot`\n  --> src/main.rs:5:1\n   |\n 5 | struct Robot;\n   | ^^^^^^^^^^^^\nhelp: this trait has no implementations, consider adding one\n  --> src/main.rs:1:1\n   |\n 1 | trait Speaker {\n   | ^^^^^^^^^^^^^\nnote: required by a bound in `introduce`\n  --> src/main.rs:13:23\n   |\n13 | fn introduce(s: &impl Speaker) {\n   |                       ^^^^^^^ required by this bound in `introduce`\n\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "h04-rs": [
+   {
+    "show": "$ cargo run --bin h04",
+    "out": "beep\n",
+    "exit": 0
+   }
+  ],
+  "h05-go": [
+   {
+    "show": "$ go run ./h05",
+    "out": "[1 2 99 4] [1 2 99]\n",
+    "exit": 0
+   }
+  ],
+  "h05-fail": [
+   {
+    "show": "$ cargo run",
+    "out": "error[E0502]: cannot borrow `a` as mutable because it is also borrowed as immutable\n --> src/main.rs:4:5\n  |\n3 |     let b = &a[..2];\n  |              - immutable borrow occurs here\n4 |     a.push(99);\n  |     ^^^^^^^^^^ mutable borrow occurs here\n5 |     println!(\"{b:?}\");\n  |                - immutable borrow later used here\n\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "h05-rs": [
+   {
+    "show": "$ cargo run --bin h05",
+    "out": "[1, 2, 3, 4] [1, 2, 99]\n",
+    "exit": 0
+   }
+  ],
+  "h06-go": [
+   {
+    "show": "$ go run ./h06",
+    "out": "{Name:ana Age:0 Active:false}\n",
+    "exit": 0
+   }
+  ],
+  "h06-fail": [
+   {
+    "show": "$ cargo run",
+    "out": "error[E0063]: missing fields `active` and `age` in initializer of `User`\n --> src/main.rs:8:13\n  |\n8 |     let u = User { name: \"ana\".into() };\n  |             ^^^^ missing `active` and `age`\n\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "h06-rs": [
+   {
+    "show": "$ cargo run --bin h06",
+    "out": "ana 0 false\n",
+    "exit": 0
+   }
+  ],
+  "h07-go": [
+   {
+    "show": "$ go run ./h07",
+    "out": "rex | rex is an animal\n",
+    "exit": 0
+   }
+  ],
+  "h07-fail": [
+   {
+    "show": "$ cargo run",
+    "out": "error[E0609]: no field `name` on type `Dog`\n  --> src/main.rs:19:27\n   |\n19 |     println!(\"{} | {}\", d.name, d.describe());\n   |                           ^^^^ unknown field\n   |\nhelp: one of the expressions' fields has a field of the same name\n   |\n19 |     println!(\"{} | {}\", d.animal.name, d.describe());\n   |                           +++++++\n\nerror[E0599]: no method named `describe` found for struct `Dog` in the current scope\n  --> src/main.rs:19:35\n   |\n11 | struct Dog {\n   | ---------- method `describe` not found for this struct\n...\n19 |     println!(\"{} | {}\", d.name, d.describe());\n   |                                   ^^^^^^^^ method not found in `Dog`\n   |\nhelp: one of the expressions' fields has a method of the same name\n   |\n19 |     println!(\"{} | {}\", d.name, d.animal.describe());\n   |                                   +++++++\n\nSome errors have detailed explanations: E0599, E0609.\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "h07-rs": [
+   {
+    "show": "$ cargo run --bin h07",
+    "out": "rex | rex is an animal\n",
+    "exit": 0
+   }
+  ],
+  "h08-go": [
+   {
+    "show": "$ go run ./h08",
+    "out": "loop 1\nloop 2\nloop 3\nend of main\ndeferred 3\ndeferred 2\ndeferred 1\n",
+    "exit": 0
+   }
+  ],
+  "h08-rs": [
+   {
+    "show": "$ cargo run --bin h08",
+    "out": "loop 1\ndropped 1\nloop 2\ndropped 2\nloop 3\ndropped 3\nend of main\n",
+    "exit": 0
+   }
+  ],
+  "h09-go": [
+   {
+    "show": "$ go run ./h09",
+    "out": "1259304\n",
+    "exit": 0,
+    "varies": true
+   },
+   {
+    "show": "$ go run -race ./h09 2>&1 | grep -m1 \"WARNING: DATA RACE\"",
+    "out": "WARNING: DATA RACE\n",
+    "exit": 0
+   }
+  ],
+  "h09-fail": [
+   {
+    "show": "$ cargo run",
+    "out": "error[E0499]: cannot borrow `count` as mutable more than once at a time\n  --> src/main.rs:7:21\n   |\n 5 |       thread::scope(|s| {\n   |                      - has type `&'1 Scope<'1, '_>`\n 6 |           for _ in 0..2 {\n 7 |               s.spawn(|| {\n   |               -       ^^ `count` was mutably borrowed here in the previous iteration of the loop\n   |  _____________|\n   | |\n 8 | |                 for _ in 0..1_000_000 {\n 9 | |                     count += 1;\n   | |                     ----- borrows occur due to use of `count` in closure\n10 | |                 }\n11 | |             });\n   | |______________- argument requires that `count` is borrowed for `'1`\n  ... (notes pointing into the standard library trimmed)\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "h09-rs": [
+   {
+    "show": "$ cargo run --bin h09",
+    "out": "2000000\n",
+    "exit": 0
+   }
+  ],
+  "h10-go": [
+   {
+    "show": "$ go run ./h10",
+    "out": "6 5 195\n\"h\\xc3\"\n",
+    "exit": 0
+   }
+  ],
+  "h10-fail": [
+   {
+    "show": "$ cargo run",
+    "out": "error[E0277]: the type `str` cannot be indexed by `{integer}`\n --> src/main.rs:3:18\n  |\n3 |     let byte = s[1];\n  |                  ^ string indices are ranges of `usize`\n  |\n  = help: the trait `SliceIndex<str>` is not implemented for `{integer}`\n  = note: you can use `.chars().nth()` or `.bytes().nth()`\n          for more information, see chapter 8 in The Book: <https://doc.rust-lang.org/book/ch08-02-strings.html#indexing-into-strings>\n  ... (notes pointing into the standard library trimmed)\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "h10-rs": [
+   {
+    "show": "$ cargo run --bin h10",
+    "out": "6 5\nNone\nSome(\"hé\")\n",
+    "exit": 0
+   }
+  ],
+  "h10-slice": [
+   {
+    "show": "$ cargo run --bin h10slice",
+    "out": "thread 'main' (2478) panicked at src/bin/h10slice.rs:3:22:\nend byte index 2 is not a char boundary; it is inside 'é' (bytes 1..3 of string)\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+    "exit": 101,
+    "error": true,
+    "varies": true
+   }
+  ],
+  "idioms-go": [
+   {
+    "show": "$ go run ./idioms",
+    "out": "reassign: 6\nzero: 0\nrange: 3\nweighted: 6\nkind: weekend\nlookup: found 30\ncount: 2\nlen: 3\nbytes: 6\nchars: 5\nfields: 2\nparsed: ok 42\nformatted: ana-7\nsmallest: 1\nupper: ANA\nswapped: 2 1\nmin: 3\nnewtype: 21.5\nerror: bad input\nmethod: 1\n",
+    "exit": 0
+   }
+  ],
+  "idioms-rs": [
+   {
+    "show": "$ cargo run --bin idioms",
+    "out": "reassign: 6\nzero: 0\nrange: 3\nweighted: 6\nkind: weekend\nlookup: found 30\ncount: 2\nlen: 3\nbytes: 6\nchars: 5\nfields: 2\nparsed: ok 42\nformatted: ana-7\nsmallest: 1\nupper: ANA\nswapped: 2 1\nmin: 3\nnewtype: 21.5\nerror: bad input\nmethod: 1\n",
+    "exit": 0
+   }
+  ],
+  "idioms-diff": [
+   {
+    "show": "$ go run ./idioms > go.txt; cargo run --bin idioms > rust.txt; diff go.txt rust.txt; wc -l < go.txt",
+    "out": "the two outputs are identical\n20\n",
+    "exit": 0
+   }
+  ],
+  "try-unwrap": [
+   {
+    "show": "$ cargo run",
+    "out": "thread 'main' (2830) panicked at src/main.rs:14:21:\ncalled `Option::unwrap()` on a `None` value\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+    "exit": 101,
+    "error": true,
+    "varies": true
+   }
+  ],
+  "try-underscore": [
+   {
+    "show": "$ cargo run",
+    "out": "dropped 1\nloop 1\ndropped 2\nloop 2\ndropped 3\nloop 3\nend of main\n",
+    "exit": 0
+   }
+  ],
+  "try-move": [
+   {
+    "show": "$ cargo run",
+    "out": "warning: value captured by `count` is never read\n --> src/main.rs:9:21\n  |\n9 |                     count += 1;\n  |                     ^^^^^\n  |\n  = help: did you mean to capture by reference instead?\n  = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default\n\nwarning: value assigned to `count` is never read\n --> src/main.rs:9:21\n  |\n9 |                     count += 1;\n  |                     ^^^^^^^^^^\n  |\n  = help: maybe it is overwritten before being read?\n\nwarning: `for-go` (bin \"for-go\") generated 2 warnings\n\n0\n",
+    "exit": 0
+   }
+  ],
+  "tools-go": [
+   {
+    "show": "$ go build ./...",
+    "out": "",
+    "exit": 0
+   },
+   {
+    "show": "$ go test ./...",
+    "out": "ok  \tcalc\t0.001s\n",
+    "exit": 0,
+    "varies": true
+   },
+   {
+    "show": "$ gofmt -l .",
+    "out": "",
+    "exit": 0
+   },
+   {
+    "show": "$ go vet ./...",
+    "out": "",
+    "exit": 0
+   },
+   {
+    "show": "$ go doc strings.Fields",
+    "out": "package strings // import \"strings\"\n\nfunc Fields(s string) []string\n    Fields splits the string s around each instance of one or more consecutive\n    white space characters, as defined by unicode.IsSpace, returning a slice\n    of substrings of s or an empty slice if s contains only white space.\n    Every element of the returned slice is non-empty. Unlike Split, leading and\n    trailing runs of white space characters are discarded.\n\n",
+    "exit": 0
+   },
+   {
+    "show": "$ go doc calc.Add",
+    "out": "package calc // import \"calc\"\n\nfunc Add(a, b int) int\n    Add returns a + b.\n\n",
+    "exit": 0
+   }
+  ],
+  "tools-rust": [
+   {
+    "show": "$ cargo build",
+    "out": "",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo test",
+    "out": "   Compiling calc v0.1.0 (/home/you/for-go/rust)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.09s\n     Running unittests src/lib.rs (target/debug/deps/calc-0d704d460dc14554)\n\nrunning 1 test\ntest tests::adds ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n   Doc-tests calc\n\nrunning 1 test\ntest src/lib.rs - add (line 5) ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\nall doctests ran in 0.13s; merged doctests compilation took 0.13s\n",
+    "exit": 0,
+    "varies": true
+   },
+   {
+    "show": "$ cargo fmt --check",
+    "out": "",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo clippy",
+    "out": "",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo doc --no-deps",
+    "out": " Documenting calc v0.1.0 (/home/you/for-go/rust)\n\n   Generated target/doc/calc/index.html\n",
+    "exit": 0
+   }
+  ],
+  "tools-new": [
+   {
+    "show": "$ cargo new demo --vcs none",
+    "out": "    Creating binary (application) `demo` package\nnote: see more `Cargo.toml` keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html\n",
+    "exit": 0
+   },
+   {
+    "show": "$ go mod init example.com/demo",
+    "out": "go: creating new go.mod: module example.com/demo\n",
+    "exit": 0
+   },
+   {
+    "show": "$ for t in dlv rust-gdb rust-lldb gdb lldb; do command -v $t || echo \"$t: not found\"; done",
+    "out": "dlv: not found\n/opt/cargo/bin/rust-gdb\n/opt/cargo/bin/rust-lldb\ngdb: not found\nlldb: not found\n",
+    "exit": 0
+   }
+  ],
+  "cross-go": [
+   {
+    "show": "$ GOOS=windows GOARCH=amd64 go build -o demo.exe ./h04 && ls demo.exe",
+    "out": "demo.exe\n",
+    "exit": 0
+   }
+  ],
+  "cross-rust": [
+   {
+    "show": "$ rustup target list --installed",
+    "out": "aarch64-unknown-linux-gnu\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo build --target x86_64-pc-windows-gnu --bin h04",
+    "out": "error[E0463]: can't find crate for `std`\n  |\n  = note: the `x86_64-pc-windows-gnu` target may not be installed\n  = help: consider downloading the target with `rustup target add x86_64-pc-windows-gnu`\n\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "json-go": [
+   {
+    "show": "$ go run ./json",
+    "out": "{\"name\":\"apple\",\"qty\":3} <nil>\n",
+    "exit": 0
+   }
+  ]
+ }
+}

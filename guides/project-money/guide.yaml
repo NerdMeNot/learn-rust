@@ -1,0 +1,122 @@
+# Project: a money library
+name: tinymoney
+sessions:
+  # The tests: unit tests in the modules, tests/api.rs through the public API, and the doc tests.
+  # --test-threads=1 only keeps the order of the lines fixed. raw: keep the "Running" headers that mark the three groups.
+  test:
+    dir: rust
+    steps:
+      - cmd: cargo test -- --test-threads=1 2>&1 | grep -E '^(     Running|   Doc-tests)|^test |test result' | sed -E 's/ \((\/tmp\/)?target[^)]*\)//; s/finished in [0-9.]+s/finished in X.XXs/'
+        show: '$ cargo test -- --test-threads=1    # only the group headers and the lines that name a test or a result; paths dropped, timings replaced by X.XXs'
+        raw: true
+  # The program in consumer/, a second package that uses the library like any other crate.
+  run:
+    dir: rust
+    steps:
+      - cmd: cargo run -q -p consumer
+  # A newtype's private field: another crate cannot skip `from_minor`.
+  newtype:
+    dir: rust
+    overlay:
+      consumer/src/main.rs: fixes/consumer-newtype.rs
+    steps:
+      - cmd: cargo build -p consumer
+        expect: fail
+  # cargo doc, and what rustdoc wrote for the #[non_exhaustive] enum.
+  doc:
+    dir: rust
+    steps:
+      - cmd: cargo doc --no-deps
+      - cmd: grep -o 'This enum is marked as non-exhaustive' target/doc/tinymoney/enum.Currency.html | head -1
+        show: '$ grep -o "This enum is marked as non-exhaustive" target/doc/tinymoney/enum.Currency.html'
+    local_target: true
+  # A match with no `_` arm on the #[non_exhaustive] enum.
+  no-wildcard:
+    dir: rust
+    overlay:
+      consumer/src/main.rs: fixes/consumer-nowild.rs
+    steps:
+      - cmd: cargo build -p consumer
+        expect: fail
+  # Version 0.1.1: a new variant and a new method on a #[non_exhaustive] enum. The consumer is untouched.
+  semver-add:
+    dir: rust
+    overlay:
+      new/currency.rs: fixes/currency-gbp.rs
+    steps:
+      - cmd: diff --label before --label after -u src/currency.rs new/currency.rs; true
+        show: '$ diff -u before after    # src/currency.rs'
+      - cmd: cp new/currency.rs src/currency.rs && cargo run -q -p consumer
+      - cmd: cargo test 2>&1 | grep 'test result' | sed -E 's/finished in [0-9.]+s/finished in X.XXs/'
+        show: '$ cargo test    # the lines that name a result; timings replaced by X.XXs'
+  # A new variant on an enum that is NOT #[non_exhaustive].
+  semver-enum:
+    dir: rust
+    overlay:
+      new/rounding.rs: fixes/rounding-halfeven.rs
+    steps:
+      - cmd: diff --label before --label after -u src/rounding.rs new/rounding.rs; true
+        show: '$ diff -u before after    # src/rounding.rs'
+      - cmd: cp new/rounding.rs src/rounding.rs && cargo build -p consumer
+        show: '$ cargo build -p consumer    # with the new rounding.rs'
+        expect: fail
+  # A method renamed.
+  semver-rename:
+    dir: rust
+    steps:
+      - cmd: sed -i 's/pub fn checked_add/pub fn try_add/' src/money.rs && cargo build -p consumer
+        show: '$ cargo build -p consumer    # after renaming checked_add to try_add in src/money.rs'
+        expect: fail
+  # NEEDS NETWORK: installs cargo-semver-checks (a pinned version), then asks it about the same three changes.
+  semver-checks:
+    dir: rust
+    overlay:
+      new/currency.rs: fixes/currency-gbp.rs
+      new/rounding.rs: fixes/rounding-halfeven.rs
+    steps:
+      - cmd: cargo install cargo-semver-checks --locked --version 0.51.0 2>&1 | grep -E '^ +Installed'
+        show: '$ cargo install cargo-semver-checks --locked --version 0.51.0    # needs network'
+        raw: true
+        timeout: 1800
+      - cmd: cp -r . /tmp/baseline
+        show: '$ cp -r . /tmp/baseline    # keep a copy of 0.1.0 to compare against'
+      - cmd: cp new/currency.rs src/currency.rs && out=$(cargo semver-checks --baseline-root /tmp/baseline 2>&1); s=$?; echo "$out" | grep -vE '^ +(Building|Built|Parsing|Parsed) ' | sed -E 's/\[ *[0-9]+\.[0-9]+s\]/[X.XXXs]/'; exit $s
+        show: '$ cargo semver-checks --baseline-root /tmp/baseline    # with the Gbp variant and symbol(); timings replaced by [X.XXXs], the Building and Parsing lines left out'
+        raw: true
+        timeout: 900
+      - cmd: cp /tmp/baseline/src/currency.rs src/currency.rs && cp new/rounding.rs src/rounding.rs && out=$(cargo semver-checks --baseline-root /tmp/baseline 2>&1); s=$?; echo "$out" | grep -vE '^ +(Building|Built|Parsing|Parsed) ' | sed -E 's/\[ *[0-9]+\.[0-9]+s\]/[X.XXXs]/'; exit $s
+        show: '$ cargo semver-checks --baseline-root /tmp/baseline    # with Rounding::HalfEven instead'
+        raw: true
+        expect: fail
+        timeout: 900
+      - cmd: cp /tmp/baseline/src/rounding.rs src/rounding.rs && sed -i 's/pub fn checked_add/pub fn try_add/' src/money.rs && out=$(cargo semver-checks --baseline-root /tmp/baseline 2>&1); s=$?; echo "$out" | grep -vE '^ +(Building|Built|Parsing|Parsed) ' | sed -E 's/\[ *[0-9]+\.[0-9]+s\]/[X.XXXs]/'; exit $s
+        show: '$ cargo semver-checks --baseline-root /tmp/baseline    # with checked_add renamed to try_add'
+        raw: true
+        expect: fail
+        timeout: 900
+  # The lock file: the build uses exactly what it lists.
+  locked:
+    dir: rust
+    steps:
+      - cmd: cargo build --locked; echo "exit status $?"
+        show: '$ cargo build --locked; echo "exit status $?"    # Cargo prints its Compiling and Finished lines; this page leaves them out'
+      - cmd: cargo tree -p tinymoney --depth 2
+  # Things to try: each step is one task from the page's "Try it yourself".
+  try-docs:
+    dir: rust
+    steps:
+      - cmd: sed -i '/No money at all/d' src/amount.rs && cargo build
+        show: '$ cargo build    # after deleting the doc comment above Amount::ZERO'
+        expect: fail
+  try-doctest:
+    dir: rust
+    steps:
+      - cmd: sed -i 's/"USD 24.99"/"USD 25.00"/' src/lib.rs && out=$(cargo test --doc -- --test-threads=1 2>&1); s=$?; echo "$out" | grep -E '^(test |failures:|---- |assertion| +left| +right)|test result' | sed -E 's/finished in [0-9.]+s/finished in X.XXs/'; exit $s
+        show: '$ cargo test --doc -- --test-threads=1    # after changing "USD 24.99" to "USD 25.00" in src/lib.rs; only the lines about the result'
+        expect: fail
+  try-nonexhaustive:
+    dir: rust
+    steps:
+      - cmd: sed -i 's/^pub enum Rounding/#[non_exhaustive]\npub enum Rounding/' src/rounding.rs && cargo build -p consumer
+        show: '$ cargo build -p consumer    # after adding #[non_exhaustive] above Rounding'
+        expect: fail

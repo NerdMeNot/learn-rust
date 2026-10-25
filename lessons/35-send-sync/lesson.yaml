@@ -1,0 +1,133 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Send and Sync"
+part: "concurrency"
+intro: >-
+  Two questions decide whether a type may be used from more than one thread. `Send`: may
+  this value be moved to another thread? `Sync`: may several threads hold a `&T` to it at
+  once? The compiler answers both from the types and refuses the program when the answer
+  is no. Together with the borrow rules, that check is how safe Rust has no data races,
+  and it is why `Arc<Mutex<T>>` compiles across threads where `Rc<RefCell<T>>` does not.
+coming_from:
+  go: >-
+    Go compiles a program that shares a plain variable between goroutines, and the race
+    detector (`go run -race`) reports unsynchronized accesses it sees when the program
+    runs. Rust asks at compile time instead, from the types: `Send` ("this value may move to another thread") and
+    `Sync` ("a `&T` may be used by several threads"). There is no flag to switch it on.
+  kotlin: >-
+    Whether a class is safe to use from several threads is something you read in its
+    documentation (the Java `ArrayList` page says it is not synchronized) or in an
+    annotation such as `@ThreadSafe`, and `javac` checks neither unless you add a checker.
+    `Send` and `Sync` put that fact in the type: the compiler works it out from the fields
+    and refuses a call that hands the type to a thread it is not safe on.
+  python: >-
+    In the standard CPython build only one thread runs Python code at a time (the GIL), and
+    that does not make "read the variable, then write it" atomic: the Python FAQ lists
+    `i = i+1` as not atomic, and free-threaded builds have no such lock at all. Rust has no
+    interpreter lock, and instead the compiler checks `Send` and `Sync` on every value that
+    crosses to a thread.
+  typescript: >-
+    Worker threads do not share objects by default: `workerData` and messages are copies
+    (unless you transfer an `ArrayBuffer`), and sharing is opt-in with `SharedArrayBuffer` and
+    `Atomics`. Rust threads live in one address space and can share memory, so it needs a
+    rule for which types may be shared: `Send` and `Sync`, checked at compile time.
+  java: >-
+    Thread safety is documentation or annotation: `ArrayList` says it is not synchronized and
+    `ConcurrentHashMap` says it is, and `javac` checks neither (a checker such as Error Prone's
+    `@Immutable` is opt-in). A Java data race has a limited set of allowed outcomes under the
+    memory model, which is not the same as a correct result. In Rust safe code cannot have one,
+    because `Send` and `Sync` are checked on every value a thread receives.
+  csharp: >-
+    The `List<T>` page says instance members are not guaranteed to be thread safe, and the
+    compiler does not check that you respected it. `Send` and `Sync` are the same facts as
+    traits the compiler works out and enforces: `Arc<Mutex<List>>` compiles across threads
+    where a type holding an `Rc` does not.
+  c: >-
+    `pthread_create` takes a `void *`, so any pointer can go to any thread and nothing in the
+    type says whether sharing it is safe. A data race is undefined behavior. `Send` and `Sync`
+    are that missing information, written in the type and checked by the compiler.
+  cpp: >-
+    `std::thread` accepts any callable, including a lambda that captures a local by reference,
+    and a data race is undefined behavior ([cppreference](https://en.cppreference.com/w/cpp/language/multithread)).
+    Rust's `Send` and `Sync` are checked on everything a thread receives, and a type with a
+    non-atomic reference count, like `Rc`, is not allowed to cross.
+notes:
+  - >-
+    `Send` means a value may be moved to another thread. `Sync` means a `&T` may be shared
+    between threads; the standard library defines it as "`T` is `Sync` if and only if `&T` is
+    `Send`". Both are marker traits with no methods.
+  - >-
+    The compiler implements them for you, field by field: a struct is `Send` when every field
+    is. One `Rc` anywhere inside makes the whole struct not `Send`, and the error names the chain
+    from the thread call down to the `Rc`.
+  - >-
+    `thread::spawn` needs the closure and the thread's result to be `Send` (and `'static`).
+    `Arc<T>` is `Send` only when `T` is `Send` and `Sync`: `RefCell<i32>` is not `Sync`, `Mutex<i32>` is,
+    which is why the shared-counter pattern is `Arc<Mutex<T>>`.
+  - >-
+    Safe Rust has no data races, and it still has deadlocks and logic races. Two correct
+    `lock()` calls with a gap between a check and the change compile, run, and give a wrong
+    answer.
+gotcha:
+  title: "A struct that holds an Rc, handed to a thread"
+  verdict: "fine-elsewhere"
+  looks_fine: >-
+    A job object holds a reference to a list that the main thread also uses. The worker adds
+    to it while the main thread waits, and the main thread reads the list afterwards.
+  rust_sees: >-
+    `thread::spawn` needs everything the closure takes to be `Send`. The closure takes
+    `job`, a `Job` holds an `Rc`, and `Rc` is not `Send`, so `Job` is not `Send` and the
+    closure is not either. The error names that chain.
+  why: >-
+    The standard library says an `Rc` that two threads clone at the same time can corrupt its
+    count, because the count is not atomic. Your program is fine: the main thread is waiting
+    in `join`, so only one thread touches the count at a time. The compiler judges the type,
+    not that argument, and the same shape without the waiting would be a data race. Swap the
+    `Rc<RefCell<..>>` for `Arc<Mutex<..>>`, as `fixed.rs` does.
+  langs:
+    go:
+      status: "runs"
+      says: >-
+        Go runs this and prints `log: ["resize"]`. The `Job` holds a pointer to the slice and
+        the compiler does not ask which goroutines may use it. `go run -race` can report a
+        race when two goroutines touch it without synchronization.
+    kotlin:
+      status: "runs"
+      says: >-
+        Kotlin runs this and prints the log. A `MutableList` is a plain `ArrayList`, which is
+        not synchronized, and nothing stops you from handing it to a thread. It is correct
+        here because of `join()`.
+    python:
+      status: "runs"
+      says: >-
+        Python prints `log: ["resize"]`. Any object can be given to a thread, and the list is
+        correct here because the main thread waits in `join()`.
+    typescript:
+      status: "runs"
+      says: >-
+        Prints `log: []`. A worker does not get the same object: `workerData` is a copy, so
+        the worker changes its own list and the main thread's list stays empty. Nothing is
+        shared unless you ask for a `SharedArrayBuffer`.
+    java:
+      status: "runs"
+      says: >-
+        Java runs this and prints the log. The `ArrayList` is documented as not synchronized,
+        and the compiler does not check how you share it. It is correct here because
+        `join()` orders the worker's add before the main thread's read.
+    csharp:
+      status: "runs"
+      says: >-
+        C# runs this and prints the log. `List<T>` is not guaranteed to be thread safe,
+        and nothing enforces how you share it. It is correct here because `Join()` waits for
+        the thread to finish.
+    c:
+      status: "runs"
+      says: >-
+        C runs this and prints the log. The worker gets a pointer to a shared buffer, and
+        nothing in the types says whether that is safe. It is correct here because of
+        `pthread_join`.
+    cpp:
+      status: "runs"
+      says: >-
+        C++ runs this and prints the log. A `shared_ptr` is safe to copy from several threads
+        (its count is atomic in practice), but the vector inside is not locked. It is correct
+        here because `join()` orders the worker's push before the main thread's read.

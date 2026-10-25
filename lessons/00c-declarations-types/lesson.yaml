@@ -1,0 +1,106 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Declarations, literals and types"
+part: "syntax"
+intro: >-
+  Variables, constants, functions and types are declared with a keyword (`let`, `const`, `fn`,
+  `struct`) and then a name. A type, where you write one, goes after the name behind a colon.
+  Numbers, characters and strings have their own literal syntax, and a few small symbols
+  (`as`, `::<>`, `<>`, `|x|`) cover conversions, generics and closures.
+coming_from:
+  go: >-
+    `x := 5` is `let x = 5;`. The type goes after a colon, there is no `a, b int` shorthand, and the
+    result type follows `->`. Go's `int` is 64 bits on a 64-bit machine; Rust's default integer is `i32`, so use `i64` (or
+    `isize`) where you mean Go's `int`. `const` always needs a type, and `'R'` is a `char`, not a number.
+  kotlin: >-
+    This is the nearest syntax to yours: `name: Type`, generics in `<>`. The changes are `val` -> `let`,
+    `var` -> `let mut`, `fun` -> `fn`, and a return type after `->` instead of `:`. `Int` is `i32`,
+    and `$name` in a string template is `{name}`, written inside format-style macros such as `println!` and `format!`.
+  python: >-
+    `name: str = "Ada"` looks like your annotations, but Rust checks them. Every first assignment
+    needs `let`, and `'a'` and `"a"` are different types (a character and a string). `int(f)` on a float
+    becomes `f as i32`; `int("42")` on text becomes `"42".parse::<i32>()`. Underscores in numbers (`1_000`) work as you know them.
+  typescript: >-
+    `: type` after the name is already your habit, and `1_000` and `0xff` work. `const` -> `let`,
+    `let` -> `let mut`. Your one `number` becomes many types (`i32`, `f64`...), so `let x: f64 = 5;`
+    is an error, and single quotes make a `char`, never a string.
+  java: >-
+    The type moves after the name: `int count = 5;` is `let count: i32 = 5;`. `let` works like `final`
+    and is the default, `mut` is the exception, and `(int) x` is `x as i32`. Generics use `<>` in types,
+    like `Vec<i32>`, but need `::<>` when you write them in an expression.
+  csharp: >-
+    The type moves after the name, and `var x = 5;` is `let mut x = 5;` (a plain `let` cannot change).
+    `(int)x` is `x as i32`, and a verbatim string `@"C:\temp"` is `r"C:\temp"`. `1_000` and
+    `0xff` work as you know them; the `f` suffix is `f32`, so `2.5f` is `2.5f32`.
+  c: >-
+    `int x = 5;` is `let mut x: i32 = 5;`, and `#define MAX 100` is `const MAX: i32 = 100;`, which has a type.
+    `'a'` is a `char`, not an `int`, `(int)x` is `x as i32`, and a leading zero is not octal: `0o17` is
+    octal and `017` is the decimal number 17.
+  cpp: >-
+    `auto x = 5;` is `let mut x = 5;` and `const auto x = 5;` is `let x = 5;`. Types that take `<>` in
+    declarations (`Vec<i32>`) need `::<>` in expressions, `static_cast<int>(x)` is `x as i32`, and
+    `5u`, `2.5f` suffixes exist too (`5u32`, `2.5f32`).
+notes:
+  - >-
+    A variable, constant or function starts with a keyword and a name. A type, where you write one, follows
+    the name after a colon. A function's result type follows `->`, and a function without one returns `()`.
+  - >-
+    On `let` the type is optional (Rust infers it). On `const`, `static`, and function parameters it is required.
+  - >-
+    A number can carry its type as a suffix: `1u8`, `2.5f32`. `_` and the `0x`, `0o`, `0b` prefixes
+    change how it is written, not its type.
+  - >-
+    `'R'` is one `char`, `"R"` is a string. `'ab'` is an error.
+  - >-
+    `x as f64` converts between number types. `parse::<i32>()` names the type for a generic call, and the
+    `::` before `<` is required there.
+gotcha:
+  title: "Putting the type before the name"
+  verdict: "rust-rule"
+  looks_fine: >-
+    In Java, C#, C and C++, `int count = 5;` is how you declare a variable. The type comes first.
+  rust_sees: >-
+    Rust reads `i32 count = 5;` as an expression starting with the name `i32`, followed by something
+    unexpected. A variable starts with `let`, then the name, then `: i32`.
+  why: >-
+    Rust starts variables, constants, functions and types with a keyword (`let`, `const`, `fn`,
+    `struct`), and the type is an extra after a colon. The error does not say "wrong order" because the
+    parser sees `i32 count` as a name and then an unexpected name; the long list of tokens is its way
+    of saying it did not expect a second name there. The fix is `let count: i32 = 5;`, or just `let count = 5;`. Go, Kotlin,
+    Python and TypeScript refuse the C-style form for their own reasons, as the outputs show.
+  langs:
+    go:
+      status: "refuses"
+      says: >-
+        Go refuses: `int count = 5` is a syntax error. Go declares with `var` or `:=`, and
+        a type, if you write one, comes after the name: `var count int = 5`.
+    kotlin:
+      status: "refuses"
+      says: >-
+        Kotlin refuses. Declarations start with `val` or `var`, and the type goes after the name:
+        `val count: Int = 5`.
+    python:
+      status: "refuses"
+      says: >-
+        Python raises a `SyntaxError`. Python has no type-first declaration, only `count: int = 5`
+        as an optional annotation.
+    typescript:
+      status: "refuses"
+      says: >-
+        TypeScript refuses. A declaration needs `let` or `const`, and the type goes after
+        the name: `let count: number = 5`.
+    java:
+      status: "runs"
+      says: >-
+        Java prints `count=5`. The type before the name is the usual way to declare a local (`var` also exists).
+    csharp:
+      status: "runs"
+      says: >-
+        C# prints `count=5`. `int count = 5;` is a normal local declaration.
+    c:
+      status: "runs"
+      says: >-
+        C prints `count=5`. The type goes first.
+    cpp:
+      status: "runs"
+      says: >-
+        C++ prints `count=5`. The type goes first.

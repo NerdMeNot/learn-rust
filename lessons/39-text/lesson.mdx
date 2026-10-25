@@ -1,0 +1,349 @@
+<p class="lr-layer">The toolkit</p>
+
+Outputs come from Linux on 64-bit ARM with Rust 1.99.1, debug build. Other languages ran in the same image: Go 1.27, Java 25, Kotlin 2.4, .NET 10, Python 3.13, Node 24, GCC 14.
+
+[Strings](/learn/strings/) explains the types: `String`, `&str`, UTF-8, bytes and chars. This page is the everyday toolkit on top of them: cut text apart, find things, turn text into numbers, and compare it. Most methods return a **view**: a `&str` that points into the original text instead of copying it.
+
+## Your text calls in Rust
+
+Your language's table comes first; the rest of the page uses Rust's names. The Rust side is asserted in the lesson's source, and the code beside a table is the other language's real run.
+
+<ForLang only="go">
+
+| In Go | In Rust |
+|---|---|
+| `strings.Split(s, sep)` | `s.split(sep)`, an iterator |
+| `strings.Fields(s)` | `s.split_whitespace()` |
+| `strings.SplitN(s, sep, n)` | `s.splitn(n, sep)` |
+| `strings.Cut(s, sep)` | `s.split_once(sep)` |
+| `strings.Contains(s, sub)` | `s.contains(sub)` |
+| `strings.Replace(s, a, b, n)` | `s.replacen(a, b, n)` |
+| `strings.ReplaceAll(s, a, b)` | `s.replace(a, b)` |
+| `strings.TrimLeft(s, "ab")`, a **set** of characters | `s.trim_start_matches(['a', 'b'])` |
+| `strings.TrimPrefix(s, p)` | `s.strip_prefix(p)`, an `Option` |
+| `strings.EqualFold(a, b)` | `a.eq_ignore_ascii_case(b)` for ASCII; see [Case](#case-is-more-than-a-to-z) |
+| `strconv.Atoi(s)` | `s.parse::<i64>()` |
+| `filepath.Ext(name)` | `Path::new(name).extension()` |
+
+<Snippet file="edges.go" />
+
+The splits agree, including the trailing empty piece; `Fields("")` and `split_whitespace()` both give nothing. Go's `int` is 64 bits here, so `Atoi("3000000000")` succeeds; as an `i32` that is `PosOverflow`. `ToUpper` kept `ß`; `to_uppercase` gives `SS`. `Ext(".bashrc")` is `.bashrc`; `extension` gives `None`, as the first exercise's rule does.
+
+</ForLang>
+
+<ForLang only="java">
+
+| In Java | In Rust |
+|---|---|
+| `s.split(regex)` | `s.split(pattern)`: never a regex |
+| `s.split(",", -1)` | `s.split(',')`; trailing pieces are kept |
+| `s.split(",", 2)` | `s.splitn(2, ',')` |
+| `s.trim().split("\\s+")` | `s.split_whitespace()` |
+| `s.strip()`, `s.trim()` | `s.trim()`; the edges differ |
+| `a.equalsIgnoreCase(b)` | `a.eq_ignore_ascii_case(b)`: ASCII only |
+| `Integer.parseInt(s)` | `s.parse::<i32>()` |
+
+<Snippet file="edges.java" />
+
+`split` takes a regex. `"a.b".split(".")` matched every character, so every piece was empty and Java dropped them all; `"a|b".split("|")` split between every char. Java drops trailing empty pieces unless the limit is non-zero; a positive limit caps the pieces like `splitn`.
+
+Two names change meaning. Java's `Pattern` is the regex class; Rust's pattern is a `char`, `&str`, set of chars or closure. Java's `matches` tests a whole string against a regex; Rust's `matches` returns an iterator of hits (`contains` is the yes/no). `replace` is literal in both and changes every match; `replaceAll` is a regex.
+
+The edges are run. `strip` and `trim` both leave U+00A0; `strip` leaves U+0001 and removes U+3000, `trim` the reverse. Rust's `trim` removes U+00A0 and U+3000 but not U+0001. `equalsIgnoreCase` equated `É` and `é`; `eq_ignore_ascii_case` does not. `parseInt` agrees with `parse` on the four ASCII inputs but reads `٣` as 3. `lines()` ends a line at a lone `\r`; Rust's does not. `" a  b".split("\\s+")` starts with an empty piece, hence `trim()` first. `toLowerCase()` follows the default locale (Turkish in the run); Rust's `to_lowercase` reads none.
+
+</ForLang>
+
+<ForLang only="kotlin">
+
+| In Kotlin | In Rust |
+|---|---|
+| `s.split(",")` | `s.split(',')`, an iterator |
+| `s.split(",", limit = 2)` | `s.splitn(2, ',')` |
+| `s.toIntOrNull()` | `s.parse::<i32>().ok()` |
+| `s.lines()` | `s.lines()`; the edges differ |
+
+<Snippet file="edges.kt" />
+
+`split(".")` keeps the trailing empty piece like Rust, and `limit = 2` works like `splitn(2, ...)`. `toIntOrNull` agrees with `parse` on the four ASCII inputs, but reads `٣` as 3. `lines()` ends a line at a lone `\r` and keeps a final empty piece; Rust's does neither. `lowercase()` ignored the Turkish default locale.
+
+</ForLang>
+
+<ForLang only="csharp">
+
+| In C# | In Rust |
+|---|---|
+| `s.Split(',')` | `s.split(',')`, an iterator |
+| `s.Split(',', StringSplitOptions.RemoveEmptyEntries)` | `s.split(',').filter(\|p\| !p.is_empty())` |
+| `s.Split(',', 2)` | `s.splitn(2, ',')` |
+| `int.TryParse(s, out n)` | `s.parse::<i32>()` |
+| `double.Parse(s, culture)` | `s.parse::<f64>()`: no culture |
+| `string.Equals(a, b, StringComparison.OrdinalIgnoreCase)` | `a.eq_ignore_ascii_case(b)` for ASCII |
+
+<Snippet file="edges.cs" />
+
+`Split` keeps the trailing empty piece, as Rust does. `TryParse` accepted a leading and a trailing space; `parse` refuses both.
+
+Parsing without a culture argument uses the current culture ([docs](https://learn.microsoft.com/en-us/dotnet/api/system.double.parse)). This runner has only the invariant culture, so `de-DE` could not be run; with the invariant one `double.Parse("1,5")` gave 15, because the default styles accept thousands separators. `"1,5".parse::<f64>()` is an error: Rust parsing has no culture.
+
+`ToUpperInvariant` kept `ß`, as Go does. `OrdinalIgnoreCase` equated `É` and `é`, which `eq_ignore_ascii_case` does not.
+
+</ForLang>
+
+<ForLang only="python">
+
+| In Python | In Rust |
+|---|---|
+| `s.split(",")` | `s.split(',')`, an iterator |
+| `s.split()` | `s.split_whitespace()` |
+| `s.split(",", 1)` | `s.splitn(2, ',')` |
+| `s.lstrip("xa")`, a **set** of characters | `s.trim_start_matches(['x', 'a'])`, not `("xa")` |
+| `"x" in s`, `s.count("x")` | `s.contains("x")`, `s.matches("x").count()` |
+| `s.replace(a, b, n)` | `s.replacen(a, b, n)` |
+| `s.splitlines()` | `s.lines()` |
+| `int(s)` | `s.parse::<i64>()`, stricter |
+| `s.casefold()` | none on stable Rust; see [Case](#case-is-more-than-a-to-z) |
+
+<Snippet file="edges.py" />
+
+The splits match, including `"".split(",")` giving one empty piece and `"".split()` none. `split()` and `split_whitespace` differ on odd characters: Python also splits at U+001C.
+
+`lstrip("xa")` removes a **set**, so `"xxabxx"` became `bxx`. Rust's `trim_start_matches("xa")` removes the text `xa` and leaves it unchanged; pass an array for a set. `splitlines()` also ends a line at a lone `\r` and at `\x0b`; `lines` only at `\n` or `\r\n`.
+
+`int` accepted a leading space, an underscore and an Arabic-Indic digit, which `parse::<i32>` refuses; it never overflows (30 digits worked), `i64` does.
+
+</ForLang>
+
+<ForLang only="typescript">
+
+| In TypeScript | In Rust |
+|---|---|
+| `s.split(",")` | `s.split(',')`, an iterator |
+| `s.split(",", 2)` | `s.splitn(2, ',')`, **not** the same |
+| `s.trim().split(/\s+/)` | `s.split_whitespace()` |
+| `s.replaceAll(a, b)` | `s.replace(a, b)` |
+| `s.replace(a, b)` with a string | `s.replacen(a, b, 1)` |
+| `s.includes(x)` | `s.contains(x)` |
+| `parseInt(s, 10)`, `Number(s)` | `s.parse::<i32>()`, `s.parse::<f64>()` |
+
+<Snippet file="edges.ts" />
+
+`split(",", 2)` dropped the rest; `splitn(2, ',')` keeps `v,w` in the second. `replace` with a string changed only the first match (`a+a-a`); Rust's `replace` changes every match, like `replaceAll`. `"".trim().split(/\s+/)` has one empty piece, `split_whitespace` none. JS `\s` counts U+FEFF as white space and not U+0085, the opposite of Rust. `parseInt` read `42` out of `42abc` and `Number("")` is `0`; `parse` errors on both.
+
+</ForLang>
+
+<ForLang only="c">
+
+| In C | In Rust |
+|---|---|
+| `strtok(buf, ",")`, `strtok_r` | `s.split(',')`: no writable buffer needed |
+| `strtol(s, &end, 10)` | `s.parse::<i64>()`: an error if text is left over |
+| `atoi(s)` | `s.parse::<i32>()` |
+
+<Snippet file="strtok.c" />
+
+`strtok` writes NUL bytes into the array it splits (the gotcha passed a string literal and crashed) and keeps hidden static state. `strtok_r` moves the state into a variable you own but still writes: the array ended as `"a"`. Both merge `,,`; `split(',')` yields an empty piece.
+
+`atoi("abc")` returned 0, as `atoi("0")` does. `atoi("99999999999")` printed 1215752191; C leaves a result that does not fit undefined (C11 7.22.1), where `parse::<i32>` returns `PosOverflow`. A Rust piece has no NUL after it, so a C function needs a `CString` copy:
+
+<Snippet file="c-string.rs" />
+
+</ForLang>
+
+<ForLang only="cpp">
+
+| In C++ | In Rust |
+|---|---|
+| `std::string_view` and `find` | `&str` and `find` |
+| `text \| std::views::split(',')` | `text.split(',')` |
+| `std::from_chars` | `s.parse::<i32>()` |
+
+<Snippet file="split-view.cpp" />
+
+Each piece of `views::split` is a subrange. C++20, the standard this runner uses, needs `std::string_view(part.begin(), part.end())`; `-std=c++23` on g++ 14 accepted `std::string_view(part)` (not a page run). By the standard, an empty input gives no pieces and `"a,b,"` gives three. `from_chars` stopped at the first non-digit and reported success for `42abc`; it refused `+42` and a leading space.
+
+A view of a temporary is where `string_view` and `&str` differ: `first_piece(make())` views a string destroyed at the semicolon. The runner builds with `-Wall -Wextra`, and g++ 14 prints no warning:
+
+<Snippet file="dangling-split.cpp" />
+
+Under AddressSanitizer, which checks memory use as the program runs, it stops:
+
+<Snippet file="dangling-split.crash.asan.cpp" title="The same code, under -fsanitize=address" />
+
+In Rust the same shape is E0716. [Returning references](/learn/returning-references/) and [Lifetimes](/learn/lifetimes/) show why:
+
+<Snippet file="dangling-piece.fail.rs" />
+
+</ForLang>
+
+## Patterns: one idea behind every method
+
+Most methods that look inside a string take a **pattern**. According to the [`str` docs](https://doc.rust-lang.org/std/primitive.str.html#method.split), it can be a `&str`, a `char`, a slice of `char`s (an array works too), or a function or closure that decides for one `char` (a [closure](/learn/closures/) is a small function written in place, like `|c: char| c.is_ascii_digit()`). The same kinds work in `split`, `find`, `trim_matches`, `replace`, `matches` and `starts_with`:
+
+<Snippet file="patterns.rs" />
+
+A pattern is never a regular expression ([What std leaves out](#what-std-leaves-out)).
+
+## Cutting text apart
+
+Most `split` methods return **iterators** ([Iterators](/learn/iterators/)), so nothing is cut until you ask for a piece. (`split_once` returns an `Option` of a pair.) Every row of the table is asserted in the lesson's source:
+
+| Call | Pieces |
+|---|---|
+| `"a,b,c".split(',')` | `a` `b` `c` |
+| `"a,b,".split(',')` | `a` `b` `""` |
+| `"a,b,".split_terminator(',')` | `a` `b` |
+| `"a,b,c".splitn(2, ',')` | `a` `b,c` |
+| `"a,b,c".rsplitn(2, ',')` | `c` `a,b` |
+| `"a,b,c".rsplit(',')` | `c` `b` `a` |
+| `"a\nb\n".split_inclusive('\n')` | `a\n` `b\n` |
+| `" a  b\t".split_whitespace()` | `a` `b` |
+| `"a\r\nb\n".lines()` | `a` `b` |
+| `"k=v=w".split_once('=')` | `Some(("k", "v=w"))` |
+| `"k=v=w".rsplit_once('=')` | `Some(("k=v", "w"))` |
+| `"kvw".split_once('=')` | `None` |
+
+Three edge cases cause most surprises:
+
+<Snippet file="split-family.rs" />
+
+- A separator at the end gives an empty last piece. `split_terminator` drops it.
+- `"".split(',')` gives one empty piece, but `"".split_whitespace()` gives none.
+- `lines` is not `split('\n')`. It strips a `\r` before a `\n`, and gives no empty last line for a final newline. A lone `\r` stays in the line.
+
+`split_whitespace` splits on Unicode white space (U+0085 yes, U+001C and U+FEFF no); `split_ascii_whitespace` only on ASCII ones.
+
+Every piece borrows the original, so it cannot outlive it; copy one with `to_string()` to keep it ([Borrowing](/learn/borrowing/) and [Lifetimes](/learn/lifetimes/) explain why).
+
+## Trimming and stripping
+
+`trim` removes Unicode white space from both ends, including characters your terminal may not show; `trim_ascii` only ASCII ones. The `trim_*_matches` methods take a pattern and remove it repeatedly; the `strip_*` methods remove it once, and tell you whether it was there. A `&str` pattern is matched as a whole text: `trim_start_matches("xa")` removes the text `xa`, not the characters `x` and `a`. For a set of characters, pass an array:
+
+<Snippet file="trimming.rs" />
+
+## Finding and replacing
+
+`find` gives a **byte** offset. A match starts on a character, so slicing at an offset that `find` or `match_indices` returned does not panic. To show a person a column, count chars up to it. `replace` changes every match, and `replacen(pattern, to, n)` the first `n`:
+
+<Snippet file="finding.rs" />
+
+`rsplit_once('.')` suits a file extension: it cuts at the last dot, `find('.')` at the first, as the last two lines show. The first exercise builds on it.
+
+## Text to numbers
+
+`parse` turns text into any type that implements [`FromStr`](/learn/common-traits/#converting-between-types). The error type belongs to the target type, and its `Display` text is the message you can show a user:
+
+<Snippet file="parse.rs" />
+
+- The whole text must be the number. Spaces, `_`, a `.` for an integer and `0x` all fail. A leading `+` is accepted.
+- A number outside the target type is an error (`PosOverflow`, `NegOverflow`), not a wrap-around: `3000000000` fits an `i64`, not an `i32`. `-1` for a `u8` is an invalid digit.
+- Floats accept `1e3`, `.5`, `NaN` and `inf`, and refuse a comma as the decimal mark: std has no locale.
+- `"٣".parse::<i32>()` fails: only ASCII digits count.
+- `bool` accepts exactly `true` and `false`, and `char` exactly one char.
+
+The target type decides the range and the sign: `"200"` parses as an `i16` or a `u8` but not an `i8`. For text a user typed, avoid `unwrap_or(0)`: it makes `"abc"` and `"0"` look the same.
+
+`?` passes a parse error up to the caller ([Errors](/learn/errors/)). With `split_once`, a small parser is a few lines:
+
+<Snippet file="parse-pair.rs" />
+
+## One char at a time
+
+A `char` is one Unicode scalar value. Its classification methods come in two families: `is_alphabetic`, `is_numeric` and `is_alphanumeric` follow Unicode, while the `is_ascii_*` ones accept only ASCII.
+
+<Snippet file="chars.rs" />
+
+Use `to_digit(radix)`, where the radix is the base (10, 16, up to 36), to read a digit, rather than subtracting `'0'`: it returns `None` for a non-digit. `char::from_u32` returns `None` for numbers that are not valid chars, such as `0xD800`, a surrogate (a code reserved for UTF-16 pairs). [Strings](/learn/strings/#characters-bytes-and-what-a-person-sees) says when to walk chars and when bytes.
+
+## Building text
+
+[Strings](/learn/strings/#building-strings) covers `push_str`, `format!`, `join` and `concat`. These are the others you will want:
+
+<Snippet file="building.rs" />
+
+`collect::<String>()` turns an iterator of `char`s, `&str`s or `String`s into one `String`. `write!` into a `String` needs `use std::fmt::Write` and returns a `Result`. Writing into the `String` does not fail; the `Result` is `Err` only when a `Display` impl you format returns an error, as the last line shows ([Formatting](/learn/formatting/) goes further).
+
+<p class="lr-layer">Going deeper</p>
+
+## Case is more than A to Z
+
+`to_uppercase` and `to_lowercase` follow Unicode, which is why `str` returns a `String` and `char` returns an iterator: one char can become several.
+
+<Snippet file="case.rs" />
+
+- A Greek sigma is `σ` or `ς` by its place in the word. The docs say `str::to_lowercase` handles this and `char::to_lowercase` does not; the run shows both.
+- Neither method reads a locale. The docs say the Turkish and Azeri rules for `I` are not handled: `"I"` becomes `i` everywhere, and `İ` becomes `i` plus a combining dot.
+- `eq_ignore_ascii_case` compares ASCII only: `É` and `é` differ. Lowercasing both sides equates them, yet `STRASSE` and `straße` still differ: lowercase `ß` stays `ß`.
+
+Unicode's tool for this is case folding. `str` has `to_casefold_unnormalized`, and `eq_ignore_case_unnormalized` to compare without allocating. On 1.99.1 both are nightly-only: the nightly compiler (the experimental channel for unfinished features) accepts them, and the stable one refuses:
+
+<Snippet file="casefold.fail.rs" />
+
+So for a full caseless comparison you lowercase both sides (good for most text) or use a crate.
+
+## Equal-looking text that is not equal
+
+Unicode can write `é` as one char (`U+00E9`) or as an `e` plus a **combining accent** (`U+0301`), a char that attaches to the one before it. Both display as `é`. Converting both to one form is **normalization**.
+
+<Snippet file="unicode-equal.rs" />
+
+`==` compares bytes, so these differ, and `str` has no normalization method. The same trouble reaches `chars()`: a char is not what a reader sees as one letter, a grapheme ([Strings](/learn/strings/#characters-bytes-and-what-a-person-sees)). Reversing by chars moves the accent to the wrong letter:
+
+<Snippet file="reverse.rs" />
+
+The accent now sits on the `l`. The `chars` docs say grapheme clusters are "not provided by Rust's standard library, check crates.io instead".
+
+## Sorting text
+
+[Strings](/learn/strings/) showed that capitals sort first. Comparing bytes has two more surprises: `é` sorts after `z`, and `file10` before `file2`. The docs promise that `sort_by_cached_key` calls the key function at most once per element, which matters when the key allocates:
+
+<Snippet file="sorting.rs" />
+
+`é` starts with byte 195 and `z` is 122. Std has no locale-aware or natural-order comparison; for names in a user's language you need a crate.
+
+## Cutting at a byte limit
+
+A database column or a network packet limits **bytes**, and `&text[..max]` panics when `max` falls inside a char. `floor_char_boundary`, stable since Rust 1.91 ([docs](https://doc.rust-lang.org/std/primitive.str.html#method.floor_char_boundary)), gives the nearest boundary at or below `max`. A char boundary is not always a letter boundary: the last lines cut a flag, which is two chars, in half.
+
+<Snippet file="boundary.rs" />
+
+## What std leaves out
+
+The 1.99.1 `str` and `char` docs list no stable method for the jobs on the left (the casefold pair is nightly-only). The right column is where people go; each crate is on crates.io.
+
+| You need | Look at |
+|---|---|
+| Regular expressions | `regex` |
+| Grapheme clusters, word boundaries | `unicode-segmentation` |
+| Normalization (NFC joins `e` and an accent into `é`; NFD splits them) | `unicode-normalization` |
+| Locale-aware sorting | `icu_collator` (the ICU4X project) |
+| Case folding, locale-specific case | `icu_casemap` (the ICU4X project) |
+
+[Finding and using crates](/start/using-crates/) shows how to add one. `regex` is maintained by the Rust project's regex team ([team page](https://github.com/rust-lang/team/blob/main/teams/regex.toml)) but is a separate crate. Its [docs](https://docs.rs/regex/latest/regex/) say the syntax lacks look-around and backreferences, in exchange for a worst-case search time proportional to pattern size times text size. [`Regex::new`](https://docs.rs/regex/latest/regex/struct.Regex.html#method.new) returns a `Result`, since the pattern can be invalid, and compiling is not cached, so build a regex once. Not run here: the lessons' runner has no crates.
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Replace the `todo!()` and run until the checks print `all checks passed`. The starters compile and stop at `todo!`. Plain loops are fine; iterator methods are shorter ([Iterators](/learn/iterators/)).
+
+<Exercise name="extension" title="A file name's extension">
+Write `extension`, which returns the text after the last dot as a `&str` view. A name with no dot, a name that only starts with a dot (`.bashrc`), and a name that ends in a dot have none. The checks include `archive.tar.gz`, `.hidden.txt`, non-ASCII names, and that the answer points into the input. (The stem is the part before the last dot.)
+</Exercise>
+
+Real programs use [`Path::extension`](https://doc.rust-lang.org/std/path/struct.Path.html#method.extension), which also suits names that are not valid UTF-8 ([Files and I/O](/learn/files-io/#why-a-path-is-not-a-string)); it passes these checks once an empty result becomes `None`. This exercise is about `str` and views.
+
+<Exercise name="parse-scores" title="Parse a score list">
+Turn `"Ana: 90, Bo:85 ,Zoë : 7,"` into pairs of name and `u32`. Trim, skip empty items, and return the first error as a `String`: a missing `:` or the parse error's own message, prefixed by the name. The checks include a negative score, a number too large, an empty score and padding around a bad item.
+</Exercise>
+
+<Exercise name="palindrome" title="Palindromes with non-ASCII letters">
+Write `is_palindrome`: keep the chars that `is_alphanumeric` accepts, ignore case, compare with the reverse. Letters are precomposed (`é` is one char): `"Été"` must be one and `"éaè"` must not, so ASCII-only shortcuts fail, and so does comparing only the first and last letter. The last check records a limit: `é` as `e` plus U+0301 is two chars, the accent is dropped, and that text counts as a palindrome. Fixing it needs normalization ([Equal-looking text](#equal-looking-text-that-is-not-equal)).
+</Exercise>
+
+## Read more
+
+- The standard library: [`str`](https://doc.rust-lang.org/std/primitive.str.html), [`char`](https://doc.rust-lang.org/std/primitive.char.html), [`FromStr`](https://doc.rust-lang.org/std/str/trait.FromStr.html) and [`Path::extension`](https://doc.rust-lang.org/std/path/struct.Path.html#method.extension).
+- The Rust Book, chapter 8.2: [Storing UTF-8 Encoded Text with Strings](https://doc.rust-lang.org/book/ch08-02-strings.html).
+- Rust by Example: [Strings](https://doc.rust-lang.org/rust-by-example/std/str.html) and [Parse](https://doc.rust-lang.org/rust-by-example/conversion/string.html).
+- The Unicode Standard, [chapter 3](https://www.unicode.org/versions/latest/core-spec/chapter-3/) defines case mapping and case folding.
+- Crates mentioned: [`regex`](https://docs.rs/regex), [`unicode-segmentation`](https://docs.rs/unicode-segmentation), [`unicode-normalization`](https://docs.rs/unicode-normalization), [`icu_collator`](https://docs.rs/icu_collator), [`icu_casemap`](https://docs.rs/icu_casemap).

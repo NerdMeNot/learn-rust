@@ -1,0 +1,72 @@
+---
+title: "More than one program in a project"
+description: "Soon you'll want a second program next to your main one: a seed script, a migration tool, a small demo. Cargo lets one project hold as many as you like."
+---
+
+import { Files, GuideGotcha, Remember, Session, Tree } from '../../../components/guide'
+
+Soon you'll want a second program next to your main one: a seed script, a migration tool, a small demo. Cargo lets one project hold as many as you like.
+
+<Remember>Every `.rs` file directly in `src/bin/` (or `src/bin/<name>/main.rs`) is its own program with its own `main`. Shared code goes in `src/lib.rs`.</Remember>
+
+Here's the layout. Each program has its own `main`, and they all share the code in `lib.rs`:
+
+<Tree guide="several-programs" dir="rust" name="tools" notes={{"src/lib.rs":"shared code, used as tools::...","src/main.rs":"program \"tools\"","src/bin/seed.rs":"program \"seed\"","examples/demo.rs":"example \"demo\"","Cargo.lock":"created by Cargo"}} />
+
+<Files guide="several-programs" dir="rust" files={["src/lib.rs","src/main.rs","src/bin/seed.rs","examples/demo.rs"]} run="run" />
+
+- **`src/main.rs`** is the program named after the package, here `tools`.
+- **`src/bin/seed.rs`** is a program called `seed`. Add as many files there as you need. A bigger one can be a folder, `src/bin/seed/main.rs`, with its own modules (Try it #1).
+- **`examples/`** holds programs that show how to use your code. `cargo build` and `cargo run` don't build them, so they suit demos. `cargo test` does compile them, to check they still build (Try it #3).
+- **`src/lib.rs`** makes the package a library too. Every program in the package can use it by the package name, like `tools::banner`. The Go version below puts the same code in a package, `internal/banner`.
+
+For how files, crates and `mod` fit together, see [Files and modules](/start/files-and-modules/) and the [Modules lesson](/learn/modules/#packages-and-crates).
+
+## The same layout in Go
+
+<Files guide="several-programs" dir="go" files={["go.mod","cmd/seed/main.go","cmd/server/main.go","internal/banner/banner.go"]} run="go" lang="go" />
+
+## Where extra programs live in other languages
+
+| Language | Where extra programs live | Run one |
+| --- | --- | --- |
+| Rust | `src/bin/seed.rs` (each with `main`), `examples/demo.rs` | `cargo run --bin seed`, `cargo run --example demo` |
+| Go | a folder with `package main`; `cmd/seed/` is the usual place | `go run ./cmd/seed` |
+| Python | any file; the `if __name__ == "__main__":` guard stops `import seed` from running it | `python3 seed.py` |
+| TypeScript | any `.ts` file | `node seed.ts` (Node 22.18 or newer strips the types; I ran 24) |
+| Java | any class with `main` | `java Seed.java`, or `javac Seed.java` then `java Seed` |
+| Kotlin | any file with `fun main` | `kotlinc Seed.kt -include-runtime -d seed.jar`, then `java -jar seed.jar`; a Gradle build runs the one `mainClass` it names |
+| C# | a project's `Program.cs`; a second program is usually a second project in the solution | `dotnet run --project Seed` |
+| C and C++ | one source file with `main` per executable | `gcc seed.c -o seed`, `g++ seed.cpp -o seed`; in CMake, `add_executable(seed seed.c)` (not run) |
+
+Every command above ran in this course's image, except CMake, which is not installed there. The C# one ran as `dotnet run --no-restore --project Seed` from an offline project template, because the image has no network.
+
+:::tip[We've got you]
+When a project grows into several libraries and programs, Rust has workspaces: many packages that share one `Cargo.lock` and one `target/` folder ([Cargo book](https://doc.rust-lang.org/cargo/reference/workspaces.html)). Go's `go.work`, npm workspaces and Gradle multi-project builds solve a similar problem in their own way.
+:::
+
+<GuideGotcha guide="several-programs" />
+
+## Try it yourself
+
+Run these in a copy of the project above.
+
+1. **Make a program a folder.** Add `src/bin/report/main.rs` and `src/bin/report/table.rs`, with `mod table;` in `main.rs`. Cargo finds `report` with no change to `Cargo.toml`, and `mod table;` loads the file beside it.
+
+<Files guide="several-programs" dir="snippet-folder" files={["src/bin/report/main.rs","src/bin/report/table.rs"]} run="folder" />
+
+2. **Mistype a name.** Run `cargo run --bin sed`. Cargo says there is no such program and suggests `seed`.
+
+<Session guide="several-programs" run="typo" />
+
+3. **Find out what `cargo build` skips.** Run `cargo build`, then `ls target/debug/examples`. The folder is empty until `cargo build --example demo` makes `demo`. Running `cargo test` in the same project makes `demo` appear there as well.
+
+<Session guide="several-programs" run="examples" />
+
+## Read more
+
+- [Package Layout](https://doc.rust-lang.org/cargo/guide/project-layout.html) in the Cargo Book: where `src/bin/`, `examples/` and `tests/` go, including programs made of several files.
+- [Cargo Targets](https://doc.rust-lang.org/cargo/reference/cargo-targets.html): binaries, examples, and how to configure each with `[[bin]]` and `[[example]]`.
+- [The `default-run` field](https://doc.rust-lang.org/cargo/reference/manifest.html#the-default-run-field): the fix for the gotcha above.
+- [Packages and Crates](https://doc.rust-lang.org/book/ch07-01-packages-and-crates.html) in the Rust Book: packages, library crates and binary crates.
+- [Workspaces](https://doc.rust-lang.org/cargo/reference/workspaces.html) in the Cargo Book.

@@ -1,0 +1,129 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Box, Rc and RefCell"
+part: "smart-pointers"
+intro: >-
+  A smart pointer is a value that owns data somewhere else, lets you reach it as if it
+  were the value itself, and cleans it up when it goes out of scope. `Box<T>` is one
+  owner on the heap. `Rc<T>` is several owners with a count. `RefCell<T>` lets you change
+  something through a shared reference, by checking the borrowing rules when the program
+  runs. Together they cover the cases where ownership really is shared. Most programs need
+  them in a few places; the rest of the time a plain value or a reference does the job.
+coming_from:
+  go: >-
+    Go has no owning pointer types: a `*T` is a plain pointer, and the garbage collector
+    frees what nobody can reach. Copying a pointer is how you share, and every holder may
+    change the value. Most Go pointers, passed to a function that uses them for the call,
+    become a plain `&T` or `&mut T` in Rust. `Rc<T>` is for the sharing that remains, with
+    the owners counted, and read-only until you add a `RefCell`. `Drop` does the job `defer`
+    does, tied to the value instead of the function.
+  kotlin: >-
+    Every object reference is already shared, and the JVM frees an object when nothing can
+    reach it. `Rc<T>` is that sharing as an opt-in, with a count you can read, and a value
+    inside an `Rc` is read-only until you add a `RefCell`. `Box<T>` is the other case: one
+    owner, no sharing.
+  python: >-
+    CPython frees most objects by counting references, which is what `Rc` does, but it
+    counts every name for you and lets any name change the object. In Rust you ask for the
+    count (`Rc`), and you ask for the right to change shared data (`RefCell`). A cycle is
+    collected by Python's cycle collector, and is not by `Rc`. Most of what you share by
+    passing a name to a function is a plain `&` in Rust.
+  typescript: >-
+    Objects are shared by reference and freed by the garbage collector, and any name may
+    change the object. `Rc<T>` is that sharing made explicit, with a count and read-only
+    access, and `RefCell<T>` is the way to change a shared value. `Box<T>` is the one-owner
+    case that JavaScript has no word for.
+  java: >-
+    Every object variable is already a shared reference, freed by the garbage collector
+    when unreachable. `Rc<T>` is an opt-in version with a visible count, and a value in an
+    `Rc` is read-only until you add a `RefCell`. The JVM also reclaims reference cycles;
+    `Rc` does not. You never need `WeakReference` to break a cycle in Java; `Weak<T>` is how
+    you write a back-pointer that does not keep its target alive.
+  csharp: >-
+    A class instance is already a shared reference that the garbage collector frees when
+    unreachable. `Rc<T>` is that sharing as an opt-in, with a count, read-only until you add
+    a `RefCell`. `Box<T>` is the single owner; `Weak<T>` is the `WeakReference` that does not
+    keep the value alive.
+  c: >-
+    In C you share a value by copying its pointer and decide by hand who calls `free`. An
+    `Rc<T>` is that pattern with the count and the `free` written once, in the type, so the
+    value is freed when the last owner goes. A `Box<T>` is one `malloc` with one owner, freed
+    when it goes out of scope.
+  cpp: >-
+    `Box<T>` is `std::unique_ptr<T>`, but a moved-from Rust box cannot be used at all (a
+    compile error), where a moved-from `unique_ptr` is a null pointer that you may
+    dereference by mistake (undefined behaviour). `Arc<T>` is `std::shared_ptr<T>`, and
+    `Rc<T>` is closest to `shared_ptr<const T>` with a count that is never atomic: the
+    standard library offers no such pointer to ask for, and Rust makes the choice in the type.
+    `Weak<T>` is `std::weak_ptr<T>`.
+notes:
+  - >-
+    A smart pointer owns data that lives elsewhere (usually the heap), derefs to it, so
+    `*b` and `b.method()` reach the data, and runs `Drop` to free it. `Box<T>` has one owner,
+    `Rc<T>` has several and counts them, and the value is freed when the count reaches zero.
+  - >-
+    `Rc::clone(&a)` copies a pointer and adds one to the count. It does not copy the data.
+    `Rc::ptr_eq(&a, &b)` says whether two `Rc`s point at the same allocation.
+  - >-
+    An `Rc` gives out only shared references, because several owners may be reading. To
+    change the value you wrap it in `RefCell<T>`, which checks the borrowing rules when the
+    program runs: a second `borrow_mut()` while one is alive panics instead of failing to
+    compile.
+  - >-
+    Two `Rc`s that own each other never reach zero, so neither is freed. Make one of the
+    links a `Weak<T>`, which does not count as an owner and gives back `None` once the value
+    is gone. `Rc` is for one thread; `Arc` is the version that threads may share.
+gotcha:
+  title: "Changing a value through a shared Rc"
+  verdict: "rust-rule"
+  looks_fine: >-
+    In Go, Kotlin, Java, C#, Python, TypeScript, C and C++, two names for one object may both
+    change it, and the second change sees the first.
+  rust_sees: >-
+    `Rc<Counter>` hands out only shared references (`&Counter`), because any other owner
+    may be reading the value at the same time. `a.hits += 1` needs a unique one (`&mut`),
+    and the `Rc` has no way to give it.
+  why: >-
+    This is the borrowing rule from earlier lessons, applied to owners: any number of
+    readers, or one writer. The compiler cannot know how many owners an `Rc` has, because
+    the count changes while the program runs, so `Rc` never hands out `&mut`, even to a
+    single owner. When you do need to change shared data, `RefCell` moves the same check to
+    run time, as `fixed.rs` does: it allows the write when no other borrow is alive, and
+    panics when one is.
+  langs:
+    go:
+      status: "runs"
+      says: >-
+        Go runs this and prints hits: 2. Both names are the same pointer and either may
+        change the struct. Nothing checks who else is using it.
+    kotlin:
+      status: "runs"
+      says: >-
+        Kotlin runs this and prints hits: 2. `a` and `b` are two references to one object,
+        and a `var` property can be changed through either.
+    python:
+      status: "runs"
+      says: >-
+        Python prints hits: 2. `b = a` makes a second name for the same object.
+    typescript:
+      status: "runs"
+      says: >-
+        Prints hits: 2. `a` and `b` refer to one object and either may change its field.
+    java:
+      status: "runs"
+      says: >-
+        Java runs this and prints hits: 2. `b = a` copies the reference, not the object.
+    csharp:
+      status: "runs"
+      says: >-
+        C# runs this and prints hits: 2. A class instance is shared by reference.
+    c:
+      status: "runs"
+      says: >-
+        C runs this and prints hits: 2. Two pointers to one struct, with nothing to say who
+        may write.
+    cpp:
+      status: "runs"
+      says: >-
+        C++ runs this and prints hits: 2. A `std::shared_ptr<Counter>` counts its owners as
+        `Rc` does and lets every owner change the value. The read-only form is
+        `shared_ptr<const Counter>`, which is what `Rc<Counter>` is.

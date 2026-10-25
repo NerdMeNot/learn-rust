@@ -1,0 +1,345 @@
+{
+ "id": "reading-macros",
+ "title": "Macros you'll read",
+ "part": "further",
+ "intro": "A macro is code that writes code. The compiler runs it, puts what it produced where the call was, and only then checks types. You met the macros you call every day in [Macros, attributes and naming](/learn/macros-attributes-naming/). This page is for reading the others: a `macro_rules!` block in a dependency, a `#[derive(...)]` that writes code you never see, an attribute such as `#[tokio::main]`. You will read far more macros than you write.",
+ "coming_from": {
+  "go": "Go has no macros. `map[string]int{...}` is syntax the language provides. Rust has no map literal, and the `hashmap!` macro below fills the gap. `go generate` is the nearest idea: it runs a program you wrote and leaves source files behind. A Rust macro runs inside the compiler whenever the crate is compiled and leaves nothing in your source tree.",
+  "kotlin": "Kotlin has no macros either: `mapOf(\"a\" to 1)` is an ordinary function. Code generators for Kotlin, such as KSP, are compiler plugins. Rust's derive and attribute macros fill that role, and the ones you add yourself (serde's, for example) arrive as a crate in `Cargo.toml`.",
+  "python": "Python has no macro stage: ordinary code cannot rewrite other code before it runs. `@dataclass` rewrites a class when the module is imported; `#[derive]` writes its code while the program compiles, so a mistake is reported before anything runs.",
+  "typescript": "TypeScript has no macros. A Babel plugin is the nearest mechanism: it rewrites code in a build step, outside the language, for the whole build. Decorators run when the program runs. A Rust macro is part of the compiler's own pipeline and runs only where the code names it.",
+  "java": "An annotation is metadata, and an annotation processor reads it inside `javac` while your code compiles and generates code. `#[derive]` and attribute macros are the nearest match, and `macro_rules!` has no Java counterpart at all.",
+  "csharp": "A source generator runs inside the C# compiler and adds code, as a derive macro does. A `macro_rules!` macro has no C# counterpart, and `[CallerArgumentExpression]` covers one small job macros do, capturing the text of an argument.",
+  "c": "A `#define` substitutes tokens before the compiler parses anything, which is where `SQUARE(x) x*x` goes wrong. `macro_rules!` works on parsed pieces of code (an `expr`, a `ty`), and the variables a macro makes do not collide with yours.",
+  "cpp": "Templates and `constexpr` do much of what you would reach for a macro to do, and Rust's generics do the same jobs. What templates cannot do (generate a function whose name you pass in, capture an expression's text) is the work of macros."
+ },
+ "notes": [
+  "A name followed by `!` is a macro call, and it may use `()`, `[]` or `{}`. The rules of the macro decide what may go inside, so `vec![1, 2]` and `hashmap! { \"a\" => 1 }` are different grammars.",
+  "`macro_rules!` is a list of rules, each `(pattern) => { code }`. To read a call, find the first rule whose pattern fits, then swap the pieces the pattern captured into the code.",
+  "`$x:expr` captures one expression, `$name:ident` a name, `$t:ty` a type, and `$( ... ),*` repeats whatever is inside it, separated by commas.",
+  "Derives and attributes such as `#[tokio::main]` are macros too. Those from a crate are Rust functions that read and write tokens, in a crate of their own.",
+  "A function is the right tool until it is not. A macro is for what a function cannot do: take a list of any length, generate items, capture the text of an expression."
+ ],
+ "gotcha": {
+  "title": "A macro call has the syntax its author gave it",
+  "verdict": "rust-rule",
+  "looks_fine": "In Python, TypeScript and Go, `\"Ada\": 36` is how an entry of a map or object is written. A macro that builds a map might be expected to accept the same.",
+  "rust_sees": "`hashmap!` is not part of the language. It has one rule, and that rule says each pair is `key => value`. A `:` fits no rule, so the compiler stops at it.",
+  "why": "The macro's own patterns decide what a call may look like. The error names the token that fits no rule and points at what the macro was trying to match when it gave up. When you meet a macro you do not know, its documentation or its `macro_rules!` block is where the grammar is written.",
+  "langs": {
+   "go": {
+    "status": "runs",
+    "says": "Go runs this. A map literal is part of the language, and `key: value` is how its entries are written.",
+    "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tages := map[string]int{\"Ada\": 36, \"Linus\": 28}\n\tfmt.Println(\"entries:\", len(ages))\n}\n",
+    "out": "entries: 2\n"
+   },
+   "kotlin": {
+    "status": "runs",
+    "says": "Kotlin runs this, but the pairs are written `\"Ada\" to 36`: `mapOf` is a function and `to` makes a pair. There is no colon form.",
+    "code": "fun main() {\n    val ages = mapOf(\"Ada\" to 36, \"Linus\" to 28)\n    println(\"entries: ${ages.size}\")\n}\n",
+    "out": "entries: 2\n"
+   },
+   "python": {
+    "status": "runs",
+    "says": "Python runs this. A dict literal is part of the language, with the colon.",
+    "code": "ages = {\"Ada\": 36, \"Linus\": 28}\nprint(\"entries:\", len(ages))\n",
+    "out": "entries: 2\n"
+   },
+   "typescript": {
+    "status": "runs",
+    "says": "TypeScript runs this. An object literal takes `key: value`. A `Map` has no literal and takes an array of pairs instead.",
+    "code": "const ages = { Ada: 36, Linus: 28 };\nconsole.log(\"entries:\", Object.keys(ages).length);\n",
+    "out": "entries: 2\n"
+   },
+   "java": {
+    "status": "runs",
+    "says": "Java runs this, with `Map.of(\"Ada\", 36, ...)`, an ordinary method that takes keys and values in turn. Java has no map literal.",
+    "code": "import java.util.Map;\n\npublic class Main {\n    public static void main(String[] args) {\n        Map<String, Integer> ages = Map.of(\"Ada\", 36, \"Linus\", 28);\n        System.out.println(\"entries: \" + ages.size());\n    }\n}\n",
+    "out": "entries: 2\n"
+   },
+   "csharp": {
+    "status": "runs",
+    "says": "C# runs this. A collection initializer is part of the language and takes `[\"Ada\"] = 36` entries.",
+    "code": "var ages = new Dictionary<string, int> { [\"Ada\"] = 36, [\"Linus\"] = 28 };\nConsole.WriteLine($\"entries: {ages.Count}\");\n",
+    "out": "entries: 2\n"
+   },
+   "c": {
+    "status": "runs",
+    "says": "C runs this, with an array of structs: the standard library has no map type to write a literal for.",
+    "code": "#include <stdio.h>\n\nstruct Entry {\n    const char *name;\n    int age;\n};\n\nint main(void) {\n    struct Entry ages[] = {{\"Ada\", 36}, {\"Linus\", 28}};\n    printf(\"entries: %zu\\n\", sizeof ages / sizeof ages[0]);\n    return 0;\n}\n",
+    "out": "entries: 2\n"
+   },
+   "cpp": {
+    "status": "runs",
+    "says": "C++ runs this. A `std::map` takes a list of `{key, value}` pairs through an initializer list.",
+    "code": "#include <iostream>\n#include <map>\n#include <string>\n\nint main() {\n    std::map<std::string, int> ages{{\"Ada\", 36}, {\"Linus\", 28}};\n    std::cout << \"entries: \" << ages.size() << \"\\n\";\n    return 0;\n}\n",
+    "out": "entries: 2\n"
+   }
+  },
+  "code": "use std::collections::HashMap;\n\nmacro_rules! hashmap {\n    ($($key:expr => $value:expr),* $(,)?) => {{\n        let mut map = HashMap::new();\n        $(map.insert($key, $value);)*\n        map\n    }};\n}\n\nfn main() {\n    let ages = hashmap! { \"Ada\": 36, \"Linus\": 28 };\n    println!(\"entries: {}\", ages.len());\n}\n",
+  "error": "error: no rules expected `:`\n  --> src/main.rs:12:32\n   |\n 3 | macro_rules! hashmap {\n   | -------------------- when calling this macro\n...\n12 |     let ages = hashmap! { \"Ada\": 36, \"Linus\": 28 };\n   |                                ^ no rules expected this token in macro call\n   |\nnote: while trying to match `=>`\n  --> src/main.rs:4:18\n   |\n 4 |     ($($key:expr => $value:expr),* $(,)?) => {{\n   |                  ^^",
+  "fixed": {
+   "code": "use std::collections::HashMap;\n\nmacro_rules! hashmap {\n    ($($key:expr => $value:expr),* $(,)?) => {{\n        let mut map = HashMap::new();\n        $(map.insert($key, $value);)*\n        map\n    }};\n}\n\nfn main() {\n    let ages = hashmap! { \"Ada\" => 36, \"Linus\" => 28 };\n    println!(\"entries: {}\", ages.len());\n}\n",
+   "out": "entries: 2\n"
+  }
+ },
+ "order": 51,
+ "program": {
+  "rust": {
+   "code": "use std::collections::HashMap;\n\n// A macro: a pattern on the left of `=>`, the code it becomes on the right.\nmacro_rules! hashmap {\n    ($($key:expr => $value:expr),* $(,)?) => {{\n        let mut map = HashMap::new();\n        $(map.insert($key, $value);)*\n        map\n    }};\n}\n\nfn main() {\n    let ages = hashmap! { \"Ada\" => 36, \"Linus\" => 28, \"Grace\" => 45 };\n\n    let mut names: Vec<_> = ages.keys().collect();\n    names.sort();\n    for name in names {\n        println!(\"{name}: {}\", ages[name]);\n    }\n    println!(\"entries: {}\", ages.len());\n}\n",
+   "out": "Ada: 36\nGrace: 45\nLinus: 28\nentries: 3\n"
+  },
+  "go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"sort\"\n)\n\nfunc main() {\n\t// A map literal is part of the language: no macro needed\n\tages := map[string]int{\"Ada\": 36, \"Linus\": 28, \"Grace\": 45}\n\n\tnames := make([]string, 0, len(ages))\n\tfor name := range ages {\n\t\tnames = append(names, name)\n\t}\n\tsort.Strings(names)\n\tfor _, name := range names {\n\t\tfmt.Printf(\"%s: %d\\n\", name, ages[name])\n\t}\n\tfmt.Println(\"entries:\", len(ages))\n}\n",
+   "out": "Ada: 36\nGrace: 45\nLinus: 28\nentries: 3\n"
+  },
+  "kotlin": {
+   "code": "fun main() {\n    // mapOf is an ordinary function; `to` makes a pair\n    val ages = mapOf(\"Ada\" to 36, \"Linus\" to 28, \"Grace\" to 45)\n\n    for (name in ages.keys.sorted()) {\n        println(\"$name: ${ages[name]}\")\n    }\n    println(\"entries: ${ages.size}\")\n}\n",
+   "out": "Ada: 36\nGrace: 45\nLinus: 28\nentries: 3\n"
+  },
+  "python": {
+   "code": "# A dict literal is part of the language: no macro needed\nages = {\"Ada\": 36, \"Linus\": 28, \"Grace\": 45}\n\nfor name in sorted(ages):\n    print(f\"{name}: {ages[name]}\")\nprint(f\"entries: {len(ages)}\")\n",
+   "out": "Ada: 36\nGrace: 45\nLinus: 28\nentries: 3\n"
+  },
+  "typescript": {
+   "code": "// Object and Map literals are part of the language: no macro needed\nconst ages = new Map([\n    [\"Ada\", 36],\n    [\"Linus\", 28],\n    [\"Grace\", 45],\n]);\n\nfor (const name of [...ages.keys()].sort()) {\n    console.log(`${name}: ${ages.get(name)}`);\n}\nconsole.log(`entries: ${ages.size}`);\n",
+   "out": "Ada: 36\nGrace: 45\nLinus: 28\nentries: 3\n"
+  },
+  "java": {
+   "code": "import java.util.Map;\nimport java.util.TreeSet;\n\npublic class Main {\n    public static void main(String[] args) {\n        // Map.of is an ordinary method; the language has no map literal\n        Map<String, Integer> ages = Map.of(\"Ada\", 36, \"Linus\", 28, \"Grace\", 45);\n\n        for (String name : new TreeSet<>(ages.keySet())) {\n            System.out.println(name + \": \" + ages.get(name));\n        }\n        System.out.println(\"entries: \" + ages.size());\n    }\n}\n",
+   "out": "Ada: 36\nGrace: 45\nLinus: 28\nentries: 3\n"
+  },
+  "csharp": {
+   "code": "// A collection initializer is part of the language: no macro needed\nvar ages = new Dictionary<string, int> { [\"Ada\"] = 36, [\"Linus\"] = 28, [\"Grace\"] = 45 };\n\nforeach (var name in ages.Keys.Order())\n{\n    Console.WriteLine($\"{name}: {ages[name]}\");\n}\nConsole.WriteLine($\"entries: {ages.Count}\");\n",
+   "out": "Ada: 36\nGrace: 45\nLinus: 28\nentries: 3\n"
+  },
+  "c": {
+   "code": "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n\n// C has no map type and no macro-free literal for one: an array of pairs\nstruct Entry {\n    const char *name;\n    int age;\n};\n\nstatic int by_name(const void *a, const void *b) {\n    return strcmp(((const struct Entry *)a)->name, ((const struct Entry *)b)->name);\n}\n\nint main(void) {\n    struct Entry ages[] = {{\"Ada\", 36}, {\"Linus\", 28}, {\"Grace\", 45}};\n    size_t count = sizeof ages / sizeof ages[0];\n\n    qsort(ages, count, sizeof ages[0], by_name);\n    for (size_t i = 0; i < count; i++) {\n        printf(\"%s: %d\\n\", ages[i].name, ages[i].age);\n    }\n    printf(\"entries: %zu\\n\", count);\n    return 0;\n}\n",
+   "out": "Ada: 36\nGrace: 45\nLinus: 28\nentries: 3\n"
+  },
+  "cpp": {
+   "code": "#include <iostream>\n#include <map>\n#include <string>\n\nint main() {\n    // An initializer list is part of the language: no macro needed\n    std::map<std::string, int> ages{{\"Ada\", 36}, {\"Linus\", 28}, {\"Grace\", 45}};\n\n    for (const auto &[name, age] : ages) { // std::map iterates in key order\n        std::cout << name << \": \" << age << \"\\n\";\n    }\n    std::cout << \"entries: \" << ages.size() << \"\\n\";\n    return 0;\n}\n",
+   "out": "Ada: 36\nGrace: 45\nLinus: 28\nentries: 3\n"
+  }
+ },
+ "faq": [],
+ "snippets": {
+  "check-const-generic.rs": {
+   "code": "use std::ops::Mul;\n\n// Backs the C++ table: a const fn evaluated while compiling, and a generic square with a bound.\nconst fn square_const(x: i32) -> i32 {\n    x * x\n}\n\nconst SEVEN_SQUARED: i32 = square_const(7);\nconst _: () = assert!(SEVEN_SQUARED == 49);\n\nfn square<T: Mul<Output = T> + Copy>(x: T) -> T {\n    x * x\n}\n\nfn main() {\n    assert_eq!(SEVEN_SQUARED, 49);\n    assert_eq!(square(7), 49);\n    assert_eq!(square(2.5), 6.25);\n    println!(\"const fn and generic square checked\");\n}\n",
+   "out": "const fn and generic square checked\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-fragments.rs": {
+   "code": "// Backs the fragment-specifier table: one macro per kind, asserting what it captured.\nmacro_rules! m_block {\n    ($b:block) => {\n        stringify!($b)\n    };\n}\nmacro_rules! m_stmt {\n    ($s:stmt) => {\n        stringify!($s)\n    };\n}\nmacro_rules! m_item {\n    ($i:item) => {\n        stringify!($i)\n    };\n}\nmacro_rules! m_path {\n    ($p:path) => {\n        stringify!($p)\n    };\n}\nmacro_rules! m_lifetime {\n    ($l:lifetime) => {\n        stringify!($l)\n    };\n}\nmacro_rules! m_meta {\n    ($m:meta) => {\n        stringify!($m)\n    };\n}\nmacro_rules! m_vis {\n    ($v:vis struct $name:ident) => {\n        stringify!($v)\n    };\n}\n\nfn main() {\n    assert_eq!(m_block!({ 1 + 1 }), \"{ 1 + 1 }\");\n    assert_eq!(m_stmt!(let x = 5), \"let x = 5\");\n    assert_eq!(\n        m_item!(\n            fn f() {}\n        ),\n        \"fn f() {}\"\n    );\n    assert_eq!(\n        m_path!(std::collections::HashMap),\n        \"std::collections::HashMap\"\n    );\n    assert_eq!(m_lifetime!('a), \"'a\");\n    assert_eq!(m_meta!(derive(Debug)), \"derive(Debug)\");\n    assert_eq!(m_vis!(pub(crate) struct S), \"pub(crate)\");\n    assert_eq!(m_vis!(struct S), \"\");\n    println!(\"fragment kinds checked\");\n}\n",
+   "out": "fragment kinds checked\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-literal-colon.rs": {
+   "code": "// Backs the claim in \"Why this macro uses `=>`\": a `literal` key may be followed by `:`.\nmacro_rules! pair {\n    ($key:literal : $value:expr) => {\n        ($key, $value)\n    };\n}\n\nfn main() {\n    assert_eq!(pair!(\"Ada\": 36), (\"Ada\", 36));\n    println!(\"ok\");\n}\n",
+   "out": "ok\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "derive-bounds.fail.rs": {
+   "code": "use std::marker::PhantomData;\n\n#[derive(Clone)]\nstruct Handle<T> {\n    id: u32,\n    _kind: PhantomData<T>,\n}\n\nstruct Printer; // no Clone\n\nfn main() {\n    let h: Handle<Printer> = Handle {\n        id: 1,\n        _kind: PhantomData,\n    };\n    let again = h.clone();\n    println!(\"{}\", again.id);\n}\n",
+   "error": "error[E0599]: the method `clone` exists for struct `Handle<Printer>`, but its trait bounds were not satisfied\n  --> src/main.rs:16:19\n   |\n 4 | struct Handle<T> {\n   | ---------------- method `clone` not found for this struct because it doesn't satisfy `Handle<Printer>: Clone`\n...\n 9 | struct Printer; // no Clone\n   | -------------- doesn't satisfy `Printer: Clone`\n...\n16 |     let again = h.clone();\n   |                   ^^^^^ method cannot be called on `Handle<Printer>` due to unsatisfied trait bounds\n   |\nnote: trait bound `Printer: Clone` was not satisfied\n  --> src/main.rs:4:15\n   |\n 3 | #[derive(Clone)]\n   |          ----- in this derive macro expansion\n 4 | struct Handle<T> {\n   |               ^ type parameter would need to implement `Clone`\n   = help: consider manually implementing the trait to avoid undesired bounds\nhelp: consider annotating `Printer` with `#[derive(Clone)]`\n   |\n 9 + #[derive(Clone)]\n10 | struct Printer; // no Clone",
+   "lang": "rust"
+  },
+  "derive-expanded.rs": {
+   "code": "use std::process::Command;\n\nconst POINT: &str = \"#[derive(Debug, Clone, PartialEq)]\nstruct Point {\n    x: i32,\n    y: i32,\n}\n\";\n\nconst MODE: &str = \"#[derive(Default)]\nenum Mode {\n    #[default]\n    Fast,\n    Slow,\n}\n\";\n\n// A harness: it asks rustc (RUSTC_BOOTSTRAP=1, as above) for the source after macros ran.\nfn expand(source: &str) -> String {\n    let path = std::env::temp_dir().join(\"derive-demo.rs\");\n    std::fs::write(&path, source).unwrap();\n    let out = Command::new(\"rustc\")\n        .args([\n            \"--edition\",\n            \"2024\",\n            \"--crate-type\",\n            \"lib\",\n            \"-Zunpretty=expanded\",\n        ])\n        .arg(&path)\n        .env(\"RUSTC_BOOTSTRAP\", \"1\")\n        .output()\n        .unwrap();\n    std::fs::remove_file(&path).unwrap();\n    let text = String::from_utf8_lossy(&out.stdout).into_owned();\n    // Skip the prelude lines every expansion starts with.\n    text.lines().skip(4).collect::<Vec<_>>().join(\"\\n\")\n}\n\nfn main() {\n    println!(\"--- you write ---\\n{POINT}\");\n    println!(\"--- rustc sees ---\\n{}\\n\", expand(POINT));\n    println!(\"--- you write ---\\n{MODE}\");\n    println!(\"--- rustc sees ---\\n{}\", expand(MODE));\n}\n",
+   "out": "--- you write ---\n#[derive(Debug, Clone, PartialEq)]\nstruct Point {\n    x: i32,\n    y: i32,\n}\n\n--- rustc sees ---\nstruct Point {\n    x: i32,\n    y: i32,\n}\n#[automatically_derived]\nimpl ::core::fmt::Debug for Point {\n    #[inline]\n    fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {\n        ::core::fmt::Formatter::debug_struct_field2_finish(f, \"Point\", \"x\",\n            &self.x, \"y\", &&self.y)\n    }\n}\n#[automatically_derived]\nimpl ::core::clone::Clone for Point {\n    #[inline]\n    fn clone(&self) -> Point {\n        Point {\n            x: ::core::clone::Clone::clone(&self.x),\n            y: ::core::clone::Clone::clone(&self.y),\n        }\n    }\n}\n#[automatically_derived]\nimpl ::core::marker::StructuralPartialEq for Point { }\n#[automatically_derived]\nimpl ::core::cmp::PartialEq for Point {\n    #[inline]\n    fn eq(&self, other: &Point) -> bool {\n        self.x == other.x && self.y == other.y\n    }\n}\n\n--- you write ---\n#[derive(Default)]\nenum Mode {\n    #[default]\n    Fast,\n    Slow,\n}\n\n--- rustc sees ---\nenum Mode {\n\n    #[default]\n    Fast,\n    Slow,\n}\n#[automatically_derived]\nimpl ::core::default::Default for Mode {\n    #[inline]\n    fn default() -> Mode { Self::Fast }\n}\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "double-eval.rs": {
+   "code": "use std::cell::Cell;\n\nmacro_rules! square_twice {\n    ($x:expr) => {\n        $x * $x\n    };\n}\nmacro_rules! square_once {\n    ($x:expr) => {{\n        let v = $x;\n        v * v\n    }};\n}\nfn square(x: i32) -> i32 {\n    x * x\n}\n\nfn main() {\n    let calls = Cell::new(0);\n    let next = || {\n        calls.set(calls.get() + 1);\n        calls.get()\n    };\n\n    let a = square_twice!(next());\n    println!(\"square_twice!(next()) = {a} after {} calls\", calls.get());\n    calls.set(0);\n    let b = square_once!(next());\n    println!(\"square_once!(next())  = {b} after {} calls\", calls.get());\n    calls.set(0);\n    let c = square(next());\n    println!(\"square(next())        = {c} after {} calls\", calls.get());\n}\n",
+   "out": "square_twice!(next()) = 2 after 2 calls\nsquare_once!(next())  = 1 after 1 calls\nsquare(next())        = 1 after 1 calls\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "early-return.rs": {
+   "code": "macro_rules! parse_or_zero {\n    ($s:expr) => {\n        match $s.parse::<i32>() {\n            Ok(n) => n,\n            Err(_) => return 0,\n        }\n    };\n}\n\nfn sum_pair(a: &str, b: &str) -> i32 {\n    let x = parse_or_zero!(a);\n    let y = parse_or_zero!(b);\n    println!(\"  both parsed: {x} and {y}\");\n    x + y\n}\n\nfn main() {\n    println!(\"sum_pair(\\\"1\\\", \\\"2\\\") = {}\", sum_pair(\"1\", \"2\"));\n    println!(\"sum_pair(\\\"1\\\", \\\"x\\\") = {}\", sum_pair(\"1\", \"x\"));\n}\n",
+   "out": "  both parsed: 1 and 2\nsum_pair(\"1\", \"2\") = 3\nsum_pair(\"1\", \"x\") = 0\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "error-semicolon.fail.rs": {
+   "code": "macro_rules! my_vec {\n    () => {\n        Vec::new()\n    };\n    ($($x:expr),+ $(,)?) => {{\n        let mut v = Vec::new();\n        $(v.push($x);)+\n        v\n    }};\n}\n\nfn main() {\n    let v = my_vec![0; 3];\n    println!(\"{v:?}\");\n}\n",
+   "error": "error: no rules expected `;`\n  --> src/main.rs:13:22\n   |\n 1 | macro_rules! my_vec {\n   | ------------------- when calling this macro\n...\n13 |     let v = my_vec![0; 3];\n   |                      ^ no rules expected this token in macro call\n   |\n   = note: while trying to match sequence start",
+   "lang": "rust"
+  },
+  "error-type.fail.rs": {
+   "code": "struct Age(u32);\n\nmacro_rules! age {\n    ($years:expr) => {\n        Age($years)\n    };\n}\n\nfn main() {\n    let ada = age!(36);\n    let linus = age!(\"twenty-eight\");\n    println!(\"{} {}\", ada.0, linus.0);\n}\n",
+   "error": "error[E0308]: mismatched types\n  --> src/main.rs:11:22\n   |\n 5 |         Age($years)\n   |         --- arguments to this struct are incorrect\n...\n11 |     let linus = age!(\"twenty-eight\");\n   |                      ^^^^^^^^^^^^^^ expected `u32`, found `&str`\n   |\nnote: tuple struct defined here\n  --> src/main.rs:1:8\n   |\n 1 | struct Age(u32);\n   |        ^^^\n",
+   "lang": "rust"
+  },
+  "expand.rs": {
+   "code": "use std::process::{Command, Output};\n\nconst SOURCE: &str = r#\"use std::collections::HashMap;\n\nmacro_rules! hashmap {\n    ($($key:expr => $value:expr),* $(,)?) => {{\n        let mut map = HashMap::new();\n        $(map.insert($key, $value);)*\n        map\n    }};\n}\n\nmacro_rules! sum {\n    ($x:expr) => {\n        $x\n    };\n    ($head:expr, $($tail:expr),+) => {\n        $head + sum!($($tail),+)\n    };\n}\n\nfn main() {\n    let ages = hashmap! { \"Ada\" => 36, \"Linus\" => 28 };\n    let total = sum!(1, 2, 3);\n    println!(\"{} entries, total {total}\", ages.len());\n}\n\"#;\n\n// The Rust below is only a harness: it saves SOURCE and asks rustc for the expansion.\n// -Zunpretty=expanded is a nightly flag; RUSTC_BOOTSTRAP=1 makes this stable compiler accept it.\nfn rustc(bootstrap: bool) -> Output {\n    let path = std::env::temp_dir().join(\"expand-demo.rs\");\n    std::fs::write(&path, SOURCE).unwrap();\n    let mut command = Command::new(\"rustc\");\n    command\n        .args([\"--edition\", \"2024\", \"-Zunpretty=expanded\"])\n        .arg(&path);\n    if bootstrap {\n        command.env(\"RUSTC_BOOTSTRAP\", \"1\");\n    }\n    let out = command.output().unwrap();\n    std::fs::remove_file(&path).unwrap();\n    out\n}\n\nfn main() {\n    let refused = String::from_utf8_lossy(&rustc(false).stderr).into_owned();\n    println!(\n        \"without RUSTC_BOOTSTRAP: {}\",\n        refused.lines().next().unwrap()\n    );\n\n    let text = String::from_utf8_lossy(&rustc(true).stdout).into_owned();\n    // The macro definitions stay in the output; the interesting part is `main`.\n    let main_at = text.find(\"fn main()\").unwrap();\n    println!(\n        \"with RUSTC_BOOTSTRAP=1, from `fn main`:\\n{}\",\n        &text[main_at..]\n    );\n}\n",
+   "out": "without RUSTC_BOOTSTRAP: error: the option `Z` is only accepted on the nightly compiler\nwith RUSTC_BOOTSTRAP=1, from `fn main`:\nfn main() {\n    let ages =\n        {\n            let mut map = HashMap::new();\n            map.insert(\"Ada\", 36);\n            map.insert(\"Linus\", 28);\n            map\n        };\n    let total = 1 + (2 + 3);\n    {\n        ::std::io::_print(format_args!(\"{0} entries, total {1}\\n\", ages.len(),\n                total));\n    };\n}\n\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "fixed-arity.fail.rs": {
+   "code": "fn sum(values: &[i32]) -> i32 {\n    values.iter().sum()\n}\n\nfn main() {\n    println!(\"{}\", sum(&[1, 2, 3]));\n    println!(\"{}\", sum(1, 2, 3));\n}\n",
+   "error": "error[E0061]: this function takes 1 argument but 3 arguments were supplied\n --> src/main.rs:7:20\n  |\n7 |     println!(\"{}\", sum(1, 2, 3));\n  |                    ^^^ -  -  - unexpected argument #3 of type `{integer}`\n  |                        |  |\n  |                        |  unexpected argument #2 of type `{integer}`\n  |                        expected `&[i32]`, found integer\n  |\nnote: function defined here\n --> src/main.rs:1:4\n  |\n1 | fn sum(values: &[i32]) -> i32 {\n  |    ^^^ --------------\nhelp: remove the extra arguments\n  |\n7 -     println!(\"{}\", sum(1, 2, 3));\n7 +     println!(\"{}\", sum(/* &[i32] */));",
+   "lang": "rust"
+  },
+  "follow-set.fail.rs": {
+   "code": "// The gotcha's call used `\"Ada\": 36`. Can a rule be written to accept it?\nmacro_rules! pair {\n    ($key:expr : $value:expr) => {\n        ($key, $value)\n    };\n}\n\nfn main() {\n    let p = pair!(\"Ada\": 36);\n    println!(\"{p:?}\");\n}\n",
+   "error": "error: `$key:expr` is followed by `:`, which is not allowed for `expr` fragments\n --> src/main.rs:3:16\n  |\n3 |     ($key:expr : $value:expr) => {\n  |                ^ not allowed after `expr` fragments\n  |\n  = note: allowed there are: `=>`, `,` or `;`",
+   "lang": "rust"
+  },
+  "fragments.rs": {
+   "code": "macro_rules! show_expr {\n    ($e:expr) => {\n        stringify!($e)\n    };\n}\nmacro_rules! show_ident {\n    ($i:ident) => {\n        stringify!($i)\n    };\n}\nmacro_rules! show_ty {\n    ($t:ty) => {\n        stringify!($t)\n    };\n}\nmacro_rules! show_pat {\n    ($p:pat) => {\n        stringify!($p)\n    };\n}\nmacro_rules! show_literal {\n    ($l:literal) => {\n        stringify!($l)\n    };\n}\nmacro_rules! count_tt {\n    ($($t:tt)*) => {\n        [$(stringify!($t)),*].len()\n    };\n}\n\nfn main() {\n    println!(\"expr:    {}\", show_expr!(1 + 2 * x.len()));\n    println!(\"ident:   {}\", show_ident!(total));\n    println!(\"ty:      {}\", show_ty!(Vec<&str>));\n    println!(\"pat:     {}\", show_pat!(Some(1 | 2)));\n    println!(\"literal: {}\", show_literal!(-3.5));\n    println!(\n        \"tt count of `a + (b, c) [d] 4`: {}\",\n        count_tt!(a + (b, c) [d] 4)\n    );\n}\n",
+   "out": "expr:    1 + 2 * x.len()\nident:   total\nty:      Vec<&str>\npat:     Some(1 | 2)\nliteral: -3.5\ntt count of `a + (b, c) [d] 4`: 5\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "hygiene-local.fail.rs": {
+   "code": "macro_rules! make {\n    () => {\n        let local = 5;\n    };\n}\n\nfn main() {\n    make!();\n    println!(\"local = {}\", local);\n}\n",
+   "error": "error[E0425]: cannot find value `local` in this scope\n --> src/main.rs:9:28\n  |\n9 |     println!(\"local = {}\", local);\n  |                            ^^^^^ not found in this scope\n  |\nhelp: an identifier with the same name is defined here, but is not accessible due to macro hygiene\n --> src/main.rs:3:13\n  |\n3 |         let local = 5;\n  |             ^^^^^\n...\n8 |     make!();\n  |     ------- in this macro invocation\n  = note: this error originates in the macro `make` (in Nightly builds, run with -Z macro-backtrace for more info)\n",
+   "lang": "rust"
+  },
+  "items.rs": {
+   "code": "trait Describe {\n    fn describe(&self) -> String;\n}\n\n// One impl block for each type in the list\nmacro_rules! describe_all {\n    ($($t:ty),+ $(,)?) => {\n        $(impl Describe for $t {\n            fn describe(&self) -> String {\n                format!(\"{} {}\", stringify!($t), self)\n            }\n        })+\n    };\n}\ndescribe_all!(i32, u8, f64, bool);\n\n// A function whose name the caller chooses\nmacro_rules! make_adder {\n    ($name:ident, $n:expr) => {\n        fn $name(x: i32) -> i32 {\n            x + $n\n        }\n    };\n}\nmake_adder!(add_one, 1);\nmake_adder!(add_ten, 10);\n\nfn main() {\n    println!(\"{}\", 7_i32.describe());\n    println!(\"{}\", 7_u8.describe());\n    println!(\"{}\", 2.5_f64.describe());\n    println!(\"{}\", true.describe());\n    println!(\"add_one(5) = {}, add_ten(5) = {}\", add_one(5), add_ten(5));\n}\n",
+   "out": "i32 7\nu8 7\nf64 2.5\nbool true\nadd_one(5) = 6, add_ten(5) = 15\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "my-vec.rs": {
+   "code": "// The rules of std's vec!, without the `[x; n]` form\nmacro_rules! my_vec {\n    () => {\n        Vec::new()\n    };\n    ($($x:expr),+ $(,)?) => {{\n        let mut v = Vec::new();\n        $(v.push($x);)+\n        v\n    }};\n}\n\nfn main() {\n    let empty: Vec<i32> = my_vec![];\n    let nums = my_vec![1, 2 + 3, 4,];\n    let words = my_vec![\"a\", \"b\"];\n    println!(\"empty: {empty:?}\");\n    println!(\"nums: {nums:?}\");\n    println!(\"words: {words:?}\");\n}\n",
+   "out": "empty: []\nnums: [1, 5, 4]\nwords: [\"a\", \"b\"]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "proc-macro.rs": {
+   "code": "use std::fs;\nuse std::path::Path;\nuse std::process::Command;\n\n// A harness: it writes a two-crate workspace to a temporary folder and builds it with Cargo.\n// No dependencies: `proc_macro` comes with the compiler.\nconst WORKSPACE: &str = \"[workspace]\\nmembers = [\\\"shout\\\", \\\"app\\\"]\\nresolver = \\\"3\\\"\\n\";\n\n// The crate that holds the macros. `proc-macro = true` is what makes it one.\nconst SHOUT_TOML: &str = \"[package]\\nname = \\\"shout\\\"\\nversion = \\\"0.1.0\\\"\\nedition = \\\"2024\\\"\\n\\n[lib]\\nproc-macro = true\\n\";\n\nconst SHOUT_LIB: &str = r#\"use proc_macro::TokenStream;\n\n// make_answer!(): ignore the input and write a function.\n#[proc_macro]\npub fn make_answer(_input: TokenStream) -> TokenStream {\n    \"fn answer() -> u32 { 42 }\".parse().unwrap()\n}\n\n// #[derive(TypeName)]: read the name after `struct`, write an impl block.\n#[proc_macro_derive(TypeName)]\npub fn derive_type_name(input: TokenStream) -> TokenStream {\n    let text = input.to_string();\n    let name = text.split_whitespace().nth(1).unwrap().trim_end_matches(';');\n    format!(\"impl {name} {{ fn type_name() -> &'static str {{ \\\"{name}\\\" }} }}\")\n        .parse()\n        .unwrap()\n}\n\n// #[show_streams(...)]: print what arrives, at compile time, and return the item unchanged.\n#[proc_macro_attribute]\npub fn show_streams(attr: TokenStream, item: TokenStream) -> TokenStream {\n    println!(\"attr: \\\"{attr}\\\"\");\n    println!(\"item: \\\"{item}\\\"\");\n    item\n}\n\"#;\n\n// The crate that uses them.\nconst APP_TOML: &str = \"[package]\\nname = \\\"app\\\"\\nversion = \\\"0.1.0\\\"\\nedition = \\\"2024\\\"\\n\\n[dependencies]\\nshout = { path = \\\"../shout\\\" }\\n\";\n\nconst APP_MAIN: &str = r#\"use shout::{TypeName, make_answer, show_streams};\n\nmake_answer!();\n\n#[derive(TypeName)]\nstruct Pet;\n\n#[show_streams(loud, times = 2)]\nfn greet() -> &'static str {\n    \"hi\"\n}\n\nfn main() {\n    println!(\"Pet::type_name() = {}\", Pet::type_name());\n    println!(\"greet() = {}\", greet());\n    println!(\"answer() = {}\", answer());\n}\n\"#;\n\nfn main() {\n    let root = std::env::temp_dir().join(\"proc-macro-demo\");\n    let _ = fs::remove_dir_all(&root);\n    for (file, text) in [\n        (\"Cargo.toml\", WORKSPACE),\n        (\"shout/Cargo.toml\", SHOUT_TOML),\n        (\"shout/src/lib.rs\", SHOUT_LIB),\n        (\"app/Cargo.toml\", APP_TOML),\n        (\"app/src/main.rs\", APP_MAIN),\n    ] {\n        let path = root.join(file);\n        fs::create_dir_all(path.parent().unwrap()).unwrap();\n        fs::write(path, text).unwrap();\n    }\n\n    let build = Command::new(\"cargo\")\n        .args([\"build\", \"--quiet\", \"--offline\", \"--package\", \"app\"])\n        .env(\"CARGO_TARGET_DIR\", root.join(\"target\"))\n        .current_dir(&root)\n        .output()\n        .unwrap();\n    println!(\"--- cargo build: success = {} ---\", build.status.success());\n    print!(\"{}\", String::from_utf8_lossy(&build.stdout));\n    print!(\"{}\", String::from_utf8_lossy(&build.stderr));\n\n    println!(\"--- target/debug/app ---\");\n    let run = Command::new(Path::new(&root).join(\"target/debug/app\"))\n        .output()\n        .unwrap();\n    print!(\"{}\", String::from_utf8_lossy(&run.stdout));\n    let _ = fs::remove_dir_all(&root);\n}\n",
+   "out": "--- cargo build: success = true ---\nattr: \"loud, times = 2\"\nitem: \"fn greet() -> &'static str { \"hi\" }\"\n--- target/debug/app ---\nPet::type_name() = Pet\ngreet() = hi\nanswer() = 42\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "stringify.rs": {
+   "code": "macro_rules! show {\n    ($e:expr) => {\n        println!(\"{} = {:?}\", stringify!($e), $e)\n    };\n}\n\n// rustfmt would respace `a+b`, which is the point of the second line\n#[rustfmt::skip]\nfn main() {\n    let (a, b) = (1, 2);\n    show!(a + b);\n    show!(a+b);\n    show!(a * (b + 3));\n    show!(vec![a, b].len());\n}\n",
+   "out": "a + b = 3\na+b = 3\na * (b + 3) = 5\nvec![a, b].len() = 2\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "test-expanded.rs": {
+   "code": "use std::process::Command;\n\nconst SOURCE: &str = \"#[test]\nfn adds() {\n    assert_eq!(1 + 1, 2);\n}\n\";\n\n// A harness: `--test` is the flag `cargo test` passes to rustc; RUSTC_BOOTSTRAP=1 as above.\nfn expand(test_mode: bool) -> String {\n    let dir = std::env::temp_dir();\n    std::fs::write(dir.join(\"test-demo.rs\"), SOURCE).unwrap();\n    let mut command = Command::new(\"rustc\");\n    command.args([\n        \"--edition\",\n        \"2024\",\n        \"--crate-type\",\n        \"lib\",\n        \"-Zunpretty=expanded\",\n    ]);\n    if test_mode {\n        command.arg(\"--test\");\n    }\n    let out = command\n        .arg(\"test-demo.rs\")\n        .current_dir(&dir)\n        .env(\"RUSTC_BOOTSTRAP\", \"1\")\n        .output()\n        .unwrap();\n    std::fs::remove_file(dir.join(\"test-demo.rs\")).unwrap();\n    String::from_utf8_lossy(&out.stdout).into_owned()\n}\n\nfn main() {\n    let text = expand(true);\n    // From the generated constant to your function, then the generated `main`.\n    let start = text.find(\"extern crate test;\").unwrap();\n    let body = text.find(\"fn adds()\").unwrap();\n    let main_at = text.find(\"#[rustc_main]\").unwrap();\n    println!(\"--- with --test ---\");\n    println!(\"{}\", text[start..body].trim_end());\n    println!(\"fn adds() {{ ... }}   // your function, with assert_eq! expanded\");\n    println!(\"{}\", text[main_at..].trim_end());\n\n    println!(\"--- without --test ---\");\n    println!(\n        \"expansion mentions `adds`: {}\",\n        expand(false).contains(\"adds\")\n    );\n}\n",
+   "out": "--- with --test ---\nextern crate test;\n#[rustc_test_marker = \"adds\"]\n#[doc(hidden)]\npub const adds: test::TestDescAndFn =\n    test::TestDescAndFn {\n        desc: test::TestDesc {\n            name: test::StaticTestName(\"adds\"),\n            ignore: false,\n            ignore_message: ::core::option::Option::None,\n            source_file: \"test-demo.rs\",\n            start_line: 2usize,\n            start_col: 4usize,\n            end_line: 2usize,\n            end_col: 8usize,\n            compile_fail: false,\n            no_run: false,\n            should_panic: test::ShouldPanic::No,\n            test_type: test::TestType::Unknown,\n        },\n        testfn: test::StaticTestFn(#[coverage(off)] ||\n                test::assert_test_result(adds())),\n    };\nfn adds() { ... }   // your function, with assert_eq! expanded\n#[rustc_main]\n#[coverage(off)]\n#[doc(hidden)]\npub fn main() -> () {\n    extern crate test;\n    test::test_main_static(&[&adds])\n}\n--- without --test ---\nexpansion mentions `adds`: false\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "annotation-processor.java": {
+   "code": "import java.net.URI;\nimport java.nio.file.Files;\nimport java.nio.file.Path;\nimport java.util.List;\nimport java.util.Set;\nimport javax.annotation.processing.AbstractProcessor;\nimport javax.annotation.processing.RoundEnvironment;\nimport javax.annotation.processing.SupportedAnnotationTypes;\nimport javax.lang.model.SourceVersion;\nimport javax.lang.model.element.Element;\nimport javax.lang.model.element.TypeElement;\nimport javax.tools.JavaFileObject;\nimport javax.tools.SimpleJavaFileObject;\nimport javax.tools.ToolProvider;\n\npublic class Main {\n    // A processor runs inside javac, reads the annotated class and writes a NEW source file.\n    @SupportedAnnotationTypes(\"Marked\")\n    static class Processor extends AbstractProcessor {\n        @Override\n        public SourceVersion getSupportedSourceVersion() {\n            return SourceVersion.latestSupported();\n        }\n\n        @Override\n        public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment round) {\n            for (TypeElement a : annotations) {\n                for (Element e : round.getElementsAnnotatedWith(a)) {\n                    String name = e.getSimpleName() + \"Info\";\n                    try (var out = processingEnv.getFiler().createSourceFile(name).openWriter()) {\n                        out.write(\"class \" + name + \" { static String kind = \\\"\" + e.getKind() + \"\\\"; }\\n\");\n                    } catch (Exception ex) {\n                        throw new RuntimeException(ex);\n                    }\n                }\n            }\n            return false;\n        }\n    }\n\n    // Everything below is only a harness that calls javac from Java.\n    public static void main(String[] args) throws Exception {\n        Path dir = Files.createTempDirectory(\"gen\");\n        var source = new SimpleJavaFileObject(URI.create(\"string:///Thing.java\"), JavaFileObject.Kind.SOURCE) {\n            @Override\n            public CharSequence getCharContent(boolean ignoreErrors) {\n                return \"@interface Marked {}\\n@Marked class Thing {}\\n\";\n            }\n        };\n        var javac = ToolProvider.getSystemJavaCompiler();\n        var task = javac.getTask(null, null, null, List.of(\"-proc:only\", \"-s\", dir.toString()), null, List.of(source));\n        task.setProcessors(List.of(new Processor()));\n        System.out.println(\"javac: \" + (task.call() ? \"ok\" : \"failed\"));\n        Path generated = dir.resolve(\"ThingInfo.java\");\n        System.out.print(\"ThingInfo.java on disk: \" + Files.readString(generated));\n        Files.delete(generated);\n        Files.delete(dir);\n    }\n}\n",
+   "out": "javac: ok\nThingInfo.java on disk: class ThingInfo { static String kind = \"CLASS\"; }\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "caller-expression.cs": {
+   "code": "using System.Runtime.CompilerServices;\n\nstatic void Check(bool condition, [CallerArgumentExpression(\"condition\")] string? text = null)\n{\n    Console.WriteLine($\"{(condition ? \"passed\" : \"failed\")}: {text}\");\n}\n\nint a = 1, b = 2;\nCheck(a + b == 3);\nCheck(a > b);\n",
+   "out": "passed: a + b == 3\nfailed: a > b\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "dataclass.py": {
+   "code": "from dataclasses import dataclass\nimport inspect\n\n\ndef announce(cls):\n    print(\"decorator runs for\", cls.__name__)\n    return cls\n\n\nprint(\"before the class statement\")\n\n\n@announce\n@dataclass\nclass Point:\n    x: int\n    y: int\n\n\nprint(\"after the class statement\")\nprint(\"generated __init__:\", inspect.signature(Point.__init__))\nprint(\"generated __repr__:\", Point(1, 2))\n",
+   "out": "before the class statement\ndecorator runs for Point\nafter the class statement\ngenerated __init__: (self, x: int, y: int) -> None\ngenerated __repr__: Point(x=1, y=2)\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "decorator-runs.ts": {
+   "code": "function logged<T extends (...args: any[]) => any>(fn: T, context: ClassMethodDecoratorContext) {\n    console.log(`decorating ${String(context.name)}`);\n    return function (this: unknown, ...args: any[]) {\n        console.log(`calling ${String(context.name)}`);\n        return fn.apply(this, args);\n    };\n}\n\nconsole.log(\"before the class\");\n\nclass Greeter {\n    @logged\n    hello(): string {\n        return \"hi\";\n    }\n}\n\nconsole.log(\"after the class\");\nconsole.log(new Greeter().hello());\n",
+   "out": "before the class\ndecorating hello\nafter the class\ncalling hello\nhi\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "gcc-e.c": {
+   "code": "#include <stdio.h>\n#include <stdlib.h>\n\n// The C below is only a harness: it saves a few #defines and calls, then runs `gcc -E -P`,\n// the preprocessor alone, to print what they become.\nint main(void) {\n    FILE *f = fopen(\"/tmp/pp-demo.c\", \"w\");\n    fputs(\"#define SQUARE(x) x * x\\n\"\n          \"#define SHOW(e) puts(#e)\\n\"\n          \"#define LOG(...) printf(__VA_ARGS__)\\n\"\n          \"#define MAKE_ADDER(name, n) int name(int x) { return x + (n); }\\n\"\n          \"int r = SQUARE(1 + 2);\\n\"\n          \"SHOW(a + b);\\n\"\n          \"LOG(fmt, a, b);\\n\"\n          \"MAKE_ADDER(add_one, 1)\\n\", f);\n    fclose(f);\n    fflush(stdout);\n    int status = system(\"gcc -E -P /tmp/pp-demo.c\");\n    remove(\"/tmp/pp-demo.c\");\n    return status == 0 ? 0 : 1;\n}\n",
+   "out": "int r = 1 + 2 * 1 + 2;\nputs(\"a + b\");\nprintf(fmt, a, b);\nint add_one(int x) { return x + (1); }\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "generate.go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"os\"\n\t\"os/exec\"\n\t\"path/filepath\"\n\t\"strings\"\n)\n\n// A harness: it writes a three-file module to a temporary folder and runs go commands in it.\n// gen.go is the generator that `go generate` runs.\nvar files = map[string]string{\n\t\"go.mod\": \"module demo\\n\\ngo 1.27\\n\",\n\t\"gen.go\": `//go:build ignore\n\npackage main\n\nimport \"os\"\n\nfunc main() {\n\tsrc := \"package main\\n\\nfunc colors() []string { return []string{\\\"red\\\", \\\"green\\\"} }\\n\"\n\tos.WriteFile(\"colors_gen.go\", []byte(src), 0o644)\n}\n`,\n\t\"main.go\": `package main\n\n//go:generate go run gen.go\n\nimport \"fmt\"\n\nfunc main() { fmt.Println(colors()) }\n`,\n}\n\nfunc run(dir string, args ...string) {\n\tcmd := exec.Command(args[0], args[1:]...)\n\tcmd.Dir = dir\n\tout, err := cmd.CombinedOutput()\n\tfmt.Printf(\"$ %s\\n%s\", strings.Join(args, \" \"), out)\n\tif err != nil {\n\t\tfmt.Println(\"error:\", err)\n\t}\n}\n\nfunc main() {\n\tdir, _ := os.MkdirTemp(\"\", \"gogen\")\n\tdefer os.RemoveAll(dir)\n\tfor name, text := range files {\n\t\tos.WriteFile(filepath.Join(dir, name), []byte(text), 0o644)\n\t}\n\trun(dir, \"go\", \"run\", \".\")\n\trun(dir, \"go\", \"generate\")\n\trun(dir, \"cat\", \"colors_gen.go\")\n\trun(dir, \"go\", \"run\", \".\")\n}\n",
+   "out": "$ go run .\n# demo\n./main.go:7:27: undefined: colors\nerror: exit status 1\n$ go generate\n$ cat colors_gen.go\npackage main\n\nfunc colors() []string { return []string{\"red\", \"green\"} }\n$ go run .\n[red green]\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "varargs.cs": {
+   "code": "static int Sum(params int[] xs) => xs.Sum();\n\nConsole.WriteLine($\"Sum() = {Sum()}\");\nConsole.WriteLine($\"Sum(1, 2, 3, 4) = {Sum(1, 2, 3, 4)}\");\n",
+   "out": "Sum() = 0\nSum(1, 2, 3, 4) = 10\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "varargs.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc sum(xs ...int) int {\n\ttotal := 0\n\tfor _, x := range xs {\n\t\ttotal += x\n\t}\n\treturn total\n}\n\nfunc main() {\n\tfmt.Println(\"sum() =\", sum())\n\tfmt.Println(\"sum(1, 2, 3, 4) =\", sum(1, 2, 3, 4))\n}\n",
+   "out": "sum() = 0\nsum(1, 2, 3, 4) = 10\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "varargs.java": {
+   "code": "public class Main {\n    static int sum(int... xs) {\n        int total = 0;\n        for (int x : xs) {\n            total += x;\n        }\n        return total;\n    }\n\n    public static void main(String[] args) {\n        System.out.println(\"sum() = \" + sum());\n        System.out.println(\"sum(1, 2, 3, 4) = \" + sum(1, 2, 3, 4));\n    }\n}\n",
+   "out": "sum() = 0\nsum(1, 2, 3, 4) = 10\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "varargs.kt": {
+   "code": "fun sum(vararg xs: Int): Int = xs.sum()\n\nfun main() {\n    println(\"sum() = ${sum()}\")\n    println(\"sum(1, 2, 3, 4) = ${sum(1, 2, 3, 4)}\")\n}\n",
+   "out": "sum() = 0\nsum(1, 2, 3, 4) = 10\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "varargs.py": {
+   "code": "def total(*xs):\n    return sum(xs)\n\n\nprint(\"total() =\", total())\nprint(\"total(1, 2, 3, 4) =\", total(1, 2, 3, 4))\n",
+   "out": "total() = 0\ntotal(1, 2, 3, 4) = 10\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "varargs.ts": {
+   "code": "function sum(...xs: number[]): number {\n    return xs.reduce((a, b) => a + b, 0);\n}\n\nconsole.log(\"sum() =\", sum());\nconsole.log(\"sum(1, 2, 3, 4) =\", sum(1, 2, 3, 4));\n",
+   "out": "sum() = 0\nsum(1, 2, 3, 4) = 10\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "variadic-template.cpp": {
+   "code": "#include <iostream>\n\n// A parameter pack takes any number of arguments, and the types may differ.\ntemplate <typename... Ts>\nauto sum(Ts... xs) {\n    return (xs + ...); // a fold expression (C++17)\n}\n\ntemplate <typename T>\nconstexpr T square(T x) {\n    return x * x;\n}\n\nstatic_assert(square(7) == 49); // checked while compiling\n\nint main() {\n    std::cout << \"sum(1, 2, 3, 4) = \" << sum(1, 2, 3, 4) << \"\\n\";\n    std::cout << \"sum(1.5, 2, 3L) = \" << sum(1.5, 2, 3L) << \"\\n\";\n    std::cout << \"square(2.5) = \" << square(2.5) << \"\\n\";\n    return 0;\n}\n",
+   "out": "sum(1, 2, 3, 4) = 10\nsum(1.5, 2, 3L) = 6.5\nsquare(2.5) = 6.25\n",
+   "lang": "cpp",
+   "exit": 0
+  }
+ },
+ "exercises": {
+  "ensure": {
+   "starter": "use std::cell::Cell;\n\n// ensure!(condition) returns early from the surrounding function with an Err that names the\n// condition, as written, when it is false. A function cannot do that: only a macro can\n// return from its caller, and only a macro can see the condition as text.\nmacro_rules! ensure {\n    ($cond:expr) => {\n        todo!(\"if the condition is false, return Err(String) that says which condition failed\")\n    };\n}\n\nfn check(age: i32, name: &str) -> Result<(), String> {\n    ensure!(age >= 0);\n    ensure!(!name.is_empty());\n    ensure!(age + 1 < 150);\n    Ok(())\n}\n\nfn side_effect(calls: &Cell<i32>) -> Result<(), String> {\n    ensure!({\n        calls.set(calls.get() + 1);\n        true\n    });\n    Ok(())\n}\n\nfn main() {\n    assert_eq!(check(30, \"Ada\"), Ok(()));\n    assert_eq!(check(-1, \"Ada\"), Err(\"ensure failed: age >= 0\".to_string()));\n    assert_eq!(\n        check(30, \"\"),\n        Err(\"ensure failed: !name.is_empty()\".to_string())\n    );\n    assert_eq!(\n        check(200, \"Ada\"),\n        Err(\"ensure failed: age + 1 < 150\".to_string())\n    );\n    // The first failing check ends the function: the later ones never run.\n    assert_eq!(check(-1, \"\"), Err(\"ensure failed: age >= 0\".to_string()));\n\n    let calls = Cell::new(0);\n    assert_eq!(side_effect(&calls), Ok(()));\n    assert_eq!(calls.get(), 1, \"the condition must be evaluated once\");\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "use std::cell::Cell;\n\n// ensure!(condition) returns early from the surrounding function with an Err that names the\n// condition, as written, when it is false. A function cannot do that: only a macro can\n// return from its caller, and only a macro can see the condition as text.\nmacro_rules! ensure {\n    ($cond:expr) => {\n        if !$cond {\n            return Err(format!(\"ensure failed: {}\", stringify!($cond)));\n        }\n    };\n}\n\nfn check(age: i32, name: &str) -> Result<(), String> {\n    ensure!(age >= 0);\n    ensure!(!name.is_empty());\n    ensure!(age + 1 < 150);\n    Ok(())\n}\n\nfn side_effect(calls: &Cell<i32>) -> Result<(), String> {\n    ensure!({\n        calls.set(calls.get() + 1);\n        true\n    });\n    Ok(())\n}\n\nfn main() {\n    assert_eq!(check(30, \"Ada\"), Ok(()));\n    assert_eq!(check(-1, \"Ada\"), Err(\"ensure failed: age >= 0\".to_string()));\n    assert_eq!(\n        check(30, \"\"),\n        Err(\"ensure failed: !name.is_empty()\".to_string())\n    );\n    assert_eq!(\n        check(200, \"Ada\"),\n        Err(\"ensure failed: age + 1 < 150\".to_string())\n    );\n    // The first failing check ends the function: the later ones never run.\n    assert_eq!(check(-1, \"\"), Err(\"ensure failed: age >= 0\".to_string()));\n\n    let calls = Cell::new(0);\n    assert_eq!(side_effect(&calls), Ok(()));\n    assert_eq!(calls.get(), 1, \"the condition must be evaluated once\");\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "max-of": {
+   "starter": "use std::cell::Cell;\n\n// max_of!(a, b, c, ...) is the largest of one or more values, written as a macro because a\n// function cannot take any number of arguments.\nmacro_rules! max_of {\n    ($x:expr $(,)?) => {\n        $x\n    };\n    ($head:expr, $($tail:expr),+ $(,)?) => {{\n        let first = $head;\n        // The starter hands back `first` so the types work out; the rest is yours.\n        if false {\n            first\n        } else {\n            todo!(\"compare first with the maximum of the rest, evaluating each argument once\")\n        }\n    }};\n}\n\nfn main() {\n    assert_eq!(max_of!(7), 7);\n    assert_eq!(max_of!(3, 9, 4), 9);\n    assert_eq!(max_of!(-5, -2), -2);\n    assert_eq!(max_of!(1, 2 + 3 * 4, 5), 14);\n    assert_eq!(max_of!(\"pear\", \"apple\", \"fig\"), \"pear\");\n    assert_eq!(max_of!(1.5, 0.5,), 1.5); // a trailing comma is allowed\n\n    // Each argument is evaluated exactly once, left to right.\n    let calls = Cell::new(0);\n    let next = || {\n        calls.set(calls.get() + 1);\n        calls.get()\n    };\n    let largest = max_of!(next(), next(), next());\n    assert_eq!(calls.get(), 3, \"each argument must be evaluated once\");\n    assert_eq!(largest, 3);\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "use std::cell::Cell;\n\n// max_of!(a, b, c, ...) is the largest of one or more values, written as a macro because a\n// function cannot take any number of arguments.\nmacro_rules! max_of {\n    ($x:expr $(,)?) => {\n        $x\n    };\n    ($head:expr, $($tail:expr),+ $(,)?) => {{\n        let first = $head;\n        let rest = max_of!($($tail),+);\n        if first > rest { first } else { rest }\n    }};\n}\n\nfn main() {\n    assert_eq!(max_of!(7), 7);\n    assert_eq!(max_of!(3, 9, 4), 9);\n    assert_eq!(max_of!(-5, -2), -2);\n    assert_eq!(max_of!(1, 2 + 3 * 4, 5), 14);\n    assert_eq!(max_of!(\"pear\", \"apple\", \"fig\"), \"pear\");\n    assert_eq!(max_of!(1.5, 0.5,), 1.5); // a trailing comma is allowed\n\n    // Each argument is evaluated exactly once, left to right.\n    let calls = Cell::new(0);\n    let next = || {\n        calls.set(calls.get() + 1);\n        calls.get()\n    };\n    let largest = max_of!(next(), next(), next());\n    assert_eq!(calls.get(), 3, \"each argument must be evaluated once\");\n    assert_eq!(largest, 3);\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "newtype": {
+   "starter": "use std::fmt;\n\n// newtype!(Meters, f64) defines `struct Meters(f64)` with `new`, `get`, and a Display that\n// prints `Meters(2.5)`: the type's own name, then the value in parentheses.\nmacro_rules! newtype {\n    ($name:ident, $inner:ty) => {\n        struct $name($inner);\n\n        impl $name {\n            fn new(value: $inner) -> Self {\n                $name(value)\n            }\n\n            fn get(&self) -> &$inner {\n                &self.0\n            }\n        }\n\n        impl fmt::Display for $name {\n            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {\n                todo!(\"write the name, then the value in parentheses\")\n            }\n        }\n    };\n}\n\nnewtype!(Meters, f64);\nnewtype!(UserId, u32);\nnewtype!(Label, String);\n\nfn main() {\n    let m = Meters::new(2.5);\n    assert_eq!(*m.get(), 2.5);\n    assert_eq!(m.to_string(), \"Meters(2.5)\");\n\n    let id = UserId::new(7);\n    assert_eq!(*id.get(), 7);\n    assert_eq!(format!(\"{id}\"), \"UserId(7)\");\n\n    let label = Label::new(String::from(\"hi\"));\n    assert_eq!(label.get(), \"hi\");\n    assert_eq!(label.to_string(), \"Label(hi)\");\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "use std::fmt;\n\n// newtype!(Meters, f64) defines `struct Meters(f64)` with `new`, `get`, and a Display that\n// prints `Meters(2.5)`: the type's own name, then the value in parentheses.\nmacro_rules! newtype {\n    ($name:ident, $inner:ty) => {\n        struct $name($inner);\n\n        impl $name {\n            fn new(value: $inner) -> Self {\n                $name(value)\n            }\n\n            fn get(&self) -> &$inner {\n                &self.0\n            }\n        }\n\n        impl fmt::Display for $name {\n            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {\n                write!(f, \"{}({})\", stringify!($name), self.0)\n            }\n        }\n    };\n}\n\nnewtype!(Meters, f64);\nnewtype!(UserId, u32);\nnewtype!(Label, String);\n\nfn main() {\n    let m = Meters::new(2.5);\n    assert_eq!(*m.get(), 2.5);\n    assert_eq!(m.to_string(), \"Meters(2.5)\");\n\n    let id = UserId::new(7);\n    assert_eq!(*id.get(), 7);\n    assert_eq!(format!(\"{id}\"), \"UserId(7)\");\n\n    let label = Label::new(String::from(\"hi\"));\n    assert_eq!(label.get(), \"hi\");\n    assert_eq!(label.to_string(), \"Label(hi)\");\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "read-rules": {
+   "starter": "use std::cell::Cell;\n\n// `rule!` answers with the number of the rule that matched. Read the patterns top to bottom.\nmacro_rules! rule {\n    ($a:expr) => {\n        1\n    };\n    ($a:expr, $b:expr) => {\n        2\n    };\n    ($a:ident = $b:expr) => {\n        3\n    };\n    ($($t:tt)*) => {\n        4\n    };\n}\n\n// `twice!(e)` pastes its argument in twice.\nmacro_rules! twice {\n    ($e:expr) => {\n        $e + $e\n    };\n}\n\n// Part 1: which rule does each call match? Answer from the patterns, in this order:\n// `2 + 3`, `1, 2`, `x = 5`, `a, b, c`.\nfn which_rules() -> [u32; 4] {\n    todo!(\"read the patterns: the first rule that fits the whole call wins\")\n}\n\n// Part 2: write out by hand what `twice!(next())` becomes.\nfn twice_by_hand(next: &dyn Fn() -> i32) -> i32 {\n    todo!(\"the macro pastes the argument as written, so what is called, and how often?\")\n}\n\nfn main() {\n    let actual = [rule!(2 + 3), rule!(1, 2), rule!(x = 5), rule!(a, b, c)];\n    let answer = which_rules();\n    for (i, call) in [\"2 + 3\", \"1, 2\", \"x = 5\", \"a, b, c\"].iter().enumerate() {\n        assert_eq!(\n            answer[i], actual[i],\n            \"wrong rule for the call `rule!({call})`\"\n        );\n    }\n\n    let calls = Cell::new(0);\n    let next = || {\n        calls.set(calls.get() + 1);\n        calls.get()\n    };\n    let by_macro = twice!(next());\n    let macro_calls = calls.get();\n    calls.set(0);\n    assert_eq!(\n        twice_by_hand(&next),\n        by_macro,\n        \"the value differs from the macro's\"\n    );\n    assert_eq!(\n        calls.get(),\n        macro_calls,\n        \"the macro calls `next` more than once\"\n    );\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "use std::cell::Cell;\n\n// `rule!` answers with the number of the rule that matched. Read the patterns top to bottom.\nmacro_rules! rule {\n    ($a:expr) => {\n        1\n    };\n    ($a:expr, $b:expr) => {\n        2\n    };\n    ($a:ident = $b:expr) => {\n        3\n    };\n    ($($t:tt)*) => {\n        4\n    };\n}\n\n// `twice!(e)` pastes its argument in twice.\nmacro_rules! twice {\n    ($e:expr) => {\n        $e + $e\n    };\n}\n\n// Part 1: which rule does each call match? Answer from the patterns, in this order:\n// `2 + 3`, `1, 2`, `x = 5`, `a, b, c`.\nfn which_rules() -> [u32; 4] {\n    [1, 2, 1, 4]\n}\n\n// Part 2: write out by hand what `twice!(next())` becomes.\nfn twice_by_hand(next: &dyn Fn() -> i32) -> i32 {\n    next() + next()\n}\n\nfn main() {\n    let actual = [rule!(2 + 3), rule!(1, 2), rule!(x = 5), rule!(a, b, c)];\n    let answer = which_rules();\n    for (i, call) in [\"2 + 3\", \"1, 2\", \"x = 5\", \"a, b, c\"].iter().enumerate() {\n        assert_eq!(\n            answer[i], actual[i],\n            \"wrong rule for the call `rule!({call})`\"\n        );\n    }\n\n    let calls = Cell::new(0);\n    let next = || {\n        calls.set(calls.get() + 1);\n        calls.get()\n    };\n    let by_macro = twice!(next());\n    let macro_calls = calls.get();\n    calls.set(0);\n    assert_eq!(\n        twice_by_hand(&next),\n        by_macro,\n        \"the value differs from the macro's\"\n    );\n    assert_eq!(\n        calls.get(),\n        macro_calls,\n        \"the macro calls `next` more than once\"\n    );\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}

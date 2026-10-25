@@ -1,0 +1,216 @@
+---
+title: "Rust and C/C++"
+description: "Call Rust from C with extern C and cbindgen, call C from Rust with bindgen, call C++ with cxx, and settle who frees what, what a panic does at the boundary, and static against dynamic linking."
+---
+
+import { Files, Remember, Session, Tree } from '../../../components/guide'
+
+Rust and C can call each other because they share one thing, the C calling convention, which `extern "C"` selects. Everything else is a convention you keep by hand: struct layout, who frees a pointer, what happens on failure. This page builds a small Rust library, `bridge`, and calls it from C and C++ (and from [five other languages](#the-same-library-from-other-languages)). Then it goes the other way: Rust calling a C library through `bindgen`, and a C++ class through `cxx`.
+
+Everything not marked "not run" ran in the image behind this site (Linux ARM64, Rust 1.99.1, GCC 14.2; `.a`, `.so` and `LD_LIBRARY_PATH` are Linux names). The image has no cbindgen or libclang, so the runs install them; steps that need the network say so, and versions are pinned.
+
+<Remember>The compiler cannot check the other side of the boundary or what a raw pointer points to, so each `unsafe` block is a promise you write down: who owns the memory, what the layout is, and that nothing unwinds across it.</Remember>
+
+## The library
+
+<Tree guide="interop-c-cpp" dir="rust" name="bridge" title="Project layout" notes={{"src/lib.rs":"the Rust side: every function C can call","cbindgen.toml":"settings for the header generator","c":"C programs that call the library","cpp":"a C++ program that calls it","go":"the same call from Go (and java, kotlin, csharp, py)"}} />
+
+<Files guide="interop-c-cpp" dir="rust" files={["src/lib.rs", "Cargo.toml"]} />
+
+Four things make a Rust function callable from C. `extern "C"` picks the C calling convention. `#[unsafe(no_mangle)]` keeps the symbol name as written, so the linker finds `point_distance`. `#[repr(C)]` gives a struct the layout a C compiler would. And the signature uses types C has: integers, floats, pointers, `repr(C)` structs. Dereferencing a raw pointer is `unsafe` ([the unsafe lesson](/learn/unsafe/)), so each block carries a `// SAFETY:` comment and each function a `# Safety` section for its caller.
+
+The three `crate-type` values build `libbridge.a` (static), `libbridge.so` (shared) and an `rlib` for Rust users ([linkage](https://doc.rust-lang.org/reference/linkage.html)).
+
+### Edition 2024 wants the word `unsafe`
+
+The [edition guide](https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-attributes.html) says Rust 1.82 let any edition write `unsafe(no_mangle)` and that the 2024 edition requires it, because exported names share one global namespace. It also requires `unsafe extern` on a block of foreign declarations ([Reference](https://doc.rust-lang.org/reference/items/external-blocks.html): "Prior to the 2024 edition, the unsafe keyword is optional"). The messages say what to write:
+
+<Session guide="interop-c-cpp" run="old-no-mangle" />
+
+<Session guide="interop-c-cpp" run="old-extern-block" />
+
+A lint covers signatures C cannot express. `improper_ctypes_definitions` only warns by default; here it is denied so the message shows:
+
+<Session guide="interop-c-cpp" run="improper-ctypes" />
+
+## Rust called from C
+
+You do not write the C declarations by hand. [cbindgen](https://github.com/mozilla/cbindgen) ("creates C/C++11 headers for Rust libraries which expose a public C API", says its README) reads the source and writes the header. This view drops the comments copied from the `///` docs:
+
+<Session guide="interop-c-cpp" run="header" only={[0, 1, 2]} />
+
+`Accumulator` is an incomplete type: C holds a pointer and cannot look inside. `&mut Accumulator` became `struct Accumulator *`, and the promise that the pointer is valid lives in the `# Safety` docs. `cpp_compat = true` in `cbindgen.toml` adds the `extern "C"` guard for C++.
+
+<Files guide="interop-c-cpp" dir="rust" files={["c/main.c"]} lang="c" />
+
+<Session guide="interop-c-cpp" run="c-run" only={[3]} />
+
+A static library does not say what it needs, but rustc can print the list (it is where `-lpthread -ldl -lm` came from):
+
+<Session guide="interop-c-cpp" run="c-run" only={[4]} />
+
+### A struct matches only because of `repr(C)`
+
+`Reading` is a byte, a double and a byte. The same struct measured from C and from Rust:
+
+<Session guide="interop-c-cpp" run="layout" only={[2, 3]} />
+
+The two `Reading` lines agree because of `repr(C)`. The last line is the same fields with no `repr`: 16 bytes in this build. The [Reference](https://doc.rust-lang.org/reference/type-layout.html#the-rust-representation) says the field order "does not have to be the same as the order in which the fields are specified". Try it yourself 1 removes `repr(C)`.
+
+## Who frees what
+
+Rust allocated the string `greeting` returns, so Rust must free it: `greeting_free` takes it back with `CString::from_raw`. `Accumulator` follows the same rule with `Box::into_raw` and `Box::from_raw`. The docs for [`CString::from_raw`](https://doc.rust-lang.org/std/ffi/struct.CString.html#method.from_raw) warn that taking ownership of a string "allocated by foreign code" is "likely to lead to undefined behavior or allocator corruption". The rule runs both ways: the [cgo docs](https://pkg.go.dev/cmd/cgo) say a `C.CString` "is allocated in the C heap using malloc" and "it is the caller's responsibility to arrange for it to be freed". Give a pointer back to the code that made it.
+
+A C program that follows the rule gets no report from AddressSanitizer (this is `c/main.c` rebuilt with `-fsanitize=address`):
+
+<Session guide="interop-c-cpp" run="ownership" only={[3]} />
+
+One that forgets `greeting_free` gets the leak check's report when it exits, with the allocation traced into Rust. The command keeps the key lines of a longer report:
+
+<Files guide="interop-c-cpp" dir="rust" files={["c/leak.c"]} lang="c" />
+
+<Session guide="interop-c-cpp" run="ownership" only={[4, 5]} />
+
+And one that calls `greeting_free` twice:
+
+<Files guide="interop-c-cpp" dir="rust" files={["c/double_free.c"]} lang="c" />
+
+<Session guide="interop-c-cpp" run="ownership" only={[6, 7]} />
+
+The report says `heap-use-after-free`, not "double free": `from_raw` recomputes the length "from the pointer", so Rust reads freed bytes before it frees them again. The docs also warn that "a double-free may occur if the function is called twice on the same raw pointer". The language leaves this undefined. Without AddressSanitizer, one run on this image (glibc, varies by system) was stopped by the C library instead:
+
+<Session guide="interop-c-cpp" run="ownership" only={[8]} />
+
+### Strings: `CString` and `CStr`
+
+A C string is bytes up to the first 0; a Rust `String` is UTF-8 and may contain 0 ([Strings](/learn/strings/)). `CString` is the owned C string and `CStr` the borrowed one; both conversions can fail:
+
+<Files guide="interop-c-cpp" dir="rust" files={["src/bin/strings.rs"]} run="strings" />
+
+C promises no encoding, so `to_str` returned an `Err` for the Latin-1 byte, and `to_string_lossy` replaced it with `�`.
+
+## A panic must not cross the boundary
+
+`explode(1)` panics inside an `extern "C"` function. The Reference's [table on unwinding](https://doc.rust-lang.org/reference/items/functions.html#unwinding) says that with `panic=unwind`, a panic that reaches a non-unwinding ABI such as `"C"` aborts. The C program saw this (backtrace frames, which start with spaces, are left out, and the thread number changes between runs):
+
+<Session guide="interop-c-cpp" run="panic" only={[4]} />
+
+A library can call [`catch_unwind`](https://doc.rust-lang.org/std/panic/fn.catch_unwind.html) at each entry point and return an error code. `checked_div` does; the panic hook still prints its message first:
+
+<Session guide="interop-c-cpp" run="panic" only={[5]} />
+
+The Reference describes `extern "C-unwind"` as identical to `"C"` "but with different behavior when the callee unwinds (by panicking or throwing a C++ style exception)". `explode_unwind` is declared that way, so its panic may leave the function. This C++ program catches it with `catch (...)` and does not rethrow:
+
+<Files guide="interop-c-cpp" dir="rust" files={["cpp/unwind.cpp"]} lang="cpp" />
+
+<Session guide="interop-c-cpp" run="panic" only={[6]} />
+
+The C++ handler ran, and then Rust aborted the process. That is consistent with the [Reference](https://doc.rust-lang.org/reference/panic.html#unwinding-across-ffi-boundaries), which gives no guarantee here: "an unwind originated from a Rust runtime must either lead to termination of the process or be caught by the same runtime." Try it yourself 2 shows `panic = "abort"` defeating `catch_unwind`.
+
+## Static or dynamic
+
+The same C program, linked both ways. The sizes are from one debug build and say only what these files were:
+
+<Session guide="interop-c-cpp" run="linking" only={[3, 4]} />
+
+The `T` lines are the 11 functions marked `#[unsafe(no_mangle)]`. Now the C program linked against the `.a`, then against the `.so`:
+
+<Session guide="interop-c-cpp" run="linking" only={[5, 6, 7, 8, 9]} />
+
+The program linked against the `.a` lists no `libbridge`, because that code was copied in (libc and others are still loaded dynamically). The other asks the loader for `libbridge.so` at start-up, and the loader failed to find it until `LD_LIBRARY_PATH` pointed there. (The linker's `-rpath` option can store a path in the program; I did not run it.)
+
+Without `#[unsafe(no_mangle)]` a function still exists, under a Rust-mangled name, while the header still declares `point_distance`. The error comes from the linker:
+
+<Session guide="interop-c-cpp" run="unmangled" only={[3, 4]} />
+
+## C called from Rust: bindgen
+
+This direction needs a Rust declaration for every C function. The [`bindgen`](https://rust-lang.github.io/rust-bindgen/) crate writes them from a header in `build.rs`, and the `cc` crate compiles the C file:
+
+<Files guide="interop-c-cpp" dir="bindgen" files={["build.rs", "c/stats.h", "src/main.rs"]} />
+
+bindgen reads headers with libclang, which the image lacks. The session shows the failed build, the install (Debian's `libclang-dev`; the [requirements](https://rust-lang.github.io/rust-bindgen/requirements.html) ask for "Clang 9.0 or greater"), then the program and the file bindgen wrote:
+
+<Session guide="interop-c-cpp" run="bindgen" />
+
+The bindings include compile-time checks of the size and each field offset, and every function sits in an `unsafe extern "C"` block, so each call needs `unsafe`. The safe `compute` wrapper keeps the promises: valid pointers in, and a result that is only borrowed, because the header comment says the library owns it.
+
+## C++: cxx
+
+C++ classes, templates and exceptions have no C equivalent, so a C-style header cannot describe them. The [cxx](https://cxx.rs/) crate takes another route: you describe the boundary once in a `#[cxx::bridge]` module, and `cxx-build` generates the C++ side. The `Stats` struct is declared once and used by both languages. `String` in the bridge is `rust::String`, and `std::string` is `CxxString` ([type table](https://cxx.rs/bindings.html)). A C++ function that can throw is declared `-> Result<i32>` and its exception arrives as an `Err` ([docs](https://cxx.rs/binding/result.html)).
+
+<Files guide="interop-c-cpp" dir="cxx" files={["src/main.rs", "src/counter.h", "src/counter.cc", "build.rs"]} />
+
+<Session guide="interop-c-cpp" run="cxx" />
+
+The `Counter` lives in a `UniquePtr` owned by Rust, and dropping it ran the C++ destructor. `print_report` is C++ calling back into Rust's `describe`. `main.rs` has no `unsafe` block; the `unsafe extern "C++"` line is the claim, which the [cxx docs](https://cxx.rs/extern-c++.html) call "an item level unsafe block to indicate that an unchecked safety claim is being made about the contents of the block".
+
+## The same library from other languages
+
+Each program calls `greeting` and returns the string with `greeting_free`; all but Kotlin also call `point_distance` (a struct passed by value). I ran them against `libbridge.so` (Go against `libbridge.a`).
+
+| Language | How it calls into Rust | Run? |
+| --- | --- | --- |
+| C, C++ | the generated header (shown above); C++ can also use `cxx` | run |
+| Go | cgo: `import "C"` after a comment with `#cgo` flags and `#include` | run |
+| Java | `java.lang.foreign` (Panama), final in JDK 22 ([JEP 454](https://openjdk.org/jeps/454)); the other route is [JNI](https://docs.oracle.com/en/java/javase/25/docs/specs/jni/index.html) | Panama run; JNI not run |
+| Kotlin | the same JDK API; the JNI route is an `external fun` ([Kotlin docs](https://kotlinlang.org/docs/java-interop.html#using-jni-with-kotlin)) | API run; JNI not run |
+| C# | P/Invoke: `[DllImport]` and `[StructLayout]` ([docs](https://learn.microsoft.com/en-us/dotnet/standard/native-interop/pinvoke)) | run |
+| Python | `ctypes` ([docs](https://docs.python.org/3/library/ctypes.html)); to write the extension in Rust, see [Rust and Python](/interop/python/) | `ctypes` run |
+| TypeScript | a native addon: [Rust and Node](/interop/node/) | not run here |
+
+<details>
+<summary>The programs and what they printed</summary>
+
+Go frees its `C.CString` with `C.free` and returns Rust's string to Rust:
+
+<Files guide="interop-c-cpp" dir="rust" files={["go/main.go"]} lang="go" />
+
+<Session guide="interop-c-cpp" run="go" only={[2]} />
+
+Java describes the struct's layout to pass it by value. The second run leaves out `--enable-native-access=ALL-UNNAMED`, and JDK 25.0.5 prints warnings:
+
+<Files guide="interop-c-cpp" dir="rust" files={["java/CallRust.java"]} lang="java" />
+
+<Session guide="interop-c-cpp" run="java" only={[1, 2]} />
+
+Kotlin 2.4.21 calls the same API:
+
+<Files guide="interop-c-cpp" dir="rust" files={["kotlin/CallRust.kt"]} lang="kotlin" />
+
+<Session guide="interop-c-cpp" run="kotlin" only={[1]} />
+
+C# on .NET 10:
+
+<Files guide="interop-c-cpp" dir="rust" files={["csharp/Program.cs"]} lang="csharp" />
+
+<Session guide="interop-c-cpp" run="csharp" only={[1]} />
+
+Python 3.13:
+
+<Files guide="interop-c-cpp" dir="rust" files={["py/call.py"]} lang="python" />
+
+<Session guide="interop-c-cpp" run="python" only={[1]} />
+
+</details>
+
+Every one of them calls `greeting_free`, the only function that may free what `greeting` returned.
+
+## Try it yourself
+
+1. **Remove `#[repr(C)]` from `Reading`.** Rust builds it without a warning, and its size drops from 24 to 16, with `value` first. The regenerated header no longer lets C see inside `Reading`, so gcc rejects `c/main.c`:
+
+   <Session guide="interop-c-cpp" run="try-repr-c" only={[2, 3, 4]} />
+
+2. **Add `panic = "abort"` to the dev profile.** `catch_unwind` cannot catch an abort: `checked_div(1, 0)` no longer returns -1.
+
+   <Session guide="interop-c-cpp" run="try-abort" only={[3]} />
+
+3. **Run `c/main.c` under AddressSanitizer** (the first ownership run above). It printed the same lines as the plain build and no report. Then run `c/leak.c`, a smaller program that never calls `greeting_free` (the leak run above).
+
+## Read more
+
+- [The Rustonomicon: Foreign Function Interface](https://doc.rust-lang.org/nomicon/ffi.html) and [the Reference on `extern` blocks and ABIs](https://doc.rust-lang.org/reference/items/external-blocks.html#abi)
+- [cbindgen's docs](https://github.com/mozilla/cbindgen/blob/master/docs.md), [the bindgen book](https://rust-lang.github.io/rust-bindgen/) and [cxx.rs](https://cxx.rs/)
+- [Rust for C and C++ developers](/for/c-cpp/): the habits that change around this boundary
+- [AddressSanitizer](https://clang.llvm.org/docs/AddressSanitizer.html) in the Clang docs

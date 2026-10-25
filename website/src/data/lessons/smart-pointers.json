@@ -1,0 +1,447 @@
+{
+ "id": "smart-pointers",
+ "title": "Box, Rc and RefCell",
+ "part": "smart-pointers",
+ "intro": "A smart pointer is a value that owns data somewhere else, lets you reach it as if it were the value itself, and cleans it up when it goes out of scope. `Box<T>` is one owner on the heap. `Rc<T>` is several owners with a count. `RefCell<T>` lets you change something through a shared reference, by checking the borrowing rules when the program runs. Together they cover the cases where ownership really is shared. Most programs need them in a few places; the rest of the time a plain value or a reference does the job.",
+ "coming_from": {
+  "go": "Go has no owning pointer types: a `*T` is a plain pointer, and the garbage collector frees what nobody can reach. Copying a pointer is how you share, and every holder may change the value. Most Go pointers, passed to a function that uses them for the call, become a plain `&T` or `&mut T` in Rust. `Rc<T>` is for the sharing that remains, with the owners counted, and read-only until you add a `RefCell`. `Drop` does the job `defer` does, tied to the value instead of the function.",
+  "kotlin": "Every object reference is already shared, and the JVM frees an object when nothing can reach it. `Rc<T>` is that sharing as an opt-in, with a count you can read, and a value inside an `Rc` is read-only until you add a `RefCell`. `Box<T>` is the other case: one owner, no sharing.",
+  "python": "CPython frees most objects by counting references, which is what `Rc` does, but it counts every name for you and lets any name change the object. In Rust you ask for the count (`Rc`), and you ask for the right to change shared data (`RefCell`). A cycle is collected by Python's cycle collector, and is not by `Rc`. Most of what you share by passing a name to a function is a plain `&` in Rust.",
+  "typescript": "Objects are shared by reference and freed by the garbage collector, and any name may change the object. `Rc<T>` is that sharing made explicit, with a count and read-only access, and `RefCell<T>` is the way to change a shared value. `Box<T>` is the one-owner case that JavaScript has no word for.",
+  "java": "Every object variable is already a shared reference, freed by the garbage collector when unreachable. `Rc<T>` is an opt-in version with a visible count, and a value in an `Rc` is read-only until you add a `RefCell`. The JVM also reclaims reference cycles; `Rc` does not. You never need `WeakReference` to break a cycle in Java; `Weak<T>` is how you write a back-pointer that does not keep its target alive.",
+  "csharp": "A class instance is already a shared reference that the garbage collector frees when unreachable. `Rc<T>` is that sharing as an opt-in, with a count, read-only until you add a `RefCell`. `Box<T>` is the single owner; `Weak<T>` is the `WeakReference` that does not keep the value alive.",
+  "c": "In C you share a value by copying its pointer and decide by hand who calls `free`. An `Rc<T>` is that pattern with the count and the `free` written once, in the type, so the value is freed when the last owner goes. A `Box<T>` is one `malloc` with one owner, freed when it goes out of scope.",
+  "cpp": "`Box<T>` is `std::unique_ptr<T>`, but a moved-from Rust box cannot be used at all (a compile error), where a moved-from `unique_ptr` is a null pointer that you may dereference by mistake (undefined behaviour). `Arc<T>` is `std::shared_ptr<T>`, and `Rc<T>` is closest to `shared_ptr<const T>` with a count that is never atomic: the standard library offers no such pointer to ask for, and Rust makes the choice in the type. `Weak<T>` is `std::weak_ptr<T>`."
+ },
+ "notes": [
+  "A smart pointer owns data that lives elsewhere (usually the heap), derefs to it, so `*b` and `b.method()` reach the data, and runs `Drop` to free it. `Box<T>` has one owner, `Rc<T>` has several and counts them, and the value is freed when the count reaches zero.",
+  "`Rc::clone(&a)` copies a pointer and adds one to the count. It does not copy the data. `Rc::ptr_eq(&a, &b)` says whether two `Rc`s point at the same allocation.",
+  "An `Rc` gives out only shared references, because several owners may be reading. To change the value you wrap it in `RefCell<T>`, which checks the borrowing rules when the program runs: a second `borrow_mut()` while one is alive panics instead of failing to compile.",
+  "Two `Rc`s that own each other never reach zero, so neither is freed. Make one of the links a `Weak<T>`, which does not count as an owner and gives back `None` once the value is gone. `Rc` is for one thread; `Arc` is the version that threads may share."
+ ],
+ "gotcha": {
+  "title": "Changing a value through a shared Rc",
+  "verdict": "rust-rule",
+  "looks_fine": "In Go, Kotlin, Java, C#, Python, TypeScript, C and C++, two names for one object may both change it, and the second change sees the first.",
+  "rust_sees": "`Rc<Counter>` hands out only shared references (`&Counter`), because any other owner may be reading the value at the same time. `a.hits += 1` needs a unique one (`&mut`), and the `Rc` has no way to give it.",
+  "why": "This is the borrowing rule from earlier lessons, applied to owners: any number of readers, or one writer. The compiler cannot know how many owners an `Rc` has, because the count changes while the program runs, so `Rc` never hands out `&mut`, even to a single owner. When you do need to change shared data, `RefCell` moves the same check to run time, as `fixed.rs` does: it allows the write when no other borrow is alive, and panics when one is.",
+  "langs": {
+   "go": {
+    "status": "runs",
+    "says": "Go runs this and prints hits: 2. Both names are the same pointer and either may change the struct. Nothing checks who else is using it.",
+    "code": "package main\n\nimport \"fmt\"\n\ntype Counter struct{ Hits int }\n\nfunc main() {\n\ta := &Counter{}\n\tb := a\n\n\ta.Hits++\n\tb.Hits++\n\tfmt.Println(\"hits:\", a.Hits)\n}\n",
+    "out": "hits: 2\n"
+   },
+   "kotlin": {
+    "status": "runs",
+    "says": "Kotlin runs this and prints hits: 2. `a` and `b` are two references to one object, and a `var` property can be changed through either.",
+    "code": "class Counter(var hits: Int)\n\nfun main() {\n    val a = Counter(0)\n    val b = a\n\n    a.hits++\n    b.hits++\n    println(\"hits: ${a.hits}\")\n}\n",
+    "out": "hits: 2\n"
+   },
+   "python": {
+    "status": "runs",
+    "says": "Python prints hits: 2. `b = a` makes a second name for the same object.",
+    "code": "class Counter:\n    def __init__(self):\n        self.hits = 0\n\n\na = Counter()\nb = a\n\na.hits += 1\nb.hits += 1\nprint(\"hits:\", a.hits)\n",
+    "out": "hits: 2\n"
+   },
+   "typescript": {
+    "status": "runs",
+    "says": "Prints hits: 2. `a` and `b` refer to one object and either may change its field.",
+    "code": "class Counter {\n  hits = 0;\n}\n\nconst a = new Counter();\nconst b = a;\n\na.hits += 1;\nb.hits += 1;\nconsole.log(\"hits:\", a.hits);\n",
+    "out": "hits: 2\n"
+   },
+   "java": {
+    "status": "runs",
+    "says": "Java runs this and prints hits: 2. `b = a` copies the reference, not the object.",
+    "code": "class Counter {\n    int hits = 0;\n}\n\npublic class Main {\n    public static void main(String[] args) {\n        Counter a = new Counter();\n        Counter b = a;\n\n        a.hits++;\n        b.hits++;\n        System.out.println(\"hits: \" + a.hits);\n    }\n}\n",
+    "out": "hits: 2\n"
+   },
+   "csharp": {
+    "status": "runs",
+    "says": "C# runs this and prints hits: 2. A class instance is shared by reference.",
+    "code": "var a = new Counter();\nvar b = a;\n\na.Hits++;\nb.Hits++;\nConsole.WriteLine($\"hits: {a.Hits}\");\n\nclass Counter\n{\n    public int Hits;\n}\n",
+    "out": "hits: 2\n"
+   },
+   "c": {
+    "status": "runs",
+    "says": "C runs this and prints hits: 2. Two pointers to one struct, with nothing to say who may write.",
+    "code": "#include <stdio.h>\n#include <stdlib.h>\n\nstruct Counter {\n    int hits;\n};\n\nint main(void) {\n    struct Counter *a = calloc(1, sizeof *a);\n    struct Counter *b = a;\n\n    a->hits++;\n    b->hits++;\n    printf(\"hits: %d\\n\", a->hits);\n\n    free(a);\n    return 0;\n}\n",
+    "out": "hits: 2\n"
+   },
+   "cpp": {
+    "status": "runs",
+    "says": "C++ runs this and prints hits: 2. A `std::shared_ptr<Counter>` counts its owners as `Rc` does and lets every owner change the value. The read-only form is `shared_ptr<const Counter>`, which is what `Rc<Counter>` is.",
+    "code": "#include <iostream>\n#include <memory>\n\nstruct Counter {\n    int hits = 0;\n};\n\nint main() {\n    auto a = std::make_shared<Counter>();\n    auto b = a;\n\n    a->hits++;\n    b->hits++;\n    std::cout << \"hits: \" << a->hits << \"\\n\";\n}\n",
+    "out": "hits: 2\n"
+   }
+  },
+  "code": "use std::rc::Rc;\n\nstruct Counter {\n    hits: u32,\n}\n\nfn main() {\n    let a = Rc::new(Counter { hits: 0 });\n    let b = Rc::clone(&a);\n\n    a.hits += 1;\n    b.hits += 1;\n    println!(\"hits: {}\", a.hits);\n}\n",
+  "error": "error[E0594]: cannot assign to data in an `Rc`\n  --> src/main.rs:11:5\n   |\n11 |     a.hits += 1;\n   |     ^^^^^^^^^^^ cannot assign\n   |\n   = help: trait `DerefMut` is required to modify through a dereference, but it is not implemented for `Rc<Counter>`\n\nerror[E0594]: cannot assign to data in an `Rc`\n  --> src/main.rs:12:5\n   |\n12 |     b.hits += 1;\n   |     ^^^^^^^^^^^ cannot assign\n   |\n   = help: trait `DerefMut` is required to modify through a dereference, but it is not implemented for `Rc<Counter>`\n",
+  "error_code": "E0594",
+  "fixed": {
+   "code": "use std::cell::RefCell;\nuse std::rc::Rc;\n\nstruct Counter {\n    hits: u32,\n}\n\nfn main() {\n    let a = Rc::new(RefCell::new(Counter { hits: 0 }));\n    let b = Rc::clone(&a);\n\n    a.borrow_mut().hits += 1;\n    b.borrow_mut().hits += 1;\n    println!(\"hits: {}\", a.borrow().hits);\n}\n",
+   "out": "hits: 2\n"
+  }
+ },
+ "order": 39,
+ "program": {
+  "rust": {
+   "code": "use std::cell::RefCell;\nuse std::rc::Rc;\n\nfn main() {\n    // one list with two owners: a count of owners, and no copy of the list\n    let log = Rc::new(RefCell::new(Vec::new()));\n    let other = Rc::clone(&log);\n\n    log.borrow_mut().push(\"from log\");\n    other.borrow_mut().push(\"from other\");\n\n    println!(\"log: {}\", log.borrow().join(\", \"));\n    println!(\"same list: {}\", Rc::ptr_eq(&log, &other));\n}\n",
+   "out": "log: from log, from other\nsame list: true\n"
+  },
+  "go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"strings\"\n)\n\ntype Log struct{ lines []string }\n\nfunc main() {\n\t// a pointer is already shared: copying it copies the address\n\tlog := &Log{}\n\tother := log\n\n\tlog.lines = append(log.lines, \"from log\")\n\tother.lines = append(other.lines, \"from other\")\n\n\tfmt.Println(\"log:\", strings.Join(log.lines, \", \"))\n\tfmt.Println(\"same list:\", log == other)\n}\n",
+   "out": "log: from log, from other\nsame list: true\n"
+  },
+  "kotlin": {
+   "code": "fun main() {\n    // every object is already a shared reference\n    val log = mutableListOf<String>()\n    val other = log\n\n    log.add(\"from log\")\n    other.add(\"from other\")\n\n    println(\"log: ${log.joinToString(\", \")}\")\n    println(\"same list: ${log === other}\")\n}\n",
+   "out": "log: from log, from other\nsame list: true\n"
+  },
+  "python": {
+   "code": "# every object is already a shared reference\nlog = []\nother = log\n\nlog.append(\"from log\")\nother.append(\"from other\")\n\nprint(\"log:\", \", \".join(log))\nprint(\"same list:\", str(log is other).lower())\n",
+   "out": "log: from log, from other\nsame list: true\n"
+  },
+  "typescript": {
+   "code": "// every object is already a shared reference\nconst log: string[] = [];\nconst other = log;\n\nlog.push(\"from log\");\nother.push(\"from other\");\n\nconsole.log(\"log:\", log.join(\", \"));\nconsole.log(\"same list:\", log === other);\n",
+   "out": "log: from log, from other\nsame list: true\n"
+  },
+  "java": {
+   "code": "import java.util.ArrayList;\nimport java.util.List;\n\npublic class Main {\n    public static void main(String[] args) {\n        // every object is already a shared reference\n        List<String> log = new ArrayList<>();\n        List<String> other = log;\n\n        log.add(\"from log\");\n        other.add(\"from other\");\n\n        System.out.println(\"log: \" + String.join(\", \", log));\n        System.out.println(\"same list: \" + (log == other));\n    }\n}\n",
+   "out": "log: from log, from other\nsame list: true\n"
+  },
+  "csharp": {
+   "code": "// every object is already a shared reference\nvar log = new List<string>();\nvar other = log;\n\nlog.Add(\"from log\");\nother.Add(\"from other\");\n\nConsole.WriteLine($\"log: {string.Join(\", \", log)}\");\nvar same = ReferenceEquals(log, other) ? \"true\" : \"false\";\nConsole.WriteLine($\"same list: {same}\");\n",
+   "out": "log: from log, from other\nsame list: true\n"
+  },
+  "c": {
+   "code": "#include <stdio.h>\n#include <stdlib.h>\n\nstruct Log {\n    const char *lines[8];\n    int count;\n};\n\nint main(void) {\n    // two pointers to one struct; nothing counts the owners\n    struct Log *log = calloc(1, sizeof *log);\n    struct Log *other = log;\n\n    log->lines[log->count++] = \"from log\";\n    other->lines[other->count++] = \"from other\";\n\n    printf(\"log: \");\n    for (int i = 0; i < log->count; i++) {\n        printf(\"%s%s\", i ? \", \" : \"\", log->lines[i]);\n    }\n    printf(\"\\n\");\n    printf(\"same list: %s\\n\", log == other ? \"true\" : \"false\");\n\n    free(log); // exactly once, and only because we remembered\n    return 0;\n}\n",
+   "out": "log: from log, from other\nsame list: true\n"
+  },
+  "cpp": {
+   "code": "#include <iostream>\n#include <memory>\n#include <string>\n#include <vector>\n\nint main() {\n    // shared_ptr counts its owners, as Rc does; unlike Rc, every owner may change the list\n    auto log = std::make_shared<std::vector<std::string>>();\n    auto other = log;\n\n    log->push_back(\"from log\");\n    other->push_back(\"from other\");\n\n    std::cout << \"log: \";\n    for (size_t i = 0; i < log->size(); i++) {\n        std::cout << (i ? \", \" : \"\") << (*log)[i];\n    }\n    std::cout << \"\\n\";\n    std::cout << \"same list: \" << (log == other ? \"true\" : \"false\") << \"\\n\";\n}\n",
+   "out": "log: from log, from other\nsame list: true\n"
+  }
+ },
+ "faq": [],
+ "snippets": {
+  "arc-thread.rs": {
+   "code": "use std::sync::Arc;\nuse std::thread;\n\nfn main() {\n    let numbers = Arc::new(vec![1, 2, 3]);\n    let for_thread = Arc::clone(&numbers); // the same call, with an atomic count\n    let handle = thread::spawn(move || println!(\"in the thread: {:?}\", for_thread));\n    handle.join().unwrap();\n    println!(\"in main: {:?}\", numbers);\n    println!(\"owners: {}\", Arc::strong_count(&numbers));\n}\n",
+   "out": "in the thread: [1, 2, 3]\nin main: [1, 2, 3]\nowners: 1\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "box-moved.fail.rs": {
+   "code": "fn main() {\n    let a = Box::new(5);\n    let b = a;\n    println!(\"b: {b}\");\n    println!(\"a: {a}\");\n}\n",
+   "error": "error[E0382]: borrow of moved value: `a`\n --> src/main.rs:5:19\n  |\n2 |     let a = Box::new(5);\n  |         - move occurs because `a` has type `Box<i32>`, which does not implement the `Copy` trait\n3 |     let b = a;\n  |             - value moved here\n4 |     println!(\"b: {b}\");\n5 |     println!(\"a: {a}\");\n  |                   ^ value borrowed here after move\n  |\nhelp: consider cloning the value if the performance cost is acceptable\n  |\n3 |     let b = a.clone();\n  |              ++++++++\n",
+   "lang": "rust"
+  },
+  "cell.rs": {
+   "code": "use std::cell::Cell;\n\nstruct Page {\n    title: String,\n    views: Cell<u32>,\n}\n\nimpl Page {\n    fn show(&self) -> String {\n        self.views.set(self.views.get() + 1); // &self, yet the count changes\n        format!(\"{} (view {})\", self.title, self.views.get())\n    }\n}\n\nfn main() {\n    let page = Page {\n        title: String::from(\"Home\"),\n        views: Cell::new(0),\n    };\n    println!(\"{}\", page.show());\n    println!(\"{}\", page.show());\n    println!(\"replace returns the old value: {}\", page.views.replace(10));\n    println!(\"views: {}\", page.views.get());\n    println!(\"size_of Cell<u32>: {}\", size_of::<Cell<u32>>());\n}\n",
+   "out": "Home (view 1)\nHome (view 2)\nreplace returns the old value: 2\nviews: 10\nsize_of Cell<u32>: 4\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-cell-get.fail.rs": {
+   "code": "use std::cell::Cell;\n\nfn main() {\n    let name = Cell::new(String::from(\"x\"));\n    let copy = name.get();\n    println!(\"{copy}\");\n}\n",
+   "error": "error[E0599]: the method `get` exists for struct `Cell<String>`, but its trait bounds were not satisfied\n --> src/main.rs:5:21\n  |\n5 |     let copy = name.get();\n  |                     ^^^\n  |\n  = note: the following trait bounds were not satisfied:\n          `String: Copy`\n",
+   "lang": "rust"
+  },
+  "check-get-mut-weak.rs": {
+   "code": "use std::rc::Rc;\n\nfn main() {\n    let mut a = Rc::new(5);\n    let w = Rc::downgrade(&a);\n    assert!(Rc::get_mut(&mut a).is_none(), \"a Weak blocks get_mut\");\n    drop(w);\n    assert!(Rc::get_mut(&mut a).is_some());\n}\n",
+   "out": "",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-mutex-wait.rs": {
+   "code": "use std::sync::atomic::{AtomicBool, Ordering};\nuse std::sync::mpsc;\nuse std::sync::{Arc, Mutex};\nuse std::thread;\nuse std::time::Duration;\n\nfn main() {\n    let lock = Arc::new(Mutex::new(0));\n    let released = Arc::new(AtomicBool::new(false));\n    let (tx, rx) = mpsc::channel();\n\n    let (l, r) = (Arc::clone(&lock), Arc::clone(&released));\n    let holder = thread::spawn(move || {\n        let guard = l.lock().unwrap();\n        tx.send(()).unwrap(); // the lock is held now\n        thread::sleep(Duration::from_millis(100));\n        r.store(true, Ordering::SeqCst); // set before the guard goes\n        drop(guard);\n    });\n\n    rx.recv().unwrap();\n    assert!(lock.try_lock().is_err(), \"held by the other thread\");\n    let _second = lock.lock().unwrap(); // waits for its turn\n    assert!(\n        released.load(Ordering::SeqCst),\n        \"lock() returned only after the release\"\n    );\n    holder.join().unwrap();\n}\n",
+   "out": "",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-no-deref.fail.rs": {
+   "code": "use std::cell::RefCell;\nuse std::rc::Weak;\n\nfn main() {\n    let cell = RefCell::new(String::from(\"text\"));\n    let weak: Weak<String> = Weak::new();\n    println!(\"{}\", cell.len()); // RefCell does not deref: only its guards do\n    println!(\"{}\", weak.len()); // Weak does not deref: upgrade() first\n}\n",
+   "error": "error[E0599]: no method named `len` found for struct `RefCell<T>` in the current scope\n --> src/main.rs:7:25\n  |\n7 |     println!(\"{}\", cell.len()); // RefCell does not deref: only its guards do\n  |                         ^^^\n  |\nhelp: use `.borrow()` to borrow the `String`, panicking if a mutable borrow exists\n  |\n7 |     println!(\"{}\", cell.borrow().len()); // RefCell does not deref: only its guards do\n  |                        +++++++++\n  ... (notes pointing into the standard library trimmed)\n\nerror[E0599]: no method named `len` found for struct `std::rc::Weak<T, A>` in the current scope\n --> src/main.rs:8:25\n  |\n8 |     println!(\"{}\", weak.len()); // Weak does not deref: upgrade() first\n  |                         ^^^ method not found in `std::rc::Weak<String>`\n",
+   "lang": "rust"
+  },
+  "check-rc-move-out.fail.rs": {
+   "code": "use std::rc::Rc;\n\nfn main() {\n    let shared = Rc::new(String::from(\"x\"));\n    let owned: String = *shared;\n    println!(\"{owned}\");\n}\n",
+   "error": "error[E0507]: cannot move out of an `Rc`\n --> src/main.rs:5:25\n  |\n5 |     let owned: String = *shared;\n  |                         ^^^^^^^ move occurs because value has type `String`, which does not implement the `Copy` trait\n  |\nhelp: consider removing the dereference here\n  |\n5 -     let owned: String = *shared;\n5 +     let owned: String = shared;\n  |\nhelp: consider cloning the value if the performance cost is acceptable\n  |\n5 -     let owned: String = *shared;\n5 +     let owned: String = shared.clone();",
+   "lang": "rust"
+  },
+  "check-rc-single.fail.rs": {
+   "code": "use std::rc::Rc;\n\nstruct Counter {\n    hits: u32,\n}\n\nfn main() {\n    let only = Rc::new(Counter { hits: 0 }); // one owner, and still read-only\n    only.hits += 1;\n}\n",
+   "error": "error[E0594]: cannot assign to data in an `Rc`\n --> src/main.rs:9:5\n  |\n9 |     only.hits += 1;\n  |     ^^^^^^^^^^^^^^ cannot assign\n  |\n  = help: trait `DerefMut` is required to modify through a dereference, but it is not implemented for `Rc<Counter>`\n",
+   "lang": "rust"
+  },
+  "check-refcell-send.rs": {
+   "code": "use std::cell::RefCell;\nuse std::thread;\n\nfn main() {\n    // moved to the thread, not shared: RefCell<i32> is Send\n    let own = RefCell::new(1);\n    let out = thread::spawn(move || {\n        *own.borrow_mut() += 1;\n        own.into_inner()\n    })\n    .join()\n    .unwrap();\n    assert_eq!(out, 2);\n    println!(\"a RefCell can move to another thread\");\n}\n",
+   "out": "a RefCell can move to another thread\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-refcell-sync.fail.rs": {
+   "code": "use std::cell::RefCell;\nuse std::sync::Arc;\nuse std::thread;\n\nfn main() {\n    let shared = Arc::new(RefCell::new(0));\n    let other = Arc::clone(&shared);\n    thread::spawn(move || *other.borrow_mut() += 1)\n        .join()\n        .unwrap();\n    println!(\"{}\", shared.borrow());\n}\n",
+   "error": "error[E0277]: `RefCell<i32>` cannot be shared between threads safely\n --> src/main.rs:8:19\n  |\n8 |     thread::spawn(move || *other.borrow_mut() += 1)\n  |     ------------- ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `RefCell<i32>` cannot be shared between threads safely\n  |     |\n  |     required by a bound introduced by this call\n  |\n  = help: the trait `Sync` is not implemented for `RefCell<i32>`\n  = note: if you want to do aliasing and mutation between multiple threads, use `std::sync::RwLock` instead\n  = note: required for `Arc<RefCell<i32>>` to implement `Send`\nnote: required because it's used within this closure\n --> src/main.rs:8:19\n  |\n8 |     thread::spawn(move || *other.borrow_mut() += 1)\n  |                   ^^^^^^^\n  ... (notes pointing into the standard library trimmed)",
+   "lang": "rust"
+  },
+  "check-table.rs": {
+   "code": "use std::cell::{Cell, RefCell};\nuse std::rc::{Rc, Weak};\nuse std::sync::{Arc, Mutex};\nuse std::thread;\n\nfn main() {\n    // Box<T>: one owner, one pointer wide, moving it leaves the heap value where it is\n    let boxed = Box::new([1u8; 512]);\n    let at = boxed.as_ptr();\n    let moved = boxed;\n    assert_eq!(moved.as_ptr(), at);\n    let back = *moved; // a Box lets the value be moved back out; an Rc does not\n    assert_eq!(back[0], 1);\n    assert_eq!(size_of::<Box<[u8; 512]>>(), size_of::<usize>());\n\n    // Rc<T>: several owners on one thread, read-only\n    let a = Rc::new(String::from(\"shared\"));\n    let b = Rc::clone(&a);\n    assert_eq!(Rc::strong_count(&a), 2);\n    assert!(Rc::ptr_eq(&a, &b));\n    assert_eq!(a.as_ptr(), b.as_ptr());\n\n    // Arc<T>: the same, with a count that threads may update\n    let n = Arc::new(5);\n    let n2 = Arc::clone(&n);\n    assert_eq!(thread::spawn(move || *n2 + 1).join().unwrap(), 6);\n    assert_eq!(Arc::strong_count(&n), 1);\n\n    // Cell<T>: a Copy value changed through &\n    let c = Cell::new(1);\n    let r = &c;\n    r.set(r.get() + 1);\n    assert_eq!(c.get(), 2);\n\n    // RefCell<T>: any value changed through &, checked when it runs\n    let rc = RefCell::new(vec![1]);\n    let reading = rc.borrow();\n    assert!(rc.try_borrow_mut().is_err());\n    drop(reading);\n    rc.borrow_mut().push(2);\n    assert_eq!(*rc.borrow(), vec![1, 2]);\n\n    // Mutex<T>: changed from several threads, one at a time\n    let total = Arc::new(Mutex::new(0));\n    let handles: Vec<_> = (0..4)\n        .map(|_| {\n            let total = Arc::clone(&total);\n            thread::spawn(move || *total.lock().unwrap() += 1)\n        })\n        .collect();\n    for h in handles {\n        h.join().unwrap();\n    }\n    assert_eq!(*total.lock().unwrap(), 4);\n\n    // Rc<RefCell<T>>: shared and changeable, one thread\n    let x = Rc::new(RefCell::new(0));\n    let y = Rc::clone(&x);\n    *y.borrow_mut() += 5;\n    assert_eq!(*x.borrow(), 5);\n\n    // Weak<T>: a link that does not keep the value alive\n    let strong = Rc::new(1);\n    let weak: Weak<i32> = Rc::downgrade(&strong);\n    assert_eq!(weak.upgrade().as_deref(), Some(&1));\n    drop(strong);\n    assert!(weak.upgrade().is_none());\n\n    println!(\"all table facts hold\");\n}\n",
+   "out": "all table facts hold\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "cycle-leak.rs": {
+   "code": "use std::cell::RefCell;\nuse std::rc::Rc;\n\nstruct Node {\n    name: &'static str,\n    other: RefCell<Option<Rc<Node>>>,\n}\n\nimpl Drop for Node {\n    fn drop(&mut self) {\n        println!(\"drop {}\", self.name);\n    }\n}\n\nfn node(name: &'static str) -> Rc<Node> {\n    Rc::new(Node {\n        name,\n        other: RefCell::new(None),\n    })\n}\n\nfn main() {\n    let probe;\n    {\n        let a = node(\"a\");\n        let b = node(\"b\");\n        *a.other.borrow_mut() = Some(Rc::clone(&b)); // a owns b\n        *b.other.borrow_mut() = Some(Rc::clone(&a)); // b owns a\n        println!(\n            \"owners of a: {}, owners of b: {}\",\n            Rc::strong_count(&a),\n            Rc::strong_count(&b)\n        );\n        probe = Rc::downgrade(&a);\n    } // a and b go; each count falls from 2 to 1, not to 0\n    println!(\n        \"after the block, a is still alive: {}\",\n        probe.upgrade().is_some()\n    );\n}\n",
+   "out": "owners of a: 2, owners of b: 2\nafter the block, a is still alive: true\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "deref-through.rs": {
+   "code": "use std::rc::Rc;\n\nfn shout(text: &str) -> String {\n    text.to_uppercase()\n}\n\nfn main() {\n    let boxed = Box::new(String::from(\"boxed\"));\n    let shared = Rc::new(String::from(\"shared\"));\n\n    // methods of the String inside are reachable directly\n    println!(\"len: {} and {}\", boxed.len(), shared.len());\n\n    // &Box<String> and &Rc<String> become &String, then &str\n    println!(\"{} and {}\", shout(&boxed), shout(&shared));\n\n    // * steps through one pointer by hand\n    let inner: &String = &*shared;\n    println!(\"inner: {inner}\");\n}\n",
+   "out": "len: 5 and 6\nBOXED and SHARED\ninner: shared\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "fat-pointers.rs": {
+   "code": "use std::fmt::Debug;\nuse std::rc::Rc;\nuse std::sync::Arc;\n\nfn main() {\n    println!(\"Box<i32>: {}\", size_of::<Box<i32>>());\n    println!(\"Box<str>: {}\", size_of::<Box<str>>());\n    println!(\"Box<[i32]>: {}\", size_of::<Box<[i32]>>());\n    println!(\"Rc<str>: {}\", size_of::<Rc<str>>());\n    println!(\"Arc<str>: {}\", size_of::<Arc<str>>());\n    println!(\"Box<dyn Debug>: {}\", size_of::<Box<dyn Debug>>());\n\n    let name: Rc<str> = Rc::from(\"shared text\"); // one allocation, no String capacity\n    let other = Rc::clone(&name);\n    println!(\"{name} / {other}, owners: {}\", Rc::strong_count(&name));\n}\n",
+   "out": "Box<i32>: 8\nBox<str>: 16\nBox<[i32]>: 16\nRc<str>: 16\nArc<str>: 16\nBox<dyn Debug>: 16\nshared text / shared text, owners: 2\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "from-self.rs": {
+   "code": "use std::rc::{Rc, Weak};\n\nstruct Widget {\n    id: u32,\n    me: Weak<Widget>, // a link to itself, filled in while it is built\n}\n\nimpl Widget {\n    // the receiver says: only callable on a Widget that is inside an Rc\n    fn share(self: &Rc<Self>) -> Rc<Widget> {\n        Rc::clone(self)\n    }\n}\n\nfn main() {\n    let w = Rc::new_cyclic(|me| Widget {\n        id: 7,\n        me: me.clone(),\n    });\n    let again = w.share();\n    println!(\"id: {}, owners: {}\", again.id, Rc::strong_count(&w));\n    println!(\"own weak link upgrades: {}\", w.me.upgrade().is_some());\n}\n",
+   "out": "id: 7, owners: 2\nown weak link upgrades: true\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "held-borrow-fixed.rs": {
+   "code": "use std::cell::RefCell;\nuse std::rc::Rc;\n\nfn main() {\n    let log = Rc::new(RefCell::new(vec![String::from(\"start\")]));\n    let also_log = Rc::clone(&log);\n\n    // copy the lines out; the borrow ends at the semicolon\n    let lines: Vec<String> = log.borrow().clone();\n    for line in &lines {\n        println!(\"saw: {line}\");\n        also_log.borrow_mut().push(format!(\"after {line}\"));\n    }\n    println!(\"log: {:?}\", log.borrow());\n}\n",
+   "out": "saw: start\nlog: [\"start\", \"after start\"]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "held-borrow.panic.rs": {
+   "code": "use std::cell::RefCell;\nuse std::rc::Rc;\n\nfn main() {\n    let log = Rc::new(RefCell::new(vec![String::from(\"start\")]));\n    let also_log = Rc::clone(&log);\n\n    // the borrow() lasts for the whole loop\n    for line in log.borrow().iter() {\n        println!(\"saw: {line}\");\n        also_log.borrow_mut().push(format!(\"after {line}\"));\n    }\n}\n",
+   "out": "saw: start\n\nthread 'main' (1) panicked at src/main.rs:11:18:\nRefCell already borrowed\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+   "lang": "rust",
+   "exit": 101
+  },
+  "listeners.rs": {
+   "code": "use std::cell::RefCell;\nuse std::rc::Rc;\n\nfn main() {\n    // what the listeners saw; every listener must be able to add to it\n    let seen = Rc::new(RefCell::new(Vec::new()));\n\n    let mut listeners: Vec<Box<dyn Fn(&str)>> = Vec::new();\n    for name in [\"audit\", \"mail\"] {\n        let seen = Rc::clone(&seen); // each closure owns a share\n        listeners.push(Box::new(move |event| {\n            seen.borrow_mut().push(format!(\"{name}: {event}\"));\n        }));\n    }\n\n    for event in [\"login\", \"logout\"] {\n        for listener in &listeners {\n            listener(event);\n        }\n    }\n\n    println!(\"owners: {}\", Rc::strong_count(&seen));\n    println!(\n        \"size_of RefCell<Vec<String>>: {}\",\n        size_of::<RefCell<Vec<String>>>()\n    );\n    for line in seen.borrow().iter() {\n        println!(\"{line}\");\n    }\n}\n",
+   "out": "owners: 3\nsize_of RefCell<Vec<String>>: 32\naudit: login\nmail: login\naudit: logout\nmail: logout\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "long-list.panic.rs": {
+   "code": "struct Node {\n    value: u32,\n    next: Option<Box<Node>>,\n}\n\nfn main() {\n    let mut head: Option<Box<Node>> = None;\n    for value in 0..1_000_000 {\n        head = Some(Box::new(Node { value, next: head }));\n    }\n\n    let mut len = 0;\n    let mut at = &head;\n    while let Some(node) = at {\n        len += 1;\n        at = &node.next;\n    }\n    println!(\n        \"built a list of {len}, top value {}\",\n        head.as_ref().map_or(0, |n| n.value)\n    );\n} // head is dropped here: one Box frees the next, which frees the next, ...\n",
+   "out": "built a list of 1000000, top value 999999\n\nthread 'main' (1) has overflowed its stack\nfatal runtime error: stack overflow, aborting\n",
+   "lang": "rust",
+   "exit": -6
+  },
+  "make-mut.rs": {
+   "code": "use std::rc::Rc;\n\nfn main() {\n    let mut mine = Rc::new(vec![1, 2, 3]);\n    let theirs = Rc::clone(&mine);\n    println!(\"owners: {}\", Rc::strong_count(&mine));\n\n    // Rc::make_mut: change the value; if others share it, copy it first\n    Rc::make_mut(&mut mine).push(4);\n    println!(\"mine: {:?}\", mine);\n    println!(\"theirs: {:?}\", theirs);\n    println!(\n        \"owners now: {} and {}\",\n        Rc::strong_count(&mine),\n        Rc::strong_count(&theirs)\n    );\n    println!(\"same Vec: {}\", Rc::ptr_eq(&mine, &theirs));\n\n    // alone, it changes the value in place\n    drop(theirs);\n    let before = Rc::as_ptr(&mine);\n    Rc::make_mut(&mut mine).push(5);\n    println!(\"mine: {:?}\", mine);\n    println!(\"same allocation: {}\", Rc::as_ptr(&mine) == before);\n}\n",
+   "out": "owners: 2\nmine: [1, 2, 3, 4]\ntheirs: [1, 2, 3]\nowners now: 1 and 1\nsame Vec: false\nmine: [1, 2, 3, 4, 5]\nsame allocation: true\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "niche.rs": {
+   "code": "use std::rc::Rc;\n\nstruct Node {\n    value: i32,\n    next: Option<Box<Node>>,\n}\n\nfn main() {\n    println!(\"Box<i32>: {}\", size_of::<Box<i32>>());\n    println!(\"Option<Box<i32>>: {}\", size_of::<Option<Box<i32>>>());\n    println!(\"Option<&i32>: {}\", size_of::<Option<&i32>>());\n    println!(\"Option<Rc<i32>>: {}\", size_of::<Option<Rc<i32>>>());\n    println!(\"i32: {}\", size_of::<i32>());\n    println!(\"Option<i32>: {}\", size_of::<Option<i32>>());\n    println!(\"Option<u64>: {}\", size_of::<Option<u64>>());\n    println!(\"Node: {}\", size_of::<Node>());\n\n    let list = Node {\n        value: 1,\n        next: Some(Box::new(Node {\n            value: 2,\n            next: None,\n        })),\n    };\n    println!(\"second: {:?}\", list.next.as_ref().map(|n| n.value));\n}\n",
+   "out": "Box<i32>: 8\nOption<Box<i32>>: 8\nOption<&i32>: 8\nOption<Rc<i32>>: 8\ni32: 4\nOption<i32>: 8\nOption<u64>: 16\nNode: 16\nsecond: Some(2)\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "rc-move-out.fail.rs": {
+   "code": "use std::rc::Rc;\n\nfn main() {\n    let shared = Rc::new(String::from(\"x\"));\n    let owned: String = *shared;\n    println!(\"{owned}\");\n}\n",
+   "error": "error[E0507]: cannot move out of an `Rc`\n --> src/main.rs:5:25\n  |\n5 |     let owned: String = *shared;\n  |                         ^^^^^^^ move occurs because value has type `String`, which does not implement the `Copy` trait\n  |\nhelp: consider removing the dereference here\n  |\n5 -     let owned: String = *shared;\n5 +     let owned: String = shared;\n  |\nhelp: consider cloning the value if the performance cost is acceptable\n  |\n5 -     let owned: String = *shared;\n5 +     let owned: String = shared.clone();",
+   "lang": "rust"
+  },
+  "rc-share.rs": {
+   "code": "use std::rc::Rc;\n\nfn main() {\n    let mut a = Rc::new(vec![1, 2, 3]);\n    println!(\"owners: {}\", Rc::strong_count(&a));\n    println!(\"size_of Rc<Vec<i32>>: {}\", size_of::<Rc<Vec<i32>>>());\n\n    {\n        let b = Rc::clone(&a); // a second owner of the same Vec\n        println!(\"owners: {}\", Rc::strong_count(&a));\n        println!(\"same Vec: {}\", Rc::ptr_eq(&a, &b));\n        println!(\"same buffer: {}\", a.as_ptr() == b.as_ptr());\n        println!(\"get_mut while shared: {:?}\", Rc::get_mut(&mut a));\n    } // b goes: the count drops, the Vec stays\n\n    println!(\"owners: {}\", Rc::strong_count(&a));\n    println!(\"get_mut when alone: {:?}\", Rc::get_mut(&mut a));\n\n    let copy: Vec<i32> = (*a).clone(); // this one really copies the numbers\n    println!(\"copy has its own buffer: {}\", copy.as_ptr() != a.as_ptr());\n}\n",
+   "out": "owners: 1\nsize_of Rc<Vec<i32>>: 8\nowners: 2\nsame Vec: true\nsame buffer: true\nget_mut while shared: None\nowners: 1\nget_mut when alone: Some([1, 2, 3])\ncopy has its own buffer: true\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "rc-thread.fail.rs": {
+   "code": "use std::rc::Rc;\nuse std::thread;\n\nfn main() {\n    let numbers = Rc::new(vec![1, 2, 3]);\n    let for_thread = Rc::clone(&numbers);\n    let handle = thread::spawn(move || println!(\"in the thread: {:?}\", for_thread));\n    handle.join().unwrap();\n    println!(\"in main: {:?}\", numbers);\n}\n",
+   "error": "error[E0277]: `Rc<Vec<i32>>` cannot be sent between threads safely\n --> src/main.rs:7:32\n  |\n7 |     let handle = thread::spawn(move || println!(\"in the thread: {:?}\", for_thread));\n  |                  ------------- -------^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  |                  |             |\n  |                  |             `Rc<Vec<i32>>` cannot be sent between threads safely\n  |                  |             within this `{closure@src/main.rs:7:32: 7:39}`\n  |                  required by a bound introduced by this call\n  |\n  = help: within `{closure@src/main.rs:7:32: 7:39}`, the trait `Send` is not implemented for `Rc<Vec<i32>>`\nnote: required because it's used within this closure\n --> src/main.rs:7:32\n  |\n7 |     let handle = thread::spawn(move || println!(\"in the thread: {:?}\", for_thread));\n  |                                ^^^^^^^\n  ... (notes pointing into the standard library trimmed)",
+   "lang": "rust"
+  },
+  "rc-write.fail.rs": {
+   "code": "use std::rc::Rc;\n\nstruct Counter {\n    hits: u32,\n}\n\nfn main() {\n    let a = Rc::new(Counter { hits: 0 });\n    let b = Rc::clone(&a);\n    a.hits += 1;\n    println!(\"hits: {}\", b.hits);\n}\n",
+   "error": "error[E0594]: cannot assign to data in an `Rc`\n  --> src/main.rs:10:5\n   |\n10 |     a.hits += 1;\n   |     ^^^^^^^^^^^ cannot assign\n   |\n   = help: trait `DerefMut` is required to modify through a dereference, but it is not implemented for `Rc<Counter>`\n",
+   "lang": "rust"
+  },
+  "recursive.fail.rs": {
+   "code": "enum Expr {\n    Num(i64),\n    Add(Expr, Expr),\n}\n\nfn main() {\n    let e = Expr::Add(Expr::Num(1), Expr::Num(2));\n    let _ = e;\n}\n",
+   "error": "error[E0072]: recursive type `Expr` has infinite size\n --> src/main.rs:1:1\n  |\n1 | enum Expr {\n  | ^^^^^^^^^\n2 |     Num(i64),\n3 |     Add(Expr, Expr),\n  |         ---- recursive without indirection\n  |\nhelp: insert some indirection (e.g., a `Box`, `Rc`, or `&`) to break the cycle\n  |\n3 |     Add(Box<Expr>, Expr),\n  |         ++++    +\n",
+   "lang": "rust"
+  },
+  "recursive.rs": {
+   "code": "enum Expr {\n    Num(i64),\n    Add(Box<Expr>, Box<Expr>),\n    Neg(Box<Expr>),\n}\n\nfn eval(e: &Expr) -> i64 {\n    match e {\n        Expr::Num(n) => *n,\n        Expr::Add(a, b) => eval(a) + eval(b),\n        Expr::Neg(a) => -eval(a),\n    }\n}\n\nfn main() {\n    // 1 + -(2 + 3)\n    let e = Expr::Add(\n        Box::new(Expr::Num(1)),\n        Box::new(Expr::Neg(Box::new(Expr::Add(\n            Box::new(Expr::Num(2)),\n            Box::new(Expr::Num(3)),\n        )))),\n    );\n    println!(\"eval: {}\", eval(&e));\n    println!(\"size_of Box<Expr>: {}\", size_of::<Box<Expr>>());\n    println!(\"size_of Expr: {}\", size_of::<Expr>());\n}\n",
+   "out": "eval: -4\nsize_of Box<Expr>: 8\nsize_of Expr: 24\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "refcell-basics.rs": {
+   "code": "use std::cell::RefCell;\n\nfn main() {\n    let list = RefCell::new(vec![1, 2]); // not `mut`: it is changed through &\n    list.borrow_mut().push(3);\n    println!(\"list: {:?}\", list.borrow());\n\n    let reader = list.borrow(); // a shared borrow, alive until `reader` goes\n    println!(\"second reader ok: {}\", list.try_borrow().is_ok());\n    println!(\"writer ok: {}\", list.try_borrow_mut().is_ok());\n    println!(\"the refusal: {:?}\", list.try_borrow_mut().err());\n    drop(reader);\n    println!(\"writer ok now: {}\", list.try_borrow_mut().is_ok());\n\n    println!(\"size_of RefCell<()>: {}\", size_of::<RefCell<()>>());\n    println!(\"size_of Vec<i32>: {}\", size_of::<Vec<i32>>());\n    println!(\n        \"size_of RefCell<Vec<i32>>: {}\",\n        size_of::<RefCell<Vec<i32>>>()\n    );\n}\n",
+   "out": "list: [1, 2, 3]\nsecond reader ok: true\nwriter ok: false\nthe refusal: Some(BorrowMutError)\nwriter ok now: true\nsize_of RefCell<()>: 8\nsize_of Vec<i32>: 24\nsize_of RefCell<Vec<i32>>: 32\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "refcell-panic.panic.rs": {
+   "code": "use std::cell::RefCell;\n\nfn main() {\n    let list = RefCell::new(vec![1, 2]);\n    let first = list.borrow_mut();\n    println!(\"first borrow is alive: {}\", first.len());\n    let second = list.borrow_mut(); // compiles; fails when it runs\n    println!(\"never printed: {}\", second.len());\n}\n",
+   "out": "first borrow is alive: 2\n\nthread 'main' (1) panicked at src/main.rs:7:23:\nRefCell already borrowed\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+   "lang": "rust",
+   "exit": 101
+  },
+  "takes-rc.rs": {
+   "code": "use std::rc::Rc;\n\nstruct Config {\n    name: String,\n}\n\nstruct Worker {\n    config: Rc<Config>, // keeps its own share\n}\n\n// reads only: a plain reference is enough, and works for any owner\nfn describe(config: &Config) -> String {\n    format!(\"config {}\", config.name)\n}\n\n// keeps a share: takes an Rc by value, so the caller decides to clone\nfn hire(config: Rc<Config>) -> Worker {\n    Worker { config }\n}\n\nfn main() {\n    let config = Rc::new(Config {\n        name: String::from(\"prod\"),\n    });\n    println!(\"{}\", describe(&config)); // &Rc<Config> becomes &Config\n    println!(\"owners: {}\", Rc::strong_count(&config));\n\n    let a = hire(Rc::clone(&config));\n    let b = hire(Rc::clone(&config));\n    println!(\"owners: {}\", Rc::strong_count(&config));\n    println!(\"{} and {}\", describe(&a.config), describe(&b.config));\n}\n",
+   "out": "config prod\nowners: 1\nowners: 3\nconfig prod and config prod\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "three-things.rs": {
+   "code": "struct Noisy(&'static str);\n\nimpl Drop for Noisy {\n    fn drop(&mut self) {\n        println!(\"drop {}\", self.0);\n    }\n}\n\nfn main() {\n    let value = Noisy(\"value\");\n    let r = &value; // a reference reaches the value and owns nothing\n    println!(\"through r: {}\", r.0);\n    {\n        let b = Box::new(Noisy(\"boxed\")); // owns a value on the heap\n        println!(\"through b: {}\", b.0); // reaches it like a reference\n        println!(\"size_of &Noisy: {}\", size_of::<&Noisy>());\n        println!(\"size_of Box<Noisy>: {}\", size_of::<Box<Noisy>>());\n    } // b goes: its Noisy is dropped and the heap memory freed\n    println!(\"after the block\");\n} // r goes and nothing happens; value is dropped here\n",
+   "out": "through r: value\nthrough b: boxed\nsize_of &Noisy: 8\nsize_of Box<Noisy>: 8\ndrop boxed\nafter the block\ndrop value\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "weak-fix.rs": {
+   "code": "use std::cell::RefCell;\nuse std::rc::{Rc, Weak};\n\nstruct Node {\n    name: &'static str,\n    parent: RefCell<Weak<Node>>,\n    children: RefCell<Vec<Rc<Node>>>,\n}\n\nimpl Drop for Node {\n    fn drop(&mut self) {\n        println!(\"drop {}\", self.name);\n    }\n}\n\nfn node(name: &'static str) -> Rc<Node> {\n    Rc::new(Node {\n        name,\n        parent: RefCell::new(Weak::new()),\n        children: RefCell::new(Vec::new()),\n    })\n}\n\nfn main() {\n    let leaf = node(\"leaf\");\n    println!(\n        \"leaf parent: {:?}\",\n        leaf.parent.borrow().upgrade().map(|p| p.name)\n    );\n    {\n        let root = node(\"root\");\n        root.children.borrow_mut().push(Rc::clone(&leaf)); // the parent owns the child\n        *leaf.parent.borrow_mut() = Rc::downgrade(&root); // the child only points back\n        println!(\n            \"root: strong {}, weak {}\",\n            Rc::strong_count(&root),\n            Rc::weak_count(&root)\n        );\n        println!(\n            \"leaf: strong {}, weak {}\",\n            Rc::strong_count(&leaf),\n            Rc::weak_count(&leaf)\n        );\n        println!(\n            \"leaf parent: {:?}\",\n            leaf.parent.borrow().upgrade().map(|p| p.name)\n        );\n    } // root goes: its count was 1, so it is dropped now\n    println!(\n        \"leaf parent: {:?}\",\n        leaf.parent.borrow().upgrade().map(|p| p.name)\n    );\n    println!(\"leaf: strong {}\", Rc::strong_count(&leaf));\n}\n",
+   "out": "leaf parent: None\nroot: strong 1, weak 1\nleaf: strong 2, weak 0\nleaf parent: Some(\"root\")\ndrop root\nleaf parent: None\nleaf: strong 1\ndrop leaf\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "cycle.cs": {
+   "code": "using System.Runtime.CompilerServices;\n\nvar weak = MakeCycle();\nGC.Collect();\nGC.WaitForPendingFinalizers();\nGC.Collect();\nConsole.WriteLine($\"cycle collected: {!weak.IsAlive}\");\n\n[MethodImpl(MethodImplOptions.NoInlining)]\nstatic WeakReference MakeCycle()\n{\n    var a = new Node();\n    var b = new Node();\n    a.Other = b;\n    b.Other = a;\n    return new WeakReference(a); // does not keep a alive\n}\n\nclass Node\n{\n    public Node? Other;\n}\n",
+   "out": "cycle collected: True\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "cycle.go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"runtime\"\n\t\"weak\"\n)\n\ntype Node struct{ other *Node }\n\nfunc makeCycle() weak.Pointer[Node] {\n\ta := &Node{}\n\tb := &Node{}\n\ta.other = b\n\tb.other = a\n\treturn weak.Make(a) // does not keep a alive\n}\n\nfunc main() {\n\tw := makeCycle()\n\truntime.GC()\n\tfmt.Println(\"cycle collected:\", w.Value() == nil)\n}\n",
+   "out": "cycle collected: true\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "cycle.java": {
+   "code": "import java.lang.ref.WeakReference;\n\npublic class Main {\n    static class Node {\n        Node other;\n    }\n\n    static WeakReference<Node> makeCycle() {\n        Node a = new Node();\n        Node b = new Node();\n        a.other = b;\n        b.other = a;\n        return new WeakReference<>(a); // does not keep a alive\n    }\n\n    public static void main(String[] args) throws InterruptedException {\n        WeakReference<Node> weak = makeCycle();\n        for (int i = 0; i < 20 && weak.get() != null; i++) {\n            System.gc(); // a request, so ask a few times\n            Thread.sleep(50);\n        }\n        System.out.println(\"cycle collected: \" + (weak.get() == null));\n    }\n}\n",
+   "out": "cycle collected: true\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "cycle.kt": {
+   "code": "import java.lang.ref.WeakReference\n\nclass Node {\n    var other: Node? = null\n}\n\nfun makeCycle(): WeakReference<Node> {\n    val a = Node()\n    val b = Node()\n    a.other = b\n    b.other = a\n    return WeakReference(a) // does not keep a alive\n}\n\nfun main() {\n    val weak = makeCycle()\n    var i = 0\n    while (i < 20 && weak.get() != null) {\n        System.gc() // a request, so ask a few times\n        Thread.sleep(50)\n        i++\n    }\n    println(\"cycle collected: ${weak.get() == null}\")\n}\n",
+   "out": "cycle collected: true\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "cycle.py": {
+   "code": "import gc\nimport weakref\n\n\nclass Node:\n    def __init__(self, name):\n        self.name = name\n        self.other = None\n\n    def __del__(self):\n        print(\"freed\", self.name)\n\n\ndef make_cycle():\n    a = Node(\"a\")\n    b = Node(\"b\")\n    a.other = b\n    b.other = a\n    return weakref.ref(a)  # does not keep a alive\n\n\ngc.disable()  # keep the automatic cycle collector out of the way\n\nlone = Node(\"lone\")\ndel lone  # the count falls to zero: freed on the spot, like an Rc\nprint(\"after del lone\")\n\nref = make_cycle()  # each node is still referenced by the other\nprint(\"after make_cycle: a and b not freed, weakref alive:\", ref() is not None)\nfound = gc.collect()  # the cycle collector finds them\nprint(\"gc.collect found garbage:\", found > 0)\nprint(\"weakref alive now:\", ref() is not None)\n",
+   "out": "freed lone\nafter del lone\nafter make_cycle: a and b not freed, weakref alive: True\nfreed a\nfreed b\ngc.collect found garbage: True\nweakref alive now: False\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "cycle.ts": {
+   "code": "import * as v8 from \"node:v8\";\nimport * as vm from \"node:vm\";\n\n// node only exposes gc() when asked; this asks from inside the program\nv8.setFlagsFromString(\"--expose-gc\");\nconst gc: () => void = vm.runInNewContext(\"gc\");\n\nclass Node {\n  other: Node | null = null;\n}\n\nfunction makeCycle(): WeakRef<Node> {\n  const a = new Node();\n  const b = new Node();\n  a.other = b;\n  b.other = a;\n  return new WeakRef(a); // does not keep a alive\n}\n\nasync function main() {\n  const weak = makeCycle();\n  // a WeakRef's target is kept alive until the current job ends\n  await new Promise((resolve) => setTimeout(resolve, 0));\n  gc();\n  console.log(\"cycle collected:\", weak.deref() === undefined);\n}\n\nmain();\n",
+   "out": "cycle collected: true\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "moved-from.crash.cpp": {
+   "code": "#include <iostream>\n#include <memory>\n\nint main() {\n    auto a = std::make_unique<int>(5);\n    auto b = std::move(a);\n    std::cout << \"b: \" << *b << \"\\n\";\n    std::cout << \"a is null: \" << (a == nullptr ? \"true\" : \"false\") << \"\\n\";\n    std::cout << \"a: \" << *a << \"\\n\"; // compiles; undefined behaviour (it crashed here)\n}\n",
+   "out": "b: 5\na is null: true\n",
+   "lang": "cpp",
+   "exit": -11
+  },
+  "recursive.fail.cs": {
+   "code": "// a struct stores its fields inline, so it cannot contain itself\nstruct Expr\n{\n    public int Value;\n    public Expr Left;\n    public Expr Right;\n}\n\nclass Program\n{\n    static void Main()\n    {\n        var e = new Expr();\n        System.Console.WriteLine(e.Value);\n    }\n}\n",
+   "error": "Program.cs(5,17): error CS0523: Struct member 'Expr.Left' of type 'Expr' causes a cycle in the struct layout",
+   "lang": "csharp"
+  },
+  "recursive.go": {
+   "code": "package main\n\nimport \"fmt\"\n\n// the field is a pointer you write yourself; nil ends the tree\ntype Expr struct {\n\tValue       int\n\tLeft, Right *Expr\n}\n\nfunc main() {\n\ttree := &Expr{1, &Expr{2, nil, nil}, &Expr{3, nil, nil}}\n\tfmt.Println(\"left child:\", tree.Left.Value)\n}\n",
+   "out": "left child: 2\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "recursive.java": {
+   "code": "public class Main {\n    // a field of class type is a reference, so a class can hold another of itself\n    static class Expr {\n        int value;\n        Expr left, right;\n\n        Expr(int value, Expr left, Expr right) {\n            this.value = value;\n            this.left = left;\n            this.right = right;\n        }\n    }\n\n    public static void main(String[] args) {\n        Expr tree = new Expr(1, new Expr(2, null, null), new Expr(3, null, null));\n        System.out.println(\"left child: \" + tree.left.value);\n    }\n}\n",
+   "out": "left child: 2\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "recursive.kt": {
+   "code": "// a class property holds a reference, so a class can hold another of itself\nclass Expr(val value: Int, val left: Expr?, val right: Expr?)\n\nfun main() {\n    val tree = Expr(1, Expr(2, null, null), Expr(3, null, null))\n    println(\"left child: ${tree.left?.value}\")\n}\n",
+   "out": "left child: 2\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "refcount-extra.crash.asan.c": {
+   "code": "#include <stdio.h>\n#include <stdlib.h>\n\n// What Rc does, written by hand: a count next to the value, and a free when it hits zero.\nstruct Shared {\n    int count;\n    int value;\n};\n\nstruct Shared *shared_new(int value) {\n    struct Shared *s = malloc(sizeof *s);\n    s->count = 1;\n    s->value = value;\n    return s;\n}\n\nstruct Shared *shared_clone(struct Shared *s) {\n    s->count++;\n    return s;\n}\n\nvoid shared_drop(struct Shared *s) {\n    s->count--;\n    if (s->count == 0) {\n        printf(\"count is zero: freeing\\n\");\n        free(s);\n    }\n}\n\nint main(void) {\n    struct Shared *a = shared_new(7);\n    struct Shared *b = shared_clone(a);\n    printf(\"owners: %d\\n\", a->count);\n    shared_drop(b);\n    printf(\"owners: %d\\n\", a->count);\n    shared_drop(a);\n    shared_drop(a); // one call too many: the count was already zero\n    return 0;\n}\n",
+   "out": "owners: 2\nowners: 1\ncount is zero: freeing\n=================================================================\n==1==ERROR: AddressSanitizer: heap-use-after-free on address 0x············ at pc 0x············ bp 0x············ sp 0x············\nREAD of size 4 at 0x············ thread T0\n    #0 0x············ in shared_drop main.c:23\n    #1 0x············ in main main.c:37\n    #2 0x············  (/lib/aarch64-linux-gnu/libc.so.6+0x22258)\n    #3 0x············ in __libc_start_main (/lib/aarch64-linux-gnu/libc.so.6+0x22338)\n    #4 0x············ in _start (main+0xb2c)\n\n0x············ is located 0 bytes inside of 8-byte region [0x············,0x············)\nfreed by thread T0 here:\n    #0 0x············ in free ../../../../src/libsanitizer/asan/asan_malloc_linux.cpp:52\n    #1 0x············ in shared_drop main.c:26\n    #2 0x············ in main main.c:36\n    #3 0x············  (/lib/aarch64-linux-gnu/libc.so.6+0x22258)\n    #4 0x············ in __libc_start_main (/lib/aarch64-linux-gnu/libc.so.6+0x22338)\n    #5 0x············ in _start (main+0xb2c)\n\npreviously allocated by thread T0 here:\n    #0 0x············ in malloc ../../../../src/libsanitizer/asan/asan_malloc_linux.cpp:69\n    #1 0x············ in shared_new main.c:11\n    #2 0x············ in main main.c:31\n    #3 0x············  (/lib/aarch64-linux-gnu/libc.so.6+0x22258)\n    #4 0x············ in __libc_start_main (/lib/aarch64-linux-gnu/libc.so.6+0x22338)\n    #5 0x············ in _start (main+0xb2c)\n\nSUMMARY: AddressSanitizer: heap-use-after-free main.c:23 in shared_drop\nShadow bytes around the buggy address:\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n=>0x············: fa fa[fd]fa fa fa fa fa fa fa fa fa fa fa fa fa\n  0x············: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\n  0x············: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\n  0x············: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\n  0x············: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\n  0x············: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\nShadow byte legend (one shadow byte represents 8 application bytes):\n  Addressable:           00\n  Partially addressable: 01 02 03 04 05 06 07 \n  Heap left redzone:       fa\n  Freed heap region:       fd\n  Stack left redzone:      f1\n  Stack mid redzone:       f2\n  Stack right redzone:     f3\n  Stack after return:      f5\n  Stack use after scope:   f8\n  Global redzone:          f9\n  Global init order:       f6\n  Poisoned by user:        f7\n  Container overflow:      fc\n  Array cookie:            ac\n  Intra object redzone:    bb\n  ASan internal:           fe\n  Left alloca redzone:     ca\n  Right alloca redzone:    cb\n==1==ABORTING\n",
+   "lang": "c",
+   "mode": "asan",
+   "exit": 1
+  },
+  "refcount.c": {
+   "code": "#include <stdio.h>\n#include <stdlib.h>\n\n// What Rc does, written by hand: a count next to the value, and a free when it hits zero.\nstruct Shared {\n    int count;\n    int value;\n};\n\nstruct Shared *shared_new(int value) {\n    struct Shared *s = malloc(sizeof *s);\n    s->count = 1;\n    s->value = value;\n    return s;\n}\n\nstruct Shared *shared_clone(struct Shared *s) {\n    s->count++;\n    return s;\n}\n\nvoid shared_drop(struct Shared *s) {\n    s->count--;\n    if (s->count == 0) {\n        printf(\"count is zero: freeing\\n\");\n        free(s);\n    }\n}\n\nint main(void) {\n    struct Shared *a = shared_new(7);\n    struct Shared *b = shared_clone(a);\n    printf(\"owners: %d\\n\", a->count);\n    shared_drop(b);\n    printf(\"owners: %d\\n\", a->count);\n    shared_drop(a);\n    return 0;\n}\n",
+   "out": "owners: 2\nowners: 1\ncount is zero: freeing\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "refs.py": {
+   "code": "import sys\nimport weakref\n\na = []\nprint(\"getrefcount, one name:\", sys.getrefcount(a))  # the call's own argument counts too\nb = a\nprint(\"getrefcount, two names:\", sys.getrefcount(a))\n\nfor value in ([1], 5):\n    try:\n        weakref.ref(value)\n    except TypeError as e:\n        print(\"weakref.ref fails:\", e)\n",
+   "out": "getrefcount, one name: 2\ngetrefcount, two names: 3\nweakref.ref fails: cannot create weak reference to 'list' object\nweakref.ref fails: cannot create weak reference to 'int' object\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "shared-const.fail.cpp": {
+   "code": "#include <memory>\n\nint main() {\n    std::shared_ptr<const int> c = std::make_shared<int>(1);\n    *c = 2; // a shared_ptr<const T> is read-only, as an Rc<T> is\n}\n",
+   "error": "main.cpp: In function ‘int main()’:\nmain.cpp:5:8: error: assignment of read-only location ‘((std::__shared_ptr_access<const int, __gnu_cxx::_S_atomic, false, false>*)(& c))->std::__shared_ptr_access<const int, __gnu_cxx::_S_atomic, false, false>::operator*()’\n    5 |     *c = 2; // a shared_ptr<const T> is read-only, as an Rc<T> is\n      |     ~~~^~~",
+   "lang": "cpp"
+  },
+  "shared-cycle.cpp": {
+   "code": "#include <iostream>\n#include <memory>\n#include <string>\n#include <vector>\n\nstruct Leaky {\n    explicit Leaky(std::string n) : name(n) {}\n    std::string name;\n    std::shared_ptr<Leaky> other;\n    ~Leaky() { std::cout << \"freed \" << name << \"\\n\"; }\n};\n\nstruct Tree {\n    explicit Tree(std::string n) : name(n) {}\n    std::string name;\n    std::weak_ptr<Tree> parent;\n    std::vector<std::shared_ptr<Tree>> children;\n    ~Tree() { std::cout << \"freed \" << name << \"\\n\"; }\n};\n\nint main() {\n    {\n        auto a = std::make_shared<Leaky>(\"a\");\n        auto b = std::make_shared<Leaky>(\"b\");\n        a->other = b;\n        b->other = a;\n        std::cout << \"owners of a: \" << a.use_count() << \"\\n\";\n    }\n    std::cout << \"after the cycle's block: a and b not freed\\n\";\n\n    {\n        auto root = std::make_shared<Tree>(\"root\");\n        auto leaf = std::make_shared<Tree>(\"leaf\");\n        root->children.push_back(leaf);\n        leaf->parent = root; // weak_ptr: does not count\n        std::cout << \"owners of root: \" << root.use_count() << \"\\n\";\n    }\n    std::cout << \"after the tree's block\\n\";\n}\n",
+   "out": "owners of a: 2\nafter the cycle's block: a and b not freed\nowners of root: 1\nfreed root\nfreed leaf\nafter the tree's block\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "shared-from-this.cpp": {
+   "code": "#include <iostream>\n#include <memory>\n\nstruct Widget : std::enable_shared_from_this<Widget> {\n    std::shared_ptr<Widget> share() { return shared_from_this(); }\n};\n\nint main() {\n    auto owned = std::make_shared<Widget>();\n    std::cout << \"owners: \" << owned->share().use_count() << \"\\n\";\n\n    Widget on_stack; // not owned by any shared_ptr\n    try {\n        on_stack.share();\n    } catch (const std::bad_weak_ptr &e) {\n        std::cout << \"thrown at run time: bad_weak_ptr\\n\";\n    }\n}\n",
+   "out": "owners: 2\nthrown at run time: bad_weak_ptr\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "unique-list.crash.cpp": {
+   "code": "#include <iostream>\n#include <memory>\n\nstruct Node {\n    int value;\n    std::unique_ptr<Node> next;\n};\n\nint main() {\n    std::unique_ptr<Node> head;\n    for (int i = 0; i < 1000000; i++) {\n        auto node = std::make_unique<Node>();\n        node->value = i;\n        node->next = std::move(head);\n        head = std::move(node);\n    }\n    std::cout << \"built\" << std::endl;\n    head.reset(); // each ~Node frees the next one: a recursion a million deep\n    std::cout << \"freed\\n\";\n}\n",
+   "out": "built\n",
+   "lang": "cpp",
+   "exit": -11
+  }
+ },
+ "exercises": {
+  "family-tree": {
+   "starter": "#![forbid(unsafe_code)]\n\nuse std::cell::Cell;\nuse std::rc::{Rc, Weak};\n\n/// A person in a family tree. Parents own their children; a child only points back.\nstruct Person {\n    name: String,\n    parent: Weak<Person>,\n    children: Vec<Rc<Person>>,\n    dropped: Rc<Cell<u32>>, // shared count of how many Persons have been freed\n}\n\nimpl Drop for Person {\n    fn drop(&mut self) {\n        self.dropped.set(self.dropped.get() + 1);\n    }\n}\n\nfn person(name: &str, dropped: &Rc<Cell<u32>>) -> Rc<Person> {\n    Rc::new(Person {\n        name: name.to_string(),\n        parent: Weak::new(),\n        children: Vec::new(),\n        dropped: Rc::clone(dropped),\n    })\n}\n\n/// Make `child` one of `parent`'s children, and `parent` the parent of `child`.\n/// You only hold `&Rc<Person>`, so the two fields above cannot be changed as they are:\n/// first change their types (and `person`), then fill this in.\nfn add_child(parent: &Rc<Person>, child: &Rc<Person>) {\n    todo!(\n        \"wrap the fields in RefCell: RefCell<Weak<Person>> is a weak link you can point somewhere else through &\"\n    )\n}\n\n/// The parent of `person`, if it is still alive.\nfn parent_of(person: &Person) -> Option<Rc<Person>> {\n    todo!(\"upgrade the weak link\")\n}\n\n/// How many children `person` has.\nfn child_count(person: &Person) -> usize {\n    todo!(\"the length of the children list\")\n}\n\n/// The names from the oldest known ancestor down to this person, joined with '/'.\nfn path(person: &Person) -> String {\n    todo!(\"walk up with parent_of, then join the names top-down\")\n}\n\nfn main() {\n    let dropped = Rc::new(Cell::new(0));\n    let root = person(\"root\", &dropped);\n    let mid = person(\"mid\", &dropped);\n    let leaf = person(\"leaf\", &dropped);\n\n    add_child(&root, &mid);\n    add_child(&mid, &leaf);\n\n    // the parent owns the child; the child must not own the parent\n    assert_eq!(Rc::strong_count(&root), 1);\n    assert_eq!(Rc::weak_count(&root), 1);\n    assert_eq!(Rc::strong_count(&mid), 2);\n    assert_eq!(Rc::strong_count(&leaf), 2);\n\n    assert_eq!(path(&root), \"root\");\n    assert_eq!(path(&mid), \"root/mid\");\n    assert_eq!(path(&leaf), \"root/mid/leaf\");\n    assert_eq!(child_count(&root), 1);\n    assert_eq!(\n        parent_of(&leaf).map(|p| p.name.clone()),\n        Some(\"mid\".to_string())\n    );\n\n    // dropping the root frees only the root: `mid` is still held by this function\n    drop(root);\n    assert_eq!(dropped.get(), 1);\n    assert!(parent_of(&mid).is_none());\n    assert_eq!(path(&leaf), \"mid/leaf\");\n\n    // dropping the last owner of each frees the rest, and nothing is left over\n    drop(mid);\n    assert_eq!(dropped.get(), 2);\n    drop(leaf);\n    assert_eq!(dropped.get(), 3, \"every person must be freed\");\n\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "#![forbid(unsafe_code)]\n\nuse std::cell::{Cell, RefCell};\nuse std::rc::{Rc, Weak};\n\n/// A person in a family tree. Parents own their children; a child only points back.\nstruct Person {\n    name: String,\n    parent: RefCell<Weak<Person>>,\n    children: RefCell<Vec<Rc<Person>>>,\n    dropped: Rc<Cell<u32>>, // shared count of how many Persons have been freed\n}\n\nimpl Drop for Person {\n    fn drop(&mut self) {\n        self.dropped.set(self.dropped.get() + 1);\n    }\n}\n\nfn person(name: &str, dropped: &Rc<Cell<u32>>) -> Rc<Person> {\n    Rc::new(Person {\n        name: name.to_string(),\n        parent: RefCell::new(Weak::new()),\n        children: RefCell::new(Vec::new()),\n        dropped: Rc::clone(dropped),\n    })\n}\n\n/// Make `child` one of `parent`'s children, and `parent` the parent of `child`.\nfn add_child(parent: &Rc<Person>, child: &Rc<Person>) {\n    parent.children.borrow_mut().push(Rc::clone(child));\n    *child.parent.borrow_mut() = Rc::downgrade(parent);\n}\n\n/// The parent of `person`, if it is still alive.\nfn parent_of(person: &Person) -> Option<Rc<Person>> {\n    person.parent.borrow().upgrade()\n}\n\n/// How many children `person` has.\nfn child_count(person: &Person) -> usize {\n    person.children.borrow().len()\n}\n\n/// The names from the oldest known ancestor down to this person, joined with '/'.\nfn path(person: &Person) -> String {\n    match parent_of(person) {\n        Some(parent) => format!(\"{}/{}\", path(&parent), person.name),\n        None => person.name.clone(),\n    }\n}\n\nfn main() {\n    let dropped = Rc::new(Cell::new(0));\n    let root = person(\"root\", &dropped);\n    let mid = person(\"mid\", &dropped);\n    let leaf = person(\"leaf\", &dropped);\n\n    add_child(&root, &mid);\n    add_child(&mid, &leaf);\n\n    // the parent owns the child; the child must not own the parent\n    assert_eq!(Rc::strong_count(&root), 1);\n    assert_eq!(Rc::weak_count(&root), 1);\n    assert_eq!(Rc::strong_count(&mid), 2);\n    assert_eq!(Rc::strong_count(&leaf), 2);\n\n    assert_eq!(path(&root), \"root\");\n    assert_eq!(path(&mid), \"root/mid\");\n    assert_eq!(path(&leaf), \"root/mid/leaf\");\n    assert_eq!(child_count(&root), 1);\n    assert_eq!(\n        parent_of(&leaf).map(|p| p.name.clone()),\n        Some(\"mid\".to_string())\n    );\n\n    // dropping the root frees only the root: `mid` is still held by this function\n    drop(root);\n    assert_eq!(dropped.get(), 1);\n    assert!(parent_of(&mid).is_none());\n    assert_eq!(path(&leaf), \"mid/leaf\");\n\n    // dropping the last owner of each frees the rest, and nothing is left over\n    drop(mid);\n    assert_eq!(dropped.get(), 2);\n    drop(leaf);\n    assert_eq!(dropped.get(), 3, \"every person must be freed\");\n\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "linked-stack": {
+   "starter": "use std::alloc::{GlobalAlloc, Layout, System};\nuse std::sync::atomic::{AtomicUsize, Ordering};\n\n// Counts allocations and frees, so the checks can tell \"moved the nodes\" from \"built\n// new ones\" and \"freed them\" from \"leaked them\". You do not need to read it.\nstatic ALLOCATED: AtomicUsize = AtomicUsize::new(0);\nstatic FREED: AtomicUsize = AtomicUsize::new(0);\n\nstruct Counting;\n\nunsafe impl GlobalAlloc for Counting {\n    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {\n        ALLOCATED.fetch_add(1, Ordering::Relaxed);\n        unsafe { System.alloc(layout) }\n    }\n    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {\n        FREED.fetch_add(1, Ordering::Relaxed);\n        unsafe { System.dealloc(ptr, layout) }\n    }\n}\n\n#[global_allocator]\nstatic COUNTING: Counting = Counting;\n\nfn allocated() -> usize {\n    ALLOCATED.load(Ordering::Relaxed)\n}\n\nfn freed() -> usize {\n    FREED.load(Ordering::Relaxed)\n}\n\nstruct Node {\n    value: u32,\n    next: Option<Box<Node>>,\n}\n\n/// A stack of numbers: a chain of boxed nodes, newest first.\nstruct Stack {\n    head: Option<Box<Node>>,\n}\n\nimpl Stack {\n    fn new() -> Stack {\n        Stack { head: None }\n    }\n\n    /// Put `value` on top.\n    fn push(&mut self, value: u32) {\n        todo!(\"a new Node whose `next` is the old head (take it with `self.head.take()`)\")\n    }\n\n    /// Remove and return the top, or None when empty.\n    fn pop(&mut self) -> Option<u32> {\n        todo!(\"take the head; the new head is its `next`\")\n    }\n\n    /// The top, without removing it.\n    fn peek(&self) -> Option<&u32> {\n        todo!(\"as_ref() on the head, then look at the node's value\")\n    }\n\n    /// Turn the stack upside down by relinking the nodes it already has.\n    fn reverse(&mut self) {\n        todo!(\"walk the chain with take(), pointing each node's `next` at the one before it\")\n    }\n}\n\nimpl Drop for Stack {\n    // Dropping a Box drops the node inside it, which drops the next Box, and so on:\n    // one stack frame per node. Free the nodes in a loop instead.\n    fn drop(&mut self) {}\n}\n\nfn main() {\n    // push, peek and pop\n    let (a_pop, f_pop) = (allocated(), freed());\n    let mut s = Stack::new();\n    assert_eq!(s.pop(), None);\n    assert_eq!(s.peek(), None);\n    for v in [1, 2, 3] {\n        s.push(v);\n    }\n    assert_eq!(s.peek(), Some(&3));\n    assert_eq!(s.pop(), Some(3));\n    assert_eq!(s.pop(), Some(2));\n    assert_eq!(s.pop(), Some(1));\n    assert_eq!(s.pop(), None);\n    assert_eq!(\n        allocated() - a_pop,\n        freed() - f_pop,\n        \"pop must free the node it removes\"\n    );\n\n    // reverse moves the nodes it has: no new allocation\n    let mut s = Stack::new();\n    for v in 1..=5 {\n        s.push(v);\n    }\n    let before = allocated();\n    s.reverse();\n    assert_eq!(\n        allocated(),\n        before,\n        \"reverse must relink the nodes, not build new ones\"\n    );\n    let popped: Vec<u32> = std::iter::from_fn(|| s.pop()).collect();\n    assert_eq!(popped, [1, 2, 3, 4, 5]);\n\n    // an empty stack and a one-node stack reverse to themselves\n    let mut s = Stack::new();\n    s.reverse();\n    assert_eq!(s.pop(), None);\n    s.push(9);\n    s.reverse();\n    assert_eq!(s.pop(), Some(9));\n\n    // dropping a stack frees every node\n    let (a0, f0) = (allocated(), freed());\n    {\n        let mut s = Stack::new();\n        for v in 0..10 {\n            s.push(v);\n        }\n    }\n    assert_eq!(allocated() - a0, 10);\n    assert_eq!(freed() - f0, 10, \"every node must be freed\");\n\n    // and a long stack is freed without one stack frame per node\n    {\n        let mut s = Stack::new();\n        for v in 0..1_000_000 {\n            s.push(v);\n        }\n    }\n\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "use std::alloc::{GlobalAlloc, Layout, System};\nuse std::sync::atomic::{AtomicUsize, Ordering};\n\n// Counts allocations and frees, so the checks can tell \"moved the nodes\" from \"built\n// new ones\" and \"freed them\" from \"leaked them\". You do not need to read it.\nstatic ALLOCATED: AtomicUsize = AtomicUsize::new(0);\nstatic FREED: AtomicUsize = AtomicUsize::new(0);\n\nstruct Counting;\n\nunsafe impl GlobalAlloc for Counting {\n    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {\n        ALLOCATED.fetch_add(1, Ordering::Relaxed);\n        unsafe { System.alloc(layout) }\n    }\n    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {\n        FREED.fetch_add(1, Ordering::Relaxed);\n        unsafe { System.dealloc(ptr, layout) }\n    }\n}\n\n#[global_allocator]\nstatic COUNTING: Counting = Counting;\n\nfn allocated() -> usize {\n    ALLOCATED.load(Ordering::Relaxed)\n}\n\nfn freed() -> usize {\n    FREED.load(Ordering::Relaxed)\n}\n\nstruct Node {\n    value: u32,\n    next: Option<Box<Node>>,\n}\n\n/// A stack of numbers: a chain of boxed nodes, newest first.\nstruct Stack {\n    head: Option<Box<Node>>,\n}\n\nimpl Stack {\n    fn new() -> Stack {\n        Stack { head: None }\n    }\n\n    /// Put `value` on top.\n    fn push(&mut self, value: u32) {\n        let next = self.head.take();\n        self.head = Some(Box::new(Node { value, next }));\n    }\n\n    /// Remove and return the top, or None when empty.\n    fn pop(&mut self) -> Option<u32> {\n        self.head.take().map(|node| {\n            self.head = node.next;\n            node.value\n        })\n    }\n\n    /// The top, without removing it.\n    fn peek(&self) -> Option<&u32> {\n        self.head.as_ref().map(|node| &node.value)\n    }\n\n    /// Turn the stack upside down by relinking the nodes it already has.\n    fn reverse(&mut self) {\n        let mut rest = self.head.take();\n        let mut reversed = None;\n        while let Some(mut node) = rest {\n            rest = node.next.take();\n            node.next = reversed;\n            reversed = Some(node);\n        }\n        self.head = reversed;\n    }\n}\n\nimpl Drop for Stack {\n    // Dropping a Box drops the node inside it, which drops the next Box, and so on:\n    // one stack frame per node. Free the nodes in a loop instead.\n    fn drop(&mut self) {\n        let mut rest = self.head.take();\n        while let Some(mut node) = rest {\n            rest = node.next.take();\n        }\n    }\n}\n\nfn main() {\n    // push, peek and pop\n    let (a_pop, f_pop) = (allocated(), freed());\n    let mut s = Stack::new();\n    assert_eq!(s.pop(), None);\n    assert_eq!(s.peek(), None);\n    for v in [1, 2, 3] {\n        s.push(v);\n    }\n    assert_eq!(s.peek(), Some(&3));\n    assert_eq!(s.pop(), Some(3));\n    assert_eq!(s.pop(), Some(2));\n    assert_eq!(s.pop(), Some(1));\n    assert_eq!(s.pop(), None);\n    assert_eq!(\n        allocated() - a_pop,\n        freed() - f_pop,\n        \"pop must free the node it removes\"\n    );\n\n    // reverse moves the nodes it has: no new allocation\n    let mut s = Stack::new();\n    for v in 1..=5 {\n        s.push(v);\n    }\n    let before = allocated();\n    s.reverse();\n    assert_eq!(\n        allocated(),\n        before,\n        \"reverse must relink the nodes, not build new ones\"\n    );\n    let popped: Vec<u32> = std::iter::from_fn(|| s.pop()).collect();\n    assert_eq!(popped, [1, 2, 3, 4, 5]);\n\n    // an empty stack and a one-node stack reverse to themselves\n    let mut s = Stack::new();\n    s.reverse();\n    assert_eq!(s.pop(), None);\n    s.push(9);\n    s.reverse();\n    assert_eq!(s.pop(), Some(9));\n\n    // dropping a stack frees every node\n    let (a0, f0) = (allocated(), freed());\n    {\n        let mut s = Stack::new();\n        for v in 0..10 {\n            s.push(v);\n        }\n    }\n    assert_eq!(allocated() - a0, 10);\n    assert_eq!(freed() - f0, 10, \"every node must be freed\");\n\n    // and a long stack is freed without one stack frame per node\n    {\n        let mut s = Stack::new();\n        for v in 0..1_000_000 {\n            s.push(v);\n        }\n    }\n\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "memo": {
+   "starter": "#![forbid(unsafe_code)]\n\nuse std::cell::{Cell, RefCell};\nuse std::collections::HashMap;\n\n/// Counts the steps the Collatz sequence takes to reach 1 (halve an even number,\n/// triple an odd one and add 1), and remembers every answer it works out.\nstruct Collatz {\n    known: RefCell<HashMap<u64, u32>>,\n    computed: Cell<u32>, // how many numbers were worked out, rather than found in `known`\n}\n\nimpl Collatz {\n    fn new() -> Collatz {\n        Collatz {\n            known: RefCell::new(HashMap::new()),\n            computed: Cell::new(0),\n        }\n    }\n\n    /// Steps from `n` to 1. Takes `&self`: callers share one Collatz.\n    fn steps(&self, n: u64) -> u32 {\n        todo!(\n            \"look in `known` first; otherwise bump `computed`, recurse, and store the answer. Do not keep a borrow of `known` alive across the recursive call\"\n        )\n    }\n}\n\nfn main() {\n    let c = Collatz::new();\n    assert_eq!(c.steps(1), 0);\n    assert_eq!(c.computed.get(), 1);\n\n    // 27 takes 111 steps and passes through 112 different numbers, 1 among them\n    let c = Collatz::new();\n    assert_eq!(c.steps(27), 111);\n    assert_eq!(c.computed.get(), 112);\n\n    // asking again finds everything in the memo\n    assert_eq!(c.steps(27), 111);\n    assert_eq!(\n        c.computed.get(),\n        112,\n        \"the second call must use the stored answers\"\n    );\n\n    // 54 is 27 doubled: one new number\n    assert_eq!(c.steps(54), 112);\n    assert_eq!(c.computed.get(), 113);\n\n    // a long chain works too: 525 numbers, so 525 nested calls\n    assert_eq!(c.steps(837799), 524);\n\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "#![forbid(unsafe_code)]\n\nuse std::cell::{Cell, RefCell};\nuse std::collections::HashMap;\n\n/// Counts the steps the Collatz sequence takes to reach 1 (halve an even number,\n/// triple an odd one and add 1), and remembers every answer it works out.\nstruct Collatz {\n    known: RefCell<HashMap<u64, u32>>,\n    computed: Cell<u32>, // how many numbers were worked out, rather than found in `known`\n}\n\nimpl Collatz {\n    fn new() -> Collatz {\n        Collatz {\n            known: RefCell::new(HashMap::new()),\n            computed: Cell::new(0),\n        }\n    }\n\n    /// Steps from `n` to 1. Takes `&self`: callers share one Collatz.\n    fn steps(&self, n: u64) -> u32 {\n        let cached = self.known.borrow().get(&n).copied();\n        if let Some(steps) = cached {\n            return steps;\n        }\n        self.computed.set(self.computed.get() + 1);\n        let steps = if n == 1 {\n            0\n        } else if n % 2 == 0 {\n            1 + self.steps(n / 2)\n        } else {\n            1 + self.steps(3 * n + 1)\n        };\n        self.known.borrow_mut().insert(n, steps);\n        steps\n    }\n}\n\nfn main() {\n    let c = Collatz::new();\n    assert_eq!(c.steps(1), 0);\n    assert_eq!(c.computed.get(), 1);\n\n    // 27 takes 111 steps and passes through 112 different numbers, 1 among them\n    let c = Collatz::new();\n    assert_eq!(c.steps(27), 111);\n    assert_eq!(c.computed.get(), 112);\n\n    // asking again finds everything in the memo\n    assert_eq!(c.steps(27), 111);\n    assert_eq!(\n        c.computed.get(),\n        112,\n        \"the second call must use the stored answers\"\n    );\n\n    // 54 is 27 doubled: one new number\n    assert_eq!(c.steps(54), 112);\n    assert_eq!(c.computed.get(), 113);\n\n    // a long chain works too: 525 numbers, so 525 nested calls\n    assert_eq!(c.steps(837799), 524);\n\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}

@@ -1,0 +1,126 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Collections: Maps, Sets, Queues and Heaps"
+part: "std"
+intro: >-
+  `std::collections` has what lies beyond `Vec`: a hash map, a sorted map, sets, a
+  double-ended queue, a priority queue and a linked list. All of them ship with the
+  standard library, and the docs say `Vec` and `HashMap` are the right starting point.
+coming_from:
+  go: >-
+    Go gives you a map and a slice, and `container/heap` for a priority queue. Rust adds
+    `BTreeMap` (keys kept sorted), `HashSet`, `VecDeque` (a queue) and `BinaryHeap`,
+    which pops the largest first, so wrap items in `Reverse` for smallest first.
+  kotlin: >-
+    `BTreeMap` is `sortedMapOf` (a `java.util.TreeMap` on the JVM), `VecDeque` is Kotlin's
+    own `ArrayDeque`, and `HashSet` is `hashSetOf`, not `setOf`, which remembers insertion
+    order. The catch is `BinaryHeap`, which pops the largest first where
+    `java.util.PriorityQueue` pops the smallest, so wrap items in `Reverse`.
+  python: >-
+    `HashSet` is `set`, `VecDeque` is `deque`, and `BinaryHeap` replaces `heapq`, but it
+    pops the largest first, so wrap items in `Reverse`. `BTreeMap` keeps keys sorted,
+    which no Python built-in does.
+  typescript: >-
+    `HashMap` and `HashSet` are like `Map` and `Set`, but a Rust `HashMap` does not
+    remember insertion order. `VecDeque` is a queue you can add to and remove from at
+    both ends, and `BinaryHeap` and `BTreeMap` have no built-in JavaScript equivalent.
+  java: >-
+    `HashMap`, `BTreeMap`, `HashSet`, `VecDeque` and `BinaryHeap` map to `HashMap`,
+    `TreeMap`, `HashSet`, `ArrayDeque` and `PriorityQueue`. Watch the heap:
+    `PriorityQueue` gives the smallest first, `BinaryHeap` gives the largest, so wrap
+    items in `Reverse` to flip it.
+  csharp: >-
+    `Dictionary`, `SortedDictionary`, `HashSet`, `Queue<T>` and `PriorityQueue` are close
+    to `HashMap`, `BTreeMap`, `HashSet`, `VecDeque` and `BinaryHeap`. `Queue<T>` only adds
+    at the back, where `VecDeque` adds at both ends. `BinaryHeap` pops the largest first,
+    the opposite of C#'s `PriorityQueue`. And `map[key] += 1` doesn't compile on a Rust
+    map: use `entry(key).or_insert(0)`.
+  c: >-
+    The C standard library has `qsort` and `bsearch` but no map, set, deque or heap, so
+    you'd use sorted arrays and hand-rolled lookups. Rust ships a hash map, a sorted map,
+    sets, a deque and a heap, all generic and freeing their own memory.
+  cpp: >-
+    `HashMap`, `BTreeMap`, `HashSet`, `VecDeque` and `BinaryHeap` correspond to
+    `unordered_map`, `map`, `unordered_set`, `deque` and `priority_queue`, and
+    `priority_queue` is a max-heap too. `counts[w] += 1` doesn't compile, because Rust's `[]` never inserts; use
+    `entry(w).or_insert(0)`.
+notes:
+  - >-
+    Which one? `Vec` for a list, `HashMap`/`HashSet` for lookups, `BTreeMap`/`BTreeSet`
+    when you need keys in order or ranges like `map.range(10..20)`, `VecDeque` for a
+    queue, `BinaryHeap` for "give me the biggest next".
+  - >-
+    The std docs call a `HashMap`'s order "arbitrary", and the default hasher (the code
+    that turns a key into a number) is randomly seeded, so the order can differ between runs. If the output has to be
+    stable, sort it or use a `BTreeMap`.
+  - >-
+    `text.split_whitespace().collect()` builds a `HashSet` because of the type you wrote
+    on the left: `collect()` can build any collection, and the annotation picks which.
+    The set holds `&str` views into `text`, so no word is copied. That works because
+    `text` lives longer than `seen`, and the compiler checks that for you.
+  - >-
+    `VecDeque` is a ring buffer. The docs give adding or removing at either end a cost
+    of O(1) (amortized for adding: averaged over the occasional resize). Removing the first item of a `Vec` is O(n): every
+    other item shifts down.
+  - >-
+    `Reverse(n)` is a tiny wrapper that flips the comparison, so the max-heap hands out
+    the smallest `n` first. The heap itself is unchanged.
+gotcha:
+  title: "Bumping a counter with map[key] += 1"
+  verdict: "rust-rule"
+  looks_fine: >-
+    `counts[w]++` is the most normal line in Go. The key is even there already, since we
+    inserted "cat" first.
+  rust_sees: >-
+    `counts[w]` is read-only in Rust. A `HashMap` implements `Index` (read with `[]`)
+    but not `IndexMut`, so you cannot assign through it, whether or not the key exists.
+  why: >-
+    This is a rule of the library, not a safety proof. A write through `[]` would have
+    to either panic on a missing key or insert one, and `HashMap` chose to offer no write
+    through `[]` at all. Writes go through methods that say what happens: `entry(w).or_insert(0)` (insert if
+    missing), `get_mut(w)` (an `Option`, so you handle missing), or `insert`.
+  langs:
+    go:
+      status: "runs"
+      says: >-
+        Go runs this and prints map[cat:2]. `counts[w] += 1` works for any key, because
+        a missing one starts at 0.
+    kotlin:
+      status: "refuses"
+      says: >-
+        Kotlin refuses this too, for a different reason: `counts[w]` is an `Int?` (the key
+        might be missing), so `counts[w] += 1` doesn't compile. You write `counts[w] = (counts[w] ?: 0) + 1`
+        or use `merge`.
+    python:
+      status: "runs"
+      says: >-
+        Python prints {'cat': 2}. `counts[w] += 1` works because the key is already
+        there. With a missing key it would raise KeyError, which is why counting code
+        usually reaches for `Counter` or `defaultdict(int)`.
+    typescript:
+      status: "runs"
+      says: >-
+        Prints { cat: 2 }. On a plain object `counts[w] += 1` compiles and works when
+        the key exists. A missing key would quietly give `NaN`, since `undefined + 1` is
+        `NaN`.
+    java:
+      status: "runs"
+      says: >-
+        Java's Map has no `[]`, so the natural line is `counts.put(w, counts.get(w) +
+        1)`, and it prints {cat=2}. If the key were missing, `get` would return null and
+        the `+ 1` would throw a NullPointerException.
+    csharp:
+      status: "runs"
+      says: >-
+        The Dictionary indexer supports `+=`, so this prints [cat, 2]. Because the key
+        is already there it works; with a missing key it would throw a
+        KeyNotFoundException.
+    c:
+      status: "none"
+      says: >-
+        C has no map type and no operator overloading, so `counts[w]` can't take a
+        string key; you call your own lookup function, as in the lesson.
+    cpp:
+      status: "runs"
+      says: >-
+        `counts[w] += 1` works on `std::map` and prints `cat: 2`. Be aware that `[]`
+        quietly inserts a 0 for any missing key, even when you only meant to read it.

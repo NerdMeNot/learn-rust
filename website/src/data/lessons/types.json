@@ -1,0 +1,363 @@
+{
+ "id": "types",
+ "title": "Numbers and Types",
+ "part": "basics",
+ "intro": "Every number type has an exact size, and Rust does not convert between them unless you write the conversion.",
+ "coming_from": {
+  "go": "`i32`, `i64` and `f64` are your `int32`, `int64` and `float64`, and `x as i64` is `int64(x)`. There is no plain `int`: whole-number literals default to `i32`, and lengths and indexes use `usize`.",
+  "kotlin": "`i32`, `i64` and `f64` are your `Int`, `Long` and `Double`, with `as` in place of `toLong()` or `toDouble()`. Kotlin lets you write `Int + Long` and `Int * Double` and gives the wider type; Rust has no such operators, so you write the conversion yourself. `u8` and `u32` are your `UByte` and `UInt`.",
+  "python": "A Python `int` grows as big as it needs to, but Rust integers have a fixed size like `i32` or `u64`. Going past the limit panics in a debug build (`cargo run`) and wraps around in a release build (`cargo run --release`), and an `i32` and an `f64` won't mix until you convert them. `7 / 2` is `3` here, not `3.5`.",
+  "typescript": "Your `number` is always a 64-bit float, which is Rust's `f64`. Rust also has separate integer types like `i32` and `u64`, and they never mix with each other or with floats, the same way `number` and `bigint` don't mix.",
+  "java": "`i32`, `i64`, `f64` and `bool` are `int`, `long`, `double` and `boolean`, and Rust adds unsigned types like `u32` and `u8`, which Java does not have. Rust does not widen for you, so `int * double` style mixing needs an explicit conversion. Overflow wraps silently in Java; in a Rust debug build it panics.",
+  "csharp": "`i32`, `i64`, `u32`, `f64` are `int`, `long`, `uint`, `double`. C# widens `int` to `long` or `double` on its own; Rust widens nothing, so you write the conversion every time (`i64::from(x)` when nothing can be lost, `as` when you mean to cut).",
+  "c": "`i32` and `i64` are `int32_t` and `int64_t` with the size fixed on every platform, and there is no plain `int` whose size varies. Rust does no implicit conversions between number types and no integer promotions, so mixing types needs a conversion, and overflow panics in debug builds where signed overflow in C is undefined behaviour.",
+  "cpp": "`i32`, `u64`, `f64` map to `std::int32_t`, `std::uint64_t`, `double`, and `as` is close to your `static_cast`. Rust has no implicit conversions between number types and no integer promotions, so even `i32 + i64` does not compile without a cast."
+ },
+ "notes": [
+  "Integer names say their size: `i8 i16 i32 i64` are signed, `u8 u16 u32 u64` are unsigned. `usize` is the type used for lengths and indexes. It is 64 bits on a 64-bit machine.",
+  "If you write `let x = 5;` with no type, Rust picks `i32`. Floats default to `f64`.",
+  "`as` can quietly cut bits off (`300_i32 as u8` is 44). When a conversion cannot lose data, use `i64::from(a)`. When it might fail, use `u8::try_from(big)`, which returns a Result.",
+  "Going past the end of an integer is a panic in a debug build (`cargo run`) and a wrap-around in a release build (`cargo run --release`). Say what you mean with `checked_add`, `wrapping_add` or `saturating_add`. Floats never panic: `1.0 / 0.0` is `inf`, and `NaN` is not equal to itself."
+ ],
+ "gotcha": {
+  "title": "Mixing an integer and a float",
+  "verdict": "rust-rule",
+  "looks_fine": "Go refuses this too: `a * price` with an int32 and a float64 is a compile error. Kotlin allows it and converts `a` to Double for you.",
+  "rust_sees": "Rust treats every conversion as something you must write down.",
+  "why": "Some conversions lose information. A big i64 does not fit in an i32, and a large integer cannot be stored exactly in an f32. This particular one, i32 to f64, is exact, but the rule is by type, not by value. Making you write the conversion means every place where something could be lost is visible in the code.",
+  "langs": {
+   "go": {
+    "status": "refuses",
+    "says": "Go refuses this too: multiplying an `int32` by a `float64` is a compile error, so you write `float64(a)` first.",
+    "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tvar a int32 = 7\n\tprice := 2.5\n\tcost := a * price\n\tfmt.Println(cost)\n}\n",
+    "error": "# command-line-arguments\n./main.go:8:10: invalid operation: a * price (mismatched types int32 and float64)"
+   },
+   "kotlin": {
+    "status": "runs",
+    "says": "Kotlin runs this and prints 17.5. An `Int` times a `Double` quietly becomes a `Double`, so you never write the conversion.",
+    "code": "fun main() {\n    val a: Int = 7\n    val price: Double = 2.5\n    val cost = a * price\n    println(cost)\n}\n",
+    "out": "17.5\n"
+   },
+   "python": {
+    "status": "runs",
+    "says": "Python runs this and prints 17.5. An int times a float quietly becomes a float, so you never write the conversion.",
+    "code": "a: int = 7\nprice: float = 2.5\ncost = a * price\nprint(cost)\n",
+    "out": "17.5\n"
+   },
+   "typescript": {
+    "status": "runs",
+    "says": "Prints 17.5. TypeScript has one `number` type for both whole numbers and decimals, so there is nothing to convert.",
+    "code": "const a: number = 7;\nconst price: number = 2.5;\nconst cost = a * price;\nconsole.log(cost);\n",
+    "out": "17.5\n"
+   },
+   "java": {
+    "status": "runs",
+    "says": "Java quietly widens the int to a double, so this prints 17.5. Rust wants you to write that conversion yourself.",
+    "code": "public class Main {\n    public static void main(String[] args) {\n        int a = 7;\n        double price = 2.5;\n        var cost = a * price;\n        System.out.println(cost);\n    }\n}\n",
+    "out": "17.5\n"
+   },
+   "csharp": {
+    "status": "runs",
+    "says": "C# quietly converts the int to a double here and prints 17.5. That one is exact, but C# applies the same silent conversion from `int` to `float` and from `long` to `double`, where digits are lost. Rust wants every one of them written down.",
+    "code": "int a = 7;\ndouble price = 2.5;\nvar cost = a * price;\nConsole.WriteLine(cost);\n",
+    "out": "17.5\n"
+   },
+   "c": {
+    "status": "runs",
+    "says": "C quietly turns `a` into a double before multiplying, so this prints 17.5. Rust wants you to write that conversion yourself.",
+    "code": "#include <stdio.h>\n\nint main(void) {\n    int a = 7;\n    double price = 2.5;\n    double cost = a * price;\n    printf(\"%g\\n\", cost);\n    return 0;\n}\n",
+    "out": "17.5\n"
+   },
+   "cpp": {
+    "status": "runs",
+    "says": "C++ quietly converts `a` to a `double` before multiplying, so this prints 17.5. Rust wants you to write that conversion.",
+    "code": "#include <iostream>\n\nint main() {\n    int a = 7;\n    double price = 2.5;\n    auto cost = a * price;\n    std::cout << cost << \"\\n\";\n}\n",
+    "out": "17.5\n"
+   }
+  },
+  "code": "fn main() {\n    let a: i32 = 7;\n    let price: f64 = 2.5;\n    let cost = a * price;\n    println!(\"{cost}\");\n}\n",
+  "error": "error[E0277]: cannot multiply `i32` by `f64`\n --> src/main.rs:4:18\n  |\n4 |     let cost = a * price;\n  |                  ^ no implementation for `i32 * f64`\n  |\n  = help: the trait `Mul<f64>` is not implemented for `i32`\n  ... (notes pointing into the standard library trimmed)",
+  "error_code": "E0277",
+  "fixed": {
+   "code": "fn main() {\n    let a: i32 = 7;\n    let price: f64 = 2.5;\n    let cost = f64::from(a) * price;\n    println!(\"{cost}\");\n}\n",
+   "out": "17.5\n"
+  }
+ },
+ "order": 9,
+ "program": {
+  "rust": {
+   "code": "fn main() {\n    let a: i32 = 7; // 32-bit signed integer\n    let b: i64 = 10; // 64-bit signed integer\n    let price: f64 = 2.5; // 64-bit float\n    let ok: bool = true;\n\n    let total = a as i64 + b; // convert with `as`\n    let cost = a as f64 * price;\n    println!(\"{total} {cost} {ok}\");\n}\n",
+   "out": "17 17.5 true\n"
+  },
+  "go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tvar a int32 = 7\n\tvar b int64 = 10\n\tprice := 2.5\n\tok := true\n\n\ttotal := int64(a) + b\n\tcost := float64(a) * price\n\tfmt.Println(total, cost, ok)\n}\n",
+   "out": "17 17.5 true\n"
+  },
+  "kotlin": {
+   "code": "fun main() {\n    val a: Int = 7\n    val b: Long = 10\n    val price = 2.5\n    val ok = true\n\n    val total = a + b        // Kotlin widens Int to Long for you\n    val cost = a * price     // and Int to Double\n    println(\"$total $cost $ok\")\n}\n",
+   "out": "17 17.5 true\n"
+  },
+  "python": {
+   "code": "a: int = 7  # Python ints have no fixed size\nb: int = 10\nprice: float = 2.5\nok: bool = True\n\ntotal = a + b\ncost = a * price  # int * float gives a float automatically\nprint(f\"{total} {cost} {str(ok).lower()}\")\n",
+   "out": "17 17.5 true\n"
+  },
+  "typescript": {
+   "code": "const a: number = 7;      // every ordinary number is a 64-bit float\nconst b: bigint = 10n;    // bigint: whole numbers of any size\nconst price: number = 2.5;\nconst ok: boolean = true;\n\nconst total = BigInt(a) + b; // number and bigint don't mix: convert first\nconst cost = a * price;\nconsole.log(`${total} ${cost} ${ok}`);\n",
+   "out": "17 17.5 true\n"
+  },
+  "java": {
+   "code": "public class Main {\n    public static void main(String[] args) {\n        int a = 7;            // 32-bit signed integer\n        long b = 10;          // 64-bit signed integer\n        double price = 2.5;   // 64-bit float\n        boolean ok = true;\n\n        long total = a + b;       // Java widens int to long for you\n        double cost = a * price;  // and int to double\n        System.out.println(total + \" \" + cost + \" \" + ok);\n    }\n}\n",
+   "out": "17 17.5 true\n"
+  },
+  "csharp": {
+   "code": "int a = 7;          // 32-bit signed integer\nlong b = 10;        // 64-bit signed integer\ndouble price = 2.5; // 64-bit float\nbool ok = true;\n\nlong total = a + b;          // int widens to long on its own\ndouble cost = a * price;     // and to double too\nConsole.WriteLine($\"{total} {cost} {ok.ToString().ToLower()}\");\n",
+   "out": "17 17.5 true\n"
+  },
+  "c": {
+   "code": "#include <stdbool.h>\n#include <stdint.h>\n#include <stdio.h>\n\nint main(void) {\n    int32_t a = 7;        // 32-bit signed integer\n    int64_t b = 10;       // 64-bit signed integer\n    double price = 2.5;   // 64-bit float\n    bool ok = true;\n\n    int64_t total = (int64_t)a + b;   // a cast, like Rust's `as`\n    double cost = (double)a * price;\n    printf(\"%lld %g %s\\n\", (long long)total, cost, ok ? \"true\" : \"false\");\n    return 0;\n}\n",
+   "out": "17 17.5 true\n"
+  },
+  "cpp": {
+   "code": "#include <cstdint>\n#include <iostream>\n\nint main() {\n    std::int32_t a = 7;      // 32-bit signed integer\n    std::int64_t b = 10;     // 64-bit signed integer\n    double price = 2.5;      // 64-bit float\n    bool ok = true;\n\n    auto total = static_cast<std::int64_t>(a) + b;   // explicit conversion\n    auto cost = static_cast<double>(a) * price;\n    std::cout << total << \" \" << cost << \" \" << std::boolalpha << ok << \"\\n\";\n}\n",
+   "out": "17 17.5 true\n"
+  }
+ },
+ "faq": [],
+ "snippets": {
+  "big.rs": {
+   "code": "fn main() {\n    let mut factorial: u128 = 1;\n    for n in 1..=40_u128 {\n        match factorial.checked_mul(n) {\n            Some(next) => factorial = next,\n            None => {\n                println!(\n                    \"{n}! does not fit in a u128; {} is the last that does\",\n                    n - 1\n                );\n                break;\n            }\n        }\n    }\n    println!(\"{factorial}\");\n    println!(\"u128::MAX: {}\", u128::MAX);\n}\n",
+   "out": "35! does not fit in a u128; 34 is the last that does\n295232799039604140847618609643520000000\nu128::MAX: 340282366920938463463374607431768211455\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "bool-add.fail.rs": {
+   "code": "fn main() {\n    let wins = 3;\n    println!(\"{}\", wins + true);\n}\n",
+   "error": "error[E0277]: cannot add `bool` to `{integer}`\n --> src/main.rs:3:25\n  |\n3 |     println!(\"{}\", wins + true);\n  |                         ^ no implementation for `{integer} + bool`\n  |\n  = help: the trait `Add<bool>` is not implemented for `{integer}`\n  = help: the following other types implement trait `Add<Rhs>`:\n            `&f128` implements `Add<f128>`\n            `&f128` implements `Add`\n            `&f16` implements `Add<f16>`\n            `&f16` implements `Add`\n            `&f32` implements `Add<f32>`\n            `&f32` implements `Add`\n            `&f64` implements `Add<f64>`\n            `&f64` implements `Add`\n          and 56 others\n",
+   "lang": "rust"
+  },
+  "bool-char.rs": {
+   "code": "fn main() {\n    println!(\"size of bool: {}\", size_of::<bool>());\n    println!(\"size of char: {}\", size_of::<char>());\n    println!(\"char::MAX: {:?} = U+{:X}\", char::MAX, char::MAX as u32);\n    println!(\"char::from_u32(0x41): {:?}\", char::from_u32(0x41));\n    println!(\"char::from_u32(0xD800): {:?}\", char::from_u32(0xD800));\n    println!(\"char::from_u32(1114112): {:?}\", char::from_u32(1_114_112));\n\n    // Three characters, three lengths in UTF-8.\n    for c in ['a', 'é', '€', '🦀'] {\n        println!(\n            \"{c} is U+{:04X}, {} byte(s) in UTF-8\",\n            c as u32,\n            c.len_utf8()\n        );\n    }\n\n    // A u8 is a number that can be written as a byte literal.\n    let letter = b'a';\n    println!(\"b'a': {letter}\");\n    println!(\"b'a' + 1: {}\", letter + 1);\n    println!(\"as a char: {}\", (letter + 1) as char);\n    println!(\"'7'.to_digit(10): {:?}\", '7'.to_digit(10));\n    println!(\"'x'.to_digit(10): {:?}\", 'x'.to_digit(10));\n    println!(\"char::from_digit(7, 10): {:?}\", char::from_digit(7, 10));\n    println!(\"'€' as u8: {}\", '€' as u8);\n}\n",
+   "out": "size of bool: 1\nsize of char: 4\nchar::MAX: '\\u{10ffff}' = U+10FFFF\nchar::from_u32(0x41): Some('A')\nchar::from_u32(0xD800): None\nchar::from_u32(1114112): None\na is U+0061, 1 byte(s) in UTF-8\né is U+00E9, 2 byte(s) in UTF-8\n€ is U+20AC, 3 byte(s) in UTF-8\n🦀 is U+1F980, 4 byte(s) in UTF-8\nb'a': 97\nb'a' + 1: 98\nas a char: b\n'7'.to_digit(10): Some(7)\n'x'.to_digit(10): None\nchar::from_digit(7, 10): Some('7')\n'€' as u8: 172\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "bool-int.fail.rs": {
+   "code": "fn main() {\n    let flag = true;\n    let n: i32 = flag;\n    println!(\"{n}\");\n}\n",
+   "error": "error[E0308]: mismatched types\n --> src/main.rs:3:18\n  |\n3 |     let n: i32 = flag;\n  |            ---   ^^^^ expected `i32`, found `bool`\n  |            |\n  |            expected due to this\n",
+   "lang": "rust"
+  },
+  "casts.rs": {
+   "code": "fn main() {\n    // Floats to integers: cut toward zero, saturate at the ends, NaN becomes 0.\n    println!(\"-2.9 as i32: {}\", -2.9_f64 as i32);\n    println!(\"1e10 as i32: {}\", 1e10_f64 as i32);\n    println!(\"-1e10 as i32: {}\", -1e10_f64 as i32);\n    println!(\"300.7 as u8: {}\", 300.7_f64 as u8);\n    println!(\"-5.0 as u8: {}\", -5.0_f64 as u8);\n    println!(\"NaN as i32: {}\", f64::NAN as i32);\n    println!(\"inf as i64: {}\", f64::INFINITY as i64);\n\n    // Integers to floats: rounds to the nearest value the float can hold.\n    println!(\"16777216 as f32: {}\", 16_777_216_i32 as f32);\n    println!(\"16777217 as f32: {}\", 16_777_217_i32 as f32);\n    println!(\"i64::MAX as f64: {}\", i64::MAX as f64);\n    println!(\"u64::MAX as f32: {}\", u64::MAX as f32);\n}\n",
+   "out": "-2.9 as i32: -2\n1e10 as i32: 2147483647\n-1e10 as i32: -2147483648\n300.7 as u8: 255\n-5.0 as u8: 0\nNaN as i32: 0\ninf as i64: 9223372036854775807\n16777216 as f32: 16777216\n16777217 as f32: 16777216\ni64::MAX as f64: 9223372036854776000\nu64::MAX as f32: 18446744000000000000\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-casts.rs": {
+   "code": "// Backs the cast table on the page: every row is asserted here.\nfn main() {\n    // Narrowing keeps the low bits.\n    assert_eq!(300_i32 as u8, 44);\n    assert_eq!(0x1234_5678_i32 as u8, 0x78);\n    assert_eq!(70_000_i32 as i16, 4464);\n    assert_eq!(u64::MAX as u32, u32::MAX);\n    // Same size, different sign: the bits stay.\n    assert_eq!(-1_i32 as u32, 4_294_967_295);\n    assert_eq!(200_u8 as i8, -56);\n    assert_eq!(u32::MAX as i32, -1);\n    // Widening copies the value; a signed source is sign-extended first.\n    assert_eq!(-1_i8 as i32, -1);\n    assert_eq!(255_u8 as i32, 255);\n    assert_eq!(-1_i8 as u32, 4_294_967_295);\n    assert_eq!(-1_i8 as u8 as u32, 255);\n    assert_eq!(-1_i32 as i64, -1);\n    assert_eq!(-1_i32 as u64, 18_446_744_073_709_551_615);\n    // bool and char.\n    assert_eq!(true as i32, 1);\n    assert_eq!('a' as u32, 97);\n    assert_eq!('€' as u32, 8364);\n    assert_eq!('€' as u8, 0xAC);\n    assert_eq!(97_u8 as char, 'a');\n    // Floats.\n    assert_eq!(-2.9_f64 as i32, -2);\n    assert_eq!(1e10_f64 as i32, i32::MAX);\n    assert_eq!(-1e10_f64 as i32, i32::MIN);\n    assert_eq!(300.7_f64 as u8, 255);\n    assert_eq!(-5.0_f64 as u8, 0);\n    assert_eq!(f64::NAN as i32, 0);\n    assert_eq!(f64::INFINITY as i64, i64::MAX);\n    assert_eq!(16_777_217_i32 as f32, 16_777_216.0);\n    assert_eq!(16_777_217_i32 as f64, 16_777_217.0);\n    assert_eq!(1.0e40_f64 as f32, f32::INFINITY);\n    // An f32 keeps 24 bits of the number, so 2^24 + 1 (25 bits) is the first integer it skips.\n    assert_eq!(f32::MANTISSA_DIGITS, 24);\n    println!(\"all casts checked\");\n}\n",
+   "out": "all casts checked\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-division.rs": {
+   "code": "fn main() {\n    assert_eq!(i32::MIN.checked_div(-1), None);\n    assert_eq!(5_i32.checked_div(0), None);\n    assert_eq!(5_i32.checked_rem(0), None);\n    assert_eq!((-7_i32).rem_euclid(2), 1);\n    // A method call binds tighter than unary minus: this is -(7.rem_euclid(2)).\n    assert_eq!(-7_i32.rem_euclid(2), -1);\n    assert_eq!(7_i32.rem_euclid(-2), 1);\n    assert_eq!((-7.5_f64).rem_euclid(2.0), 0.5);\n    assert_eq!(-7.5_f64 % 2.0, -1.5);\n    println!(\"all division checks passed\");\n}\n",
+   "out": "all division checks passed\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-forlang.rs": {
+   "code": "// Backs the \"what you write today\" tables: each Rust cell is compiled and run here.\nuse std::hint::black_box;\nuse std::panic::catch_unwind;\n\n#[allow(unused_comparisons)]\nfn main() {\n    // Go: an unsigned counter is never below zero, so `i >= 0` cannot end a countdown.\n    // The loop builds (with a warning), then panics when `i` goes below 0.\n    let i: usize = black_box(0);\n    assert!(i >= 0);\n    let countdown = catch_unwind(|| {\n        let mut i = black_box(2_usize);\n        while i >= 0 {\n            i -= 1;\n        }\n    });\n    assert!(countdown.is_err());\n    // Go: len is an int, and Rust's is a usize; Atoi maps to parse.\n    let _: usize = \"hello\".len();\n    assert_eq!(\"42\".parse::<i64>(), Ok(42));\n    assert_eq!(size_of::<usize>(), size_of::<*const u8>());\n    assert_eq!(size_of::<isize>(), size_of::<usize>());\n    // Go: wrap on purpose, and the same 44 as uint8(n).\n    assert_eq!(i32::MAX.wrapping_add(1), i32::MIN);\n    assert_eq!(black_box(300_i32) as u8, 44);\n    // Go and TypeScript: truncating division and remainder.\n    assert_eq!(-7 / 2, -3);\n    assert_eq!(-7 % 2, -1);\n    // Python, Java: floor division and floorMod versus div_euclid and rem_euclid.\n    assert_eq!((-7_i32).div_euclid(2), -4);\n    assert_eq!((-7_i32).rem_euclid(2), 1);\n    assert_eq!(7_i32.rem_euclid(-2), 1);\n    // Python and TypeScript: big values.\n    assert_eq!(2_u128.pow(100), 1_267_650_600_228_229_401_496_703_205_376);\n    assert!((1_i64 << 53) + 1 != 1_i64 << 53);\n    assert_eq!(7 / 2, 3);\n    assert_eq!(7.0 / 2.0, 3.5);\n    assert_eq!(-3.9_f64 as i32, -3);\n    // Java and Kotlin: floats saturate in both languages, and in Rust.\n    assert_eq!(1e10_f64 as i32, 2_147_483_647);\n    assert_eq!(f64::NAN as i32, 0);\n    // The family names mentioned on the page exist.\n    assert_eq!(5_u8.checked_sub(6), None);\n    assert_eq!(200_u8.saturating_mul(2), 255);\n    assert_eq!(10_i32.checked_pow(10), None);\n    assert_eq!(i8::MIN.wrapping_neg(), i8::MIN);\n    // usize::from exists for the small types (the page says u8, u16, bool).\n    assert_eq!(\n        usize::from(7_u8) + usize::from(7_u16) + usize::from(true),\n        15\n    );\n    assert_eq!(usize::try_from(7_u32), Ok(7));\n    // Division that overflows or divides by zero panics (the page shows the zero case).\n    let min = black_box(i32::MIN);\n    let neg_one = black_box(-1);\n    let zero = black_box(0);\n    assert!(catch_unwind(|| min / neg_one).is_err());\n    assert!(catch_unwind(|| neg_one / zero).is_err());\n    assert_eq!(min.checked_div(neg_one), None);\n    println!(\"all language rows checked\");\n}\n",
+   "out": "\nthread 'main' (1) panicked at src/main.rs:14:13:\nattempt to subtract with overflow\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\nthread 'main' (1) panicked at src/main.rs:57:29:\nattempt to divide with overflow\n\nthread 'main' (1) panicked at src/main.rs:58:29:\nattempt to divide by zero\nall language rows checked\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "compare-sign.fail.rs": {
+   "code": "fn main() {\n    let balance: i32 = -1;\n    let limit: u32 = 1;\n    println!(\"under the limit: {}\", balance < limit);\n}\n",
+   "error": "error[E0308]: mismatched types\n --> src/main.rs:4:47\n  |\n4 |     println!(\"under the limit: {}\", balance < limit);\n  |                                     -------   ^^^^^ expected `i32`, found `u32`\n  |                                     |\n  |                                     expected because this is `i32`\n  |\nhelp: you can convert a `u32` to an `i32` and panic if the converted value doesn't fit\n  |\n4 |     println!(\"under the limit: {}\", balance < limit.try_into().unwrap());\n  |                                                    ++++++++++++++++++++\n",
+   "lang": "rust"
+  },
+  "convert.rs": {
+   "code": "fn main() {\n    // From: only where no value can be lost.\n    let small: i32 = 7;\n    let wide = i64::from(small);\n    let as_float = f64::from(small);\n    println!(\"i64::from(7i32): {wide}\");\n    println!(\"f64::from(7i32): {as_float}\");\n    println!(\"u32::from('a'): {}\", u32::from('a'));\n    println!(\"u8::from(true): {}\", u8::from(true));\n\n    // TryFrom: a Result, so a value that does not fit is an Err.\n    println!(\"u8::try_from(200i32): {:?}\", u8::try_from(200_i32));\n    println!(\"u8::try_from(300i32): {:?}\", u8::try_from(300_i32));\n    println!(\"u8::try_from(-1i32): {:?}\", u8::try_from(-1_i32));\n    println!(\"usize::try_from(-1i32): {:?}\", usize::try_from(-1_i32));\n    println!(\"i8::try_from(-128i64): {:?}\", i8::try_from(-128_i64));\n    println!(\"char::try_from(65u32): {:?}\", char::try_from(65_u32));\n    println!(\n        \"char::try_from(0xD800u32): {:?}\",\n        char::try_from(0xD800_u32).is_err()\n    );\n\n    // .ok() turns the Result into an Option: Ok(v) is Some(v), any Err is None.\n    println!(\"u8::try_from(200i32).ok(): {:?}\", u8::try_from(200_i32).ok());\n    println!(\"u8::try_from(300i32).ok(): {:?}\", u8::try_from(300_i32).ok());\n\n    // try_into is the same call from the other side; the target type says which.\n    let index: i32 = 2;\n    let as_usize: usize = index.try_into().unwrap();\n    println!(\"2i32 into usize: {as_usize}\");\n}\n",
+   "out": "i64::from(7i32): 7\nf64::from(7i32): 7\nu32::from('a'): 97\nu8::from(true): 1\nu8::try_from(200i32): Ok(200)\nu8::try_from(300i32): Err(TryFromIntError(PosOverflow))\nu8::try_from(-1i32): Err(TryFromIntError(NegOverflow))\nusize::try_from(-1i32): Err(TryFromIntError(NegOverflow))\ni8::try_from(-128i64): Ok(-128)\nchar::try_from(65u32): Ok('A')\nchar::try_from(0xD800u32): true\nu8::try_from(200i32).ok(): Some(200)\nu8::try_from(300i32).ok(): None\n2i32 into usize: 2\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "div-zero.panic.rs": {
+   "code": "fn average(total: i32, count: i32) -> i32 {\n    total / count\n}\n\nfn main() {\n    println!(\"average of 10 over 2: {}\", average(10, 2));\n    println!(\"average of 10 over 0: {}\", average(10, 0));\n}\n",
+   "out": "average of 10 over 2: 5\n\nthread 'main' (1) panicked at src/main.rs:2:5:\nattempt to divide by zero\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+   "lang": "rust",
+   "exit": 101
+  },
+  "division.rs": {
+   "code": "fn main() {\n    println!(\"7 / 2: {}\", 7 / 2);\n    println!(\"7.0 / 2.0: {}\", 7.0 / 2.0);\n    println!(\"7 as f64 / 2.0: {}\", 7 as f64 / 2.0);\n\n    println!(\"-7 / 2: {}\", -7 / 2);\n    println!(\"-7 % 2: {}\", -7 % 2);\n    println!(\"7 % -2: {}\", 7 % -2);\n    println!(\"(-7).div_euclid(2): {}\", (-7_i32).div_euclid(2));\n    println!(\"(-7).rem_euclid(2): {}\", (-7_i32).rem_euclid(2));\n    println!(\"-7 % 5: {}\", -7 % 5);\n    println!(\"(-7).rem_euclid(5): {}\", (-7_i32).rem_euclid(5));\n\n    // A wrapped index: step back one place in a ring of 5 slots.\n    let slot = 0_i32;\n    println!(\"(slot - 1) % 5: {}\", (slot - 1) % 5);\n    println!(\"(slot - 1).rem_euclid(5): {}\", (slot - 1).rem_euclid(5));\n}\n",
+   "out": "7 / 2: 3\n7.0 / 2.0: 3.5\n7 as f64 / 2.0: 3.5\n-7 / 2: -3\n-7 % 2: -1\n7 % -2: 1\n(-7).div_euclid(2): -4\n(-7).rem_euclid(2): 1\n-7 % 5: -2\n(-7).rem_euclid(5): 3\n(slot - 1) % 5: -1\n(slot - 1).rem_euclid(5): 4\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "float-int-literal.fail.rs": {
+   "code": "fn main() {\n    let price: f64 = 2.5;\n    println!(\"{}\", price * 2);\n}\n",
+   "error": "error[E0277]: cannot multiply `f64` by `{integer}`\n --> src/main.rs:3:26\n  |\n3 |     println!(\"{}\", price * 2);\n  |                          ^ no implementation for `f64 * {integer}`\n  |\n  = help: the trait `Mul<{integer}>` is not implemented for `f64`\nhelp: consider using a floating-point literal by writing it with `.0`\n  |\n3 |     println!(\"{}\", price * 2.0);\n  |                             ++\n\n  ... (notes pointing into the standard library trimmed)",
+   "lang": "rust"
+  },
+  "float-sort.fail.rs": {
+   "code": "fn main() {\n    let mut readings = vec![2.5, 0.5, 1.5];\n    readings.sort();\n    println!(\"{readings:?}\");\n}\n",
+   "error": "error[E0277]: the trait bound `{float}: Ord` is not satisfied\n --> src/main.rs:3:14\n  |\n3 |     readings.sort();\n  |              ^^^^ the trait `Ord` is not implemented for `{float}`\n  |\n  = help: the following other types implement trait `Ord`:\n            i128\n            i16\n            i32\n            i64\n            i8\n            isize\n            u128\n            u16\n          and 4 others\n  ... (notes pointing into the standard library trimmed)",
+   "lang": "rust"
+  },
+  "float-sort.rs": {
+   "code": "fn main() {\n    let mut readings = vec![2.5, f64::NAN, 0.5, -1.0];\n    readings.sort_by(|a, b| a.total_cmp(b));\n    println!(\"sorted: {readings:?}\");\n}\n",
+   "out": "sorted: [-1.0, 0.5, 2.5, NaN]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "floats.rs": {
+   "code": "fn main() {\n    println!(\n        \"f32 size: {}, f64 size: {}\",\n        size_of::<f32>(),\n        size_of::<f64>()\n    );\n    println!(\"f32::MAX: {:e}\", f32::MAX);\n    println!(\"f64::MAX: {:e}\", f64::MAX);\n    println!(\"f64::EPSILON: {:e}\", f64::EPSILON);\n\n    println!(\"0.1 + 0.2: {}\", 0.1 + 0.2);\n    println!(\"0.1 + 0.2 == 0.3: {}\", 0.1 + 0.2 == 0.3);\n    println!(\"close enough: {}\", (0.1_f64 + 0.2 - 0.3).abs() < 1e-9);\n\n    let zero = 0.0_f64;\n    println!(\"1.0 / 0.0: {}\", 1.0 / zero);\n    println!(\"-1.0 / 0.0: {}\", -1.0 / zero);\n    println!(\"0.0 / 0.0: {}\", zero / zero);\n\n    let nan = f64::NAN;\n    println!(\"NaN == NaN: {}\", nan == nan);\n    println!(\"NaN < 1.0: {}\", nan < 1.0);\n    println!(\"NaN > 1.0: {}\", nan > 1.0);\n    println!(\"NaN.is_nan(): {}\", nan.is_nan());\n    println!(\"1.0.partial_cmp(&2.0): {:?}\", 1.0_f64.partial_cmp(&2.0));\n    println!(\"1.0.partial_cmp(&NaN): {:?}\", 1.0_f64.partial_cmp(&nan));\n    println!(\"1.0.total_cmp(&NaN): {:?}\", 1.0_f64.total_cmp(&nan));\n    println!(\"0.0 == -0.0: {}\", 0.0_f64 == -0.0);\n    println!(\"0.0.total_cmp(&-0.0): {:?}\", 0.0_f64.total_cmp(&-0.0));\n}\n",
+   "out": "f32 size: 4, f64 size: 8\nf32::MAX: 3.4028235e38\nf64::MAX: 1.7976931348623157e308\nf64::EPSILON: 2.220446049250313e-16\n0.1 + 0.2: 0.30000000000000004\n0.1 + 0.2 == 0.3: false\nclose enough: true\n1.0 / 0.0: inf\n-1.0 / 0.0: -inf\n0.0 / 0.0: NaN\nNaN == NaN: false\nNaN < 1.0: false\nNaN > 1.0: false\nNaN.is_nan(): true\n1.0.partial_cmp(&2.0): Some(Less)\n1.0.partial_cmp(&NaN): None\n1.0.total_cmp(&NaN): Less\n0.0 == -0.0: true\n0.0.total_cmp(&-0.0): Greater\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "from-lossy.fail.rs": {
+   "code": "fn main() {\n    let big: i32 = 300;\n    let small = u8::from(big);\n    println!(\"{small}\");\n}\n",
+   "error": "error[E0277]: the trait bound `u8: From<i32>` is not satisfied\n --> src/main.rs:3:17\n  |\n3 |     let small = u8::from(big);\n  |                 ^^ the trait `From<i32>` is not implemented for `u8`\n  ... (notes pointing into the standard library trimmed)",
+   "lang": "rust"
+  },
+  "int-ranges.rs": {
+   "code": "use std::mem::size_of;\n\nfn main() {\n    println!(\n        \"i8    {:>2} byte  {} to {}\",\n        size_of::<i8>(),\n        i8::MIN,\n        i8::MAX\n    );\n    println!(\n        \"i16   {:>2} bytes {} to {}\",\n        size_of::<i16>(),\n        i16::MIN,\n        i16::MAX\n    );\n    println!(\n        \"i32   {:>2} bytes {} to {}\",\n        size_of::<i32>(),\n        i32::MIN,\n        i32::MAX\n    );\n    println!(\n        \"i64   {:>2} bytes {} to {}\",\n        size_of::<i64>(),\n        i64::MIN,\n        i64::MAX\n    );\n    println!(\n        \"i128  {:>2} bytes {} to {}\",\n        size_of::<i128>(),\n        i128::MIN,\n        i128::MAX\n    );\n    println!(\n        \"u8    {:>2} byte  {} to {}\",\n        size_of::<u8>(),\n        u8::MIN,\n        u8::MAX\n    );\n    println!(\n        \"u16   {:>2} bytes {} to {}\",\n        size_of::<u16>(),\n        u16::MIN,\n        u16::MAX\n    );\n    println!(\n        \"u32   {:>2} bytes {} to {}\",\n        size_of::<u32>(),\n        u32::MIN,\n        u32::MAX\n    );\n    println!(\n        \"u64   {:>2} bytes {} to {}\",\n        size_of::<u64>(),\n        u64::MIN,\n        u64::MAX\n    );\n    println!(\n        \"u128  {:>2} bytes {} to {}\",\n        size_of::<u128>(),\n        u128::MIN,\n        u128::MAX\n    );\n    println!(\n        \"isize {:>2} bytes {} to {}\",\n        size_of::<isize>(),\n        isize::MIN,\n        isize::MAX\n    );\n    println!(\n        \"usize {:>2} bytes {} to {}\",\n        size_of::<usize>(),\n        usize::MIN,\n        usize::MAX\n    );\n}\n",
+   "out": "i8     1 byte  -128 to 127\ni16    2 bytes -32768 to 32767\ni32    4 bytes -2147483648 to 2147483647\ni64    8 bytes -9223372036854775808 to 9223372036854775807\ni128  16 bytes -170141183460469231731687303715884105728 to 170141183460469231731687303715884105727\nu8     1 byte  0 to 255\nu16    2 bytes 0 to 65535\nu32    4 bytes 0 to 4294967295\nu64    8 bytes 0 to 18446744073709551615\nu128  16 bytes 0 to 340282366920938463463374607431768211455\nisize  8 bytes -9223372036854775808 to 9223372036854775807\nusize  8 bytes 0 to 18446744073709551615\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "literal-cast.fail.rs": {
+   "code": "fn main() {\n    println!(\"{}\", 300 as u8);\n}\n",
+   "error": "error: literal out of range for `u8`\n --> src/main.rs:2:20\n  |\n2 |     println!(\"{}\", 300 as u8);\n  |                    ^^^\n  |\n  = note: the literal `300` does not fit into the type `u8` whose range is `0..=255`\n  = note: `#[deny(overflowing_literals)]` on by default",
+   "lang": "rust"
+  },
+  "literal-range.fail.rs": {
+   "code": "fn main() {\n    let big = 3_000_000_000;\n    println!(\"{big}\");\n}\n",
+   "error": "error: literal out of range for `i32`\n --> src/main.rs:2:15\n  |\n2 |     let big = 3_000_000_000;\n  |               ^^^^^^^^^^^^^\n  |\n  = note: the literal `3_000_000_000` does not fit into the type `i32` whose range is `-2147483648..=2147483647`\n  = help: consider using the type `u32` instead\n  = note: `#[deny(overflowing_literals)]` on by default",
+   "lang": "rust"
+  },
+  "overflow-const.fail.rs": {
+   "code": "fn main() {\n    let level: u8 = 255 + 1;\n    println!(\"{level}\");\n}\n",
+   "error": "error: this arithmetic operation will overflow\n --> src/main.rs:2:21\n  |\n2 |     let level: u8 = 255 + 1;\n  |                     ^^^^^^^ attempt to compute `u8::MAX + 1_u8`, which would overflow\n  |\n  = note: `#[deny(arithmetic_overflow)]` on by default",
+   "lang": "rust"
+  },
+  "overflow-methods.rs": {
+   "code": "fn main() {\n    let level: u8 = 250;\n    println!(\"checked_add(10): {:?}\", level.checked_add(10));\n    println!(\"checked_add(5): {:?}\", level.checked_add(5));\n    println!(\"wrapping_add(10): {}\", level.wrapping_add(10));\n    println!(\"saturating_add(10): {}\", level.saturating_add(10));\n    println!(\"overflowing_add(10): {:?}\", level.overflowing_add(10));\n\n    // The same families exist for -, *, /, pow and neg.\n    println!(\"0u8.saturating_sub(1): {}\", 0u8.saturating_sub(1));\n    println!(\"i32::MIN.checked_abs(): {:?}\", i32::MIN.checked_abs());\n    println!(\"i32::MIN.wrapping_abs(): {}\", i32::MIN.wrapping_abs());\n    println!(\"i32::MIN.unsigned_abs(): {}\", i32::MIN.unsigned_abs());\n    println!(\"10i32.checked_pow(10): {:?}\", 10i32.checked_pow(10));\n}\n",
+   "out": "checked_add(10): None\nchecked_add(5): Some(255)\nwrapping_add(10): 4\nsaturating_add(10): 255\noverflowing_add(10): (4, true)\n0u8.saturating_sub(1): 0\ni32::MIN.checked_abs(): None\ni32::MIN.wrapping_abs(): -2147483648\ni32::MIN.unsigned_abs(): 2147483648\n10i32.checked_pow(10): None\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "overflow.panic.rs": {
+   "code": "fn main() {\n    let mut level: u8 = 250;\n    for step in 1..=10 {\n        level += 1;\n        println!(\"step {step}: level {level}\");\n    }\n}\n",
+   "out": "step 1: level 251\nstep 2: level 252\nstep 3: level 253\nstep 4: level 254\nstep 5: level 255\n\nthread 'main' (1) panicked at src/main.rs:4:9:\nattempt to add with overflow\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+   "lang": "rust",
+   "exit": 101
+  },
+  "parse.rs": {
+   "code": "fn main() {\n    println!(\"\\\"42\\\": {:?}\", \"42\".parse::<i32>());\n    println!(\"\\\"-5\\\" to u8: {:?}\", \"-5\".parse::<u8>());\n    println!(\"\\\"300\\\" to u8: {:?}\", \"300\".parse::<u8>());\n    println!(\"\\\"4x\\\": {:?}\", \"4x\".parse::<i32>());\n    println!(\"\\\"\\\": {:?}\", \"\".parse::<i32>());\n    println!(\"\\\" 42\\\": {:?}\", \" 42\".parse::<i32>());\n    println!(\"\\\" 42\\\".trim(): {:?}\", \" 42\".trim().parse::<i32>());\n    println!(\"\\\"+7\\\": {:?}\", \"+7\".parse::<i32>());\n    println!(\"\\\"2.5\\\" to f64: {:?}\", \"2.5\".parse::<f64>());\n    println!(\"\\\"2.5\\\" to i32: {:?}\", \"2.5\".parse::<i32>());\n    println!(\"\\\"NaN\\\" to f64: {:?}\", \"NaN\".parse::<f64>());\n    println!(\"\\\"true\\\": {:?}\", \"true\".parse::<bool>());\n\n    // The type can come from where the value goes.\n    let n: u16 = \"8080\".parse().unwrap();\n    println!(\"port: {n}\");\n}\n",
+   "out": "\"42\": Ok(42)\n\"-5\" to u8: Err(ParseIntError { kind: InvalidDigit })\n\"300\" to u8: Err(ParseIntError { kind: PosOverflow })\n\"4x\": Err(ParseIntError { kind: InvalidDigit })\n\"\": Err(ParseIntError { kind: Empty })\n\" 42\": Err(ParseIntError { kind: InvalidDigit })\n\" 42\".trim(): Ok(42)\n\"+7\": Ok(7)\n\"2.5\" to f64: Ok(2.5)\n\"2.5\" to i32: Err(ParseIntError { kind: InvalidDigit })\n\"NaN\" to f64: Ok(NaN)\n\"true\": Ok(true)\nport: 8080\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "twos-complement.rs": {
+   "code": "fn main() {\n    let x: i8 = 5;\n    println!(\"x:             {:08b}\", x);\n    println!(\"-x:            {:08b}\", -x);\n    println!(\"!x + 1:        {:08b}\", !x + 1);\n    println!(\"-1_i8:         {:08b}\", -1_i8);\n    println!(\"i8::MIN:       {:08b} = {}\", i8::MIN, i8::MIN);\n    println!(\"i8::MAX:       {:08b} = {}\", i8::MAX, i8::MAX);\n\n    // The same bits read as unsigned, and the other way round.\n    println!(\"-x as u8:      {:08b} = {}\", -x as u8, -x as u8);\n    println!(\"200_u8 as i8:  {:08b} = {}\", 200_u8 as i8, 200_u8 as i8);\n\n    // Adding one to the largest value carries into the sign bit.\n    println!(\"i8::MAX.wrapping_add(1): {}\", i8::MAX.wrapping_add(1));\n    println!(\"255u8.wrapping_add(1):   {}\", 255_u8.wrapping_add(1));\n\n    // Narrowing keeps the low bits; hex shows which.\n    let wide: i32 = 0xA1B2C;\n    println!(\"wide:          {:#x}\", wide);\n    println!(\"as u16:        {:#x}\", wide as u16);\n    println!(\"as u8:         {:#x}\", wide as u8);\n    println!(\"300:           {:#b}\", 300_i32);\n    println!(\"300_i32 as u8: {:#010b} -> {}\", 300_i32 as u8, 300_i32 as u8);\n}\n",
+   "out": "x:             00000101\n-x:            11111011\n!x + 1:        11111011\n-1_i8:         11111111\ni8::MIN:       10000000 = -128\ni8::MAX:       01111111 = 127\n-x as u8:      11111011 = 251\n200_u8 as i8:  11001000 = -56\ni8::MAX.wrapping_add(1): -128\n255u8.wrapping_add(1):   0\nwide:          0xa1b2c\nas u16:        0x1b2c\nas u8:         0x2c\n300:           0b100101100\n300_i32 as u8: 0b00101100 -> 44\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "usize-from.fail.rs": {
+   "code": "fn main() {\n    let count: u32 = 7;\n    let index = usize::from(count);\n    println!(\"{index}\");\n}\n",
+   "error": "error[E0277]: the trait bound `usize: From<u32>` is not satisfied\n --> src/main.rs:3:17\n  |\n3 |     let index = usize::from(count);\n  |                 ^^^^^ the trait `From<u32>` is not implemented for `usize`\n  ... (notes pointing into the standard library trimmed)",
+   "lang": "rust"
+  },
+  "usize-index.fail.rs": {
+   "code": "fn main() {\n    let scores = [90, 85, 77];\n    let i: i32 = 1;\n    println!(\"{}\", scores[i]);\n}\n",
+   "error": "error[E0277]: the type `[{integer}]` cannot be indexed by `i32`\n --> src/main.rs:4:27\n  |\n4 |     println!(\"{}\", scores[i]);\n  |                           ^ slice indices are of type `usize` or ranges of `usize`\n  |\n  = help: the trait `SliceIndex<[{integer}]>` is not implemented for `i32`\n  ... (notes pointing into the standard library trimmed)",
+   "lang": "rust"
+  },
+  "const-narrow.fail.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfmt.Println(uint8(300))\n}\n",
+   "error": "# command-line-arguments\n./main.go:6:20: constant 300 overflows uint8",
+   "lang": "go"
+  },
+  "numbers.py": {
+   "code": "from decimal import Decimal\n\nprint(\"2 ** 100:\", 2**100)\nprint(\"7 / 2:\", 7 / 2)\nprint(\"7 // 2:\", 7 // 2)\nprint(\"-7 // 2:\", -7 // 2)\nprint(\"-7 % 2:\", -7 % 2)\nprint(\"int(-3.9):\", int(-3.9))\nprint(\"True + 1:\", True + 1)\nprint(\"nan == nan:\", float(\"nan\") == float(\"nan\"))\ntry:\n    print(1.0 / 0.0)\nexcept ZeroDivisionError as e:\n    print(\"1.0 / 0.0:\", e)\nprint('int(\" 12 \"):', int(\" 12 \"))\nprint(\"Decimal('0.1') + Decimal('0.2'):\", Decimal(\"0.1\") + Decimal(\"0.2\"))\nprint(\"ord('€'):\", ord(\"€\"), \" len('😀'):\", len(\"😀\"))\n",
+   "out": "2 ** 100: 1267650600228229401496703205376\n7 / 2: 3.5\n7 // 2: 3\n-7 // 2: -4\n-7 % 2: 1\nint(-3.9): -3\nTrue + 1: 2\nnan == nan: False\n1.0 / 0.0: float division by zero\nint(\" 12 \"): 12\nDecimal('0.1') + Decimal('0.2'): 0.3\nord('€'): 8364  len('😀'): 1\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "numbers.ts": {
+   "code": "console.log(\"2**53 + 1 === 2**53:\", 2 ** 53 + 1 === 2 ** 53);\nconsole.log(\"7 / 2:\", 7 / 2);\nconsole.log(\"-7 % 2:\", -7 % 2);\nconsole.log(\"2n ** 100n:\", 2n ** 100n);\nconsole.log(\"1e10 | 0:\", 1e10 | 0);\nconsole.log(\"Math.trunc(-3.9):\", Math.trunc(-3.9));\nconsole.log(\"1 / 0:\", 1 / 0);\nconst nan = Number(\"x\");\nconsole.log(\"NaN === NaN:\", nan === nan);\nconsole.log('Number(\" 12 \"):', Number(\" 12 \"));\nconst s = \"5\" as unknown as number;\nconsole.log(\"typeof ('5' as number):\", typeof s);\nconsole.log(\"'😀'.length:\", \"😀\".length, \" '€'.charCodeAt(0):\", \"€\".charCodeAt(0));\n",
+   "out": "2**53 + 1 === 2**53: true\n7 / 2: 3.5\n-7 % 2: -1\n2n ** 100n: 1267650600228229401496703205376n\n1e10 | 0: 1410065408\nMath.trunc(-3.9): -3\n1 / 0: Infinity\nNaN === NaN: false\nNumber(\" 12 \"): 12\ntypeof ('5' as number): string\n'😀'.length: 2  '€'.charCodeAt(0): 8364\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "overflow.cs": {
+   "code": "int max = int.MaxValue;\nConsole.WriteLine($\"MaxValue + 1: {max + 1}\");\n\ntry\n{\n    Console.WriteLine(checked(max + 1));\n}\ncatch (OverflowException e)\n{\n    Console.WriteLine($\"checked: {e.Message}\");\n}\n\nint n = 300;\nConsole.WriteLine($\"(byte) 300: {unchecked((byte)n)}\");\nbyte b1 = 100, b2 = 100;\nvar sum = b1 + b2;\nConsole.WriteLine($\"byte + byte: {sum} ({sum.GetType().Name})\");\n\nint big = 16_777_217;\nfloat f = big;\nConsole.WriteLine($\"int 16777217 to float: {(int)f}\");\nConsole.WriteLine($\"-7 / 2: {-7 / 2}\");\nConsole.WriteLine($\"-7 % 2: {-7 % 2}\");\nConsole.WriteLine($\"0.1m + 0.2m: {0.1m + 0.2m}\");\nConsole.WriteLine($\"\\\"😀\\\".Length: {\"😀\".Length}\");\nConsole.WriteLine($\"int.TryParse(\\\" 12 \\\"): {int.TryParse(\" 12 \", out var v)} {v}\");\n",
+   "out": "MaxValue + 1: -2147483648\nchecked: Arithmetic operation resulted in an overflow.\n(byte) 300: 44\nbyte + byte: 200 (Int32)\nint 16777217 to float: 16777216\n-7 / 2: -3\n-7 % 2: -1\n0.1m + 0.2m: 0.3\n\"😀\".Length: 2\nint.TryParse(\" 12 \"): True 12\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "overflow.java": {
+   "code": "import java.math.BigDecimal;\n\npublic class Main {\n    public static void main(String[] args) {\n        int max = Integer.MAX_VALUE;\n        System.out.println(\"MAX_VALUE + 1: \" + (max + 1));\n        try {\n            Math.addExact(max, 1);\n        } catch (ArithmeticException e) {\n            System.out.println(\"addExact: \" + e.getMessage());\n        }\n\n        byte b = (byte) 200;\n        System.out.println(\"(byte) 200: \" + b);\n        System.out.println(\"as unsigned: \" + Byte.toUnsignedInt(b));\n        byte b1 = (byte) 100, b2 = (byte) 100;\n        var sum = b1 + b2;\n        System.out.println(\"byte + byte: \" + sum + \" has type \" + ((Object) sum).getClass().getSimpleName());\n\n        int big = 16_777_217;\n        float f = big;\n        System.out.println(\"int 16777217 to float: \" + (int) f);\n        long wide = 9_007_199_254_740_993L;\n        double d = wide;\n        System.out.println(\"long 2^53 + 1 to double: \" + (long) d);\n\n        System.out.println(\"(int) 1e10: \" + (int) 1e10);\n        System.out.println(\"(int) NaN: \" + (int) Double.NaN);\n\n        System.out.println(\"-7 / 2: \" + (-7 / 2));\n        System.out.println(\"-7 % 2: \" + (-7 % 2));\n        System.out.println(\"floorMod(-7, 2): \" + Math.floorMod(-7, 2));\n        System.out.println(\"floorMod(7, -2): \" + Math.floorMod(7, -2));\n\n        System.out.println(\"'😀'.length(): \" + \"😀\".length());\n        System.out.println(\"0.1 + 0.2 as BigDecimal: \"\n                + new BigDecimal(\"0.1\").add(new BigDecimal(\"0.2\")));\n    }\n}\n",
+   "out": "MAX_VALUE + 1: -2147483648\naddExact: integer overflow\n(byte) 200: -56\nas unsigned: 200\nbyte + byte: 200 has type Integer\nint 16777217 to float: 16777216\nlong 2^53 + 1 to double: 9007199254740992\n(int) 1e10: 2147483647\n(int) NaN: 0\n-7 / 2: -3\n-7 % 2: -1\nfloorMod(-7, 2): 1\nfloorMod(7, -2): -1\n'😀'.length(): 2\n0.1 + 0.2 as BigDecimal: 0.3\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "promote.c": {
+   "code": "#include <stdint.h>\n#include <stdio.h>\n\nint main(void) {\n    uint8_t a = 200, b = 100;\n    printf(\"sizeof(a + b): %zu\\n\", sizeof(a + b));\n    printf(\"a + b: %d\\n\", a + b);\n    uint8_t c = a + b;\n    printf(\"stored in a uint8_t: %d\\n\", c);\n\n    int neg = -1;\n    unsigned one = 1;\n    printf(\"-1 < 1u: %d\\n\", neg < one);\n\n    uint8_t sum;\n    int wrapped = __builtin_add_overflow(a, b, &sum);\n    printf(\"__builtin_add_overflow: %d, sum %d\\n\", wrapped, sum);\n\n    char ch = (char)200;\n    printf(\"(char)200: %d\\n\", ch);\n    printf(\"sizeof(int): %zu, sizeof(long): %zu\\n\", sizeof(int), sizeof(long));\n    return 0;\n}\n",
+   "warnings": "main.c: In function ‘main’:\nmain.c:13:33: warning: comparison of integer expressions of different signedness: ‘int’ and ‘unsigned int’ [-Wsign-compare]\n   13 |     printf(\"-1 < 1u: %d\\n\", neg < one);\n      |                                 ^",
+   "out": "sizeof(a + b): 4\na + b: 300\nstored in a uint8_t: 44\n-1 < 1u: 0\n__builtin_add_overflow: 1, sum 44\n(char)200: 200\nsizeof(int): 4, sizeof(long): 8\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "promote.cpp": {
+   "code": "#include <cstdint>\n#include <iostream>\n#include <utility>\n\nint main() {\n    std::uint8_t a = 200, b = 100;\n    auto sum = a + b;\n    std::cout << \"sizeof(a + b): \" << sizeof(sum) << \"\\n\";\n    std::cout << \"a + b: \" << sum << \"\\n\";\n    std::uint8_t c = a + b;\n    std::cout << \"stored in a uint8_t: \" << static_cast<int>(c) << \"\\n\";\n\n    int neg = -1;\n    unsigned one = 1;\n    std::cout << \"-1 < 1u: \" << (neg < one) << \"\\n\";\n\n    std::cout << \"std::cmp_less(-1, 1u): \" << std::cmp_less(neg, one) << \"\\n\";\n\n    char ch = static_cast<char>(200);\n    std::cout << \"(char)200: \" << static_cast<int>(ch) << \"\\n\";\n}\n",
+   "warnings": "main.cpp: In function ‘int main()’:\nmain.cpp:15:38: warning: comparison of integer expressions of different signedness: ‘int’ and ‘unsigned int’ [-Wsign-compare]\n   15 |     std::cout << \"-1 < 1u: \" << (neg < one) << \"\\n\";\n      |                                  ~~~~^~~~~",
+   "out": "sizeof(a + b): 4\na + b: 300\nstored in a uint8_t: 44\n-1 < 1u: 0\nstd::cmp_less(-1, 1u): 1\n(char)200: 200\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "sizes-wrap.go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"math\"\n\t\"strconv\"\n)\n\nfunc main() {\n\tfmt.Println(\"int bits:\", strconv.IntSize)\n\tfmt.Println(\"math.MaxInt:\", math.MaxInt)\n\n\tvar small int32 = math.MaxInt32\n\tsmall++\n\tfmt.Println(\"MaxInt32 + 1:\", small)\n\n\tn := 300\n\tfmt.Println(\"uint8(n):\", uint8(n))\n\n\ts := \"hello\"\n\tfmt.Printf(\"len(s) has type %T\\n\", len(s))\n\n\tprice := 2.5\n\tfmt.Println(\"price * 2:\", price*2)\n\n\ta, b := -7, 2\n\tfmt.Println(\"-7 / 2:\", a/b)\n\tfmt.Println(\"-7 % 2:\", a%b)\n}\n",
+   "out": "int bits: 64\nmath.MaxInt: 9223372036854775807\nMaxInt32 + 1: -2147483648\nuint8(n): 44\nlen(s) has type int\nprice * 2: 5\n-7 / 2: -3\n-7 % 2: -1\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "widen-assign.fail.kt": {
+   "code": "fun main() {\n    val i: Int = 7\n    val l: Long = i\n    println(l)\n}\n",
+   "error": "Main.kt:3:17: error: initializer type mismatch: expected 'Long', actual 'Int'.\n    val l: Long = i\n                ^",
+   "lang": "kotlin"
+  },
+  "widen.kt": {
+   "code": "fun main() {\n    val i: Int = 7\n    val l: Long = 10\n    println(\"Int + Long: ${i + l}\")\n    println(\"Int + Long has type ${(i + l)::class.simpleName}\")\n    println(\"Int * Double: ${i * 2.5}\")\n    val b1: Byte = 100\n    val b2: Byte = 100\n    println(\"Byte + Byte: ${b1 + b2} has type ${(b1 + b2)::class.simpleName}\")\n    println(\"1e10.toInt(): ${1e10.toInt()}\")\n    println(\"NaN.toInt(): ${Double.NaN.toInt()}\")\n    val u: UByte = 200u\n    println(\"UByte: $u\")\n    println(\"Int.MAX_VALUE + 1: ${Int.MAX_VALUE + 1}\")\n    println(\"\\\"😀\\\".length: ${\"😀\".length}\")\n}\n",
+   "out": "Int + Long: 17\nInt + Long has type Long\nInt * Double: 17.5\nByte + Byte: 200 has type Int\n1e10.toInt(): 2147483647\nNaN.toInt(): 0\nUByte: 200\nInt.MAX_VALUE + 1: -2147483648\n\"😀\".length: 2\n",
+   "lang": "kotlin",
+   "exit": 0
+  }
+ },
+ "exercises": {
+  "checked-index": {
+   "starter": "/// `Some(slot)` when `i` names a slot in a table of `len` slots (numbered from\n/// 0), otherwise `None`.\nfn checked_index(i: i32, len: u8) -> Option<u8> {\n    todo!(\"u8::try_from(i) is an Err when i does not fit in a u8; .ok() makes it an Option\")\n}\n\nfn main() {\n    assert_eq!(checked_index(0, 3), Some(0));\n    assert_eq!(checked_index(2, 3), Some(2));\n    assert_eq!(checked_index(3, 3), None);\n    assert_eq!(checked_index(-1, 3), None);\n    assert_eq!(checked_index(i32::MIN, 3), None);\n    assert_eq!(checked_index(i32::MAX, 3), None);\n    // An empty table has no valid slot.\n    assert_eq!(checked_index(0, 0), None);\n    // `i as u8` would wrap 256 to 0 and 300 to 44, and say Some.\n    assert_eq!(checked_index(256, 10), None);\n    assert_eq!(checked_index(300, 100), None);\n    assert_eq!(checked_index(254, 255), Some(254));\n    assert_eq!(checked_index(255, 255), None);\n\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "/// `Some(slot)` when `i` names a slot in a table of `len` slots (numbered from\n/// 0), otherwise `None`.\nfn checked_index(i: i32, len: u8) -> Option<u8> {\n    match u8::try_from(i).ok() {\n        Some(slot) if slot < len => Some(slot),\n        _ => None,\n    }\n}\n\nfn main() {\n    assert_eq!(checked_index(0, 3), Some(0));\n    assert_eq!(checked_index(2, 3), Some(2));\n    assert_eq!(checked_index(3, 3), None);\n    assert_eq!(checked_index(-1, 3), None);\n    assert_eq!(checked_index(i32::MIN, 3), None);\n    assert_eq!(checked_index(i32::MAX, 3), None);\n    // An empty table has no valid slot.\n    assert_eq!(checked_index(0, 0), None);\n    // `i as u8` would wrap 256 to 0 and 300 to 44, and say Some.\n    assert_eq!(checked_index(256, 10), None);\n    assert_eq!(checked_index(300, 100), None);\n    assert_eq!(checked_index(254, 255), Some(254));\n    assert_eq!(checked_index(255, 255), None);\n\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "digit-sum": {
+   "starter": "/// The sum of the decimal digits of `n`, ignoring the sign.\nfn digit_sum(n: i64) -> u32 {\n    todo!(\"take the absolute value as a u64 (unsigned_abs), then use % 10 and / 10 in a loop; a digit is below 10, so `as u32` cannot cut anything\")\n}\n\nfn main() {\n    assert_eq!(digit_sum(0), 0);\n    assert_eq!(digit_sum(7), 7);\n    assert_eq!(digit_sum(1234), 10);\n    assert_eq!(digit_sum(-1234), 10);\n    assert_eq!(digit_sum(1_000_000), 1);\n    // i64::MIN is -9223372036854775808; its absolute value does not fit in an i64.\n    assert_eq!(digit_sum(i64::MIN), 89);\n    assert_eq!(digit_sum(i64::MAX), 88);\n\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "/// The sum of the decimal digits of `n`, ignoring the sign.\nfn digit_sum(n: i64) -> u32 {\n    let mut rest = n.unsigned_abs();\n    let mut sum = 0;\n    while rest > 0 {\n        // A digit is below 10, so this `as` cannot cut anything.\n        sum += (rest % 10) as u32;\n        rest /= 10;\n    }\n    sum\n}\n\nfn main() {\n    assert_eq!(digit_sum(0), 0);\n    assert_eq!(digit_sum(7), 7);\n    assert_eq!(digit_sum(1234), 10);\n    assert_eq!(digit_sum(-1234), 10);\n    assert_eq!(digit_sum(1_000_000), 1);\n    // i64::MIN is -9223372036854775808; its absolute value does not fit in an i64.\n    assert_eq!(digit_sum(i64::MIN), 89);\n    assert_eq!(digit_sum(i64::MAX), 88);\n\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "percent": {
+   "starter": "/// `part * 100 / total`, rounded down. `None` when `total` is 0 or the answer\n/// does not fit in a `u32`.\nfn percent(part: u32, total: u32) -> Option<u32> {\n    todo!(\"widen to u64 before multiplying; u32::try_from(...).ok() for the answer\")\n}\n\nfn main() {\n    assert_eq!(percent(1, 4), Some(25));\n    assert_eq!(percent(1, 3), Some(33));\n    assert_eq!(percent(0, 7), Some(0));\n    assert_eq!(percent(150, 100), Some(150));\n    // 50_000_000 * 100 does not fit in a u32.\n    assert_eq!(percent(50_000_000, 100_000_000), Some(50));\n    assert_eq!(percent(u32::MAX, u32::MAX), Some(100));\n    // Division by zero is None, not a panic.\n    assert_eq!(percent(5, 0), None);\n    // The answer itself is too big for a u32.\n    assert_eq!(percent(u32::MAX, 1), None);\n\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "/// `part * 100 / total`, rounded down. `None` when `total` is 0 or the answer\n/// does not fit in a `u32`.\nfn percent(part: u32, total: u32) -> Option<u32> {\n    if total == 0 {\n        return None;\n    }\n    let scaled = u64::from(part) * 100 / u64::from(total);\n    u32::try_from(scaled).ok()\n}\n\nfn main() {\n    assert_eq!(percent(1, 4), Some(25));\n    assert_eq!(percent(1, 3), Some(33));\n    assert_eq!(percent(0, 7), Some(0));\n    assert_eq!(percent(150, 100), Some(150));\n    // 50_000_000 * 100 does not fit in a u32.\n    assert_eq!(percent(50_000_000, 100_000_000), Some(50));\n    assert_eq!(percent(u32::MAX, u32::MAX), Some(100));\n    // Division by zero is None, not a panic.\n    assert_eq!(percent(5, 0), None);\n    // The answer itself is too big for a u32.\n    assert_eq!(percent(u32::MAX, 1), None);\n\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}

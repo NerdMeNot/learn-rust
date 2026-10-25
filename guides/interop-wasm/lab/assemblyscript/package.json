@@ -1,0 +1,7 @@
+{
+  "name": "add",
+  "private": true,
+  "devDependencies": {
+    "assemblyscript": "0.28.20"
+  }
+}

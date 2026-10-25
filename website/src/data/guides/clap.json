@@ -1,0 +1,193 @@
+{
+ "id": "clap",
+ "files": {
+  "fixes": {
+   "new-command.rs": "use clap::{Parser, Subcommand};\n\n/// A tiny to-do list\n#[derive(Parser)]\n#[command(version)]\nstruct Cli {\n    /// Print more detail (allowed before or after the subcommand)\n    #[arg(short, long, global = true)]\n    verbose: bool,\n\n    #[command(subcommand)]\n    command: Command,\n}\n\n#[derive(Subcommand)]\nenum Command {\n    /// Add a task\n    Add {\n        /// What to do\n        text: String,\n        /// Priority from 1 (high) to 3 (low)\n        #[arg(short, long, default_value_t = 2)]\n        priority: u8,\n    },\n    /// List tasks\n    List,\n    /// Mark a task as done\n    Done {\n        /// The task number\n        id: u32,\n    },\n}\n\nfn main() {\n    let cli = Cli::parse();\n    match cli.command {\n        Command::Add { text, priority } => {\n            println!(\"added {text:?} with priority {priority}\");\n            if cli.verbose {\n                println!(\"(verbose mode is on)\");\n            }\n        }\n        Command::List => println!(\"nothing to list yet\"),\n    }\n}\n"
+  },
+  "go": {
+   "go.mod": "module todo\n\ngo 1.27\n",
+   "main.go": "package main\n\nimport (\n\t\"flag\"\n\t\"fmt\"\n\t\"os\"\n)\n\nfunc main() {\n\tverbose := flag.Bool(\"verbose\", false, \"print more detail\")\n\tflag.Parse()\n\tif flag.NArg() < 1 {\n\t\tfmt.Fprintln(os.Stderr, \"usage: todo [-verbose] add|list ...\")\n\t\tos.Exit(2)\n\t}\n\n\tswitch flag.Arg(0) {\n\tcase \"add\":\n\t\taddCmd := flag.NewFlagSet(\"add\", flag.ExitOnError)\n\t\tpriority := addCmd.Int(\"priority\", 2, \"priority from 1 (high) to 3 (low)\")\n\t\taddCmd.Parse(flag.Args()[1:])\n\t\tif addCmd.NArg() < 1 {\n\t\t\tfmt.Fprintln(os.Stderr, \"usage: todo add [-priority N] TEXT\")\n\t\t\tos.Exit(2)\n\t\t}\n\t\tfmt.Printf(\"added %q with priority %d\\n\", addCmd.Arg(0), *priority)\n\t\tif *verbose {\n\t\t\tfmt.Println(\"(verbose mode is on)\")\n\t\t}\n\tcase \"list\":\n\t\tfmt.Println(\"nothing to list yet\")\n\tdefault:\n\t\tfmt.Fprintln(os.Stderr, \"unknown command:\", flag.Arg(0))\n\t\tos.Exit(2)\n\t}\n}\n"
+  },
+  "langs": {
+   "c/todo.c": "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <unistd.h>\n\nint main(int argc, char **argv) {\n    int verbose = 0;\n    long priority = 2;\n    int c;\n    while ((c = getopt(argc, argv, \"vp:\")) != -1) {\n        switch (c) {\n        case 'v':\n            verbose = 1;\n            break;\n        case 'p': {\n            char *end;\n            priority = strtol(optarg, &end, 10);\n            if (*optarg == '\\0' || *end != '\\0') {\n                fprintf(stderr, \"invalid priority: %s\\n\", optarg);\n                return 2;\n            }\n            break;\n        }\n        default:\n            return 2;\n        }\n    }\n    if (optind < argc && strcmp(argv[optind], \"list\") == 0) {\n        puts(\"nothing to list yet\");\n    } else if (optind + 1 < argc && strcmp(argv[optind], \"add\") == 0) {\n        printf(\"added \\\"%s\\\" with priority %ld\\n\", argv[optind + 1], priority);\n        if (verbose) puts(\"(verbose mode is on)\");\n    } else {\n        fprintf(stderr, \"usage: todo [-v] add [-p N] TEXT | list\\n\");\n        return 2;\n    }\n    return 0;\n}\n",
+   "py/todo.py": "import argparse\n\nparser = argparse.ArgumentParser(description=\"A tiny to-do list\")\nparser.add_argument(\"-v\", \"--verbose\", action=\"store_true\", help=\"print more detail\")\nsub = parser.add_subparsers(dest=\"command\", required=True)\nadd = sub.add_parser(\"add\", help=\"add a task\")\nadd.add_argument(\"text\", help=\"what to do\")\nadd.add_argument(\"-p\", \"--priority\", type=int, default=2, help=\"1 (high) to 3 (low)\")\nsub.add_parser(\"list\", help=\"list tasks\")\n\nargs = parser.parse_args()\nif args.command == \"add\":\n    print(f'added \"{args.text}\" with priority {args.priority}')\n    if args.verbose:\n        print(\"(verbose mode is on)\")\nelse:\n    print(\"nothing to list yet\")\n",
+   "ts/todo.ts": "import { parseArgs } from \"node:util\";\n\nconst { values, positionals } = parseArgs({\n  allowPositionals: true,\n  options: {\n    verbose: { type: \"boolean\", short: \"v\" },\n    priority: { type: \"string\", short: \"p\", default: \"2\" },\n  },\n});\n\nif (positionals[0] === \"add\" && positionals.length === 2) {\n  // parseArgs gives strings: turning one into a number, and refusing \"abc\", is our job.\n  const priority = Number(values.priority);\n  if (!Number.isInteger(priority)) {\n    console.error(`invalid priority: ${values.priority}`);\n    process.exit(2);\n  }\n  console.log(`added \"${positionals[1]}\" with priority ${priority}`);\n  if (values.verbose) console.log(\"(verbose mode is on)\");\n} else if (positionals[0] === \"list\") {\n  console.log(\"nothing to list yet\");\n} else {\n  console.error(\"usage: todo [-v] add [-p N] TEXT | list\");\n  process.exit(2);\n}\n"
+  },
+  "rust": {
+   "Cargo.lock": "# This file is automatically @generated by Cargo.\n# It is not intended for manual editing.\nversion = 4\n\n[[package]]\nname = \"anstream\"\nversion = \"1.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"824a212faf96e9acacdbd09febd34438f8f711fb84e09a8916013cd7815ca28d\"\ndependencies = [\n \"anstyle\",\n \"anstyle-parse\",\n \"anstyle-query\",\n \"anstyle-wincon\",\n \"colorchoice\",\n \"is_terminal_polyfill\",\n \"utf8parse\",\n]\n\n[[package]]\nname = \"anstyle\"\nversion = \"1.0.14\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"940b3a0ca603d1eade50a4846a2afffd5ef57a9feac2c0e2ec2e14f9ead76000\"\n\n[[package]]\nname = \"anstyle-parse\"\nversion = \"1.0.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"52ce7f38b242319f7cabaa6813055467063ecdc9d355bbb4ce0c68908cd8130e\"\ndependencies = [\n \"utf8parse\",\n]\n\n[[package]]\nname = \"anstyle-query\"\nversion = \"1.1.5\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc\"\ndependencies = [\n \"windows-sys\",\n]\n\n[[package]]\nname = \"anstyle-wincon\"\nversion = \"3.0.11\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d\"\ndependencies = [\n \"anstyle\",\n \"once_cell_polyfill\",\n \"windows-sys\",\n]\n\n[[package]]\nname = \"clap\"\nversion = \"4.6.7\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"aa8876b300ab35ba921adea3dfd70157a46249b33f95c9084ae5709785478946\"\ndependencies = [\n \"clap_builder\",\n \"clap_derive\",\n]\n\n[[package]]\nname = \"clap_builder\"\nversion = \"4.6.7\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"ec0797fb7aeb1406c84efac526901f7ec3ead2124f946b494e72879d4b54704d\"\ndependencies = [\n \"anstream\",\n \"anstyle\",\n \"clap_lex\",\n \"strsim\",\n]\n\n[[package]]\nname = \"clap_derive\"\nversion = \"4.6.7\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"f9c751b79415d4e559e3d1fcf128e09e720eb673a06d26cf6f392d37d75b66e0\"\ndependencies = [\n \"heck\",\n \"proc-macro2\",\n \"quote\",\n \"syn\",\n]\n\n[[package]]\nname = \"clap_lex\"\nversion = \"1.1.1\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"1c133bc6a41be0d194c306b5506d15e6feeea7b1d6604bd3f8310dfb2ca96486\"\n\n[[package]]\nname = \"colorchoice\"\nversion = \"1.0.5\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570\"\n\n[[package]]\nname = \"heck\"\nversion = \"0.5.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea\"\n\n[[package]]\nname = \"is_terminal_polyfill\"\nversion = \"1.70.2\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695\"\n\n[[package]]\nname = \"once_cell_polyfill\"\nversion = \"1.70.2\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe\"\n\n[[package]]\nname = \"proc-macro2\"\nversion = \"1.0.107\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9\"\ndependencies = [\n \"unicode-ident\",\n]\n\n[[package]]\nname = \"quote\"\nversion = \"1.0.47\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"1fbf4db142a473a8d80c26bbf18454ed458bf8d26c8219c331daecfdbd079001\"\ndependencies = [\n \"proc-macro2\",\n]\n\n[[package]]\nname = \"strsim\"\nversion = \"0.11.1\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f\"\n\n[[package]]\nname = \"syn\"\nversion = \"3.0.9\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"d78c8dee4c7bf0e14673097256fed6142ce9d3b85a408189d07482442145823b\"\ndependencies = [\n \"proc-macro2\",\n \"quote\",\n \"unicode-ident\",\n]\n\n[[package]]\nname = \"todo-cli\"\nversion = \"0.1.0\"\ndependencies = [\n \"clap\",\n]\n\n[[package]]\nname = \"unicode-ident\"\nversion = \"1.0.27\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563\"\n\n[[package]]\nname = \"utf8parse\"\nversion = \"0.2.2\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821\"\n\n[[package]]\nname = \"windows-link\"\nversion = \"0.2.1\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"f0805222e57f7521d6a62e36fa9163bc891acd422f971defe97d64e70d0a4fe5\"\n\n[[package]]\nname = \"windows-sys\"\nversion = \"0.61.2\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"ae137229bcbd6cdf0f7b80a31df61766145077ddf49416a728b02cb3921ff3fc\"\ndependencies = [\n \"windows-link\",\n]\n",
+   "Cargo.toml": "[package]\nname = \"todo-cli\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\nclap = { version = \"4.6.7\", features = [\"derive\"] }\n",
+   "src/main.rs": "use clap::{Parser, Subcommand};\n\n/// A tiny to-do list\n#[derive(Parser)]\n#[command(version)]\nstruct Cli {\n    /// Print more detail (allowed before or after the subcommand)\n    #[arg(short, long, global = true)]\n    verbose: bool,\n\n    #[command(subcommand)]\n    command: Command,\n}\n\n#[derive(Subcommand)]\nenum Command {\n    /// Add a task\n    Add {\n        /// What to do\n        text: String,\n        /// Priority from 1 (high) to 3 (low)\n        #[arg(short, long, default_value_t = 2)]\n        priority: u8,\n    },\n    /// List tasks\n    List,\n}\n\nfn main() {\n    let cli = Cli::parse();\n    match cli.command {\n        Command::Add { text, priority } => {\n            println!(\"added {text:?} with priority {priority}\");\n            if cli.verbose {\n                println!(\"(verbose mode is on)\");\n            }\n        }\n        Command::List => println!(\"nothing to list yet\"),\n    }\n}\n"
+  }
+ },
+ "sessions": {
+  "run": [
+   {
+    "show": "$ cargo run -- add \"learn clap\" -p 1 --verbose",
+    "out": "added \"learn clap\" with priority 1\n(verbose mode is on)\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo run -- add \"learn clap\" -p abc",
+    "out": "error: invalid value 'abc' for '--priority <PRIORITY>': invalid digit found in string\n\nFor more information, try '--help'.\n",
+    "exit": 2,
+    "error": true
+   },
+   {
+    "show": "$ cargo run -- --help",
+    "out": "A tiny to-do list\n\nUsage: todo-cli [OPTIONS] <COMMAND>\n\nCommands:\n  add   Add a task\n  list  List tasks\n  help  Print this message or the help of the given subcommand(s)\n\nOptions:\n  -v, --verbose  Print more detail (allowed before or after the subcommand)\n  -h, --help     Print help\n  -V, --version  Print version\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo run -- add --help",
+    "out": "Add a task\n\nUsage: todo-cli add [OPTIONS] <TEXT>\n\nArguments:\n  <TEXT>  What to do\n\nOptions:\n  -p, --priority <PRIORITY>  Priority from 1 (high) to 3 (low) [default: 2]\n  -v, --verbose              Print more detail (allowed before or after the subcommand)\n  -h, --help                 Print help\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo run -- add",
+    "out": "error: the following required arguments were not provided:\n  <TEXT>\n\nUsage: todo-cli add <TEXT>\n\nFor more information, try '--help'.\n",
+    "exit": 2,
+    "error": true
+   }
+  ],
+  "try": [
+   {
+    "show": "$ cargo run -- --version",
+    "out": "todo-cli 0.1.0\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo run -- add \"learn clap\" -p 300",
+    "out": "error: invalid value '300' for '--priority <PRIORITY>': 300 is not in 0..=255\n\nFor more information, try '--help'.\n",
+    "exit": 2,
+    "error": true
+   },
+   {
+    "show": "$ cargo run -- ad \"learn clap\"",
+    "out": "error: unrecognized subcommand 'ad'\n\n  tip: a similar subcommand exists: 'add'\n\nUsage: todo-cli [OPTIONS] <COMMAND>\n\nFor more information, try '--help'.\n",
+    "exit": 2,
+    "error": true
+   },
+   {
+    "show": "$ cargo run -- add \"-draft\"",
+    "out": "error: unexpected argument '-d' found\n\n  tip: to pass '-d' as a value, use '-- -d'\n\nUsage: todo-cli add [OPTIONS] <TEXT>\n\nFor more information, try '--help'.\n",
+    "exit": 2,
+    "error": true
+   },
+   {
+    "show": "$ cargo run -- add -- \"-draft\"",
+    "out": "added \"-draft\" with priority 2\n",
+    "exit": 0
+   }
+  ],
+  "global": [
+   {
+    "show": "$ cargo run -- add \"learn clap\" --verbose    # with global = true",
+    "out": "added \"learn clap\" with priority 2\n(verbose mode is on)\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo run -- add \"learn clap\" --verbose    # after deleting \", global = true\"",
+    "out": "error: unexpected argument '--verbose' found\n\n  tip: to pass '--verbose' as a value, use '-- --verbose'\n\nUsage: todo-cli add <TEXT>\n\nFor more information, try '--help'.\n",
+    "exit": 2,
+    "error": true
+   },
+   {
+    "show": "$ cargo run -- --verbose add \"learn clap\"    # still without global = true",
+    "out": "added \"learn clap\" with priority 2\n(verbose mode is on)\n",
+    "exit": 0
+   }
+  ],
+  "new-command": [
+   {
+    "show": "$ cargo build",
+    "out": "error[E0004]: non-exhaustive patterns: `Command::Done { .. }` not covered\n  --> src/main.rs:36:11\n   |\n36 |     match cli.command {\n   |           ^^^^^^^^^^^ pattern `Command::Done { .. }` not covered\n   |\nnote: `Command` defined here\n  --> src/main.rs:16:6\n   |\n16 | enum Command {\n   |      ^^^^^^^\n...\n28 |     Done {\n   |     ---- not covered\n   = note: the matched value is of type `Command`\nhelp: ensure that all possible cases are being handled by adding a match arm with a wildcard pattern or an explicit pattern as shown\n   |\n43 ~         Command::List => println!(\"nothing to list yet\"),\n44 ~         Command::Done { .. } => todo!(),\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "go": [
+   {
+    "show": "$ go build -o todo .",
+    "out": "",
+    "exit": 0
+   },
+   {
+    "show": "$ ./todo -verbose add -priority 1 \"learn flags\"",
+    "out": "added \"learn flags\" with priority 1\n(verbose mode is on)\n",
+    "exit": 0
+   },
+   {
+    "show": "$ ./todo -h",
+    "out": "Usage of ./todo:\n  -verbose\n    \tprint more detail\n",
+    "exit": 0
+   },
+   {
+    "show": "$ ./todo add",
+    "out": "usage: todo add [-priority N] TEXT\n",
+    "exit": 2,
+    "error": true
+   },
+   {
+    "show": "$ ./todo add -priority 1 \"learn flags\" -verbose",
+    "out": "added \"learn flags\" with priority 1\n",
+    "exit": 0
+   }
+  ],
+  "langs": [
+   {
+    "show": "$ node --version && python3 --version",
+    "out": "v24.22.1\nPython 3.13.5\n",
+    "exit": 0
+   },
+   {
+    "show": "$ python3 todo.py --verbose add \"learn argparse\" -p 1   # Python, argparse",
+    "out": "added \"learn argparse\" with priority 1\n(verbose mode is on)\n",
+    "exit": 0
+   },
+   {
+    "show": "$ python3 todo.py add \"learn argparse\" --verbose   # Python",
+    "out": "usage: todo.py [-h] [-v] {add,list} ...\ntodo.py: error: unrecognized arguments: --verbose\n",
+    "exit": 2,
+    "error": true
+   },
+   {
+    "show": "$ python3 todo.py add \"learn argparse\" -p abc   # Python",
+    "out": "usage: todo.py add [-h] [-p PRIORITY] text\ntodo.py add: error: argument -p/--priority: invalid int value: 'abc'\n",
+    "exit": 2,
+    "error": true
+   },
+   {
+    "show": "$ node todo.ts add \"learn parseArgs\" --verbose -p 1   # TypeScript, node:util parseArgs",
+    "out": "added \"learn parseArgs\" with priority 1\n(verbose mode is on)\n",
+    "exit": 0
+   },
+   {
+    "show": "$ node todo.ts add \"learn parseArgs\" -p abc   # TypeScript",
+    "out": "invalid priority: abc\n",
+    "exit": 2,
+    "error": true
+   },
+   {
+    "show": "$ gcc -Wall -o todo todo.c   # C, getopt",
+    "out": "",
+    "exit": 0
+   },
+   {
+    "show": "$ ./todo -v add \"learn getopt\" -p 1   # C",
+    "out": "added \"learn getopt\" with priority 1\n(verbose mode is on)\n",
+    "exit": 0
+   },
+   {
+    "show": "$ ./todo add \"learn getopt\" -v   # C (glibc)",
+    "out": "added \"learn getopt\" with priority 2\n(verbose mode is on)\n",
+    "exit": 0
+   },
+   {
+    "show": "$ ./todo add \"learn getopt\" -p abc   # C",
+    "out": "invalid priority: abc\n",
+    "exit": 2,
+    "error": true
+   }
+  ]
+ }
+}

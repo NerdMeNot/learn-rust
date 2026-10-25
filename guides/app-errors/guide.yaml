@@ -1,0 +1,150 @@
+# Errors in real apps: anyhow and thiserror
+name: app-errors
+sessions:
+  run:
+    dir: rust
+    steps:
+      - cmd: cargo run
+  go:
+    dir: go
+    steps:
+      - cmd: go run .
+  question-mark:
+    dir: rust
+    overlay:
+      src/main.rs: gotcha/main.rs
+    steps:
+      - cmd: cargo build
+        expect: fail
+  map-err:
+    dir: rust
+    overlay:
+      src/main.rs: gotcha/fixed.rs
+    steps:
+      - cmd: cargo run
+  show:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-show/src/main.rs
+    steps:
+      - cmd: cargo run
+  from:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-from/src/main.rs
+    steps:
+      - cmd: cargo run
+  main-result:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-main/src/main.rs
+    steps:
+      - cmd: cargo run; echo "exit code $?"
+  backtrace:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-main/src/main.rs
+    steps:
+      - cmd: RUST_BACKTRACE=1 cargo run 2>&1 | grep -c "Stack backtrace"
+      # The control: the same count without the variable. grep -c exits 1 when it counts 0.
+      - cmd: cargo run 2>&1 | grep -c "Stack backtrace"
+        expect: any
+  go-gotcha:
+    dir: gotcha-go
+    steps:
+      - cmd: go run .
+  # The gotcha's idea in the other languages: a function that names one error type, and
+  # a failure of another type inside it.
+  java-gotcha:
+    dir: gotcha-java
+    steps:
+      - cmd: javac Main.java
+        expect: fail
+  kt-gotcha:
+    dir: gotcha-kotlin
+    steps:
+      - cmd: kotlinc main.kt -include-runtime -d gotcha.jar && java -jar gotcha.jar
+        show: "$ kotlinc main.kt -include-runtime -d gotcha.jar && java -jar gotcha.jar"
+  # How each language wraps a failure with a cause. One step per cell of the table.
+  languages:
+    dir: languages
+    steps:
+      - cmd: javac Cause.java && java Cause
+      - cmd: kotlinc cause.kt -include-runtime -d cause.jar && java -jar cause.jar
+      - cmd: bash cs.sh cause.cs
+        show: "$ dotnet run"
+      - cmd: tsc --strict --target es2022 --module nodenext --types node cause.ts && node cause.js
+      - cmd: python3 cause.py
+      - cmd: gcc -Wall -Wextra cause.c -o cause_c && ./cause_c
+        expect: fail
+      - cmd: g++ -std=c++20 -Wall -Wextra cause.cpp -o cause_cpp && ./cause_cpp
+      - cmd: g++ -std=c++23 -Wall -Wextra expected.cpp -o expected_cpp && ./expected_cpp
+gotcha:
+  kind: compile
+  title: Using `?` on an error your function can't hold
+  verdict: rust-rule
+  looks_fine: >-
+    `fs::read_to_string(path)?` reads like the usual "pass the error up" step, so it
+    seems the function can simply let the `io::Error` out.
+  rust_sees: >-
+    This function promises to return a `ConfigError`. `fs::read_to_string` fails with an
+    `io::Error`, and Rust doesn't know how to turn one into the other.
+  why: >-
+    `?` can convert errors, but only along a route you've written: an
+    `impl From<io::Error> for ConfigError`, or a `#[from]` on a variant with thiserror.
+    Or convert by hand with `map_err`, as the fix below and the program on this page do.
+    A function that returns `anyhow::Result` accepts any error that implements
+    `std::error::Error` (and is `Send + Sync + 'static`), so it needs no conversion.
+  code: { file: gotcha/main.rs, name: src/main.rs }
+  session: question-mark
+  fixed: { file: gotcha/fixed.rs, name: src/main.rs, session: map-err }
+  langs:
+    go:
+      status: runs
+      says: >-
+        Go compiles and runs this. The function returns the `error` interface, which any
+        error value satisfies, so `return "", err` type-checks.
+      file: gotcha-go/main.go
+      session: go-gotcha
+    kotlin:
+      status: none
+      says: >-
+        Kotlin compiles and runs this, and the exception is caught as `IOException`. A thrown
+        exception travels up the stack, and the signature does not name its type. So there is
+        nothing to convert, and no rule to break.
+      file: gotcha-kotlin/main.kt
+      session: kt-gotcha
+    java:
+      status: refuses
+      says: >-
+        Java refuses a version of this too: a method that declares `throws ConfigError` cannot
+        let an `IOException` escape, and `javac` says `unreported exception IOException; must be
+        caught or declared to be thrown`. Java's rule is about checked exceptions; Rust's is
+        about the `Result` type.
+      file: gotcha-java/Main.java
+      session: java-gotcha
+    python:
+      status: none
+      says: >-
+        Not run here. A Python function does not declare which exceptions it raises, so
+        nothing checks them against a signature.
+    typescript:
+      status: none
+      says: >-
+        Not run here. A TypeScript function cannot declare which errors it throws, so nothing
+        checks them against a signature.
+    csharp:
+      status: none
+      says: >-
+        Not run here. C# has no checked exceptions: a method does not declare the exceptions
+        it throws.
+    c:
+      status: none
+      says: >-
+        Not run here. A C function reports failure through its return value or `errno`, and
+        nothing converts one kind of error into another for you.
+    cpp:
+      status: none
+      says: >-
+        Not run here. A C++ function can throw an exception of any type; its signature does not
+        list them.

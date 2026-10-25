@@ -1,0 +1,301 @@
+# Rust for Go developers
+#
+# lab/ holds one folder per habit in both languages: lab/go/hNN/main.go (run with
+# `go run ./hNN`) and lab/rust/src/bin/hNN.rs (run with `cargo run --bin hNN`).
+# fails/hNN.rs are the Rust programs that do not compile; a session swaps one into
+# lab/rust/src/main.rs, which `cargo run` builds on its own (default-run).
+name: for-go
+sessions:
+  # Habit 1: range gives a copy
+  h01-go:
+    dir: lab
+    steps:
+      - cmd: go run ./h01
+        cwd: go
+  h01-fail:
+    dir: lab
+    overlay:
+      rust/src/main.rs: fails/h01.rs
+    steps:
+      - cmd: cargo run
+        cwd: rust
+        expect: fail
+  h01-rs:
+    dir: lab
+    steps:
+      - cmd: cargo run --bin h01
+        cwd: rust
+  # Habit 2: nil
+  h02-go:
+    dir: lab
+    steps:
+      - cmd: go run ./h02
+        cwd: go
+        expect: fail
+        varies: true # the pc= address in the trace changes between builds
+  h02-fail:
+    dir: lab
+    overlay:
+      rust/src/main.rs: fails/h02.rs
+    steps:
+      - cmd: cargo run
+        cwd: rust
+        expect: fail
+  h02-rs:
+    dir: lab
+    steps:
+      - cmd: cargo run --bin h02
+        cwd: rust
+  # Habit 3: errors
+  h03-go:
+    dir: lab
+    steps:
+      - cmd: go run ./h03
+        cwd: go
+  h03-fail:
+    dir: lab
+    overlay:
+      rust/src/main.rs: fails/h03.rs
+    steps:
+      - cmd: cargo run
+        cwd: rust
+        expect: fail
+  h03-rs:
+    dir: lab
+    steps:
+      - cmd: cargo run --bin h03
+        cwd: rust
+  # Habit 4: interfaces
+  h04-go:
+    dir: lab
+    steps:
+      - cmd: go run ./h04
+        cwd: go
+  h04-fail:
+    dir: lab
+    overlay:
+      rust/src/main.rs: fails/h04.rs
+    steps:
+      - cmd: cargo run
+        cwd: rust
+        expect: fail
+  h04-rs:
+    dir: lab
+    steps:
+      - cmd: cargo run --bin h04
+        cwd: rust
+  # Habit 5: slices share
+  h05-go:
+    dir: lab
+    steps:
+      - cmd: go run ./h05
+        cwd: go
+  h05-fail:
+    dir: lab
+    overlay:
+      rust/src/main.rs: fails/h05.rs
+    steps:
+      - cmd: cargo run
+        cwd: rust
+        expect: fail
+  h05-rs:
+    dir: lab
+    steps:
+      - cmd: cargo run --bin h05
+        cwd: rust
+  # Habit 6: zero values
+  h06-go:
+    dir: lab
+    steps:
+      - cmd: go run ./h06
+        cwd: go
+  h06-fail:
+    dir: lab
+    overlay:
+      rust/src/main.rs: fails/h06.rs
+    steps:
+      - cmd: cargo run
+        cwd: rust
+        expect: fail
+  h06-rs:
+    dir: lab
+    steps:
+      - cmd: cargo run --bin h06
+        cwd: rust
+  # Habit 7: embedding
+  h07-go:
+    dir: lab
+    steps:
+      - cmd: go run ./h07
+        cwd: go
+  h07-fail:
+    dir: lab
+    overlay:
+      rust/src/main.rs: fails/h07.rs
+    steps:
+      - cmd: cargo run
+        cwd: rust
+        expect: fail
+  h07-rs:
+    dir: lab
+    steps:
+      - cmd: cargo run --bin h07
+        cwd: rust
+  # Habit 8: defer and Drop
+  h08-go:
+    dir: lab
+    steps:
+      - cmd: go run ./h08
+        cwd: go
+  h08-rs:
+    dir: lab
+    steps:
+      - cmd: cargo run --bin h08
+        cwd: rust
+  # Habit 9: goroutines and shared variables
+  h09-go:
+    dir: lab
+    steps:
+      - cmd: go run ./h09
+        cwd: go
+        varies: true
+      - cmd: 'go run -race ./h09 2>&1 | grep -m1 "WARNING: DATA RACE"'
+        cwd: go
+  h09-fail:
+    dir: lab
+    overlay:
+      rust/src/main.rs: fails/h09.rs
+    steps:
+      - cmd: cargo run
+        cwd: rust
+        expect: fail
+  h09-rs:
+    dir: lab
+    steps:
+      - cmd: cargo run --bin h09
+        cwd: rust
+  # Habit 10: strings
+  h10-go:
+    dir: lab
+    steps:
+      - cmd: go run ./h10
+        cwd: go
+  h10-fail:
+    dir: lab
+    overlay:
+      rust/src/main.rs: fails/h10.rs
+    steps:
+      - cmd: cargo run
+        cwd: rust
+        expect: fail
+  h10-rs:
+    dir: lab
+    steps:
+      - cmd: cargo run --bin h10
+        cwd: rust
+  h10-slice:
+    dir: lab
+    steps:
+      - cmd: cargo run --bin h10slice
+        cwd: rust
+        expect: fail
+        varies: true # the thread id in the panic line changes between runs
+  # The idiom table: the same 20 lines from both programs.
+  idioms-go:
+    dir: lab
+    steps:
+      - cmd: go run ./idioms
+        cwd: go
+  idioms-rs:
+    dir: lab
+    steps:
+      - cmd: cargo run --bin idioms
+        cwd: rust
+  idioms-diff:
+    dir: lab
+    steps:
+      - cmd: |-
+          (cd go && go run ./idioms > /tmp/go.txt) && (cd rust && cargo run -q --bin idioms > /tmp/rust.txt) && diff /tmp/go.txt /tmp/rust.txt && echo "the two outputs are identical" && wc -l < /tmp/go.txt
+        show: '$ go run ./idioms > go.txt; cargo run --bin idioms > rust.txt; diff go.txt rust.txt; wc -l < go.txt'
+  # Try it yourself
+  try-unwrap:
+    dir: lab
+    overlay:
+      rust/src/main.rs: try/unwrap.rs
+    steps:
+      - cmd: cargo run
+        cwd: rust
+        expect: fail
+        varies: true # the thread id in the panic message
+  try-underscore:
+    dir: lab
+    overlay:
+      rust/src/main.rs: try/underscore.rs
+    steps:
+      - cmd: cargo run
+        cwd: rust
+  try-move:
+    dir: lab
+    overlay:
+      rust/src/main.rs: try/move.rs
+    steps:
+      - cmd: cargo run
+        cwd: rust
+  # The toolchain map
+  tools-go:
+    dir: tool
+    steps:
+      - cmd: go build ./...
+        cwd: go
+      - cmd: go test ./...
+        cwd: go
+        varies: true # the time go test prints
+      - cmd: gofmt -l .
+        cwd: go
+      - cmd: go vet ./...
+        cwd: go
+      - cmd: go doc strings.Fields
+        cwd: go
+      - cmd: go doc calc.Add
+        cwd: go
+  tools-rust:
+    dir: tool
+    steps:
+      - cmd: cargo build
+        cwd: rust
+      - cmd: cargo test
+        cwd: rust
+        raw: true
+        varies: true # the hash in the test binary's name
+      - cmd: cargo fmt --check
+        cwd: rust
+      - cmd: cargo clippy
+        cwd: rust
+      - cmd: cargo doc --no-deps
+        cwd: rust
+  tools-new:
+    dir: tool
+    steps:
+      - cmd: cargo new demo --vcs none
+      - cmd: mkdir g && cd g && go mod init example.com/demo
+        show: '$ go mod init example.com/demo'
+      - cmd: 'for t in dlv rust-gdb rust-lldb gdb lldb; do command -v $t || echo "$t: not found"; done'
+  # What you will miss
+  cross-go:
+    dir: lab
+    steps:
+      - cmd: GOOS=windows GOARCH=amd64 go build -o demo.exe ./h04 && ls demo.exe
+        cwd: go
+  cross-rust:
+    dir: lab
+    steps:
+      - cmd: rustup target list --installed
+        cwd: rust
+      - cmd: cargo build --target x86_64-pc-windows-gnu --bin h04
+        cwd: rust
+        expect: fail
+  json-go:
+    dir: lab
+    steps:
+      - cmd: go run ./json
+        cwd: go

@@ -1,0 +1,581 @@
+<p class="lr-layer">The toolkit</p>
+
+This page lists habits that fail in Rust, with the real compiler message and what to write instead. A message with no error code means the parser did not know the syntax; a code such as E0308 means the syntax was fine and the types were not. Outputs come from Linux on 64-bit ARM with Rust 1.99.1.
+
+Two warnings. When the parser gets lost it names the token where it gave up, and the cause is that token or the one before. And a `help:` line is a guess: `count += 1` is the fix, but `goto done` gets "write `goto.done`" and `while item = items.next()` gets "compare with `==`". Read a guess before you apply it.
+
+Three words recur: `Option` is a value that may be missing ([Option](/learn/option/)), `Result` is a success or an error ([Errors](/learn/errors/)), and `match` is Rust's `switch` ([Match](/learn/match/)).
+
+## Your habits, in Rust
+
+Your own list comes first; [the shared list](#the-shared-list) is for everyone.
+
+<ForLang only="go">
+
+| You write in Go | In Rust |
+|---|---|
+| `i++`, `i--` (statements in Go) | `i += 1;`, `i -= 1;` |
+| `for i := 0; i < n; i++ {}`, `for i := range n {}` | `for i in 0..n {}` |
+| `for cond {}`, `for {}` | `while cond {}`, `loop {}` |
+| `for _, v := range xs {}` | `for v in &xs {}` |
+| `var p *User`, `nil`; `v, ok := m[k]` | `Option`: `if let Some(v) = m.get(&k) {}` |
+| `switch { case x > 5: }` | `if x > 5 {} else {}`, or `match` with a guard: `_ if x > 5 =>` |
+| `break` in a `switch` in a loop leaves the `switch` | in a `match` it leaves the loop |
+| `defer f.Close()` | the value is dropped when its scope ends |
+| `goto retry` | `loop` with `continue`, a labeled `break`, `return` |
+| `User{Name: "a"}`, the rest zero | name every field, or end with `..Default::default()` |
+| `type Dog struct{ Animal }` (embedding) | a field `animal: Animal`, and you write the forwarding |
+| any type with the right methods fits an interface | `impl Speaker for Dog` is required |
+| `v, err := f(); if err != nil { return err }` | `let v = f()?;`, which also converts the error type if needed |
+| `d * 2` with a `float64` `d` | `d * 2.0` |
+
+Go and Rust agree on five things, each an error in Go too: no ternary, no overloading by type, no default arguments, no mixing of `int32` and `int64`, and an `if` that needs a `bool`. The bare number differs: Go lets `2` become a float, Rust does not.
+
+The loops, one function each; read the first error of each:
+
+<Snippet file="go-for.fail.rs" />
+
+Then four keywords. A tagless `switch {` reads as the start of a struct literal, which is why an error mentions a struct:
+
+<Snippet file="go-keywords.fail.rs" />
+
+The `break` that compiles and behaves differently: Go's leaves the `switch`, so the loop goes on and `n` is 4. In Rust it leaves the loop and `n` is 2 (see [No fall-through](#no-fall-through-and-break-in-a-match)):
+
+<Snippet file="break-switch.go" />
+
+There is no `defer`. A value is dropped when its scope ends, in reverse order of creation, and a type can run code then:
+
+<Snippet file="drop.rs" />
+
+A struct literal must name every field, a type with the right methods does not satisfy a trait until the `impl` is written, and a bare `2` is not a float:
+
+<Snippet file="missing-field.fail.rs" />
+
+<Snippet file="impl-needed.fail.rs" />
+
+<Snippet file="float-const.fail.rs" />
+
+Go inserts the `;` at a line end; Rust does not:
+
+<Snippet file="no-asi.fail.rs" />
+
+</ForLang>
+
+<ForLang only="java">
+
+| You write in Java | In Rust |
+|---|---|
+| `i++`, `a[i++]` | `i += 1;`, or a block that ends in the value |
+| `ok ? a : b` | `if ok { a } else { b }` |
+| `null`, `Optional<T>` | `Option<T>`, which has no null underneath |
+| `new Point(1, 2)`, `this.x` | `Point { x: 1, y: 2 }` or `Point::new(1, 2)`; `self.x` |
+| `class Dog extends Animal`, `implements Speak` | a `struct`, and `impl Speak for Dog` |
+| `public void bump()`, `final`, `@Override` | `pub fn bump(&mut self)`; `let` is final; no `@Override` |
+| `show(int)` next to `show(String)` | two names, or one trait implemented for each type |
+| `try`, `catch`, `throw`; checked exceptions | `Result` and `?`; unchecked ones are `panic!` |
+| `finally`, try-with-resources | the value is dropped when its scope ends |
+| `static int count` in a class | a `static` outside any type |
+| `new Point()` with zeroed fields | name every field, or end with `..Default::default()` |
+| `long big = i;`, `(long) x` | `i64::from(i)`, `x as i64` |
+| `case 1:` falls through | `1 \| 2 =>` |
+| `break` in a `switch` in a loop leaves the `switch` | in a `match` it leaves the loop |
+
+Java 14's `case 1, 2 ->` is already close to a `match` arm. The difference is `break`: in a `switch` it leaves the `switch` and `n` ends at 4; in Rust it leaves the loop and `n` is 2 (see [No fall-through](#no-fall-through-and-break-in-a-match)).
+
+<Snippet file="break-switch.java" />
+
+One trait implemented for each type gives the call that overloading would:
+
+<Snippet file="traits-overload.rs" />
+
+`public void` is a parse error, and a `static` cannot sit inside an `impl`:
+
+<Snippet file="java-keywords.fail.rs" />
+
+`finally` becomes `Drop`, and an unfilled struct field is an error (`..Default::default()` fills it in):
+
+<Snippet file="drop.rs" />
+
+<Snippet file="missing-field.fail.rs" />
+
+The C-style `for` and `do` are in [Operators and loops](#operators-and-loops); `new`, `this` and `extends` are under [No classes](#no-classes-no-new-no-this).
+
+</ForLang>
+
+<ForLang only="kotlin">
+
+| You write in Kotlin | In Rust |
+|---|---|
+| `i++`, `a[i++]` | `i += 1;`, or a block that ends in the value |
+| `name?.length` | `name.as_ref().map(\|s\| s.len())`; `?.` is not Rust |
+| `name ?: "anon"`, `name!!` | `name.unwrap_or("anon")`, `name.unwrap()` |
+| `val x = f() ?: return` | `let Some(x) = f() else { return };` |
+| `Point(1, 2)` (no `new`) | `Point { x: 1, y: 2 }` or `Point::new(1, 2)` |
+| `open class`, `: Animal()`, `sealed class` | a `struct` and a trait; `enum` for a sealed set |
+| `data class` and `copy(x = 1)` | `#[derive(...)]` and `Point { x: 1, ..p }` |
+| `area(3, height = 4)`, default values | a struct ending in `..Default::default()`, or an `Option` parameter |
+| `try`, `catch`, `throw` | `Result` and `?`; `panic!` for bugs |
+| `when (x) { 1, 2 -> }` | `match x { 1 \| 2 => }` |
+| `break` in a `when` in a loop leaves the loop | the same in a `match` |
+
+Kotlin and Rust agree on the last row (`n` is 2) and on explicit number conversions. The new part is `?`: it is an early return, not a safe call. Written like Kotlin's `?.`, it fails with an error about the function's return type, which says nothing about what you meant:
+
+<Snippet file="kotlin-nulls.fail.rs" />
+
+`?:` is read as the ternary operator, and its `help:` is wrong. A real `?.` chain is in the exercise "A `?.` chain" below.
+
+<Snippet file="break-when.kt" />
+
+</ForLang>
+
+<ForLang only="csharp">
+
+| You write in C# | In Rust |
+|---|---|
+| `i++`, `a[i++]` | `i += 1;`, or a block that ends in the value |
+| `ok ? a : b` | `if ok { a } else { b }` |
+| `string? s = null`, `?.`, `??` | `Option<String>`, `.map(...)`, `.unwrap_or(...)` |
+| `int.TryParse(s, out var n)` | `s.parse::<i32>().ok()`, an `Option` |
+| `new Point(1, 2)`, `this.X` | `Point { x: 1, y: 2 }` or `Point::new(1, 2)`; `self.x` |
+| `class Dog : Animal` | a `struct` and a trait |
+| `Show(int)` next to `Show(string)`; `operator +` | two names, or a trait; `impl Add for Point` |
+| `Area(3, height: 4)`, optional parameters | a struct ending in `..Default::default()`, or an `Option` parameter |
+| `try`, `catch`, `finally`, `throw` | `Result` and `?`; `panic!` for bugs; `Drop` for cleanup |
+| `using var f = ...` | the value is dropped when its scope ends |
+| `long big = i;` | `i64::from(i)` |
+| `case 1:` must not fall through (CS0163) | `1 \| 2 =>` |
+| `break` in a `switch` in a loop leaves the `switch` | in a `match` it leaves the loop |
+
+C# refuses fall-through too. The difference is `break`: in a `switch` it leaves the `switch` (`n` is 4), in a `match` it leaves the loop (`n` is 2, see [No fall-through](#no-fall-through-and-break-in-a-match)):
+
+<Snippet file="break-switch.cs" />
+
+`operator +` becomes a trait; the last exercise builds one.
+
+</ForLang>
+
+<ForLang only="python">
+
+| You write in Python | In Rust |
+|---|---|
+| `x += 1` (Python has no `x++`) | `x += 1;` |
+| `++x`, `--x` do nothing in Python | `++x` is an error; `--x` also does nothing |
+| `a if c else b` | `if c { a } else { b }` |
+| `for i in range(n)` | `for i in 0..n {}` |
+| `if items:`, `if name:` | `if !items.is_empty() {}`: the condition must be a `bool` |
+| `7 // 2`, `-7 // 2` | `//` is a comment; `7 / 2` is 3, `-7 / 2` is -3 |
+| `2 ** 10` | `2_i32.pow(10)` |
+| `1 < x < 5`, `x in xs` | `1 < x && x < 5`, `xs.contains(&x)` |
+| `and`, `or`, `not`, `elif`, `:` | `&&`, `\|\|`, `!`, `else if`, `{ }` |
+| `x = 1` then `x = "a"` | a variable has one type |
+| `area(width=3, height=4)`, `def area(w, h=1)` | positional arguments; a struct or an `Option` for a default |
+| `try`, `except`, `raise` | `Result` and `?`; `panic!` for bugs |
+
+`//` is the Python habit that does not fail loudly: it starts a comment, so `a // b` is just `a`:
+
+<Snippet file="floor-comment.fail.rs" />
+
+<Snippet file="floor-silent.rs" />
+
+Integer `/` truncates toward zero; floor division has to be written out (see the exercise "Floor division" below). The other operators fail at once, usually with a good `help:`:
+
+<Snippet file="python-syntax.fail.rs" />
+
+A name has one type for its life, so the second assignment is a type mismatch:
+
+<Snippet file="python-retype.fail.rs" />
+
+The words of Python's blocks:
+
+<Snippet file="python-words.fail.rs" />
+
+`and` is answered with `&&` and `~` with `!`; `elif`, `not` and the `:` after a condition are not named.
+
+</ForLang>
+
+<ForLang only="typescript">
+
+| You write in TypeScript | In Rust |
+|---|---|
+| `x++`, `a[i++]` | `x += 1;`, or a block that ends in the value |
+| `c ? a : b` | `if c { a } else { b }` |
+| `u?.name` | valid Rust, but not a safe call: it is `?` and then `.name`, an early return |
+| `a ?? 5` | `a.unwrap_or(5)` |
+| `null`, `undefined` | `Option<T>`, `None` |
+| `if (name)`, `if (items)` | `if !name.is_empty() {}`: the condition must be a `bool` |
+| `function f(x: number)`, `(x) => x + 1` | `fn f(x: f64)`, `\|x\| x + 1` |
+| `throw`, `try`, `catch` | `Result` and `?`; `panic!` for bugs |
+| `switch` falls through without `break` | `1 \| 2 =>` |
+| `break` in a `switch` in a loop leaves the `switch` | in a `match` it leaves the loop |
+| a missing `;` is repaired for you | a missing `;` is an error |
+
+`u?.name` compiles, but it means "if `u` is `None`, return `None` from this function now, else take `.name`". Inside a function that does not return an `Option`, it is an error about the return type:
+
+<Snippet file="optional-chain.rs" />
+
+Syntax that does not exist, then habits that look right:
+
+<Snippet file="ts-syntax.fail.rs" />
+
+<Snippet file="ts-types.fail.rs" />
+
+`function f` gets "write `fn` instead of `function`", and `(x) =>` gets a wrong help (`>=`). A missing `;` is not repaired:
+
+<Snippet file="no-asi.fail.rs" />
+
+The second error is the same mistake on the next line. In TypeScript a `break` leaves only the `switch` (`n` is 4; in Rust 2, see [No fall-through](#no-fall-through-and-break-in-a-match)):
+
+<Snippet file="break-switch.ts" />
+
+</ForLang>
+
+<ForLang only="c">
+
+| You write in C | In Rust |
+|---|---|
+| `i++`, `a[i++]`, `*p++` | `i += 1;`, or a block that ends in the value |
+| `ok ? a : b` | `if ok { a } else { b }` |
+| `for (int i = 0; i < n; i++)`, `do { } while (c);` | `for i in 0..n {}`, `loop` with a `break` |
+| `for (;;)`, `while (1)` | `loop {}`; `while 1` is an error: it needs a `bool` |
+| `NULL`, `if (p)`, `if (n)`, `while (*s)` | `Option<&T>`, `if let Some(p) = p {}`, `if n != 0 {}` |
+| `int n = 3.9;`, `long l = i;`, `double d = 3;` | `3.9 as i32`, `i64::from(i)`, `3.0` |
+| `#define MAX 10`, `#include <stdio.h>` | `const MAX: i32 = 10;`; no header to include |
+| `printf("%d\n", n)` | `println!("{}", n)` |
+| a `case` that ends in `break;` | the `break;` ends the loop: delete it |
+| `switch` that falls through | `1 \| 2 =>` |
+| `goto retry` | `loop` with `continue`; `return` or `?` to leave; the value is dropped when its scope ends |
+| `int visits;` assigned anywhere | see "No mutable globals" |
+
+One of these compiles and is quietly wrong, so it comes first. A `break;` ported from the end of a `case` is legal in a `match` inside a loop, and it leaves the loop (`n` is 4 in C, 2 in Rust; see [No fall-through](#no-fall-through-and-break-in-a-match)):
+
+<Snippet file="break-switch.c" />
+
+</ForLang>
+
+<ForLang only="cpp">
+
+| You write in C++ | In Rust |
+|---|---|
+| `i++`, `a[i++]`, `*p++` | `i += 1;`, or a block that ends in the value |
+| `ok ? a : b` | `if ok { a } else { b }` |
+| `for (int i = 0; i < n; i++)`, `do { } while (c);`, `for (;;)` | `for i in 0..n {}`, `loop` with a `break`, `loop {}` |
+| `new P(1)`, `delete p` | `Box::new(P { x: 1 })` ([Ownership](/learn/ownership/#boxt-one-value-on-the-heap)); no `delete` |
+| `P(int x)`, `~P()` | a function `P::new(x)`; the value is dropped when its scope ends |
+| `class Dog : public Animal`, `virtual` | a `struct` and a trait; `dyn Trait` for run-time dispatch ([Trait objects](/learn/trait-objects/)) |
+| `operator+` | `impl Add for P` |
+| overloads, default arguments | two names, or a trait; a struct ending in `..Default::default()` |
+| `try`, `catch`, `throw` | `Result` and `?`; `panic!` for bugs |
+| `nullptr`, `std::optional<T>` | `Option<&T>`, `Option<T>` |
+| `int n = 3.9;`, `long l = i;`, `double d = 3;` | `3.9 as i32`, `i64::from(i)`, `3.0` |
+| a `case` that ends in `break;` | the `break;` ends the loop: delete it |
+| `goto retry` | `loop` with `continue`; the value is dropped when its scope ends |
+| `int visits;` assigned anywhere | see "No mutable globals" |
+
+The silent one first: a `break;` at the end of a ported `case`, inside a loop, leaves the loop (`n` is 4 in C++, 2 in Rust).
+
+<Snippet file="break-switch.cpp" />
+
+`auto` gets a precise help (`let`); `new P(1)` is read as a name and a stray `P`:
+
+<Snippet file="cpp-syntax.fail.rs" />
+
+`operator+` is a trait. The compiler says so when the trait is missing:
+
+<Snippet file="cpp-add.fail.rs" />
+
+<Snippet file="operator-add.rs" />
+
+</ForLang>
+
+<ForLang only="c cpp">
+
+The C-style `for` and `do` are in [Operators and loops](#operators-and-loops). The syntax habits, then the type habits:
+
+<Snippet file="c-syntax.fail.rs" />
+
+<Snippet file="c-types.fail.rs" />
+
+<Snippet file="c-preproc.fail.rs" />
+
+`#` starts an attribute in Rust (a note to the compiler). `printf` is not found, and its help suggests `print!("%d")`, which would not format the number: Rust uses `{}`. A `goto` that retries is a loop with `continue`; one that cleans up is the drop at the end of the scope, as a C++ destructor runs:
+
+<Snippet file="goto-retry.rs" />
+
+<Snippet file="drop.rs" />
+
+</ForLang>
+
+## The shared list
+
+| You try | Rust way | Error | Learn more |
+|---|---|---|---|
+| `x++`, `x--` | `x += 1;` | syntax error | [Operators and loops](#operators-and-loops) |
+| `c ? a : b` | `if c { a } else { b }` | syntax error | [Statements and expressions](/learn/statements-expressions/) |
+| `null`, `nil`, `undefined` | `Option<T>` | E0425, E0308 | [Option](/learn/option/) |
+| `i32` with `i64`, `n * 1.5` | `as`, `From`, `try_from` | E0308, E0277 | [Numbers and types](/learn/types/) |
+| `if x` on text, a list, a number | an explicit test | E0308 | [Statements and expressions](/learn/statements-expressions/) |
+| `break` in a `switch` arm | in a `match` inside a loop it ends the loop | compiles | [Match](/learn/match/) |
+| `throw`, `catch` | `Result`, `?` | syntax error | [Errors](/learn/errors/) |
+| `f(width = 3)`, default values | a struct, an `Option` parameter | E0425, E0061 | [Methods](/learn/methods/#constructors-overloading-and-default-arguments) |
+| two functions, one name | two names, or a trait | E0428 | [Methods](/learn/methods/#constructors-overloading-and-default-arguments) |
+| `class`, `extends`, `new`, `this` | `struct`, a trait, `self` | syntax error, E0423, E0424, E0425 | [Methods](/learn/methods/#no-inheritance) |
+| `s[0]` | `s.chars()`, `s.as_bytes()` | E0277 | [Strings](/learn/strings/#why-s0-doesnt-compile) |
+| a global assigned anywhere | an atomic or a `Mutex` | E0594, E0133 | [Shared state](/learn/shared-state/) |
+
+## Operators and loops
+
+Four habits, one function each so that one run shows every message:
+
+<Snippet file="parse-operators.fail.rs" />
+
+Each message says what to write. `a[i++]` has no one-token form: write the increment as its own statement, or as a block that ends in the value, `{ let v = a[i]; i += 1; v }`.
+
+<ForLang only="java csharp c cpp">
+
+The C-style `for` and `do` get no useful help, and the one offered is wrong. A Rust `for` is `for pattern in expression`, and `do` is a reserved word:
+
+<Snippet file="parse-for.fail.rs" />
+
+</ForLang>
+
+<ForLang only="go java kotlin csharp typescript c cpp">
+
+These are the replacements, each backed by a run. `(1..=10)` includes 10, `.rev()` runs a range backwards, `.step_by(3)` takes every third value, and `.enumerate()` pairs each item with its position (see [Iterators](/learn/iterators/)). `while let` repeats while the pattern fits: `pop` takes the last item off a `Vec` ([Vectors](/learn/vectors/)) and gives `None` when it is empty. A `loop` with a `break` at the bottom tests after its body, as `do { } while` does.
+
+<Snippet file="loops.rs" />
+
+</ForLang>
+
+<ForLang only="go c cpp">
+
+For `goto`, the common jobs have their own forms: a retry is a `loop` with `continue`, and leaving nested loops is a labeled `break`:
+
+<Snippet file="labeled-break.rs" />
+
+</ForLang>
+
+### `--x` is not a decrement
+
+`++x` is a syntax error, like `x++`. `--x` is valid, and its meaning depends on the language. In Rust it is `-(-x)`, as in Python, so `count` is unchanged. In C, C++, Java, C#, Kotlin and TypeScript it decrements, and Go rejects it. A lint (a check for suspicious code) named [`double_negations`](https://doc.rust-lang.org/rustc/lints/listing/warn-by-default.html#double-negations), on by default, warns about it:
+
+<Snippet file="negate.rs" />
+
+On an unsigned number it is an error instead (E0600), because an unsigned value cannot be negated:
+
+<Snippet file="negate-unsigned.fail.rs" />
+
+## No `null`
+
+A value that may be missing has the type `Option<T>` ([Option](/learn/option/)). `String` has no missing state, and `None` belongs to `Option`, so it does not fit where a `String` is declared:
+
+<Snippet file="null.fail.rs" />
+
+The first message carries a trap. `std::ptr::null` makes a raw pointer, which the Reference describes as "without safety or liveness guarantees". Following the hint does not give you an `Option`; it gives a different error:
+
+<Snippet file="null-hint.fail.rs" />
+
+[Raw pointers](/learn/unsafe/#raw-pointers) exist for talking to other languages, and dereferencing one is an unsafe operation. In ordinary code, do not follow that hint.
+
+## Numbers do not convert themselves
+
+Rust does not turn one number type into another for you, not even a safe widening such as `i32` to `i64`, or an integer into a float. A comparison (`small == other`) is E0308 too:
+
+<Snippet file="widen.fail.rs" />
+
+<Snippet file="mixed.fail.rs" />
+
+The help shows two fixes: `i64::from(small)` when no value can be lost, and `try_into()` when it might not fit. `as` is the third, and it cuts or rounds without a check ([Declarations and types](/learn/declarations-types/#as-and-the-turbofish)). For the float: `f64::from(n) * 1.5`.
+
+<ForLang only="python typescript c cpp">
+
+## Only a `bool` is true
+
+[The page on statements](/learn/statements-expressions/) showed `if n { }` failing for a number. The rule holds for text, lists and `Option` too:
+
+<Snippet file="truthy.fail.rs" />
+
+The last error is a Rust detail: `!` is logical NOT on a `bool` but bitwise NOT on integers, so `!count` is a number, not a `bool`:
+
+<Snippet file="not.rs" />
+
+Assignment as a condition fails as `if x = 1` did on the statements page; the fix for a loop is `while let`:
+
+<Snippet file="assign-cond.fail.rs" />
+
+</ForLang>
+
+## No fall-through, and `break` in a `match`
+
+A `match` arm runs on its own, so there is nothing to fall through to; several values share an arm with `|`. A `break` in an arm leaves the enclosing loop, as `2 => break` does here:
+
+<Snippet file="break-match.rs" />
+
+In Go, Java, C#, C, C++ and TypeScript the same program with a `switch` leaves only the `switch` and counts to 4 (your own list above runs it). Rust and Kotlin agree on 2. Neither warns.
+
+## No exceptions
+
+`throw` and `catch` are not Rust syntax, so the parser stops:
+
+<Snippet file="parse-throw.fail.rs" />
+
+`try` is reserved for an experimental feature: the parser accepts a `try { }` block and stable refuses it (E0658). It is not an exception handler:
+
+<Snippet file="try-block.fail.rs" />
+
+A function that can fail returns a `Result`, and `?` passes the failure up to the caller ([Errors](/learn/errors/)). A bug is a `panic!`, which ends the thread. `std::panic::catch_unwind` exists, but its documentation says "It is not recommended to use this function for a general try/catch mechanism."
+
+<Snippet file="parse-result.rs" />
+
+## No default or named arguments, no function overloading
+
+`width = 3` inside a call is an assignment, so the compiler looks for a variable called `width`; the message does not say "named arguments". A default value in the parameter list is recognised and refused:
+
+<Snippet file="named-args.fail.rs" />
+
+<Snippet file="default-param.fail.rs" />
+
+Two functions with one name are an error, and [Methods](/learn/methods/#constructors-overloading-and-default-arguments) shows the version for methods:
+
+<Snippet file="overload.fail.rs" />
+
+The Rust forms are a struct with `#[derive(Default)]` (fields start as `0`, `false` or empty) and a literal that ends in `..Default::default()`, which fills every field not written; or an `Option` parameter, where `None` means "use the default":
+
+<Snippet file="defaults.rs" />
+
+This is more code than `height=1`; a type with many settings usually gets a builder ([Methods](/learn/methods/)). "No overloading" is narrow: a trait can be implemented for several types and called the same way, and `impl Add` overloads `+`.
+
+<ForLang only="java kotlin csharp typescript cpp python">
+
+## No classes, no `new`, no `this`
+
+A `struct` holds the data and an `impl` block its methods ([Structs](/learn/structs/), [Methods](/learn/methods/)). There is no `class` and no `extends`; each error is the parser meeting an unknown word:
+
+<Snippet file="parse-class.fail.rs" />
+
+<Snippet file="parse-extends.fail.rs" />
+
+Shared behaviour comes from a trait, a list of methods a type promises to have ([Traits](/learn/traits/)); [No inheritance](/learn/methods/#no-inheritance) shows how it replaces a base class.
+
+</ForLang>
+
+<ForLang only="java csharp typescript">
+
+`new` is not a keyword, so `new Point(1, 2)` is a syntax error. By convention `Point::new(1, 2)` is a plain function that returns a `Point`:
+
+<Snippet file="parse-new.fail.rs" />
+
+`this` becomes `self`, which a method lists as its first parameter. A braced struct is not a function, so `Point(1, 2)` is E0423 and the help gives the struct literal:
+
+<Snippet file="objects.fail.rs" />
+
+</ForLang>
+
+## Indexing text
+
+`s[0]` does not compile for a string, and the note names the way out: `s.chars().next()` is an `Option<char>`, `s.as_bytes()[0]` a byte:
+
+<Snippet file="str-index.fail.rs" />
+
+## No mutable globals
+
+A `static` is a global with one fixed place in memory. A plain one cannot be assigned. `static mut` can, but every read or write needs an [`unsafe` block](/learn/unsafe/#what-unsafe-unlocks) (a block where you promise the compiler you checked what it cannot):
+
+<Snippet file="global.fail.rs" />
+
+<Snippet file="global-mut.fail.rs" />
+
+Inside `unsafe` it compiles, but edition 2024 denies even printing the value:
+
+<Snippet file="static-mut-print.fail.rs" />
+
+For a counter that several threads may change, use an atomic: a number whose changes happen as one step. For larger values use a `Mutex` ([Shared state](/learn/shared-state/)). Every atomic method takes an `Ordering`, which says how much other memory the operation makes visible to other threads. `Ordering::Relaxed` keeps the counter itself exact and orders nothing else, which is all a plain counter needs; the [`Ordering`](https://doc.rust-lang.org/std/sync/atomic/enum.Ordering.html) docs explain the stronger ones.
+
+<Snippet file="global.rs" />
+
+<p class="lr-layer">Going deeper</p>
+
+## Where this costs you
+
+- Numeric code that mixes widths, such as sizes (`usize`) and counters (`i32`), has more `as` and `from` calls.
+- Without inheritance, shared behaviour comes from a trait, or a type holds the other as a field.
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Each exercise is a small program with checks in `main`. Open it in the Playground, replace the `todo!()`, and run it until it prints `all checks passed`. Each is labelled with the readers it suits; the first two suit everybody, and the second asks you to read.
+
+<Exercise name="average" title="A mean with no division by zero (everyone)">
+Divide an `i64` by a `u32` after converting both yourself, and return `None` when there are no readings, so no `NaN` appears.
+</Exercise>
+
+<Exercise name="read-habits" title="Read this: what does it give? (everyone)">
+Reading, not writing: say what a loop with a `break` inside a `match`, `-7 / 2`, and a `?` give, for `None`, an empty string and a real one. The checks run the real code and name the item you misread, not the right answer.
+</Exercise>
+
+<ForLang only="go python">
+
+<Exercise name="classify" title="A switch without a subject (Go, Python)">
+Turn a chain of tests (`switch { case n < 0: ... }`, or `if`/`elif`) into one `match` with guards. The boundaries 0 and 10 are the checks.
+</Exercise>
+
+</ForLang>
+
+<ForLang only="java csharp typescript c cpp">
+
+<Exercise name="fall-through" title="A switch that falls through (Java, C#, TypeScript, C, C++)">
+Translate a `switch` whose cases fall into each other into a `match`. Each arm must give its own total. Levels 0 and 4 test the arm that matches nothing.
+</Exercise>
+
+</ForLang>
+
+<ForLang only="python typescript kotlin csharp cpp">
+
+<Exercise name="greeting" title="A default argument (Python, TypeScript, Kotlin, C#, C++)">
+Write `greet(name, greeting)` where the greeting is an `Option`. Only `None` means "use Hello": an empty greeting is still a greeting.
+</Exercise>
+
+<ForLang only="python">
+
+In Python, `greeting or "Hello"` would replace the empty greeting too.
+
+</ForLang>
+
+<ForLang only="typescript">
+
+In TypeScript, `greeting || "Hello"` would replace the empty greeting too.
+
+</ForLang>
+
+</ForLang>
+
+<ForLang only="typescript kotlin csharp">
+
+<Exercise name="chain" title="A `?.` chain (TypeScript, Kotlin, C#)">
+Find the length of a user's city, where the user, the address and the city can each be missing, in a function that returns an `Option`. The `?` of this page does the work of `?.`.
+</Exercise>
+
+</ForLang>
+
+<ForLang only="python">
+
+<Exercise name="floor-div" title="Floor division (Python)">
+Python's `//` rounds toward minus infinity; Rust's `/` truncates toward zero. Write `floor_div`. The negative cases are the checks.
+</Exercise>
+
+</ForLang>
+
+<ForLang only="cpp csharp kotlin python">
+
+<Exercise name="operator-add" title="An operator (C++, C#, Kotlin, Python)">
+Implement `+` for a small point type with a trait, so that `a + b` works and `a` and `b` can still be used afterwards.
+</Exercise>
+
+</ForLang>
+
+## Read more
+
+- [The Rust Reference: Operator expressions](https://doc.rust-lang.org/reference/expressions/operator-expr.html) (the table for `!` and `-`), [Loop expressions](https://doc.rust-lang.org/reference/expressions/loop-expr.html) (labels), [Match expressions](https://doc.rust-lang.org/reference/expressions/match-expr.html), [Static items](https://doc.rust-lang.org/reference/items/static-items.html) and [Pointer types](https://doc.rust-lang.org/reference/types/pointer.html).
+- [The Rust Book, chapter 3.5: Control Flow](https://doc.rust-lang.org/book/ch03-05-control-flow.html), [6.1: Defining an Enum](https://doc.rust-lang.org/book/ch06-01-defining-an-enum.html) (`Option`), [9: Error Handling](https://doc.rust-lang.org/book/ch09-00-error-handling.html), [10.2: Traits](https://doc.rust-lang.org/book/ch10-02-traits.html) and [18.1: Characteristics of Object-Oriented Languages](https://doc.rust-lang.org/book/ch18-01-what-is-oo.html), for what replaces inheritance.
+- [`catch_unwind`](https://doc.rust-lang.org/std/panic/fn.catch_unwind.html), [`ptr::null`](https://doc.rust-lang.org/std/ptr/fn.null.html), [`Default`](https://doc.rust-lang.org/std/default/trait.Default.html), [`atomic`](https://doc.rust-lang.org/std/sync/atomic/index.html), [`Ordering`](https://doc.rust-lang.org/std/sync/atomic/enum.Ordering.html) and [`Add`](https://doc.rust-lang.org/std/ops/trait.Add.html) in the standard library docs.
+- [Rust by Example: Nesting and labels](https://doc.rust-lang.org/rust-by-example/flow_control/loop/nested.html), [match](https://doc.rust-lang.org/rust-by-example/flow_control/match.html) and [Casting](https://doc.rust-lang.org/rust-by-example/types/cast.html).

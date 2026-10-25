@@ -1,0 +1,80 @@
+# Project: a concurrent file indexer
+name: indexer
+sessions:
+  # Step 1: walk a directory and count each file, one after the other.
+  step1-test:
+    dir: rust
+    overlay:
+      src/lib.rs: stage1/src/lib.rs
+      src/walk.rs: stage1/src/walk.rs
+      src/main.rs: stage1/src/main.rs
+    steps:
+      - cmd: "set -o pipefail; cargo test --lib -- --test-threads=1 2>&1 | grep -E '^(running|test )' | sed -E 's/finished in [0-9.]+s/finished in X.XXs/'"
+        show: "$ cargo test --lib -- --test-threads=1    # timings replaced by X.XXs"
+  step1-run:
+    dir: rust
+    overlay:
+      src/lib.rs: stage1/src/lib.rs
+      src/walk.rs: stage1/src/walk.rs
+      src/main.rs: stage1/src/main.rs
+    steps:
+      - cmd: cargo run -q -- sample
+      - cmd: printf '\377\376 not text' > sample/blob.bin && cargo run -q -- sample
+        show: "$ printf '\\377\\376 not text' > sample/blob.bin    # a file that is not UTF-8\n$ cargo run -q -- sample"
+        expect: fail
+      - cmd: cargo run -q -- no-such-dir
+        expect: fail
+  # Step 2: a semaphore bounds how many files are in flight.
+  step2-test:
+    dir: rust
+    overlay:
+      src/walk.rs: stage1/src/walk.rs
+      src/pipeline.rs: stage2/src/pipeline.rs
+      src/main.rs: stage2/src/main.rs
+    steps:
+      - cmd: "set -o pipefail; cargo test --lib -- --test-threads=1 2>&1 | grep -E '^(running|test )' | sed -E 's/finished in [0-9.]+s/finished in X.XXs/'"
+        show: "$ cargo test --lib -- --test-threads=1    # timings replaced by X.XXs"
+  # Step 3: a bounded channel between the walker and the workers.
+  step3-test:
+    dir: rust
+    overlay:
+      src/walk.rs: stage3/src/walk.rs
+      src/pipeline.rs: stage3/src/pipeline.rs
+      src/main.rs: stage3/src/main.rs
+    steps:
+      - cmd: "set -o pipefail; cargo test --lib -- --test-threads=1 2>&1 | grep -E '^(running|test )' | sed -E 's/finished in [0-9.]+s/finished in X.XXs/'"
+        show: "$ cargo test --lib -- --test-threads=1    # timings replaced by X.XXs"
+  # Step 4 is the final crate in rust/.
+  test:
+    dir: rust
+    steps:
+      - cmd: "set -o pipefail; cargo test --lib -- --test-threads=1 2>&1 | grep -E '^(running|test )' | sed -E 's/finished in [0-9.]+s/finished in X.XXs/'"
+        show: "$ cargo test --lib -- --test-threads=1    # timings replaced by X.XXs"
+  # The job count changes how the work is scheduled, not the answer.
+  jobs:
+    dir: rust
+    steps:
+      - cmd: cargo build -q
+      - cmd: target/debug/indexer sample 4
+      - cmd: target/debug/indexer sample 1 > one.txt && target/debug/indexer sample 16 > sixteen.txt && diff one.txt sixteen.txt && echo "identical output with 1 job and with 16"
+        show: "$ indexer sample 1 > one.txt; indexer sample 16 > sixteen.txt; diff one.txt sixteen.txt"
+      - cmd: target/debug/indexer sample 0
+        expect: fail
+    local_target: true
+  # A worker that holds an Rc across an await: the compiler refuses it.
+  not-send:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-not-send/src/main.rs
+    steps:
+      - cmd: cargo build
+        expect: fail
+  # Try it yourself: make the channel bigger than the test allows.
+  try-capacity:
+    dir: rust
+    steps:
+      - cmd: "sed -i 's/let capacity = 2;/let capacity = 10;/; s/assert!(worst.load(SeqCst) <= capacity/assert!(worst.load(SeqCst) <= 2/' src/pipeline.rs"
+        show: "$ sed -i 's/let capacity = 2;/let capacity = 10;/; s/assert!(worst.load(SeqCst) <= capacity/assert!(worst.load(SeqCst) <= 2/' src/pipeline.rs"
+      - cmd: "set -o pipefail; cargo test the_producer 2>&1 | grep -E '^test pipeline|got [0-9]+ ahead'"
+        show: "$ cargo test the_producer 2>&1 | grep -E '^test pipeline|got [0-9]+ ahead'"
+        expect: fail

@@ -1,0 +1,380 @@
+<p class="lr-layer">The toolkit</p>
+
+Rust has no `null`, `nil` or `undefined`. A value that might be missing gets its own type, `Option<T>`, and the compiler makes you handle the missing case before you can use the value. Outputs on this page come from Linux on 64-bit ARM with Rust 1.99.1; where a fact depends on the platform, the text says so.
+
+## What `Option` is
+
+`Option<T>` is an **enum**, a type that is exactly one of a fixed list of named forms ([Enums](/learn/enums/) covers them). It has two:
+
+- `Some(value)`: there is a value, and it is inside.
+- `None`: there is no value.
+
+`Option` is not special syntax. It is an ordinary enum from the standard library, and `Some` and `None` are in scope without an import. Only the `?` operator, below, gives it a shorthand of its own. The `T` stands for the type inside: `Option<u32>`, `Option<String>`, `Option<User>`.
+
+**Why no null?** Where any reference can be null, the type `User` means "a user, or maybe nothing", and nothing in the type says which. Every use is a place to forget the check. Tony Hoare, who is credited with inventing null references, later called it his "billion-dollar mistake" ([The Rust Book](https://doc.rust-lang.org/book/ch06-01-defining-an-enum.html) quotes him). Kotlin, TypeScript and C# add a compile-time check on top of a nullable type and get much of the benefit; [how they differ](#how-other-languages-handle-missing-values) is below. Rust moves the idea into the type itself. A `User` is a user. One that might be missing is an `Option<User>`, a different type.
+
+## Getting the value out
+
+The first tool is `match`. The compiler checks that you wrote an arm for both `Some` and `None`. This program looks up three users. Each `User` holds an `Option` for its email, and a pattern can reach inside both. (`&'static str` is the type of a string literal such as `"ana"`; [Strings](/learn/strings/) covers text.)
+
+<Snippet file="matching.rs" />
+
+Leave out `None` and the program does not compile:
+
+<Snippet file="missing-none.fail.rs" />
+
+E0004, a non-exhaustive `match`. The message names the missing case and the `help:` shows the arm to add. The "forgot the null check" bug cannot get into a build by accident.
+
+Two shorter forms cover most code:
+
+- `if let Some(x) = opt { … }` runs the block only for `Some`. An `else` is optional.
+- `let Some(x) = opt else { … };` unpacks the value, or runs the `else` block, which must leave (`return`, `break`, `continue` or a panic). The code after it keeps its normal indentation.
+
+<Snippet file="unpack.rs" />
+
+Use `if let` when `None` means "do nothing", and `let else` when it means "stop here".
+
+`while let` repeats while a pattern matches. `pop` removes the last item of a `Vec` (a growable list, covered in [Vectors](/learn/vectors/)) and returns `Some(item)`, or `None` when it is empty:
+
+<Snippet file="while-let.rs" />
+
+## You can't use an `Option` as the value
+
+A `u32` and an `Option<u32>` are different types, so the compiler stops you mixing them:
+
+<Snippet file="option-as-int.fail.rs" />
+
+E0369: `Option<u32>` has no `+`. The same mistake in a typed `let` or a function argument is E0308, mismatched types:
+
+<Snippet file="option-as-arg.fail.rs" />
+
+The `help:` suggests `.expect("REASON")`, which compiles but turns `None` into a crash. Look at the methods below first.
+
+## The four you will use most
+
+`map`, `and_then`, `unwrap_or` and `?` do most of the work. Everything else is [further down](#the-rest-when-you-need-them) to look up when you meet it.
+
+A **closure** is a small function written inline: `|n| n * 2` takes `n` and gives `n * 2` (`n => n * 2` in TypeScript or C#, `lambda n: n * 2` in Python, `{ n -> n * 2 }` in Kotlin, `n -> n * 2` in Java). `|| 5` takes nothing. [Closures](/learn/closures/) come later.
+
+### `map` and `and_then`
+
+`map` changes the value inside a `Some` and leaves `None` alone. `and_then` is for a function that itself returns an `Option`: `map` would leave an `Option` inside an `Option`, and `and_then` flattens that into one.
+
+<Snippet file="map-and-then.rs" />
+
+Read the last loop top to bottom: find the user, take the email, split it at `@`, keep the domain. Any step can give `None`, and then the rest are skipped.
+
+### `unwrap_or` and friends
+
+These end the `Option` and give you the plain value, with a replacement for `None`:
+
+- `unwrap_or(x)` takes a ready-made value.
+- `unwrap_or_else(|| …)` takes a function and calls it only when needed.
+- `unwrap_or_default()` uses the type's own default: `0`, an empty string, an empty list.
+
+<Snippet file="defaults.rs" />
+
+The first call shows why `_else` exists: `unwrap_or(slow_default(…))` runs `slow_default` before `unwrap_or` is called, even though the value was `Some`. Kotlin's `?:` and C#'s `??` are lazy like `unwrap_or_else`, not like `unwrap_or`.
+
+### `?`
+
+Inside a function that returns an `Option`, a `?` after an `Option` means: if it is `Some`, unwrap it; if it is `None`, return `None` from the whole function now. A chain of `and_then` calls becomes plain steps:
+
+<Snippet file="question-mark.rs" />
+
+`?` works only where the function's own return type can carry the `None`:
+
+<Snippet file="question-mark-main.fail.rs" />
+
+E0277. `main` returns `()`, so there is nowhere to send a `None`. On a `Result`, `?` does the same for errors ([next lesson](/learn/errors/)).
+
+## Your language, in Rust
+
+Pick your language in "Coming from" at the top of the page to see how the code you know maps to Rust. The Rust cells that need care (moves, laziness, `get`, `ok`) are run by `check-rows.rs`.
+
+<ForLang only="go" title="What you write today">
+
+| In Go | In Rust |
+|---|---|
+| `if u != nil { … u.Name }` | `if let Some(u) = &user { … u.name }`. The `&` keeps `user` usable: an `Option<User>` owns its user, where a Go pointer shares it. |
+| a `*User` returned from a lookup | `Option<User>`, or `Option<&User>` when it points at a user owned elsewhere |
+| `v, ok := m[k]; if ok { … }` | `if let Some(v) = m.get(&k) { … }` ([maps](/learn/maps/)) |
+| `v := m[k]` (0 when missing) | `m.get(&k).copied().unwrap_or_default()`. Longer than Go, because you write down the fallback. |
+| `sql.NullString{String, Valid}`, a `*string` field | `Option<String>` |
+| `return nil` for "not found" | `return None` |
+| `if err != nil { return nil, err }` | `?`: the same early return, for a missing value on an `Option` and ([next lesson](/learn/errors/)) for an error on a `Result` |
+
+</ForLang>
+
+<ForLang only="kotlin csharp" title="What you write today">
+
+| Kotlin | C# | In Rust |
+|---|---|---|
+| `u?.name` | `u?.Name` | `u.as_ref().map(\|u\| u.name.as_str())`. Plain `u.map(\|u\| u.name)` moves `name` out and uses `u` up; `?.` never does. Use `and_then` when `name` is itself an `Option`. |
+| `u?.name ?: "anon"` | `u?.Name ?? "anon"` | `u.as_ref().map(\|u\| u.name.as_str()).unwrap_or("anon")`. Both operators are lazy, so for a call on the right use `unwrap_or_else(\|\| …)`. |
+| `x ?: return null` | `if (x is null) return null;` | `let x = x?;`, or `let Some(x) = x else { return … };` |
+| `x ?: throw E()`, `requireNotNull(x) { … }` | `x ?? throw new E()` | `x.expect("why")` (a panic), or `x.ok_or(e)?` in a function that returns a `Result` |
+| `x!!` | `x.Value` on an `int?` | `x.unwrap()`. C#'s `x!` has no run-time effect, so it has no Rust equivalent. |
+| `if (x != null) { x.f() }` | `if (x is { } v) { v.F(); }` | `if let Some(x) = x { x.f() }`, which binds a new name where Kotlin changes the type of the old one |
+| `s.toIntOrNull()` | `int.TryParse(s, out var n)` | `s.parse::<i32>().ok()` |
+| `u?.let { f(it) }` | | `u.map(f)` |
+| `Int?` | `int?` | `Option<i32>`. C#'s `.Value` and `GetValueOrDefault()` are `unwrap()` and `unwrap_or_default()`. |
+
+</ForLang>
+
+<ForLang only="java" title="What you write today">
+
+| In Java | In Rust |
+|---|---|
+| `opt.map(f).orElse(x)` | `opt.map(f).unwrap_or(x)`. Both are eager. |
+| `opt.orElseGet(() -> x)` | `opt.unwrap_or_else(\|\| x)` |
+| `opt.flatMap(f)` | `opt.and_then(f)` |
+| `opt.filter(p)` | `opt.filter(p)` |
+| `opt.or(() -> other)` | `opt.or_else(\|\| other)` |
+| `opt.isPresent()`, `opt.isEmpty()` | `opt.is_some()`, `opt.is_none()` |
+| `opt.orElseThrow()` | `opt.expect("why")`, or `opt.ok_or(err)?` in a function returning a `Result` |
+
+</ForLang>
+
+<ForLang only="python typescript" title="What you write today">
+
+| In Python or TypeScript | In Rust |
+|---|---|
+| `x if x is not None else d` (Python), `x ?? d` (TypeScript) | `x.unwrap_or(d)`, or `unwrap_or_else(\|\| d)` to run `d` only when needed |
+| `x or d` (Python), `x \|\| d` (TypeScript) | no equivalent. These replace every falsy value, `0` included. `unwrap_or(d)` replaces only `None`, and Rust has no truthiness: only a `bool` can go in an `if`. |
+| `f(x) if x is not None else None` (Python), `x?.y` (TypeScript) | `x.map(\|v\| v.y)`, or `and_then` when `y` is itself an `Option` |
+| `if x is None: return None` | `let x = x?;` in a function that returns an `Option` |
+| `d.get(k, default)` (Python), `m.get(k) ?? default` (TypeScript) | `m.get(&k).copied().unwrap_or(default)` |
+| `assert x is not None` (Python), `x!` (TypeScript) | `x.expect("why")` or `x.unwrap()`, which check when the program runs |
+| `if (u := find()) is not None:` (Python) | `if let Some(u) = find()`, which narrows the type like the walrus does |
+| `try: int(s)` `except ValueError: None` (Python) | `s.parse::<i32>().ok()` |
+| `Optional[int]`, `int \| None` (Python), `number \| undefined` (TypeScript) | `Option<i32>`. Rust has no default arguments, so a caller passes `None` explicitly. |
+
+</ForLang>
+
+<ForLang only="c cpp" title="What you write today">
+
+| In C or C++ | In Rust |
+|---|---|
+| `if (p != NULL) { … p->name … }` | `if let Some(p) = opt { … p.name … }` |
+| `return NULL;` for "not found" | `return None;` |
+| `if (auto u = f()) { u->name }` | `if let Some(u) = f() { u.name }`. In C++ `u` is still the optional; in Rust it is the value. |
+| `opt.has_value()`, `opt.value()`, `opt.value_or(x)` | `opt.is_some()`, `opt.unwrap()`, `opt.unwrap_or(x)`. `value()` throws; `unwrap()` panics. |
+| `*opt`, `opt->f()` (undefined if empty) | no equivalent in safe Rust: you `match`, `if let` or `unwrap` |
+| `opt.and_then(f)`, `opt.transform(f)`, `opt.or_else(f)` (C++23) | `and_then`, `map`, `or_else` |
+| `strchr(s, c)` returns `NULL` | `s.find(c)` returns an `Option<usize>` (a position, not a pointer) |
+
+</ForLang>
+
+## The rest, when you need them
+
+Every call here is checked by `check-methods.rs`, with `some` standing for `Some(4)` and `none` for `None::<i32>`. They all work because `Option<i32>` is `Copy`: a method that takes the `Option` by value copies it, so `some` is still usable afterwards. An `Option<String>` is not `Copy`, and the section on `as_ref` below is about that.
+
+| Method | Call | Result |
+|---|---|---|
+| `filter` | `some.filter(\|n\| n % 2 == 1)` | `None` |
+| `zip` | `some.zip(Some("hi"))` | `Some((4, "hi"))` |
+| `map_or` | `some.map_or(0, \|n\| n + 1)` | `5` |
+| `ok_or` | `none.ok_or("missing")` | `Err("missing")` |
+| `or` | `none.or(Some(9))` | `Some(9)` |
+| `is_some_and` | `some.is_some_and(\|n\| n > 3)` | `true` |
+| `flatten` | `Some(Some(3)).flatten()` | `Some(3)` |
+| `unwrap_or` | `Some(0).unwrap_or(5)` | `0` |
+
+`filter` keeps the value only if a test passes (the test receives a reference, so a number is written `*age`; the `*` is from [Borrowing](/learn/borrowing/)). `zip` pairs two options, and gives `None` if either is missing:
+
+<Snippet file="filter-zip.rs" />
+
+`or` falls back to a second `Option`. `ok_or` turns `None` into an `Err`, so the caller gets a reason; `Result` is the type for "a value, or an error" in the [next lesson](/learn/errors/). `or_else` and `ok_or_else` build the replacement only when needed:
+
+<Snippet file="convert.rs" />
+
+`is_some`, `is_none` and `is_some_and` return a `bool`. If you will use the value afterwards, `if let` is better: `if opt.is_some() { opt.unwrap() }` checks twice and brings the crash back. `is_some_and` takes the `Option` by value, like `map`, so for a `String` borrow first:
+
+<Snippet file="ask.rs" />
+
+### Looking without taking: `as_ref`, `as_mut`, `as_deref`, `copied`, `cloned`
+
+`map` takes the `Option` by value, so an `Option<String>` is moved into it and gone afterwards:
+
+<Snippet file="map-moves.fail.rs" />
+
+E0382, a use after a move. The `help:` names the fix: `as_ref()` turns `&Option<String>` into an `Option<&String>`, a view that borrows the text ([Borrowing](/learn/borrowing/)), so the original stays put.
+
+| Method | Turns | Use it to |
+|---|---|---|
+| `as_ref()` | `Option<T>` into `Option<&T>` | read inside without moving |
+| `as_mut()` | `Option<T>` into `Option<&mut T>` | change inside, in place ([Mutable borrows](/learn/mutable-borrows/)) |
+| `as_deref()` | `Option<String>` into `Option<&str>` | get the plain borrowed form |
+| `copied()` | `Option<&T>` into `Option<T>` | copy out a small value such as a number |
+| `cloned()` | `Option<&T>` into `Option<T>` | clone out a value that is not `Copy`, like a `String` |
+
+<Snippet file="borrow-inside.rs" />
+
+`get` is the checked way to read a position: it returns `None` past the end, as `get(7)` shows.
+
+### Taking a value out: `take` and `replace`
+
+[Ownership](/learn/ownership/#moving-out-of-things) covers why you cannot move a value out of a borrowed place, and why `Option::take` is the fix for an `Option` field behind `&mut self`. `take()` leaves `None` behind. `replace(v)` puts a new `Some(v)` in and returns the old one:
+
+<Snippet file="take-replace.rs" />
+
+## `unwrap` and `expect`
+
+`unwrap()` returns the value inside, and panics if there is none. `expect("message")` does the same with your message. A **panic** ends the program (or the thread it happens in) with an error and a line number.
+
+<Snippet file="unwrap-none.panic.rs" />
+
+That is the old null crash again, so do not use it just to make an error go away. It is fine when `None` would be a bug in your own program:
+
+| Fine | Not fine |
+|---|---|
+| Tests and examples, where a crash is the failure you want to see | Data from a user, a file or the network |
+| A value you have just proved is there, with `expect` saying why | "It's never missing in practice" |
+| Quick scripts and prototypes you will tidy later | Code other people run, such as a server or a library |
+
+<Snippet file="unwrap-fine.rs" />
+
+The message says why `None` is impossible, which is what the next reader needs when it happens. The std docs suggest wording like `expect("slice should not be empty")`.
+
+## `Option` or `Result`?
+
+Both say "this might not work". `Option` says only that there is nothing. `Result` says why. Pick by what the caller can do with the answer.
+
+| Use | When |
+|---|---|
+| `Option<T>` | Absence is normal and the reason is obvious: a lookup that found nothing, the first item of an empty list, an optional field |
+| `Result<T, E>` | Something was attempted and failed, and the caller may want to know how: parsing, opening a file, a network call |
+
+The same parse as each. `.ok()` turns a `Result` into an `Option` and drops the reason; `ok_or` goes the other way:
+
+<Snippet file="option-vs-result.rs" />
+
+The [next lesson](/learn/errors/) covers `Result`, and `?` on it.
+
+<p class="lr-layer">Going deeper</p>
+
+## `Option<&T>` takes no extra space
+
+[Enums](/learn/enums/#niches-why-option-is-often-free) explains how Rust lays this out. In short: a reference in safe Rust is never null, so the all-zero address is free to mean `None`, and `Option<&T>` is the same size as `&T`. The std docs [guarantee](https://doc.rust-lang.org/std/option/index.html#representation) that for sized `&T`, `&mut T`, `Box<T>`, function pointers and the `NonZero` numbers. An ordinary number has no spare pattern, so `Option<i32>` needs a tag, and a raw pointer may legitimately be null, so `Option<*const i32>` needs one too:
+
+<Snippet file="niche.rs" />
+
+## `Option` inside `Option`
+
+A `Some(None)` is a real value: "there was an answer, and the answer is nothing". A map (keys looked up to find values; [Maps](/learn/maps/) comes later) whose values are optional shows why it matters. One lookup tells "the key holds nothing" from "no such key":
+
+<Snippet file="nested.rs" />
+
+## How other languages handle missing values
+
+| Language | A value that might be missing | Enforced? |
+|---|---|---|
+| Rust | `Option<T>` | Yes: it is a different type from `T` |
+| Kotlin | `T?` | Yes, by the compiler, except for Java values (platform types) |
+| TypeScript | `T \| undefined` (or `null`) | Yes with `strictNullChecks` (part of `strict`) |
+| C# | `T?` | Warnings for reference types (CS8602), which you can turn into errors. `int?` is stricter. |
+| Java | `Optional<T>`, but any reference can be `null` | No |
+| Go | pointer, `nil`, or `(value, ok)` | Partly: the pair must be used or discarded with `_`, but `m[k]` alone and nil pointers are unchecked |
+| Python | `Optional[T]` or `T \| None` | Only if you run a checker such as mypy |
+| C | `NULL` | No |
+| C++ | `std::optional<T>`, or a pointer | Partly: `*opt` on an empty optional is undefined behaviour |
+
+<ForLang only="go">
+Go's `(value, ok)` is a good idiom, and the compiler makes you name `ok` or discard it with `_`. The trouble is the one-value form, `ages["bo"]`, which is legal and gives the zero value, so a missing key looks like a stored 0:
+
+<Snippet file="lookup.go" />
+
+`zed` holds 0 and `bo` is absent, and only `ok` tells them apart. A nil `*User` can be used until it crashes. The same merging happens with a `map[string]*int`, where "absent" and "present but nil" both read as `nil`. In Rust the "was it there?" answer is part of the value (`Some(None)` against `None`), so ignoring it takes a deliberate `unwrap`.
+</ForLang>
+
+<ForLang only="kotlin">
+Kotlin already has what this lesson is about: `T?` is checked at compile time, and `?.`, `?:` and `!!` map onto the methods above. Two differences remain. First, `T?` is "`T` or null", a mark on the type, so a single lookup in a map of nullable values gives null both for "key holds null" and for "no such key". You need a second call (`in`) to tell them apart, where Rust's `get` returned `Some(None)` against `None` above:
+
+<Snippet file="nullable-map.kt" />
+
+Second, a value from Java reaches Kotlin as a platform type (shown as `T!` in error messages), where the compiler does not report nullability errors ([the Kotlin docs](https://kotlinlang.org/docs/java-interop.html)). Kotlin inserts a run-time check where you assign one to a non-null type, and `!!` throws on null:
+
+<Snippet file="platform.kt" />
+
+Safe Rust code has nothing like a platform type: if code can produce a missing value, its type says so.
+</ForLang>
+
+<ForLang only="java">
+`Optional` is a library class from Java 8, and `null` remains the default for every reference, in every library you call. The Javadoc calls `Optional` "primarily intended for use as a method return type" and says a variable of that type "should never itself be `null`". The compiler does not enforce that:
+
+<Snippet file="optional-null.crash.java" />
+
+So Java has two kinds of missing, `null` and `Optional.empty()`, where Rust has one. The `Optional` methods are the ones in the Java table above, and a Rust `Option` cannot itself be missing, because there is no `null` for it to be.
+</ForLang>
+
+<ForLang only="csharp">
+With nullable reference types switched on, C# does for `string?` much of what Rust does for `Option<String>`. The check is a warning by default, so the program still builds (the gotcha above shows CS8602). You can turn nullable warnings into errors with `<WarningsAsErrors>nullable</WarningsAsErrors>` ([docs](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/compiler-options/errors-warnings)). Even then, the `!` operator silences a warning without checking anything, and the null turns up later, away from the `!` that hid it:
+
+<Snippet file="forgiving.crash.cs" />
+
+Its [docs](https://learn.microsoft.com/en-us/dotnet/csharp/nullable-references) say `!` "declares that an expression is not-null" and advise using it sparingly, and list other holes the analysis does not see, such as arrays of references and `default` structs. Rust's `unwrap` is the honest version: it checks on the spot. For value types C# is stricter, because `int?` is a real `Nullable<int>`, and using it where an `int` is required is an error:
+
+<Snippet file="nullable-int.fail.cs" />
+
+Operators are a gap, though. They are lifted, so `age + 1` still compiles when `age` is an `int?`, and gives null. Rust refuses the same line (E0369 above).
+
+<Snippet file="lifted.cs" />
+</ForLang>
+
+<ForLang only="typescript">
+With `strict` on, TypeScript refuses what Rust refuses. It reports the error at compile time, and the types are erased afterwards:
+
+<Snippet file="strict.fail.ts" />
+
+TypeScript has two "nothings", `null` and `undefined`, which are different values that `==` treats as equal. Rust has the one. The operator `??` replaces only those two. The older `||` replaces every falsy value, such as `0`, `""` and `NaN`. Rust's `unwrap_or` behaves like `??`:
+
+<Snippet file="nullish.ts" />
+</ForLang>
+
+<ForLang only="python">
+`Optional[T]` is an annotation. Python ignores it when the program runs, and a checker like [mypy](https://mypy.readthedocs.io/en/stable/kinds_of_types.html) uses it to require a `None` check before use, if you run one. Python can tell a stored `None` from a missing key with `in` or a sentinel object, but `dict.get(k)` alone conflates them:
+
+<Snippet file="none.py" />
+
+The `AttributeError` is the error `Option` removes. There is a second trap: `x or default` replaces every falsy value, so `0 or 5` is 5, and mypy accepts it. Rust's `unwrap_or` replaces only `None`, and `Some(0).unwrap_or(5)` is 0 (checked in `check-methods.rs`).
+</ForLang>
+
+<ForLang only="c cpp">
+C has no standard way to say "no result", so each function picks its own sentinel:
+
+<Snippet file="sentinels.c" />
+
+`atoi` returns 0 for both `"0"` and `"zero"`, `strchr` returns `NULL`, and `strcmp` returns 0 for equal. A Rust function returns an `Option` or a `Result` and the type tells you which.
+
+`std::optional` in C++ is the closest match. `value()` throws and `value_or(x)` falls back. But `*opt` and `opt->` do not check, and are [undefined behaviour](https://en.cppreference.com/w/cpp/utility/optional/operator*) on an empty optional. Before C++26 an `optional` cannot hold a reference at all ([cppreference](https://en.cppreference.com/w/cpp/utility/optional)), so a pointer stood in for that, which is back to `NULL`. And there is no pointer trick like Rust's. With GCC's libstdc++ on this platform:
+
+<Snippet file="optional.cpp" />
+
+`optional<int*>` is twice a plain pointer because it stores a flag beside it. Rust's `Option<&T>` is the pointer.
+</ForLang>
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Open each exercise in the Playground, replace the `todo!()`, and run it until it prints `all checks passed`. Every one checks the `None` path.
+
+<Exercise name="lookup-chain" title="Chain a lookup">
+Given `owner(pet)` and `city(person)`, which both return an `Option`, write `pet_location`: "rex lives in Lisbon" when both lookups succeed, and "rex: unknown" when either fails. One chain of `and_then`, `map` and `unwrap_or_else` does it, with no `match`. A pet whose owner has no city is the case to watch.
+</Exercise>
+
+<Exercise name="parse-point" title="Parse a point with ?">
+Turn `"3,4"` into `Some((3, 4))`. Anything that is not two whole numbers around one comma gives `None`. Use `?` on `split_once(',')`, and on `.parse().ok()` for each side: `parse` returns a `Result`, `.ok()` turns it into an `Option` and drops the error (like `v, _ :=` in Go, or `try`/`except` returning `None` in Python), and Rust works out the number type from the return type. Empty input and a missing side are in the checks.
+</Exercise>
+
+<Exercise name="display-name" title="Nickname or real name">
+Return the nickname if there is one that is not empty, otherwise the real name. The nickname arrives as `&Option<String>`, so you cannot move it: `as_deref`, `filter` and `unwrap_or` do it in one chain. An empty nickname is the case to watch.
+</Exercise>
+
+## Read more
+
+- [`Option`](https://doc.rust-lang.org/std/option/enum.Option.html) in the standard library docs: every method, each with a runnable example. The [`std::option` module page](https://doc.rust-lang.org/std/option/index.html) has the "The question mark operator" and "Representation" sections.
+- [The Rust Book, chapter 6.1: Defining an Enum](https://doc.rust-lang.org/book/ch06-01-defining-an-enum.html), where `Option` and the billion-dollar mistake come in, and [6.3: Concise Control Flow with `if let` and `let...else`](https://doc.rust-lang.org/book/ch06-03-if-let.html).
+- [Rust by Example: Option](https://doc.rust-lang.org/rust-by-example/std/option.html) and [Combinators: `map`](https://doc.rust-lang.org/rust-by-example/error/option_unwrap/map.html).
+- [Reading compiler errors](/errors/): E0004, E0369, E0308, E0382, E0277 and E0609 from this page, with what each means.

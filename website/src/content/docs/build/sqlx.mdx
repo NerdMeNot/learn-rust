@@ -1,0 +1,97 @@
+---
+title: "Databases with sqlx"
+description: "sqlx lets you write plain SQL from async Rust, with a connection pool and results mapped onto your structs. It supports PostgreSQL, MySQL and SQLite."
+---
+
+import { Files, GuideGotcha, Remember, Session, Tree } from '../../../components/guide'
+
+sqlx lets you write plain SQL from async Rust, with a connection pool and results mapped onto your structs. Its README lists PostgreSQL, MySQL, MariaDB and SQLite, and says it is not an ORM. This page uses SQLite in memory, so the main program needs no database server and leaves nothing to clean up. It does need a Rust toolchain; the last section also needs the `sqlite3` command-line tool and `cargo install sqlx-cli` (which compiles sqlx-cli too; I did not time it), and the Go, Python and TypeScript programs need those runtimes. The program is `async`, run by Tokio: [Async Basics](/learn/async-basics/#the-standard-library-has-no-runtime) explains why a runtime is needed, and the [Tokio guide](/build/tokio/) shows one. The `?` on each call is the lesson's [pass the error up](/learn/errors/#-pass-the-error-up); [Errors in real apps](/build/app-errors/) covers combining `sqlx::Error` with your own error types.
+
+<Remember>Write SQL, `bind` the values, and `query_as` the rows straight into a struct.</Remember>
+
+<Tree guide="sqlx" dir="rust" name="notes-db" title="Project layout" notes={{"src/main.rs":"the program on this page","Cargo.lock":"created by Cargo","Cargo.toml":"dependencies go here"}} />
+
+<Files guide="sqlx" dir="rust" files={["Cargo.toml"]} />
+
+The first build compiles sqlx and everything under it, including a copy of SQLite: the `sqlite` feature bundles it and links it into your program (the README says "bundled and statically-linked"), so expect it to take a while.
+
+<Files guide="sqlx" dir="rust" files={["src/main.rs"]} run="run" />
+
+- **Pools.** `SqlitePoolOptions::new().connect(...)` gives you a pool. The docs say `Pool` is `Send`, `Sync` and `Clone`, that cloning is cheap because it is a reference-counted handle, and that you create it once and share it. Go's `*sql.DB` is the same idea: its docs call it "a pool of zero or more underlying connections", safe for concurrent use. For PostgreSQL, turn on the `postgres` feature and use `PgPoolOptions`.
+- **Bind your values.** `.bind(text)` sends the value separately from the SQL text. The docs say a bound value "is entirely separate from the query and does not affect its syntax". The placeholder depends on the database: the docs use `$1`, `$2` for PostgreSQL and SQLite, and `?` for MySQL and MariaDB (SQLite also accepts `?`).
+- **`#[derive(FromRow)]`** fills each field from the column with the same name (the docs: calls to `Row::try_get` using each field's name), like an ORM's row mapping, without the ORM. `#[sqlx(rename = "...")]` handles a column with a different name.
+- **Migrations.** The `sqlx-cli` tool keeps SQL files in a `migrations/` folder: `sqlx migrate add <name>` creates one and `sqlx migrate run` runs the pending ones (its README). The program can also embed and run the folder itself, as the last task below does.
+
+## The same job in your language
+
+I wrote the same notes program for the SQLite that the image has for Go, Python and TypeScript, and ran each one. The other cells only name common choices; nothing was run for them.
+
+| Language | Common choices (named) | Run for this page |
+| --- | --- | --- |
+| Go | `database/sql` with a driver (pgx for PostgreSQL), or sqlc | `database/sql` with the pure-Go driver [`modernc.org/sqlite`](https://pkg.go.dev/modernc.org/sqlite) (its page says "CGo-free") |
+| Python | SQLAlchemy, asyncpg, psycopg | `sqlite3`, from the standard library |
+| TypeScript | Prisma, Drizzle, Kysely | `node:sqlite`, built into Node 24 (its docs call it a release candidate) |
+| Java | JDBC (part of the JDK), jOOQ, Hibernate | not run: no SQLite driver in the image |
+| Kotlin | Exposed, jOOQ | not run: no SQLite driver in the image |
+| C# | Entity Framework Core, Dapper | not run: no SQLite package in the image |
+| C | libpq, the SQLite C API | not run: the image has the SQLite library but no header |
+| C++ | libpqxx, SOCI | not run: the image has the SQLite library but no header |
+
+All three programs print the same three lines as the Rust one (they are the tabs in the [gotcha](#gotcha) below). They differ in how a row reaches your code: Go's `Scan` fills variables in column order, Python's `sqlite3.Row` is read by column name, and Node returns objects keyed by column name that the program casts to its `Note` type (TypeScript does not check that cast). Rust's `FromRow` names the fields once and sqlx fills them. Each program also passes its values as separate arguments (`?` in all three).
+
+The next runs misspell the column `text` as `txt`. In all three the program ran up to the query and failed there. Python, `tsc` and `go run` had no complaint before that. (The TypeScript output is Node's stack trace for the version in the image; yours will differ.)
+
+<Session guide="sqlx" run="typos" />
+
+(The first `go run` in a fresh container also prints `go: downloading ...` lines for the driver. The page filters them out.) Rust can move that failure to build time, and the gotcha below is about the price of that.
+
+## Try it yourself
+
+Each task replaces `src/main.rs` with the program shown. I ran all of them in the image.
+
+1. **Do pooled connections share the in-memory database?** The pool below holds three connections at once and asks each one whether the `notes` table exists. With sqlx's `sqlite::memory:` all three said yes. (If each connection had its own empty database, at least one of the three would have said no.) The reason is in the source of `sqlx-sqlite` 0.9.0: it rewrites `sqlite::memory:` into a named, shared-cache in-memory database, so every connection in the pool opens the same one. The Go program in the table calls `SetMaxOpenConns(1)` and its comment says that is so every statement sees the same in-memory database; I did not run it without that line, so I only report the comment. The `max_connections(1)` in tasks 2 and 4 is not needed for that reason, because of the sharing above; it just keeps those snippets to one connection.
+
+   <Files guide="sqlx" dir="snippet-pool" files={["src/main.rs"]} run="pool" />
+
+2. **Paste a value into the SQL instead of binding it.** First a version people often write, with `format!` and a `String`. In sqlx 0.9 it does not compile, because `query` takes only a `&'static str` unless you wrap the text in `AssertSqlSafe` to say you checked it:
+
+   <Files guide="sqlx" dir="snippet-format" files={["src/main.rs"]} />
+   <Session guide="sqlx" run="format" />
+
+   With the wrapper it compiles. The program below then receives the input `x'); DELETE FROM notes; --` once pasted into the SQL and once bound. In this run the pasted one ran the `DELETE` (`0 notes left`) and the bound one was stored as plain text. The `query` docs say the SQLite driver does not yet follow the one-statement rule of prepared statements, but that this behaviour is deprecated.
+
+   <Files guide="sqlx" dir="snippet-inject" files={["src/main.rs"]} run="inject" />
+
+3. **Name a column differently from the field.** `FromRow` looks columns up by the field's name, so renaming the column in the query breaks it. This is a run-time error (`ColumnNotFound`), not a compile error, and `main` returns it, which is what the `Error:` line is. Fix it by writing `SELECT id, text FROM notes` again, or by adding `#[sqlx(rename = "body")]` to the field:
+
+   <Files guide="sqlx" dir="snippet-mismatch" files={["src/main.rs"]} run="mismatch" />
+
+4. **Run a migration from the program.** Put the `CREATE TABLE` in `migrations/0001_create_notes.sql` and let `sqlx::migrate!()` embed and run the folder. Running it twice applies the migration once. The program reads the `_sqlx_migrations` table, where sqlx records what it applied:
+
+   <Files guide="sqlx" dir="snippet-migrate" files={["migrations/0001_create_notes.sql", "src/main.rs"]} run="migrate" />
+
+<GuideGotcha guide="sqlx" />
+
+## Making the checked macro build
+
+The macros need to ask a database about your query at build time. The `query!` docs give two ways to provide that (`query_as!`, which the gotcha uses, works the same way), and I ran both.
+
+**1. Point `DATABASE_URL` at a database that has the tables.** The session makes a SQLite file, `build.db`, with the `sqlite3` command-line tool and builds with `DATABASE_URL=sqlite:build.db` (the docs say a `.env` file works too). That file exists only for the compiler. The program still creates its own in-memory database when it runs. Then `sed` misspells `text` as `txt` and the build fails with the database's own message:
+
+<Session guide="sqlx" run="macro-db" />
+
+**2. Save the answers, and build without a database.** `cargo sqlx prepare` comes from `sqlx-cli`. The session installs it with only the `sqlite` feature, so it builds one driver instead of the default three (its README lists the plain `cargo install sqlx-cli` and the `--features` forms), and with `--quiet` to keep the output short. It connects to `build.db`, writes a JSON file into `.sqlx` (here one, for the page's one query), and then the session deletes `build.db` and builds. The build succeeded with no database in sight, from `.sqlx` alone. The docs say to commit `.sqlx` and to run `cargo sqlx prepare --check` in CI, to catch a file that is out of date. If `DATABASE_URL` is set, it wins over `.sqlx`; the sqlx-cli README says `SQLX_OFFLINE=true` forces offline mode.
+
+<Session guide="sqlx" run="prepare" />
+
+## Read more
+
+- [sqlx on docs.rs (0.9.0)](https://docs.rs/sqlx/0.9.0/sqlx/) and the [project README](https://github.com/launchbadge/sqlx/blob/v0.9.0/README.md), for the version this page pins.
+- [`sqlx::query`](https://docs.rs/sqlx/0.9.0/sqlx/fn.query.html): placeholders, `bind` and the SQL injection section. [`AssertSqlSafe`](https://docs.rs/sqlx/0.9.0/sqlx/struct.AssertSqlSafe.html) is the wrapper from task 2.
+- [`query!`](https://docs.rs/sqlx/0.9.0/sqlx/macro.query.html), including its Offline Mode section, and [`migrate!`](https://docs.rs/sqlx/0.9.0/sqlx/macro.migrate.html).
+- [`Pool`](https://docs.rs/sqlx/0.9.0/sqlx/struct.Pool.html), [`FromRow`](https://docs.rs/sqlx/0.9.0/sqlx/trait.FromRow.html) and [`SqliteConnectOptions`](https://docs.rs/sqlx/0.9.0/sqlx/sqlite/struct.SqliteConnectOptions.html) (the URL forms, `create_if_missing`).
+- [sqlx-cli README](https://github.com/launchbadge/sqlx/blob/v0.9.0/sqlx-cli/README.md): `migrate add`, `migrate run`, `prepare`.
+- For the other languages: Go's [`database/sql`](https://pkg.go.dev/database/sql), Python's [`sqlite3`](https://docs.python.org/3/library/sqlite3.html) and Node's [`node:sqlite`](https://nodejs.org/docs/latest-v24.x/api/sqlite.html).
+- In this course: [Async Basics](/learn/async-basics/), [Async with Tokio](/build/tokio/), [Errors](/learn/errors/) and [Errors in real apps](/build/app-errors/). To put a database behind a web service, see [An HTTP service with axum](/build/axum/).
+
+<p class="lr-fine">The versions this page is about are sqlx 0.9.0, tokio 1.54.1 and, for Go, modernc.org/sqlite v1.61.0, as pinned in <code>Cargo.lock</code> and <code>go.sum</code>. Other versions can print different messages.</p>

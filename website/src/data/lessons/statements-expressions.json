@@ -1,0 +1,543 @@
+{
+ "id": "statements-expressions",
+ "title": "Statements and expressions",
+ "part": "syntax",
+ "intro": "In Rust the pieces that steer a program, `if`, `match`, loops and `{ }` blocks, are expressions: they produce a value. The last line of a block, with no `;`, is the block's value, and a function's last line is what it returns.",
+ "coming_from": {
+  "go": "`if` and `switch` are statements in Go, so you declare `label := \"odd\"` first and assign inside a branch. In Rust `if` and `match` give a value, and a function ends with its result, written without `return` (`return x;` still works). `a = b = c` and `if x = 1` fail in both languages, for different reasons: Go's assignment is a statement, Rust's is an expression worth `()`.",
+  "kotlin": "You already have `if`, `when` and a lambda's last expression as values, and Rust works the same way. The new parts: a Rust function body in braces also returns its last expression (Kotlin needs `return`, or the `= expr` form, which Rust does not have), a bare `{ }` is a block, not a lambda, and assignment is an expression worth `()` where in Kotlin it is a statement. `a = b = c` fails in both.",
+  "python": "Python ends a statement at the newline; Rust ends it at `;`. A bare `x + 1` line in Python is worked out and thrown away, and so is `x + 1;` in Rust. A line with no `;` at the end of a block is the block's value. A Rust function declares its result type, so a body that ends `x + 1;` instead of `x + 1` is a compile error, not a quiet `None`.",
+  "typescript": "`c ? a : b` becomes `if c { a } else { b }`, and a `switch` statement becomes a `match` that gives a value. An arrow function with braces needs `return`; a Rust function or closure in braces returns its last expression, like `x => x + 1` does without braces. `a = b = c` and `if (x = 1)` compile in TypeScript; in Rust they are type errors.",
+  "java": "Rust has no `?:`; `if` is an expression, so it is not needed. `match` is like the Java 14+ `switch` expression. A method returns its last expression with no `return`. Java lets assignment sit inside an expression (`a = b = c`, `if (flag = true)`); Rust does not.",
+  "csharp": "`?:` becomes `if c { a } else { b }`, and `n switch { ... }` becomes `match n { ... }`. Rust has no `=>` expression body: a function uses braces and returns its last expression. C# lets assignment sit inside an expression (`a = b = c`); Rust does not.",
+  "c": "Rust has no `?:` and no comma operator: `if` is an expression, and `{ f(); 2 }` is a block that gives 2. `if (x = 1)` compiles in C (gcc warns only with `-Wall`); in Rust the condition must be a `bool` and an assignment is worth `()`, so it is an error. A non-`void` C function that runs off its end is a problem only if the caller uses the result; in Rust it is a compile error.",
+  "cpp": "Rust has no `?:` and no comma operator: `if` is an expression, and `{ f(); 2 }` is a block that gives 2 (standard C++'s closest is an immediately called lambda). `if (x = 1)` compiles in C++ (gcc warns only with `-Wall`); in Rust it is an error. Running off the end of a function that returns a value is undefined behaviour in C++ even if the caller ignores the result; in Rust it is a compile error."
+ },
+ "notes": [
+  "The last expression in a block, with no `;`, is the block's value. It is called the tail expression. Put a `;` after it and the value is thrown away: the block is then worth `()`, Rust's \"nothing\" value.",
+  "`if`, `match`, `loop` and `{ }` can all sit on the right of `let` or be the last line of a function. Every branch must agree on a type (a branch that leaves, like `continue`, fits any type).",
+  "`return` is for leaving early. At the end of a function, write the value without `return` and without `;`.",
+  "Assignment (`x = 5`) is an expression, but it is worth `()`, so `a = b = c` does not chain and `if x = 1` is a type error. Conditions must be `bool` and need no parentheses."
+ ],
+ "gotcha": {
+  "title": "A semicolon on the last line",
+  "verdict": "rust-rule",
+  "looks_fine": "Most languages you know end a statement with `;` or a newline, and a function ends with `return x + 1`. A function whose last line is `x + 1;` looks finished: only the word `return`, which Rust does not need, seems to be missing.",
+  "rust_sees": "`x + 1;` is a statement: the sum is worked out and thrown away. The block then has no final expression, so its value is `()`, and the function promised an `i32`.",
+  "why": "One character changes what a line is. With the `;` it is a statement. Without it, it is the block's value. Rust cannot guess which you meant, so it points at the `;` and says to remove it. Look at the other languages' results: most refuse, Python quietly returns `None`, and C and C++ compile with warnings and give an undefined result.",
+  "langs": {
+   "go": {
+    "status": "refuses",
+    "says": "Go refuses twice: `x + 1` is \"not used\", and there is a \"missing return\". The fix is `return x + 1`. Go has no last-expression rule.",
+    "code": "package main\n\nimport \"fmt\"\n\nfunc addOne(x int) int {\n\tx + 1\n}\n\nfunc main() {\n\tfmt.Println(addOne(41))\n}\n",
+    "error": "# command-line-arguments\n./main.go:6:2: x + 1 (value of type int) is not used\n./main.go:7:1: missing return"
+   },
+   "kotlin": {
+    "status": "refuses",
+    "says": "Kotlin refuses with \"missing return statement\". A block body needs `return x + 1`; the other fix is the expression form `fun addOne(x: Int) = x + 1`.",
+    "code": "fun addOne(x: Int): Int {\n    x + 1\n}\n\nfun main() {\n    println(addOne(41))\n}\n",
+    "error": "Main.kt:3:1: error: missing return statement.\n}\n^"
+   },
+   "python": {
+    "status": "runs",
+    "says": "Python runs this and prints `None`. The body computes `x + 1` and discards it, and a function with no `return` gives back `None`. Nothing complains.",
+    "code": "def add_one(x):\n    x + 1\n\n\nprint(add_one(41))\n",
+    "out": "None\n"
+   },
+   "typescript": {
+    "status": "refuses",
+    "says": "TypeScript refuses (TS2355): a function declared to return `number` must return a value. The fix is `return x + 1;`.",
+    "code": "function addOne(x: number): number {\n    x + 1;\n}\n\nconsole.log(addOne(41));\n",
+    "error": "main.ts(1,29): error TS2355: A function whose declared type is neither 'undefined', 'void', nor 'any' must return a value."
+   },
+   "java": {
+    "status": "refuses",
+    "says": "Java refuses: `x + 1;` is \"not a statement\", because Java only allows calls, assignments and a few others as statements. The fix is `return x + 1;`.",
+    "code": "public class Main {\n    static int addOne(int x) {\n        x + 1;\n    }\n\n    public static void main(String[] args) {\n        System.out.println(addOne(41));\n    }\n}\n",
+    "error": "Main.java:3: error: not a statement\n        x + 1;\n          ^\n1 error"
+   },
+   "csharp": {
+    "status": "refuses",
+    "says": "C# refuses twice (CS0201 and CS0161): `x + 1;` cannot be a statement, and not all code paths return a value. The fix is `return x + 1;`.",
+    "code": "static int AddOne(int x)\n{\n    x + 1;\n}\n\nConsole.WriteLine(AddOne(41));\n",
+    "error": "Program.cs(3,5): error CS0201: Only assignment, call, increment, decrement, await, and new object expressions can be used as a statement\nProgram.cs(1,12): error CS0161: 'AddOne(int)': not all code paths return a value"
+   },
+   "c": {
+    "status": "wrong",
+    "says": "gcc compiles this. With the runner's `-Wall -Wextra` it warns twice (plain `gcc` says nothing) and the program prints 41. `x + 1;` is legal C. The problem is the missing `return`: using the result of a call that ran off its end is undefined behaviour. On this runner (ARM64, no `-O`) the argument `41` is still in the register the caller reads the result from. With `-O1` or higher the same program printed 0. If the caller ignores the result, C runs fine.",
+    "code": "#include <stdio.h>\n\nint add_one(int x) {\n    x + 1;\n}\n\nint main(void) {\n    printf(\"%d\\n\", add_one(41));\n    return 0;\n}\n",
+    "warnings": "main.c: In function ‘add_one’:\nmain.c:4:7: warning: statement with no effect [-Wunused-value]\n    4 |     x + 1;\n      |     ~~^~~\nmain.c:5:1: warning: control reaches end of non-void function [-Wreturn-type]\n    5 | }\n      | ^",
+    "out": "41\n"
+   },
+   "cpp": {
+    "status": "crash",
+    "says": "g++ compiles this with warnings, then the program crashes before printing. In C++, reaching the end of a function that returns a value is undefined behaviour even if the caller ignores the result. Here g++ put a trap instruction at the missing `return` (SIGTRAP, exit status 133; with `-O2` the same program segfaults instead).",
+    "code": "#include <iostream>\n\nint add_one(int x) {\n    x + 1;\n}\n\nint main() {\n    std::cout << add_one(41) << \"\\n\";\n}\n",
+    "warnings": "main.cpp: In function ‘int add_one(int)’:\nmain.cpp:4:7: warning: statement has no effect [-Wunused-value]\n    4 |     x + 1;\n      |     ~~^~~\nmain.cpp:5:1: warning: no return statement in function returning non-void [-Wreturn-type]\n    5 | }\n      | ^",
+    "out": ""
+   }
+  },
+  "code": "fn add_one(x: i32) -> i32 {\n    x + 1;\n}\n\nfn main() {\n    println!(\"{}\", add_one(41));\n}\n",
+  "error": "error[E0308]: mismatched types\n --> src/main.rs:1:23\n  |\n1 | fn add_one(x: i32) -> i32 {\n  |    -------            ^^^ expected `i32`, found `()`\n  |    |\n  |    implicitly returns `()` as its body has no tail or `return` expression\n2 |     x + 1;\n  |          - help: remove this semicolon to return this value\n",
+  "error_code": "E0308",
+  "fixed": {
+   "code": "fn add_one(x: i32) -> i32 {\n    x + 1\n}\n\nfn main() {\n    println!(\"{}\", add_one(41));\n}\n",
+   "out": "42\n"
+  }
+ },
+ "order": 2,
+ "program": {
+  "rust": {
+   "code": "fn clamp(x: i32) -> i32 {\n    if x < 0 {\n        return 0; // leaving early needs `return`\n    }\n    if x > 100 { 100 } else { x } // the last expression is the result\n}\n\nfn main() {\n    let n = 7;\n    let label = if n % 2 == 0 { \"even\" } else { \"odd\" };\n    let area = {\n        let w = 3;\n        let h = 4;\n        w * h // no semicolon: the block's value\n    };\n    println!(\"{n} is {label}\");\n    println!(\"area: {area}\");\n    println!(\"clamp: {} {} {}\", clamp(-5), clamp(50), clamp(250));\n}\n",
+   "out": "7 is odd\narea: 12\nclamp: 0 50 100\n"
+  },
+  "go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc clamp(x int) int {\n\tif x < 0 {\n\t\treturn 0\n\t}\n\tif x > 100 {\n\t\treturn 100\n\t}\n\treturn x\n}\n\nfunc main() {\n\tn := 7\n\tlabel := \"odd\"\n\tif n%2 == 0 {\n\t\tlabel = \"even\"\n\t}\n\tw := 3\n\th := 4\n\tarea := w * h\n\tfmt.Println(n, \"is\", label)\n\tfmt.Println(\"area:\", area)\n\tfmt.Println(\"clamp:\", clamp(-5), clamp(50), clamp(250))\n}\n",
+   "out": "7 is odd\narea: 12\nclamp: 0 50 100\n"
+  },
+  "kotlin": {
+   "code": "fun clamp(x: Int): Int {\n    if (x < 0) {\n        return 0\n    }\n    return if (x > 100) 100 else x\n}\n\nfun main() {\n    val n = 7\n    val label = if (n % 2 == 0) \"even\" else \"odd\"\n    val area = run {\n        val w = 3\n        val h = 4\n        w * h\n    }\n    println(\"$n is $label\")\n    println(\"area: $area\")\n    println(\"clamp: ${clamp(-5)} ${clamp(50)} ${clamp(250)}\")\n}\n",
+   "out": "7 is odd\narea: 12\nclamp: 0 50 100\n"
+  },
+  "python": {
+   "code": "def clamp(x):\n    if x < 0:\n        return 0\n    return 100 if x > 100 else x\n\n\nn = 7\nlabel = \"even\" if n % 2 == 0 else \"odd\"\nw = 3\nh = 4\narea = w * h\nprint(f\"{n} is {label}\")\nprint(f\"area: {area}\")\nprint(\"clamp:\", clamp(-5), clamp(50), clamp(250))\n",
+   "out": "7 is odd\narea: 12\nclamp: 0 50 100\n"
+  },
+  "typescript": {
+   "code": "function clamp(x: number): number {\n    if (x < 0) {\n        return 0;\n    }\n    return x > 100 ? 100 : x;\n}\n\nconst n = 7;\nconst label = n % 2 === 0 ? \"even\" : \"odd\";\nconst area = (() => {\n    const w = 3;\n    const h = 4;\n    return w * h;\n})();\nconsole.log(`${n} is ${label}`);\nconsole.log(`area: ${area}`);\nconsole.log(\"clamp:\", clamp(-5), clamp(50), clamp(250));\n",
+   "out": "7 is odd\narea: 12\nclamp: 0 50 100\n"
+  },
+  "java": {
+   "code": "public class Main {\n    static int clamp(int x) {\n        if (x < 0) {\n            return 0;\n        }\n        return x > 100 ? 100 : x;\n    }\n\n    public static void main(String[] args) {\n        int n = 7;\n        String label = n % 2 == 0 ? \"even\" : \"odd\";\n        int w = 3;\n        int h = 4;\n        int area = w * h;\n        System.out.println(n + \" is \" + label);\n        System.out.println(\"area: \" + area);\n        System.out.println(\"clamp: \" + clamp(-5) + \" \" + clamp(50) + \" \" + clamp(250));\n    }\n}\n",
+   "out": "7 is odd\narea: 12\nclamp: 0 50 100\n"
+  },
+  "csharp": {
+   "code": "static int Clamp(int x)\n{\n    if (x < 0)\n    {\n        return 0;\n    }\n    return x > 100 ? 100 : x;\n}\n\nint n = 7;\nstring label = n % 2 == 0 ? \"even\" : \"odd\";\nint w = 3;\nint h = 4;\nint area = w * h;\nConsole.WriteLine($\"{n} is {label}\");\nConsole.WriteLine($\"area: {area}\");\nConsole.WriteLine($\"clamp: {Clamp(-5)} {Clamp(50)} {Clamp(250)}\");\n",
+   "out": "7 is odd\narea: 12\nclamp: 0 50 100\n"
+  },
+  "c": {
+   "code": "#include <stdio.h>\n\nint clamp(int x) {\n    if (x < 0) {\n        return 0;\n    }\n    return x > 100 ? 100 : x;\n}\n\nint main(void) {\n    int n = 7;\n    const char *label = n % 2 == 0 ? \"even\" : \"odd\";\n    int w = 3;\n    int h = 4;\n    int area = w * h;\n    printf(\"%d is %s\\n\", n, label);\n    printf(\"area: %d\\n\", area);\n    printf(\"clamp: %d %d %d\\n\", clamp(-5), clamp(50), clamp(250));\n    return 0;\n}\n",
+   "out": "7 is odd\narea: 12\nclamp: 0 50 100\n"
+  },
+  "cpp": {
+   "code": "#include <iostream>\n\nint clamp(int x) {\n    if (x < 0) {\n        return 0;\n    }\n    return x > 100 ? 100 : x;\n}\n\nint main() {\n    int n = 7;\n    const char *label = n % 2 == 0 ? \"even\" : \"odd\";\n    int area = [] {\n        int w = 3;\n        int h = 4;\n        return w * h;\n    }();\n    std::cout << n << \" is \" << label << \"\\n\";\n    std::cout << \"area: \" << area << \"\\n\";\n    std::cout << \"clamp: \" << clamp(-5) << \" \" << clamp(50) << \" \" << clamp(250) << \"\\n\";\n}\n",
+   "out": "7 is odd\narea: 12\nclamp: 0 50 100\n"
+  }
+ },
+ "faq": [],
+ "snippets": {
+  "block-scope.fail.rs": {
+   "code": "fn main() {\n    let area = {\n        let w = 3;\n        let h = 4;\n        w * h\n    };\n    println!(\"area: {area}\");\n    println!(\"w after the block: {w}\");\n}\n",
+   "error": "error[E0425]: cannot find value `w` in this scope\n --> src/main.rs:8:35\n  |\n8 |     println!(\"w after the block: {w}\");\n  |                                   ^ not found in this scope\n",
+   "lang": "rust"
+  },
+  "block-values.rs": {
+   "code": "fn main() {\n    let n = 7;\n\n    let block = {\n        let doubled = n * 2;\n        doubled + 1\n    };\n    let branch = if n > 5 { \"big\" } else { \"small\" };\n    let name = match n {\n        1 => \"one\",\n        2 => \"two\",\n        _ => \"many\",\n    };\n    let mut count = 0;\n    let found = loop {\n        count += 3;\n        if count % 7 == 0 {\n            break count;\n        }\n    };\n\n    println!(\"block: {block}\");\n    println!(\"branch: {branch}\");\n    println!(\"match: {name}\");\n    println!(\"loop: {found}\");\n}\n",
+   "out": "block: 15\nbranch: big\nmatch: many\nloop: 21\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "chain-assign.fail.rs": {
+   "code": "fn main() {\n    let mut a: i32 = 0;\n    let mut b: i32 = 0;\n    a = b = 5;\n    println!(\"{a} {b}\");\n}\n",
+   "error": "error[E0308]: mismatched types\n --> src/main.rs:4:9\n  |\n2 |     let mut a: i32 = 0;\n  |                --- expected due to this type\n3 |     let mut b: i32 = 0;\n4 |     a = b = 5;\n  |         ^^^^^ expected `i32`, found `()`\n",
+   "lang": "rust"
+  },
+  "check-forms.rs": {
+   "code": "// Backs the \"you write -> Rust\" tables: every Rust form below is run, and the values\n// are the ones the other languages' check-forms programs print.\nfn log(msg: &str) {\n    println!(\"log: {msg}\");\n}\n\nfn main() {\n    let n = 7;\n\n    // c ? a : b\n    let size = if n > 5 { \"big\" } else { \"small\" };\n    println!(\"ternary: {size}\");\n\n    // a value from a block, with a statement before it\n    let area = {\n        let w = 3;\n        let h = 4;\n        w * h\n    };\n    println!(\"block: {area}\");\n\n    // switch / when / match as a value\n    let name = match 2 {\n        1 => \"one\",\n        2 => \"two\",\n        _ => \"many\",\n    };\n    println!(\"switch: {name}\");\n\n    // a switch arm that is a block ending in a value (Java: `yield`)\n    let area_name = match 2 {\n        1 => \"one\".to_string(),\n        2 => {\n            let w = 3;\n            let h = 4;\n            format!(\"area {}\", w * h)\n        }\n        _ => \"many\".to_string(),\n    };\n    println!(\"yield: {area_name}\");\n\n    // a, b = b, a\n    let mut a = 1;\n    let mut b = 2;\n    (a, b) = (b, a);\n    println!(\"swap: {a} {b}\");\n\n    // the comma operator: evaluate the first, keep the second\n    let c = {\n        log(\"first\");\n        2\n    };\n    println!(\"comma: {c}\");\n\n    // a closure body in braces needs no `return`\n    let add_one = |x: i32| {\n        let y = x + 1;\n        y\n    };\n    println!(\"closure: {}\", add_one(41));\n\n    // a block-like expression in a `let` can be continued; as a statement it ends at `}`\n    let t = if n > 0 { 10 } else { 20 } + 1;\n    println!(\"let continues: {t}\");\n}\n",
+   "out": "ternary: big\nblock: 12\nswitch: two\nyield: area 12\nswap: 2 1\nlog: first\ncomma: 2\nclosure: 42\nlet continues: 11\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-go-idioms.rs": {
+   "code": "// The Rust sides of the Go habits in the table: go-idioms.go prints the same facts.\nuse std::mem::size_of;\n\nfn f() -> i32 {\n    5\n}\n\nfn named() -> i32 {\n    let n = 3;\n    n\n}\n\nfn main() {\n    let mut i = 0;\n    i += 1;\n    println!(\"i++: {i}\");\n    let v = f();\n    if v > 3 {\n        println!(\"init statement: {v}\");\n    }\n    println!(\"struct{{}} size: {}\", size_of::<()>());\n    println!(\"named result: {}\", named());\n}\n",
+   "out": "i++: 1\ninit statement: 5\nstruct{} size: 0\nnamed result: 3\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-struct-semicolons.rs": {
+   "code": "// Items: a braced struct ends at `}`; a tuple struct and a unit struct end with `;`.\nstruct Point {\n    x: i32,\n    y: i32,\n}\nstruct Meters(f64);\nstruct Marker;\n\nfn main() {\n    let p = Point { x: 1, y: 2 };\n    let m = Meters(2.5);\n    let _k = Marker;\n    // block-like statements need no `;`\n    if p.x > 0 {\n        println!(\"positive\");\n    }\n    println!(\"{} {}\", p.x + p.y, m.0);\n}\n",
+   "out": "positive\n3 2.5\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "comma-tuple.fail.rs": {
+   "code": "fn log(msg: &str) {\n    println!(\"log: {msg}\");\n}\n\nfn main() {\n    let c: i32 = (log(\"first\"), 2);\n    println!(\"comma: {c}\");\n}\n",
+   "error": "error[E0308]: mismatched types\n --> src/main.rs:6:18\n  |\n6 |     let c: i32 = (log(\"first\"), 2);\n  |            ---   ^^^^^^^^^^^^^^^^^ expected `i32`, found `((), {integer})`\n  |            |\n  |            expected due to this\n  |\n  = note: expected type `i32`\n            found tuple `((), {integer})`\n",
+   "lang": "rust"
+  },
+  "if-assign.fail.rs": {
+   "code": "fn main() {\n    let mut x = 0;\n    if x = 1 {\n        println!(\"x is one\");\n    }\n}\n",
+   "error": "error[E0308]: mismatched types\n --> src/main.rs:3:8\n  |\n3 |     if x = 1 {\n  |        ^^^^^ expected `bool`, found `()`\n  |\nhelp: you might have meant to compare for equality\n  |\n3 |     if x == 1 {\n  |           +\n",
+   "lang": "rust"
+  },
+  "if-int.fail.rs": {
+   "code": "fn main() {\n    let n = 3;\n    if n {\n        println!(\"n is not zero\");\n    }\n}\n",
+   "error": "error[E0308]: mismatched types\n --> src/main.rs:3:8\n  |\n3 |     if n {\n  |        ^ expected `bool`, found integer\n",
+   "lang": "rust"
+  },
+  "if-no-else.fail.rs": {
+   "code": "fn main() {\n    let n = 7;\n    let size = if n > 5 {\n        \"big\"\n    };\n    println!(\"{size}\");\n}\n",
+   "error": "error[E0317]: `if` may be missing an `else` clause\n --> src/main.rs:3:16\n  |\n3 |       let size = if n > 5 {\n  |  ________________^\n4 | |         \"big\"\n  | |         ----- found here\n5 | |     };\n  | |_____^ expected `&str`, found `()`\n  |\n  = note: `if` expressions without `else` evaluate to `()`\n  = help: consider adding an `else` block that evaluates to the expected type\n",
+   "lang": "rust"
+  },
+  "increment.fail.rs": {
+   "code": "fn main() {\n    let mut x = 1;\n    x++;\n    println!(\"{x}\");\n}\n",
+   "error": "error: Rust has no postfix increment operator\n --> src/main.rs:3:6\n  |\n3 |     x++;\n  |      ^^ not a valid postfix operator\n  |\nhelp: use `+= 1` instead\n  |\n3 -     x++;\n3 +     x += 1;",
+   "lang": "rust"
+  },
+  "let-expr.fail.rs": {
+   "code": "fn main() {\n    let x = let y = 6;\n    println!(\"{x} {y}\");\n}\n",
+   "error": "error: expected expression, found `let` statement\n --> src/main.rs:2:13\n  |\n2 |     let x = let y = 6;\n  |             ^^^\n  |\n  = note: only supported directly in conditions of `if` and `while` expressions",
+   "lang": "rust"
+  },
+  "never.rs": {
+   "code": "fn main() {\n    let mut sum = 0;\n    for i in 0..6 {\n        let even = if i % 2 == 0 { i } else { continue };\n        sum += even;\n    }\n    println!(\"sum of evens: {sum}\");\n\n    let ok = true;\n    let x: i32 = if ok { 5 } else { panic!(\"not ok\") };\n    println!(\"x: {x}\");\n}\n",
+   "out": "sum of evens: 6\nx: 5\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "no-braces.fail.rs": {
+   "code": "fn main() {\n    let n = 7;\n    if n > 5 println!(\"big\");\n}\n",
+   "error": "error: expected `{`, found `println`\n --> src/main.rs:3:14\n  |\n3 |     if n > 5 println!(\"big\");\n  |              ^^^^^^^ expected `{`\n  |\nnote: the `if` expression is missing a block after this condition\n --> src/main.rs:3:8\n  |\n3 |     if n > 5 println!(\"big\");\n  |        ^^^^^\nhelp: you might have meant to write this as part of a block\n  |\n3 |     if n > 5 { println!(\"big\") };\n  |              +                 +",
+   "lang": "rust"
+  },
+  "parens.fail.rs": {
+   "code": "#![deny(unused_parens)]\n\nfn main() {\n    let n = 7;\n    if (n > 5) {\n        println!(\"big\");\n    }\n}\n",
+   "error": "error: unnecessary parentheses around `if` condition\n --> src/main.rs:5:8\n  |\n5 |     if (n > 5) {\n  |        ^     ^\n  |\nnote: the lint level is defined here\n --> src/main.rs:1:9\n  |\n1 | #![deny(unused_parens)]\n  |         ^^^^^^^^^^^^^\nhelp: remove these parentheses\n  |\n5 -     if (n > 5) {\n5 +     if n > 5 {",
+   "lang": "rust"
+  },
+  "semicolon.rs": {
+   "code": "fn double(x: i32) -> i32 {\n    x * 2\n}\n\nfn main() {\n    let a = { double(4) };\n    let b = {\n        double(4);\n    };\n    println!(\"a: {a:?}\");\n    println!(\"b: {b:?}\");\n}\n",
+   "out": "a: 8\nb: ()\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "statement-end.fail.rs": {
+   "code": "fn total(n: i32) -> i32 {\n    if n > 0 { 10 } else { 20 } + 1\n}\n\nfn main() {\n    println!(\"{}\", total(5));\n}\n",
+   "error": "error: leading `+` is not supported\n --> src/main.rs:2:33\n  |\n2 |     if n > 0 { 10 } else { 20 } + 1\n  |                                 ^ unexpected `+`\n  |\nhelp: parentheses are required to parse this as an expression\n  |\n2 |     (if n > 0 { 10 } else { 20 }) + 1\n  |     +                           +\n\nerror[E0308]: mismatched types\n --> src/main.rs:2:16\n  |\n2 |     if n > 0 { 10 } else { 20 } + 1\n  |     -----------^^--------------\n  |     |          |\n  |     |          expected `()`, found integer\n  |     expected this to be `()`\n  |\nhelp: you might have meant to return this value\n  |\n2 |     if n > 0 { return 10; } else { 20 } + 1\n  |                ++++++   +\n\nerror[E0308]: mismatched types\n --> src/main.rs:2:28\n  |\n2 |     if n > 0 { 10 } else { 20 } + 1\n  |     -----------------------^^--\n  |     |                      |\n  |     |                      expected `()`, found integer\n  |     expected this to be `()`\n  |\nhelp: you might have meant to return this value\n  |\n2 |     if n > 0 { 10 } else { return 20; } + 1\n  |                            ++++++   +\n",
+   "lang": "rust"
+  },
+  "statement-if.fail.rs": {
+   "code": "fn five() -> i32 {\n    5\n}\n\nfn main() {\n    if true {\n        five()\n    }\n}\n",
+   "error": "error[E0308]: mismatched types\n --> src/main.rs:7:9\n  |\n6 | /     if true {\n7 | |         five()\n  | |         ^^^^^^- help: consider using a semicolon here: `;`\n  | |         |\n  | |         expected `()`, found `i32`\n8 | |     }\n  | |_____- `if` expressions without `else` arms expect their inner expression to be `()`\n",
+   "lang": "rust"
+  },
+  "stray-semicolon.fail.rs": {
+   "code": "#![deny(redundant_semicolons)]\n\nfn main() {\n    let n = 7;;\n    println!(\"{n}\");\n}\n",
+   "error": "error: unnecessary trailing semicolon\n --> src/main.rs:4:15\n  |\n4 |     let n = 7;;\n  |               ^ help: remove this semicolon\n  |\nnote: the lint level is defined here\n --> src/main.rs:1:9\n  |\n1 | #![deny(redundant_semicolons)]\n  |         ^^^^^^^^^^^^^^^^^^^^",
+   "lang": "rust"
+  },
+  "struct-semicolon.fail.rs": {
+   "code": "struct Point {\n    x: i32,\n    y: i32,\n};\n\nfn main() {\n    let p = Point { x: 1, y: 2 };\n    println!(\"{} {}\", p.x, p.y);\n}\n",
+   "error": "error: expected item, found `;`\n --> src/main.rs:4:2\n  |\n4 | };\n  |  ^\n  |\n  = help: braced struct declarations are not followed by a semicolon\nhelp: remove this semicolon\n  |\n4 - };\n4 + }",
+   "lang": "rust"
+  },
+  "unit.rs": {
+   "code": "use std::mem::size_of;\n\nfn log(msg: &str) {\n    println!(\"log: {msg}\");\n}\n\nfn main() {\n    let mut x = 1;\n    println!(\"x starts as {x}\");\n    let from_fn = log(\"hello\");\n    let from_macro = println!(\"printing\");\n    let from_assign = x = 5;\n    let from_add = x += 1;\n    let from_while = while x < 10 {\n        x += 1;\n    };\n    let from_for = for _ in 0..2 {};\n\n    println!(\"fn: {from_fn:?}\");\n    println!(\"println!: {from_macro:?}\");\n    println!(\"assignment: {from_assign:?}\");\n    println!(\"+=: {from_add:?}\");\n    println!(\"while: {from_while:?}\");\n    println!(\"for: {from_for:?}\");\n    println!(\"size_of::<()>(): {}\", size_of::<()>());\n}\n",
+   "out": "x starts as 1\nlog: hello\nprinting\nfn: ()\nprintln!: ()\nassignment: ()\n+=: ()\nwhile: ()\nfor: ()\nsize_of::<()>(): 0\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "while-break.fail.rs": {
+   "code": "fn main() {\n    let mut i = 0;\n    let found = while i < 10 {\n        i += 1;\n        if i == 4 {\n            break i;\n        }\n    };\n    println!(\"{found:?}\");\n}\n",
+   "error": "error[E0571]: `break` with value from a `while` loop\n --> src/main.rs:6:13\n  |\n3 |     let found = while i < 10 {\n  |                 ------------ you can't `break` with a value in a `while` loop\n...\n6 |             break i;\n  |             ^^^^^^^ can only break with a value inside `loop` or breakable block\n  |\nhelp: use `break` on its own without a value inside this `while` loop\n  |\n6 -             break i;\n6 +             break;",
+   "lang": "rust"
+  },
+  "while-let.rs": {
+   "code": "// C: while ((c = *p++) != '\\0') { ... }   Rust: take the next item, and stop when there is none.\nfn main() {\n    let mut chars = \"abc\".chars();\n    while let Some(c) = chars.next() {\n        println!(\"char: {c}\");\n    }\n}\n",
+   "out": "char: a\nchar: b\nchar: c\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "assign-expr.c": {
+   "code": "#include <stdio.h>\n\nint main(void) {\n    int a, b;\n    a = b = 5;\n    printf(\"chain: %d %d\\n\", a, b);\n    int x = 0;\n    if (x = 1) {\n        printf(\"x assigned in the condition: %d\\n\", x);\n    }\n    return 0;\n}\n",
+   "warnings": "main.c: In function ‘main’:\nmain.c:8:9: warning: suggest parentheses around assignment used as truth value [-Wparentheses]\n    8 |     if (x = 1) {\n      |         ^",
+   "out": "chain: 5 5\nx assigned in the condition: 1\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "assign-expr.cpp": {
+   "code": "#include <iostream>\n\nint main() {\n    int a, b;\n    a = b = 5;\n    std::cout << \"chain: \" << a << \" \" << b << \"\\n\";\n    int x = 0;\n    if (x = 1) {\n        std::cout << \"x assigned in the condition: \" << x << \"\\n\";\n    }\n}\n",
+   "warnings": "main.cpp: In function ‘int main()’:\nmain.cpp:8:11: warning: suggest parentheses around assignment used as truth value [-Wparentheses]\n    8 |     if (x = 1) {\n      |         ~~^~~",
+   "out": "chain: 5 5\nx assigned in the condition: 1\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "assign-expr.cs": {
+   "code": "int a, b;\na = b = 5;\nConsole.WriteLine($\"{a} {b}\");\nbool flag = false;\nif (flag = true)\n{\n    Console.WriteLine($\"flag assigned in the condition: {flag}\");\n}\n",
+   "warnings": "Program.cs(5,5): warning CS0665: Assignment in conditional expression is always constant; did you mean to use == instead of = ?",
+   "out": "5 5\nflag assigned in the condition: True\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "assign-expr.java": {
+   "code": "public class Main {\n    public static void main(String[] args) {\n        int a, b;\n        a = b = 5;\n        System.out.println(\"chain: \" + a + \" \" + b);\n        boolean flag = false;\n        if (flag = true) {\n            System.out.println(\"flag assigned in the condition: \" + flag);\n        }\n    }\n}\n",
+   "out": "chain: 5 5\nflag assigned in the condition: true\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "assign-expr.py": {
+   "code": "a = b = 5\nprint(\"chain:\", a, b)\nif (n := 3) > 2:\n    print(\"walrus:\", n)\n",
+   "out": "chain: 5 5\nwalrus: 3\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "assign-expr.ts": {
+   "code": "let a: number;\nlet b: number;\na = b = 5;\nconsole.log(\"chain:\", a, b);\nlet x = 0;\nif (x = 1) {\n    console.log(\"x assigned in the condition:\", x);\n}\n",
+   "out": "chain: 5 5\nx assigned in the condition: 1\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "assign-in-loop.c": {
+   "code": "#include <stdio.h>\n\nint main(void) {\n    const char *p = \"abc\";\n    int c;\n    while ((c = *p++) != '\\0') {\n        printf(\"char: %c\\n\", c);\n    }\n    return 0;\n}\n",
+   "out": "char: a\nchar: b\nchar: c\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "chain.fail.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tvar a, b int\n\ta = b = 5\n\tfmt.Println(a, b)\n}\n",
+   "error": "# command-line-arguments\n./main.go:7:8: syntax error: unexpected = at end of statement",
+   "lang": "go"
+  },
+  "chain.fail.kt": {
+   "code": "fun main() {\n    var a = 0\n    var b = 0\n    a = b = 5\n    println(\"$a $b\")\n}\n",
+   "error": "Main.kt:4:5: error: variable expected.\n    a = b = 5\n    ^\nMain.kt:4:5: error: only expressions are allowed in this context.\n    a = b = 5\n    ^^^^^",
+   "lang": "kotlin"
+  },
+  "check-forms.c": {
+   "code": "#include <stdio.h>\n\nstatic int log_msg(const char *msg) {\n    printf(\"log: %s\\n\", msg);\n    return 1;\n}\n\nint main(void) {\n    int n = 7;\n\n    const char *size = n > 5 ? \"big\" : \"small\";\n    printf(\"ternary: %s\\n\", size);\n\n    int area = ({ int w = 3; int h = 4; w * h; });\n    printf(\"block: %d\\n\", area);\n\n    const char *name;\n    switch (2) {\n    case 1:\n        name = \"one\";\n        break;\n    case 2:\n        name = \"two\";\n        break;\n    default:\n        name = \"many\";\n    }\n    printf(\"switch: %s\\n\", name);\n\n    int a = 1, b = 2;\n    int tmp = a;\n    a = b;\n    b = tmp;\n    printf(\"swap: %d %d\\n\", a, b);\n\n    int c = (log_msg(\"first\"), 2);\n    printf(\"comma: %d\\n\", c);\n    return 0;\n}\n",
+   "out": "ternary: big\nblock: 12\nswitch: two\nswap: 2 1\nlog: first\ncomma: 2\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "check-forms.cpp": {
+   "code": "#include <iostream>\n\nstatic int log_msg(const char *msg) {\n    std::cout << \"log: \" << msg << \"\\n\";\n    return 1;\n}\n\nint main() {\n    int n = 7;\n\n    const char *size = n > 5 ? \"big\" : \"small\";\n    std::cout << \"ternary: \" << size << \"\\n\";\n\n    int area = [] {\n        int w = 3;\n        int h = 4;\n        return w * h;\n    }();\n    std::cout << \"block: \" << area << \"\\n\";\n\n    const char *name;\n    switch (2) {\n    case 1:\n        name = \"one\";\n        break;\n    case 2:\n        name = \"two\";\n        break;\n    default:\n        name = \"many\";\n    }\n    std::cout << \"switch: \" << name << \"\\n\";\n\n    int a = 1, b = 2;\n    std::swap(a, b);\n    std::cout << \"swap: \" << a << \" \" << b << \"\\n\";\n\n    int c = (log_msg(\"first\"), 2);\n    std::cout << \"comma: \" << c << \"\\n\";\n\n    auto addOne = [](int x) {\n        int y = x + 1;\n        return y;\n    };\n    std::cout << \"closure: \" << addOne(41) << \"\\n\";\n}\n",
+   "out": "ternary: big\nblock: 12\nswitch: two\nswap: 2 1\nlog: first\ncomma: 2\nclosure: 42\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "check-forms.cs": {
+   "code": "static void Log(string msg) => Console.WriteLine(\"log: \" + msg);\n\nint n = 7;\n\nstring size = n > 5 ? \"big\" : \"small\";\nConsole.WriteLine($\"ternary: {size}\");\n\nint area;\n{\n    int w = 3;\n    int h = 4;\n    area = w * h;\n}\nConsole.WriteLine($\"block: {area}\");\n\nstring name = 2 switch\n{\n    1 => \"one\",\n    2 => \"two\",\n    _ => \"many\",\n};\nConsole.WriteLine($\"switch: {name}\");\n\nint a = 1, b = 2;\n(a, b) = (b, a);\nConsole.WriteLine($\"swap: {a} {b}\");\n\nLog(\"first\");\nint c = 2;\nConsole.WriteLine($\"comma: {c}\");\n\nFunc<int, int> addOne = x =>\n{\n    int y = x + 1;\n    return y;\n};\nFunc<int, int> expr = x => x + 1;\nConsole.WriteLine($\"closure: {addOne(41)} {expr(41)}\");\n",
+   "out": "ternary: big\nblock: 12\nswitch: two\nswap: 2 1\nlog: first\ncomma: 2\nclosure: 42 42\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "check-forms.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc logMsg(msg string) {\n\tfmt.Println(\"log: \" + msg)\n}\n\nfunc main() {\n\tn := 7\n\n\tsize := \"small\"\n\tif n > 5 {\n\t\tsize = \"big\"\n\t}\n\tfmt.Println(\"ternary:\", size)\n\n\tarea := func() int {\n\t\tw := 3\n\t\th := 4\n\t\treturn w * h\n\t}()\n\tfmt.Println(\"block:\", area)\n\n\tname := \"\"\n\tswitch 2 {\n\tcase 1:\n\t\tname = \"one\"\n\tcase 2:\n\t\tname = \"two\"\n\tdefault:\n\t\tname = \"many\"\n\t}\n\tfmt.Println(\"switch:\", name)\n\n\ta, b := 1, 2\n\ta, b = b, a\n\tfmt.Println(\"swap:\", a, b)\n\n\tlogMsg(\"first\")\n\tc := 2\n\tfmt.Println(\"comma:\", c)\n\n\taddOne := func(x int) int {\n\t\ty := x + 1\n\t\treturn y\n\t}\n\tfmt.Println(\"closure:\", addOne(41))\n}\n",
+   "out": "ternary: big\nblock: 12\nswitch: two\nswap: 2 1\nlog: first\ncomma: 2\nclosure: 42\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "check-forms.java": {
+   "code": "import java.util.function.IntUnaryOperator;\n\npublic class Main {\n    static void log(String msg) {\n        System.out.println(\"log: \" + msg);\n    }\n\n    public static void main(String[] args) {\n        int n = 7;\n\n        String size = n > 5 ? \"big\" : \"small\";\n        System.out.println(\"ternary: \" + size);\n\n        int w = 3;\n        int h = 4;\n        int area = w * h;\n        System.out.println(\"block: \" + area);\n\n        String name = switch (2) {\n            case 1 -> \"one\";\n            case 2 -> \"two\";\n            default -> \"many\";\n        };\n        System.out.println(\"switch: \" + name);\n\n        int a = 1;\n        int b = 2;\n        int tmp = a;\n        a = b;\n        b = tmp;\n        System.out.println(\"swap: \" + a + \" \" + b);\n\n        log(\"first\");\n        int c = 2;\n        System.out.println(\"comma: \" + c);\n\n        IntUnaryOperator addOne = x -> {\n            int y = x + 1;\n            return y;\n        };\n        System.out.println(\"closure: \" + addOne.applyAsInt(41));\n    }\n}\n",
+   "out": "ternary: big\nblock: 12\nswitch: two\nswap: 2 1\nlog: first\ncomma: 2\nclosure: 42\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "check-forms.kt": {
+   "code": "fun log(msg: String) {\n    println(\"log: $msg\")\n}\n\nfun addOne(x: Int) = x + 1\n\nfun main() {\n    val n = 7\n\n    val size = if (n > 5) \"big\" else \"small\"\n    println(\"ternary: $size\")\n\n    val area = run {\n        val w = 3\n        val h = 4\n        w * h\n    }\n    println(\"block: $area\")\n\n    val name = when (2) {\n        1 -> \"one\"\n        2 -> \"two\"\n        else -> \"many\"\n    }\n    println(\"switch: $name\")\n\n    var a = 1\n    var b = 2\n    a = b.also { b = a }\n    println(\"swap: $a $b\")\n\n    val c = run {\n        log(\"first\")\n        2\n    }\n    println(\"comma: $c\")\n\n    val closure = { x: Int ->\n        val y = x + 1\n        y\n    }\n    println(\"closure: ${closure(41)} ${addOne(41)}\")\n}\n",
+   "out": "ternary: big\nblock: 12\nswitch: two\nswap: 2 1\nlog: first\ncomma: 2\nclosure: 42 42\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "check-forms.py": {
+   "code": "def log(msg):\n    print(\"log: \" + msg)\n\n\nn = 7\n\nsize = \"big\" if n > 5 else \"small\"\nprint(\"ternary:\", size)\n\nw = 3\nh = 4\narea = w * h\nprint(\"block:\", area)\n\nmatch 2:\n    case 1:\n        name = \"one\"\n    case 2:\n        name = \"two\"\n    case _:\n        name = \"many\"\nprint(\"switch:\", name)\n\na, b = 1, 2\na, b = b, a\nprint(\"swap:\", a, b)\n\nlog(\"first\")\nc = 2\nprint(\"comma:\", c)\n\n\ndef add_one(x):\n    y = x + 1\n    return y\n\n\nprint(\"closure:\", add_one(41), (lambda x: x + 1)(41))\n",
+   "out": "ternary: big\nblock: 12\nswitch: two\nswap: 2 1\nlog: first\ncomma: 2\nclosure: 42 42\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "check-forms.ts": {
+   "code": "function log(msg: string): void {\n    console.log(\"log: \" + msg);\n}\n\nconst n = 7;\n\nconst size = n > 5 ? \"big\" : \"small\";\nconsole.log(\"ternary:\", size);\n\nconst area = (() => {\n    const w = 3;\n    const h = 4;\n    return w * h;\n})();\nconsole.log(\"block:\", area);\n\nlet name: string;\nconst code: number = 2;\nswitch (code) {\n    case 1:\n        name = \"one\";\n        break;\n    case 2:\n        name = \"two\";\n        break;\n    default:\n        name = \"many\";\n}\nconsole.log(\"switch:\", name);\n\nlet a = 1;\nlet b = 2;\n[a, b] = [b, a];\nconsole.log(\"swap:\", a, b);\n\nlog(\"first\");\nconst c = 2;\nconsole.log(\"comma:\", c);\n\nconst addOne = (x: number) => {\n    const y = x + 1;\n    return y;\n};\nconsole.log(\"closure:\", addOne(41), ((x: number) => x + 1)(41));\n",
+   "out": "ternary: big\nblock: 12\nswitch: two\nswap: 2 1\nlog: first\ncomma: 2\nclosure: 42 42\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "comma-gnu.c": {
+   "code": "#include <stdio.h>\n\nstatic int log_msg(const char *msg) {\n    printf(\"log: %s\\n\", msg);\n    return 1;\n}\n\nint main(void) {\n    int c = (log_msg(\"first\"), 2);\n    printf(\"comma: %d\\n\", c);\n    int area = ({ int w = 3; int h = 4; w * h; });\n    printf(\"statement expression: %d\\n\", area);\n    return 0;\n}\n",
+   "out": "log: first\ncomma: 2\nstatement expression: 12\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "cond-int.fail.cs": {
+   "code": "int x = 0;\nif (x = 1)\n{\n    Console.WriteLine(\"one\");\n}\n",
+   "error": "Program.cs(2,5): error CS0029: Cannot implicitly convert type 'int' to 'bool'\nProgram.cs(1,5): warning CS0219: The variable 'x' is assigned but its value is never used",
+   "lang": "csharp"
+  },
+  "cond-int.fail.java": {
+   "code": "public class Main {\n    public static void main(String[] args) {\n        int x = 0;\n        if (x = 1) {\n            System.out.println(\"one\");\n        }\n    }\n}\n",
+   "error": "Main.java:4: error: incompatible types: int cannot be converted to boolean\n        if (x = 1) {\n              ^\n1 error",
+   "lang": "java"
+  },
+  "cond.fail.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tx := 0\n\tif x = 1 {\n\t\tfmt.Println(\"one\")\n\t}\n}\n",
+   "error": "# command-line-arguments\n./main.go:7:7: syntax error: cannot use assignment x = 1 as value",
+   "lang": "go"
+  },
+  "cond.fail.kt": {
+   "code": "fun main() {\n    var x = 0\n    if (x = 1) {\n        println(\"one\")\n    }\n}\n",
+   "error": "Main.kt:3:9: error: only expressions are allowed in this context.\n    if (x = 1) {\n        ^^^^^",
+   "lang": "kotlin"
+  },
+  "cond.fail.py": {
+   "code": "x = 0\nif x = 1:\n    print(\"one\")\n",
+   "out": "  File \"main.py\", line 2\n    if x = 1:\n       ^^^^^\nSyntaxError: invalid syntax. Maybe you meant '==' or ':=' instead of '='?\n",
+   "lang": "python",
+   "exit": 1
+  },
+  "fall-off-ignored.c": {
+   "code": "#include <stdio.h>\n\nint add_one(int x) {\n    x + 1;\n}\n\nint main(void) {\n    add_one(41);\n    printf(\"done\\n\");\n    return 0;\n}\n",
+   "warnings": "main.c: In function ‘add_one’:\nmain.c:4:7: warning: statement with no effect [-Wunused-value]\n    4 |     x + 1;\n      |     ~~^~~\nmain.c:5:1: warning: control reaches end of non-void function [-Wreturn-type]\n    5 | }\n      | ^",
+   "out": "done\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "fall-off-ignored.crash.cpp": {
+   "code": "#include <iostream>\n\nint add_one(int x) {\n    x + 1;\n}\n\nint main() {\n    add_one(41);\n    std::cout << \"done\\n\";\n}\n",
+   "warnings": "main.cpp: In function ‘int add_one(int)’:\nmain.cpp:4:7: warning: statement has no effect [-Wunused-value]\n    4 |     x + 1;\n      |     ~~^~~\nmain.cpp:5:1: warning: no return statement in function returning non-void [-Wreturn-type]\n    5 | }\n      | ^",
+   "out": "",
+   "lang": "cpp",
+   "exit": -5
+  },
+  "go-idioms.go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"unsafe\"\n)\n\nfunc f() int { return 5 }\n\nfunc named() (n int) {\n\tn = 3\n\treturn\n}\n\nfunc main() {\n\ti := 0\n\ti++\n\tfmt.Println(\"i++:\", i)\n\tif v := f(); v > 3 {\n\t\tfmt.Println(\"init statement:\", v)\n\t}\n\tvar u struct{}\n\tfmt.Println(\"struct{} size:\", unsafe.Sizeof(u))\n\tfmt.Println(\"named result:\", named())\n}\n",
+   "out": "i++: 1\ninit statement: 5\nstruct{} size: 0\nnamed result: 3\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "if-no-else.fail.kt": {
+   "code": "fun main() {\n    val n = 7\n    val size: String = if (n > 5) \"big\"\n    println(size)\n}\n",
+   "error": "Main.kt:3:24: error: 'if' must have both main and 'else' branches when used as an expression.\n    val size: String = if (n > 5) \"big\"\n                       ^^",
+   "lang": "kotlin"
+  },
+  "leak.py": {
+   "code": "if True:\n    w = 3\n    h = 4\nprint(\"w after the block:\", w)\n",
+   "out": "w after the block: 3\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "nothing.kt": {
+   "code": "fun main() {\n    val ok = true\n    val x: Int = if (ok) 5 else throw IllegalStateException(\"not ok\")\n    println(\"x: $x\")\n    val area = { 3 * 4 }\n    println(\"area is a lambda, so call it: ${area()}\")\n}\n",
+   "out": "x: 5\narea is a lambda, so call it: 12\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "sizeof-empty.cpp": {
+   "code": "#include <iostream>\n\nstruct Empty {};\n\nint main() {\n    std::cout << \"sizeof(Empty): \" << sizeof(Empty) << \"\\n\";\n}\n",
+   "out": "sizeof(Empty): 1\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "struct-semicolon.fail.c": {
+   "code": "struct Point {\n    int x;\n    int y;\n}\n\nint main(void) {\n    struct Point p = {1, 2};\n    return p.x + p.y;\n}\n",
+   "error": "main.c:6:1: error: expected ‘;’, identifier or ‘(’ before ‘int’\n    6 | int main(void) {\n      | ^~~",
+   "lang": "c"
+  },
+  "struct-semicolon.fail.cpp": {
+   "code": "struct Point {\n    int x;\n    int y;\n}\n\nint main() {\n    Point p{1, 2};\n    return p.x + p.y;\n}\n",
+   "error": "main.cpp:4:2: error: expected ‘;’ after struct definition\n    4 | }\n      |  ^\n      |  ;",
+   "lang": "cpp"
+  },
+  "switch-value.fail.ts": {
+   "code": "const n: number = 2;\nconst name = switch (n) {\n    case 1: \"one\";\n    default: \"many\";\n};\nconsole.log(name);\n",
+   "error": "main.ts(2,14): error TS1109: Expression expected.",
+   "lang": "typescript"
+  },
+  "throw-expr.cs": {
+   "code": "bool ok = args.Length == 0;\nint x = ok ? 5 : throw new InvalidOperationException(\"not ok\");\nConsole.WriteLine($\"x: {x}\");\n",
+   "out": "x: 5\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "throw-ternary.cpp": {
+   "code": "#include <iostream>\n#include <stdexcept>\n\nint main() {\n    bool ok = true;\n    int x = ok ? 5 : throw std::runtime_error(\"not ok\");\n    std::cout << \"x: \" << x << \"\\n\";\n}\n",
+   "out": "x: 5\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "throw-ternary.fail.java": {
+   "code": "public class Main {\n    public static void main(String[] args) {\n        boolean ok = args.length == 0;\n        int x = ok ? 5 : throw new IllegalStateException(\"not ok\");\n        System.out.println(x);\n    }\n}\n",
+   "error": "Main.java:4: error: illegal start of expression\n        int x = ok ? 5 : throw new IllegalStateException(\"not ok\");\n                         ^\n1 error",
+   "lang": "java"
+  },
+  "unit-value.fail.c": {
+   "code": "#include <stdio.h>\n\nvoid log_msg(const char *msg) {\n    printf(\"log: %s\\n\", msg);\n}\n\nint main(void) {\n    int r = log_msg(\"hello\");\n    printf(\"r: %d\\n\", r);\n    return 0;\n}\n",
+   "error": "main.c: In function ‘main’:\nmain.c:8:13: error: void value not ignored as it ought to be\n    8 |     int r = log_msg(\"hello\");\n      |             ^~~~~~~",
+   "lang": "c"
+  },
+  "unit-value.fail.cpp": {
+   "code": "#include <iostream>\n\nvoid log_msg(const char *msg) {\n    std::cout << \"log: \" << msg << \"\\n\";\n}\n\nint main() {\n    auto r = log_msg(\"hello\");\n    (void)r;\n}\n",
+   "error": "main.cpp: In function ‘int main()’:\nmain.cpp:8:10: error: deduced type ‘void’ for ‘r’ is incomplete\n    8 |     auto r = log_msg(\"hello\");\n      |          ^",
+   "lang": "cpp"
+  },
+  "unit-value.fail.cs": {
+   "code": "static void Log(string msg) => Console.WriteLine(\"log: \" + msg);\n\nvar r = Log(\"hello\");\nConsole.WriteLine(r);\n",
+   "error": "Program.cs(3,5): error CS0815: Cannot assign void to an implicitly-typed variable",
+   "lang": "csharp"
+  },
+  "unit-value.fail.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc logMsg(msg string) {\n\tfmt.Println(\"log: \" + msg)\n}\n\nfunc main() {\n\tr := logMsg(\"hello\")\n\tfmt.Println(r)\n}\n",
+   "error": "# command-line-arguments\n./main.go:10:7: logMsg(\"hello\") (no value) used as value",
+   "lang": "go"
+  },
+  "unit-value.fail.java": {
+   "code": "public class Main {\n    static void log(String msg) {\n        System.out.println(\"log: \" + msg);\n    }\n\n    public static void main(String[] args) {\n        var r = log(\"hello\");\n        System.out.println(r);\n    }\n}\n",
+   "error": "Main.java:7: error: cannot infer type for local variable r\n        var r = log(\"hello\");\n            ^\n  (variable initializer is 'void')\n1 error",
+   "lang": "java"
+  },
+  "unit-value.kt": {
+   "code": "fun log(msg: String) {\n    println(\"log: $msg\")\n}\n\nfun main() {\n    val r = log(\"hello\")\n    println(\"r: $r\")\n}\n",
+   "out": "log: hello\nr: kotlin.Unit\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "unit-value.py": {
+   "code": "def log(msg):\n    print(\"log: \" + msg)\n\n\nr = log(\"hello\")\nprint(\"r:\", r)\n",
+   "out": "log: hello\nr: None\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "unit-value.ts": {
+   "code": "function log(msg: string): void {\n    console.log(\"log: \" + msg);\n}\n\nconst r = log(\"hello\");\nconsole.log(\"r:\", r);\n",
+   "out": "log: hello\nr: undefined\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "yield.java": {
+   "code": "public class Main {\n    public static void main(String[] args) {\n        String name = switch (2) {\n            case 1 -> \"one\";\n            case 2 -> {\n                int w = 3;\n                int h = 4;\n                yield \"area \" + (w * h);\n            }\n            default -> \"many\";\n        };\n        System.out.println(\"yield: \" + name);\n    }\n}\n",
+   "out": "yield: area 12\n",
+   "lang": "java",
+   "exit": 0
+  }
+ },
+ "exercises": {
+  "collatz": {
+   "starter": "/// How many steps until `start` reaches 1? One step: if the number is even, halve it;\n/// if it is odd, triple it and add one. `start` is at least 1.\nfn collatz_steps(start: u64) -> u32 {\n    todo!(\"a `loop` that ends with `break steps`; the next number is an `if` expression\")\n}\n\nfn main() {\n    assert_eq!(collatz_steps(1), 0); // already there: zero steps\n    assert_eq!(collatz_steps(2), 1);\n    assert_eq!(collatz_steps(6), 8);\n    assert_eq!(collatz_steps(7), 16);\n    assert_eq!(collatz_steps(27), 111);\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "/// How many steps until `start` reaches 1? One step: if the number is even, halve it;\n/// if it is odd, triple it and add one. `start` is at least 1.\nfn collatz_steps(start: u64) -> u32 {\n    let mut n = start;\n    let mut steps = 0;\n    loop {\n        if n == 1 {\n            break steps;\n        }\n        n = if n % 2 == 0 { n / 2 } else { 3 * n + 1 };\n        steps += 1;\n    }\n}\n\nfn main() {\n    assert_eq!(collatz_steps(1), 0); // already there: zero steps\n    assert_eq!(collatz_steps(2), 1);\n    assert_eq!(collatz_steps(6), 8);\n    assert_eq!(collatz_steps(7), 16);\n    assert_eq!(collatz_steps(27), 111);\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "percent": {
+   "starter": "/// What percent `part` is of `whole`, rounded down. When `whole` is 0 the answer is 0.\nfn percent(part: u32, whole: u32) -> u32 {\n    todo!(\n        \"return early when whole is 0, then finish with an expression and no `;`. Integer `/` rounds down; `//` starts a comment in Rust\"\n    )\n}\n\nfn main() {\n    assert_eq!(\n        percent(1, 4),\n        25,\n        \"1 of 4 is 25 percent; `/` already rounds down\"\n    );\n    assert_eq!(percent(1, 3), 33); // rounded down\n    assert_eq!(percent(150, 100), 150);\n    assert_eq!(percent(0, 9), 0);\n    assert_eq!(percent(3, 0), 0); // must not divide by zero\n    assert_eq!(percent(0, 0), 0);\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "/// What percent `part` is of `whole`, rounded down. When `whole` is 0 the answer is 0.\nfn percent(part: u32, whole: u32) -> u32 {\n    if whole == 0 {\n        return 0;\n    }\n    part * 100 / whole\n}\n\nfn main() {\n    assert_eq!(\n        percent(1, 4),\n        25,\n        \"1 of 4 is 25 percent; `/` already rounds down\"\n    );\n    assert_eq!(percent(1, 3), 33); // rounded down\n    assert_eq!(percent(150, 100), 150);\n    assert_eq!(percent(0, 9), 0);\n    assert_eq!(percent(3, 0), 0); // must not divide by zero\n    assert_eq!(percent(0, 0), 0);\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "read-blocks": {
+   "starter": "// Read this program without running it. Then replace each `todo!()` below with the line\n// that `show` makes for that variable, written as a string, in the form \"x = 1\".\n\nfn double(x: i32) -> i32 {\n    x * 2\n}\n\nfn show(n: i32) -> Vec<String> {\n    let a = { double(n) };\n    let b = {\n        double(n);\n    };\n    let c = if n > 5 { n } else { n * 10 };\n    let d = {\n        let m = double(n);\n        m * 10 + 1\n    };\n    vec![\n        format!(\"a = {a:?}\"),\n        format!(\"b = {b:?}\"),\n        format!(\"c = {c:?}\"),\n        format!(\"d = {d:?}\"),\n    ]\n}\n\n// What `show` makes:\n/// Hint: the last line of the block has no `;`, so it is the block's value\nfn a_when_n_is_3() -> &'static str {\n    todo!(\"the last line of the block has no `;`, so it is the block's value\")\n}\n\n/// Hint: look at the end of the last line in the block: what does a `;` make of the value?\nfn b_when_n_is_3() -> &'static str {\n    todo!(\"look at the end of the last line in the block: what does a `;` make of the value?\")\n}\n\n/// Hint: which branch of the `if` runs when n is 3?\nfn c_when_n_is_3() -> &'static str {\n    todo!(\"which branch of the `if` runs when n is 3?\")\n}\n\n/// Hint: same `if`, the other branch: 7 is not below 5\nfn c_when_n_is_7() -> &'static str {\n    todo!(\"same `if`, the other branch: 7 is not below 5\")\n}\n\n/// Hint: a block can hold a `let` first; its value is still the last line\nfn d_when_n_is_3() -> &'static str {\n    todo!(\"a block can hold a `let` first; its value is still the last line\")\n}\n\nfn check(what: &str, said: &str, truth: &str) {\n    assert!(said == truth, \"misread `{what}`: you said {said:?}\");\n    println!(\"ok: {what} is {said:?}\");\n}\n\nfn main() {\n    let at3 = show(3);\n    let at7 = show(7);\n    check(\"a with n = 3\", a_when_n_is_3(), &at3[0]);\n    check(\"b with n = 3\", b_when_n_is_3(), &at3[1]);\n    check(\"c with n = 3\", c_when_n_is_3(), &at3[2]);\n    check(\"c with n = 7\", c_when_n_is_7(), &at7[2]);\n    check(\"d with n = 3\", d_when_n_is_3(), &at3[3]);\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "// Read this program without running it. Then replace each `todo!()` below with the line\n// that `show` makes for that variable, written as a string, in the form \"x = 1\".\n\nfn double(x: i32) -> i32 {\n    x * 2\n}\n\nfn show(n: i32) -> Vec<String> {\n    let a = { double(n) };\n    let b = {\n        double(n);\n    };\n    let c = if n > 5 { n } else { n * 10 };\n    let d = {\n        let m = double(n);\n        m * 10 + 1\n    };\n    vec![\n        format!(\"a = {a:?}\"),\n        format!(\"b = {b:?}\"),\n        format!(\"c = {c:?}\"),\n        format!(\"d = {d:?}\"),\n    ]\n}\n\n// What `show` makes:\n/// Hint: the last line of the block has no `;`, so it is the block's value\nfn a_when_n_is_3() -> &'static str {\n    \"a = 6\"\n}\n\n/// Hint: look at the end of the last line in the block: what does a `;` make of the value?\nfn b_when_n_is_3() -> &'static str {\n    \"b = ()\"\n}\n\n/// Hint: which branch of the `if` runs when n is 3?\nfn c_when_n_is_3() -> &'static str {\n    \"c = 30\"\n}\n\n/// Hint: same `if`, the other branch: 7 is not below 5\nfn c_when_n_is_7() -> &'static str {\n    \"c = 7\"\n}\n\n/// Hint: a block can hold a `let` first; its value is still the last line\nfn d_when_n_is_3() -> &'static str {\n    \"d = 61\"\n}\n\nfn check(what: &str, said: &str, truth: &str) {\n    assert!(said == truth, \"misread `{what}`: you said {said:?}\");\n    println!(\"ok: {what} is {said:?}\");\n}\n\nfn main() {\n    let at3 = show(3);\n    let at7 = show(7);\n    check(\"a with n = 3\", a_when_n_is_3(), &at3[0]);\n    check(\"b with n = 3\", b_when_n_is_3(), &at3[1]);\n    check(\"c with n = 3\", c_when_n_is_3(), &at3[2]);\n    check(\"c with n = 7\", c_when_n_is_7(), &at7[2]);\n    check(\"d with n = 3\", d_when_n_is_3(), &at3[3]);\n    println!(\"all checks passed\");\n}\n",
+    "out": "ok: a with n = 3 is \"a = 6\"\nok: b with n = 3 is \"b = ()\"\nok: c with n = 3 is \"c = 30\"\nok: c with n = 7 is \"c = 7\"\nok: d with n = 3 is \"d = 61\"\nall checks passed\n"
+   }
+  },
+  "shipping": {
+   "starter": "/// Shipping in cents. Up to 1 kg costs 500, over 1 kg and up to 5 kg costs 900,\n/// over 5 kg costs 1500. Express delivery doubles the price.\nfn shipping_cents(weight_kg: u32, express: bool) -> u32 {\n    todo!(\"an if / else if / else expression gives the base price; then double it if express\")\n}\n\nfn main() {\n    assert_eq!(shipping_cents(0, false), 500);\n    assert_eq!(shipping_cents(1, false), 500);\n    assert_eq!(shipping_cents(2, false), 900);\n    assert_eq!(shipping_cents(5, false), 900);\n    assert_eq!(shipping_cents(6, false), 1500);\n    assert_eq!(shipping_cents(5, true), 1800);\n    assert_eq!(shipping_cents(1, true), 1000);\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "/// Shipping in cents. Up to 1 kg costs 500, over 1 kg and up to 5 kg costs 900,\n/// over 5 kg costs 1500. Express delivery doubles the price.\nfn shipping_cents(weight_kg: u32, express: bool) -> u32 {\n    let base = if weight_kg <= 1 {\n        500\n    } else if weight_kg <= 5 {\n        900\n    } else {\n        1500\n    };\n    if express { base * 2 } else { base }\n}\n\nfn main() {\n    assert_eq!(shipping_cents(0, false), 500);\n    assert_eq!(shipping_cents(1, false), 500);\n    assert_eq!(shipping_cents(2, false), 900);\n    assert_eq!(shipping_cents(5, false), 900);\n    assert_eq!(shipping_cents(6, false), 1500);\n    assert_eq!(shipping_cents(5, true), 1800);\n    assert_eq!(shipping_cents(1, true), 1000);\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}

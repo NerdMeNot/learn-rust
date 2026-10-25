@@ -1,0 +1,12 @@
+{
+ "rust": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+ "go": "go version go1.27.3 linux/arm64",
+ "kotlin": "info: kotlinc-jvm 2.4.21 (JRE 25.0.5+8-LTS)",
+ "java": "openjdk version \"25.0.5\" 2026-10-20 LTS",
+ "python": "Python 3.13.5",
+ "typescript": "Version 7.0.2",
+ "node": "v24.22.1",
+ "csharp": ".NET 10.0.402",
+ "c": "gcc (Debian 14.2.0-19) 14.2.0",
+ "cpp": "g++ (Debian 14.2.0-19) 14.2.0"
+}

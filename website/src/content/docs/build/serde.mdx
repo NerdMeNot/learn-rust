@@ -1,0 +1,99 @@
+---
+title: "JSON with serde"
+description: "serde turns your structs into JSON (or TOML, CSV, and more) and back again. You describe the shape once with a derive, and the derive macro writes the code when you compile."
+---
+
+import { Files, GuideGotcha, Remember, Session, Tree } from '../../../components/guide'
+
+serde turns your structs into JSON (or TOML, CSV, and more) and back again. You describe the shape once with a derive, and the derive macro writes the code when you compile.
+
+<Remember>Derive `Serialize` and `Deserialize`, then use `serde_json::from_str` and `to_string`.</Remember>
+
+<Tree guide="serde" dir="rust" name="people-json" title="Project layout" notes={{"examples/missing.rs":"the gotcha: cargo run --example missing","examples/optional.rs":"the fix","examples/lenient.rs":"missing, null and unknown fields","examples/strict.rs":"bad input and deny_unknown_fields","examples/shapes.rs":"enums as JSON","examples/untyped.rs":"serde_json::Value","src/main.rs":"the program on this page","Cargo.lock":"created by Cargo","Cargo.toml":"dependencies go here"}} />
+
+<Files guide="serde" dir="rust" files={["Cargo.toml"]} />
+
+<div class="lr-compare">
+<Files guide="serde" dir="rust" files={["src/main.rs"]} run="run" />
+<Files guide="serde" dir="go" files={["main.go"]} run="go" lang="go" />
+</div>
+
+`serde` is the framework: the `Serialize` and `Deserialize` traits and the derives, which come with the `derive` feature in `Cargo.toml` above. `serde_json` is one format that plugs into it ([the data model](https://serde.rs/data-model.html) is the meeting point).
+
+- **Field names:** Go puts a tag on each field. C# uses an attribute on each property (`[JsonPropertyName]`) or a naming policy set once. In serde, `#[serde(rename_all = "camelCase")]` covers the whole struct, and `#[serde(rename = "...")]` one field. The first run above shows `fullName` going in and coming out.
+- **Missing or null values** go in an `Option`. The Go program above has the same idea as a pointer field (`Email` prints as `<nil>`). `#[serde(default)]` fills in `Default::default()` for the field's type instead (an empty `Vec` for `tags`). A field with neither is required, which is the gotcha below.
+- **Enums** become JSON too, with a few styles to choose from, such as `#[serde(tag = "type")]` for `{"type": "circle", ...}`.
+- **Other formats** use the same derives: they are separate crates, such as `toml` and `csv`.
+
+## What goes in, what comes out
+
+`from_str` returns a `Result`, so bad input is an `Err` you handle, not a crash. First the forgiving side. Missing and `null` both become `None`, a missing `tags` becomes an empty list, and a field the struct does not have is ignored (the serde docs say [unknown fields are ignored by default for JSON](https://serde.rs/container-attrs.html)):
+
+<Files guide="serde" dir="rust" files={["examples/lenient.rs"]} run="lenient" />
+
+Then the strict side. `#[serde(deny_unknown_fields)]` turns that last case into an error, and the other lines are a string, a negative number, a fraction and JSON that is cut off. Each message names the problem and ends with a line and column:
+
+<Files guide="serde" dir="rust" files={["examples/strict.rs"]} run="strict" />
+
+`age` is a `u32`, so `"28"` (a string), `-1` and `1.5` are refused instead of converted.
+
+## Enums
+
+An enum becomes JSON in a shape you pick. By default the variant name wraps the data. With `tag = "type"` the name becomes a field inside the object, and a tag the enum does not know is an error. The serde docs list [every representation](https://serde.rs/enum-representations.html).
+
+<Files guide="serde" dir="rust" files={["examples/shapes.rs"]} run="shapes" />
+
+## When you have no struct
+
+Sometimes you only need one value out of a document. `serde_json::Value` holds any JSON, and `json!` builds one. This trades the checks above for flexibility: a missing key reads as `null` and `as_u64()` on a string gives `None`, so you decide what that means.
+
+<Files guide="serde" dir="rust" files={["examples/untyped.rs"]} run="untyped" />
+
+## Other formats
+
+The same `Person` struct goes to TOML and CSV by changing the crate that does the writing. This is a second project with its own `Cargo.toml`. CSV reads through a `Reader` that deserializes each row, not through `from_str`.
+
+<Files guide="serde" dir="formats" files={["Cargo.toml", "src/main.rs"]} run="formats" />
+
+For YAML, the `serde_yaml` crate has a final release numbered `0.9.34+deprecated` and its [repository was archived by its owner](https://github.com/dtolnay/serde-yaml) on 25 March 2024. Check what is current before you pick a YAML crate.
+
+## The same job in your language
+
+The last column is the gotcha's JSON, `{ "fullName": "Cy" }`, loaded into a type that has an `age`. Cells are from the runs in the gotcha below; the image has no Jackson, kotlinx.serialization, cJSON or nlohmann/json, so those rows were not run.
+
+| Language | A common choice | A missing `age`, as run |
+| --- | --- | --- |
+| Go | `encoding/json` with struct tags (standard library) | `Age` is `0`, `err` is `nil` |
+| Python | `json` (standard library), plus pydantic (or a dataclass you fill in yourself) for shapes | a dict without the key; `KeyError` when you read it |
+| TypeScript | `JSON.parse` (built in), plus zod to check the shape | the type says `number`, the value is `undefined` |
+| Java | Jackson | not run |
+| Kotlin | kotlinx.serialization | not run; its docs say an object can be deserialized only when all its properties are present, unless the property has a default |
+| C# | `System.Text.Json` (in .NET) | `Age` is `0`; with `required` properties it throws |
+| C | cJSON, jansson | not run |
+| C++ | nlohmann/json | not run |
+| Rust | `serde` with `serde_json` | an error that names the field |
+
+## Try it yourself
+
+I did all three in the image behind this page.
+
+1. **Rename wrongly.** In `src/main.rs`, change `rename_all = "camelCase"` to `"snake_case"` and run it. The JSON still says `fullName`, so the program stops with an error naming `full_name`. The attribute works in both directions, so the text and the struct have to agree.
+
+   <Session guide="serde" run="snake" />
+
+2. **Make the gotcha pass.** In `examples/missing.rs`, change `age: u32` to `age: Option<u32>`, which is the fix shown in the gotcha below. Run it and the compiler stops with E0277, because the second `{}` in `println!` prints `person.age` and an `Option<u32>` has no `Display`. Change that `{}` to `{:?}` and it prints `Cy is None`: `age` is `None`, not an error.
+
+   <Session guide="serde" run="missing-option" />
+
+3. **Loosen the strict example.** In `examples/strict.rs`, delete `, deny_unknown_fields` from the attribute. The first input, the one with `nickname`, is now accepted, and the other four still fail.
+
+   <Session guide="serde" run="strict-off" />
+
+<GuideGotcha guide="serde" />
+
+## Read more
+
+- The serde site: [overview](https://serde.rs/), [derive setup](https://serde.rs/derive.html), [container attributes](https://serde.rs/container-attrs.html) (`rename_all`, `deny_unknown_fields`, `tag`), [field attributes](https://serde.rs/field-attrs.html) (`default`) and [enum representations](https://serde.rs/enum-representations.html).
+- `serde_json` on docs.rs: [crate page](https://docs.rs/serde_json/1.0.154/serde_json/), [`Value`](https://docs.rs/serde_json/1.0.154/serde_json/enum.Value.html) and the [`json!` macro](https://docs.rs/serde_json/1.0.154/serde_json/macro.json.html).
+- Other formats: [`toml`](https://docs.rs/toml/1.1.8/toml/) and the [`csv` tutorial](https://docs.rs/csv/1.4.0/csv/tutorial/index.html).
+- Other languages: Go [`encoding/json`](https://pkg.go.dev/encoding/json), Python [`json`](https://docs.python.org/3/library/json.html), C# [`required` properties](https://learn.microsoft.com/en-us/dotnet/standard/serialization/system-text-json/required-properties) and [customizing property names](https://learn.microsoft.com/en-us/dotnet/standard/serialization/system-text-json/customize-properties), Kotlin [optional properties](https://kotlinlang.org/docs/serialization-customization-options.html).

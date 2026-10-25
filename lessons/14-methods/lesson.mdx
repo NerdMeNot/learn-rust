@@ -1,0 +1,402 @@
+<p class="lr-layer">The toolkit</p>
+
+A [struct](/learn/structs/) holds data. A **method** is a function that belongs to a type, so you can write `acct.deposit(5)` instead of `deposit(&mut acct, 5)`. This lesson covers writing methods, what the first parameter means, and what Rust uses in place of constructors, overloading and inheritance. Outputs come from Linux on 64-bit ARM.
+
+## A method is a function with a `self` parameter
+
+Methods go inside an `impl` block ("implementation"), named after the type they belong to:
+
+<Snippet file="first-methods.rs" />
+
+- `impl Account { ... }` says "the functions in here belong to `Account`".
+- `Self` inside the block is another name for `Account`, so the body of the block survives a rename of the type.
+- A function whose first parameter is `self` is a method. `self` is the value you called it on, so `self.balance` is the `balance` field of `acct`.
+- A function with no `self`, like `new`, is an **associated function**. You call it with `::` on the type: `Account::new("ana")`. More on that below.
+
+A method and a field can share a name: `acct.balance` is the field and `acct.balance()` is the method. This is the usual way to give read access to a field, with no `get_` prefix ([API guidelines](https://rust-lang.github.io/api-guidelines/naming.html#getter-names-follow-rust-convention-c-getter)).
+
+## What the first parameter means
+
+`deposit` takes `&mut self`, `balance` takes `&self` and `close` takes `self`. They are not three styles. The value you call a method on is the **receiver**, and the first parameter says what the method does with it, in the same words as the [ownership](/learn/ownership/), [borrowing](/learn/borrowing/) and [mutable borrows](/learn/mutable-borrows/) lessons:
+
+| Write | It is short for | The method may | The caller's variable |
+|---|---|---|---|
+| `&self` | `self: &Self` | read the value | a plain `let` is enough; still usable afterwards |
+| `&mut self` | `self: &mut Self` | read and change the value | a variable that owns the value must be `let mut`; one that already holds a `&mut Account` needs nothing; still usable afterwards |
+| `self` | `self: Self` | take the value: drop it, store it, or return it | a plain `let` is enough; the value is **moved**, so the variable can't be used again (a `Copy` type such as a number is copied instead) |
+| `mut self` | `self: Self`, and the method may change it | change the value it now owns, and hand it back | a plain `let` is enough; moved |
+
+`mut self` is the row to read twice. It does not make the caller's variable changeable: the method owns the value it was given, and `mut` lets it change that value before returning it. The builder below uses it.
+
+Rule of thumb: start with `&self`, use `&mut self` when the method changes the value, and `self` when it finishes with the value (turns it into something else, or hands its parts on). A method that turns a value into another one and uses it up is conventionally named `into_...` ([API guidelines](https://rust-lang.github.io/api-guidelines/naming.html#ad-hoc-conversions-follow-as_-to_-into_-conventions-c-conv)).
+
+The compiler checks the method against its own signature. A `&self` method can't change anything:
+
+<Snippet file="read-only-self.fail.rs" />
+
+Calling a `&mut self` method on a plain `let` is the other direction, and it is the gotcha at the top of this page ([E0596](/errors/)). The third direction is a method that takes `self`, followed by a use of the variable:
+
+<Snippet file="use-after-close.fail.rs" />
+
+The note at the end names the cause: `Account::close` takes ownership of the receiver `self`. That is a [move](/learn/ownership/), the same as passing `acct` to a function. The signature tells every caller what happens, with no documentation to read. So a type can say "after this call you are finished with me". Using something already closed is a run-time error in many languages, and an E0382 here.
+
+<ForLang only="python">
+Python finds out when the program runs:
+
+<Snippet file="closed-stream.fail.py" />
+</ForLang>
+
+<ForLang only="cpp">
+C++ can say something like this with a member function qualified `&&`, which runs only on an rvalue (a temporary, or an object passed through `std::move`). It does not stop later use:
+
+<Snippet file="consume.cpp" />
+
+`acct.owner` was left empty here (libstdc++; the standard says a moved-from string is valid but unspecified), and the compiler let the next lines read it. In Rust that is the E0382 above, the caller writes no `std::move` (`acct.close()` is the move), and a moved-from variable is not dropped again.
+</ForLang>
+
+## Functions without `self`: `new`, `Self` and constants
+
+A function in an `impl` block with no `self` belongs to the type but not to a value. These associated functions are where constructors go. Methods and associated functions written in the type's own `impl` blocks are called **inherent** (as opposed to the ones a trait supplies):
+
+<Snippet file="assoc.rs" />
+
+- `new` is **not a keyword**. It is a name people agree on for "the main way to make one". The standard library also has `String::from`, `Vec::with_capacity` and `File::open`. A struct has no hidden constructor: anywhere its fields are visible, you can build it with `Account { owner, balance }` ([privacy](#methods-and-privacy), below).
+- `Self::with_balance(owner, 0)` calls another associated function of the same type. `Self { ... }` builds a value.
+- `const MAX_BALANCE: u32 = 1_000;` inside `impl` is an **associated constant**: one value for the whole type, used as `Account::MAX_BALANCE` outside and `Self::MAX_BALANCE` inside.
+- A type can have **several `impl` blocks**; together they are one set of methods. A trait's methods get a block of their own ([Traits](/learn/traits/)).
+
+Two inherent methods of one type can't share a name, so you can't overload by parameter list. Constructors that take different arguments get different names, as `new` and `with_balance` do:
+
+<Snippet file="no-overload.fail.rs" />
+
+The exception is a trait: the standard library's `From` can be implemented twice for one type, `impl From<u8> for Y` and `impl From<&str> for Y`, giving `Y::from(7u8)` and `Y::from("abc")`. That is a trait feature ([Traits](/learn/traits/)), not overloading of your own methods.
+
+<ForLang only="java">
+Java overloads constructors and lets one call another with `this(...)`:
+
+<Snippet file="overload.java" />
+
+In Rust that is two functions with different names, one calling the other with `Self::with_balance(owner, 0)`, as in `assoc.rs`.
+</ForLang>
+
+## The dot does the borrowing for you
+
+You never write `(&mut acct).deposit(5)`. At a `.`, the compiler works out whether the method needs the value, `&` or `&mut`, and adds the borrow for you. It also looks through references, so a method works the same on a value and on a reference to it:
+
+<Snippet file="auto-ref.rs" />
+
+Inside `top_up`, `acct` is already a `&mut Account` and `acct.deposit(10)` works with no `(*acct)` in front. The same goes for `a` in the loop and for a `&&Account`. A method that takes `self` is the exception:
+
+<Snippet file="consume-behind-ref.fail.rs" />
+
+[E0507](/errors/): `close_it` only borrowed the account, so it cannot hand it to `close`, which wants to own it. The second note suggests `Clone`, a way to make a copy; usually the better fix is the signature: take `Account` by value in `close_it`, or make `close` take `&self`.
+
+Method syntax is shorthand. `Type::method(receiver, arguments)` works for any method defined on `Type`, and it is the form to use when you need a method as a plain function:
+
+<Snippet file="explicit-call.rs" />
+
+`read` holds a function (`fn(&Account) -> u32` is the type of a function from `&Account` to `u32`). `accounts.iter().map(Account::balance).sum()` calls `balance` on every element of a list and adds the results ([iterators](/learn/iterators/) covers `iter`, `map` and `sum`). The path must name the type that defines the method: `iter` belongs to slices, so `Vec::iter(&v)` is an error (E0599) and `<[i32]>::iter(&v)` works. The dot form is not a value: `let f = acct.deposit;` is an error (E0615), where the path form `Account::deposit` is fine.
+
+<ForLang only="java kotlin">
+`Account::balance` is your method reference (`Account::getBalance` in Java).
+</ForLang>
+
+<ForLang only="c cpp">
+In C you pick between `s.x` and `p->x` by hand, and C++ does the same for member functions. Rust has no `->`: `object.something()` adds `&`, `&mut` or `*` so that the object matches the method's signature ([Book 5.3](https://doc.rust-lang.org/book/ch05-03-method-syntax.html)).
+</ForLang>
+
+<ForLang only="python">
+Python has the same shape: `Account.deposit(acct, 5)` is `acct.deposit(5)` written out. Python's bound method `f = acct.deposit` is a valid value; in Rust use the path form or a closure ([Closures](/learn/closures/)).
+
+<Snippet file="explicit-self.py" />
+</ForLang>
+
+<ForLang only="typescript">
+In TypeScript a method taken off its object loses `this`:
+
+<Snippet file="lost-this.ts" />
+
+`f` is the method without its object, so `this` is `undefined` when `f(5)` runs. At run time `this` is not a parameter (TypeScript can only check it with a pretend `this:` annotation that is erased). In Rust the receiver is an explicit first argument of `Account::deposit`, so there is nothing to lose.
+</ForLang>
+
+## Chaining and builders
+
+When a method returns something that has more methods, calls can be chained: `Request::new(url).retries(3).header("X-Id: 7")`. Rust has no default or named arguments (see [Constructors](#constructors-overloading-and-default-arguments), below), so a type with many optional settings gives each setting its own method. That is the [**builder pattern**](/learn/idioms/#building-a-value-default-update-syntax-and-the-builder), and a chain is how you use it.
+
+A builder method has two possible shapes. This one takes `mut self` and returns `Self`, so every call moves the builder in and hands it back:
+
+<Snippet file="builder-consuming.rs" />
+
+It reads like `return this`, but the old name is dead afterwards, which is why a setting made only sometimes needs `req = req.header(...)`. No `String` or `Vec` contents are copied. Here `Request` is its own builder; a separate builder type is worth it when the finished value must be checked or has a different type.
+
+The other shape borrows: `&mut self` in, `&mut Self` out. The builder here is a separate type that makes a `Request` at the end:
+
+<Snippet file="builder-mut-ref.rs" />
+
+Now `b.header(...)` changes `b` in place, so the conditional needs no re-assigning. The price is in `build`: it takes `&self`, so it clones the strings (`clone` makes a copy). Why not `build(self)`? A `&mut Self` chain only hands the next call a borrow, and a `self` method can't be called through one:
+
+<Snippet file="builder-build-self.fail.rs" />
+
+Same E0507 as before. There is also a trap with **temporaries**: values built in the middle of an expression with no variable, dropped at the end of the statement:
+
+<Snippet file="builder-temp.fail.rs" />
+
+`Builder::new()` is a temporary. `retries(3)` returns a `&mut` into it, and the next line uses that after it is gone: [E0716](/errors/). The fix is to keep the builder in a `let mut` variable first. In one statement, as in `builder-mut-ref.rs`, the temporary lasts long enough.
+
+<ForLang only="java kotlin csharp">
+Your `return this` builder is the `&mut self -> &mut Self` shape. `var b = Request.builder().retries(3)` is fine in your language because the garbage collector keeps the object alive while anything points at it.
+</ForLang>
+
+<ForLang only="go">
+A Go builder that returns `*Builder` is the `&mut self -> &mut Self` shape, and `b := NewBuilder().Retries(3)` works because Go keeps the value alive while something points at it. A value-receiver `WithRetries(n int) Request` that returns the changed copy is the `self -> Self` shape.
+</ForLang>
+
+<ForLang only="cpp">
+The `&mut Self` shape is the C++ `Builder &` idiom (`return *this;`), and E0716 is its classic bug. This compiles and then reads a destroyed temporary:
+
+<Snippet file="dangling-builder.crash.asan.cpp" />
+
+Rust refuses the same program (`builder-temp.fail.rs`).
+</ForLang>
+
+| | `mut self -> Self` | `&mut self -> &mut Self` |
+|---|---|---|
+| One expression, `new().a().b()...` | works | works |
+| A final `build(self)` that moves the parts out | works | E0507 |
+| Setting an option only sometimes | `b = b.a()` | `b.a();` |
+| `let b = Builder::new().a();` | works | E0716 |
+
+The [API guidelines](https://rust-lang.github.io/api-guidelines/type-safety.html#builders-enable-construction-of-complex-values-c-builder) prefer the borrowing shape, and use the consuming one when the result needs the builder's contents moved into it. The standard library uses both: [`Command::arg`](https://doc.rust-lang.org/std/process/struct.Command.html#method.arg) takes `&mut self` and returns `&mut Command`, while [`thread::Builder::name`](https://doc.rust-lang.org/std/thread/struct.Builder.html#method.name) takes `self` and returns `Builder`.
+
+## Methods on tuple structs
+
+A tuple struct has fields without names, `self.0`, `self.1`, and takes methods the same way:
+
+<Snippet file="tuple-struct.rs" />
+
+`Score(90)` builds a value, and `Self(points)` does the same inside the block. Wrapping a number this way gives it its own methods and stops it being mixed up with other numbers.
+
+## Methods and privacy
+
+Rust hides fields with a different boundary than Java or C#: the **module**. A module (`mod bank { ... }`) is a named block that groups code. Fields and methods are private by default: only the module they are defined in, and the modules nested inside it, can use them. `pub` makes one visible outside ([Reference](https://doc.rust-lang.org/reference/visibility-and-privacy.html)).
+
+<Snippet file="private.fail.rs" />
+
+Code outside `bank` can call `deposit` and `balance`, but not touch `balance`. Methods are how a type keeps its own rules (a balance that only changes through `deposit`). Hide a field when a rule needs protecting; plain data can stay `pub`. Inside `bank`, any code can touch the fields: the boundary is the module, not the type.
+
+## Method or function?
+
+Use a method when the code is about one value of the type and reads as `value.action()`, or when the type must protect private fields. Use a plain function when two values play equal parts (`distance(a, b)`), when there is no natural owner, or when the type is not yours. A method is a function with a receiver (`explicit-call.rs`), so the choice is about readability. An *inherent* `impl` block must be in the **crate** that defines the type (a crate is one library or program: everything compiled together; [Reference](https://doc.rust-lang.org/reference/items/implementations.html)), so you can't add inherent methods to `str` or `Vec`. Adding methods to someone else's type works through a trait ([Traits](/learn/traits/)).
+
+## Your language's methods in Rust
+
+Pick your language in "Coming from" at the top of the page to see how the code you write today maps to Rust.
+
+<ForLang only="go">
+
+| You write in Go | In Rust |
+|---|---|
+| `func (c *Counter) Bump()` | `fn bump(&mut self)` inside `impl Counter` |
+| `func (c Counter) Get() int` (value receiver, a copy) | `fn get(&self) -> u32` reads through a reference, no copy. A `self` receiver moves the value instead (it copies only if the type is `Copy`) |
+| `func (c *Counter) Get() int` (pointer receiver, for reads) | `fn get(&self)`. Go can't mark a pointer receiver read-only; Rust can |
+| `func NewCounter() *Counter` | `fn new() -> Self`, a plain function that returns the value itself (on the stack unless you box it) |
+| `c.Bump()` on a variable | `c.bump()`, with `let mut c` for an owned value |
+| `type Celsius float64` with methods | `struct Celsius(f64);` with an `impl` |
+| Method expression `(*Counter).Bump` | `Counter::bump` |
+| Struct embedding, `type B struct{ A }`, methods promoted | A field `a: A` and methods you forward by hand |
+| A type satisfies an interface by having the methods | It says so: an `impl Trait for Type` block ([Traits](/learn/traits/)) |
+
+Go's value receiver works on a copy:
+
+<Snippet file="receivers.go" />
+
+`BumpCopy` changed its own copy, and the original stayed at 0. A Rust `self` takes the value instead, and a type that isn't `Copy` is moved, so a copy changed by accident is not possible. A `Copy` struct does behave like a Go value receiver, as this program shows:
+
+<Snippet file="receivers-copy.rs" />
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+
+| You write in Java, Kotlin or C# | In Rust |
+|---|---|
+| `this.balance` or just `balance` | `self.balance`: always spelled out, never implicit |
+| `new Account("ana")`, a constructor | `Account::new("ana")`, an ordinary function |
+| Default arguments (Kotlin, C#) and named arguments | None. A struct literal names its fields, or use a builder |
+| `static` method, companion object, `static` member | An associated function with no `self` |
+| `static final`, `const val`, `const` | `const MAX_BALANCE: u32 = 1_000;` in `impl` |
+| `private` field and a getter | A field private to its module, and a method with the field's name |
+| `final` or `val` on a variable | `let` makes the whole value unchangeable; `let mut` allows changes. Your language's equivalent is an immutable class (a Java `record`) |
+| A method that doesn't change anything | `&self`; the compiler enforces it, where `getX()` is a convention |
+| Subclasses, `extends` | A field holding the other type (see [below](#no-inheritance)) |
+
+For a class, `this` is one object reference with no statement of what the method does to it (a C# `struct` can mark a method `readonly`). In Rust the first parameter carries a mode, and the caller's variable must agree with it.
+</ForLang>
+
+<ForLang only="python typescript">
+
+| You write in | In Rust |
+|---|---|
+| `def deposit(self, n)` | `fn deposit(&mut self, n: u32)`: `self` has a type, which says what the method does |
+| `__init__`, `constructor(...)` | `fn new(...) -> Self`, an ordinary function; every field is set in one struct literal |
+| `Account.deposit(acct, 5)` | `Account::deposit(&mut acct, 5)` |
+| `@staticmethod`, TypeScript `static` | A function with no `self` |
+| `@classmethod`, `cls(...)` | A function with no `self`, where `Self` is the type |
+| `@property`, TypeScript `get balance()` | A method named like the field: `acct.balance()` |
+| `__str__`, `__eq__`, `toString` | Traits ([Traits](/learn/traits/)) |
+| Default arguments, `**kwargs`, optional parameters | None. A struct literal, or a builder |
+| `class B(A)`, `extends` | A field holding the other type (see [below](#no-inheritance)) |
+
+What is new is the mode. In your language every method is in effect `&mut self`: it can read and write, and the caller keeps the object. `&self` (cannot write) and `self` (takes the object away) have no equivalent. The migration rule: getters become `&self`, mutators `&mut self`, and `self` is for a call that ends the object's usefulness. The reason is the aliasing bug from [mutable borrows](/learn/mutable-borrows/).
+</ForLang>
+
+<ForLang only="c cpp">
+
+| You write in C or C++ | In Rust |
+|---|---|
+| `counter_bump(&c)` | `c.bump()`, or `Counter::bump(&mut c)` |
+| `const struct Counter *c` | `&self` |
+| `struct Counter *c` | `&mut self` |
+| C++ `const` member function | `&self` |
+| C++ non-`const` member function | `&mut self` |
+| A `const` and a non-`const` overload, such as `begin()` | Two names: `iter` and `iter_mut`, `get` and `get_mut` |
+| `this->x`, `this` as a pointer | `self.x`: `self` is a reference, and there is no `->` |
+| `private` per class, `friend` | Private per module, no `friend`: code in the module acts like one |
+| Overloaded member functions | None for inherent methods |
+| Default arguments | None |
+| `class B : public A` | A field holding the other type (see [below](#no-inheritance)) |
+
+C++ defaults to changeable and writes `const` to opt out; Rust defaults to unchangeable. A `&self` method can't change anything through `self` (the exceptions are types that change through a shared reference, [Smart pointers](/learn/smart-pointers/#cell-and-refcell-change-it-through-a-shared-reference)).
+</ForLang>
+
+<p class="lr-layer">Going deeper</p>
+
+## What `self` is in memory
+
+`acct.deposit(5)` does not copy the `Account`. With `&mut self`, the method receives the **address** of `acct`. With `self`, the method receives the value itself, and `acct` is moved. This program prints the facts for both (`as_ptr()` is the address of the text; the program prints whether two addresses are equal):
+
+<Snippet file="memory.rs" />
+
+An `Account` is a `String` (24 bytes) plus a `u32` (4 bytes), rounded up to 32. The text `ana` is on the [heap](/learn/stack-heap/). With `&self` or `&mut self`:
+
+<Memory
+  title="acct.deposit(5)   // inside deposit(&mut self, amount)"
+  stack={[
+    { name: 'acct', type: 'Account', cells: ['owner ptr', 'owner len 3', 'owner cap 3', 'balance 75'], to: 'text' },
+    { name: 'self', type: '&mut Account', cells: ['address of acct'], toVar: 'acct', note: 'a borrow, not a copy' },
+  ]}
+  heap={[{ id: 'text', label: '"ana": 3 bytes of text', cells: ['a', 'n', 'a'] }]}
+  caption="`self` holds one address. `std::ptr::eq(acct.itself(), &acct)` printed true: the method sees the caller's variable, not a copy of it."
+/>
+
+And `self` by value, `acct.close()`:
+
+<Memory
+  title="acct.close()   // inside close(self)"
+  stack={[
+    { name: 'acct', type: 'Account', cells: ['owner ptr', 'owner len 3', 'owner cap 3', 'balance 75'], to: 'text', gone: 'moved', note: 'the compiler will not let you use it' },
+    { name: 'self', type: 'Account', cells: ['owner ptr', 'owner len 3', 'owner cap 3', 'balance 75'], to: 'text', note: 'the method owns the value now' },
+  ]}
+  heap={[{ id: 'text', label: '"ana": 3 bytes of text', cells: ['a', 'n', 'a'] }]}
+  caption="The 32 bytes of the struct move into `close`; the compiler may copy them or not. The text is not copied: its address before and after was the same (`true` above). When `close` ends, `self` is dropped and the text is freed. `acct` is not dropped a second time."
+/>
+
+Methods are not stored in the value. `Counter` below has three methods and is still the size of its one `u32` field:
+
+<Snippet file="method-size.rs" />
+
+A call like `c.bump()` goes to a function the compiler picked while compiling, not to an entry in a table inside `c`. Choosing between types at run time (what a Go interface does) is a different feature, with [its own lesson](/learn/trait-objects/) later.
+
+<ForLang only="java">
+Unlike Java, where every instance method that isn't `private`, `static` or `final` can be overridden and is looked up at run time, nothing here is. Overriding needs a [trait](/learn/traits/), later.
+</ForLang>
+
+<ForLang only="c">
+Your `struct Counter` with a function pointer inside is the other way to attach a function to data. Each value carries the pointer, and you pass the object yourself:
+
+<Snippet file="fnptr.c" />
+
+The struct is 16 bytes here: the `unsigned`, padding, and an 8-byte function pointer on this 64-bit platform. The Rust `Counter` is 4 bytes, because the `impl` holds the functions.
+</ForLang>
+
+<ForLang only="cpp">
+Virtual functions have a counterpart in [trait objects](/learn/trait-objects/), in a later lesson. Nothing on this page is virtual: every call is resolved at compile time.
+</ForLang>
+
+## How the compiler finds the method
+
+For `receiver.name(...)`, the compiler builds a list of candidate types: the receiver's type `T`, then each type reached by dereferencing (looking through a reference, a `Box`, an `Rc` or another smart pointer, but not a raw pointer), and for an array, the slice it can be viewed as. After each candidate `T` it adds `&T` and `&mut T`. Going down the list, it looks for a method whose `self` has exactly that type. At each type the type's own inherent methods come first, then trait methods. The first match wins, and two matches at the same step are an error: you then say which one with `Type::method(&x)`. This is the rule in the [Rust Reference](https://doc.rust-lang.org/reference/expressions/method-call-expr.html). It is why `rr.balance()` worked on a `&&Account` in `auto-ref.rs`: dereferencing once gives `&Account`, exactly what `balance` wants.
+
+
+
+## No inheritance
+
+Rust has no `extends`. A type that reuses another one holds it as a field:
+
+<Snippet file="composition.rs" />
+
+`Savings` has an `Account`, and `deposit` is forwarded by hand. That is more typing than inheritance or Go's embedding. In return, `Savings` offers exactly what you wrote and nothing is overridden behind your back. A `&Savings` is not accepted where a `&Account` is wanted; you pass `&s.account`. Code that must accept several types uses [traits](/learn/traits/).
+
+## Constructors, overloading and default arguments
+
+A constructor is a function, usually `new`; two inherent methods can't share a name; a parameter can't have a default. The answers are different names for different ways to build, a struct literal, and a builder for many settings (above). A builder is more code than a default argument, and that is a real cost of the design.
+
+A struct literal is the closest thing to named arguments: `Account { owner: ..., balance: ... }`. It needs a value for every field unless you end it with `..Default::default()` or `..other` ([Structs](/learn/structs/)), and only code that can see the fields can write one.
+
+<ForLang only="kotlin">
+Kotlin writes overloads (one, two or three arguments) as one constructor with default and named arguments:
+
+<Snippet file="named-args.kt" />
+
+`Account("ana", currency = "EUR")` skips the middle argument by name. In Rust that is a builder, or a struct literal ending in `..Default::default()`.
+</ForLang>
+
+<ForLang only="csharp">
+C# has optional parameters and named arguments:
+
+<Snippet file="defaults.cs" />
+
+`currency: "EUR"` skips `balance` by name. In Rust that is a builder, or a struct literal ending in `..Default::default()`.
+</ForLang>
+
+<ForLang only="python">
+Python uses default and keyword arguments instead of overloading:
+
+<Snippet file="kwargs.py" />
+
+In Rust, `Account("ana", currency="EUR")` becomes a builder, or `Account { owner: ..., currency: ..., ..Default::default() }`.
+</ForLang>
+
+<ForLang only="typescript">
+TypeScript has optional parameters, overload signatures and the options-object idiom, `new Request(url, { retries: 3 })`. The options object is a struct literal in Rust, ending in `..Default::default()` for the rest. Optional parameters and overloads become different method names.
+</ForLang>
+
+<ForLang only="cpp">
+C++ has member-initializer lists, delegating and copy/move constructors, `explicit` and default arguments. Rust has none of them: `new` sets all the fields in one struct literal, a move hands the value over ([Ownership](/learn/ownership/)), and a copy is a `.clone()` call you write.
+</ForLang>
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Open each exercise in the Playground, replace the `todo!()`, and run it until it prints `all checks passed`.
+
+<Exercise name="basket" title="Basket">
+Write four methods for `Basket`: `new`, `count` (reads), `add` (changes) and `into_receipt` (uses the basket up). `add` trims the text (`item.trim()` removes spaces at both ends; see [Strings](/learn/strings/)) and refuses a blank item. The receipt joins the items with `, ` using a loop. An empty basket gives `(empty)`.
+</Exercise>
+
+<Exercise name="greeting-builder" title="Greeting builder">
+Finish a builder whose setters take `mut self` and return `Self`, and whose `build` produces the greeting with a plain loop. Mind a blank name and zero repeats. The last check shows what you do when an option is set only sometimes.
+</Exercise>
+
+<Exercise name="celsius" title="Celsius">
+A tuple struct with an associated constant. Write `from_fahrenheit` (no `self`), `to_fahrenheit` (`&self`), `cool` (`&mut self`, never below absolute zero; `f64` has a `max` method) and `colder` (takes both values). `colder` is there to practise `self`; a real temperature type like this would be `Copy`.
+</Exercise>
+
+## Read more
+
+- [The Rust Book, chapter 5.3: Method Syntax](https://doc.rust-lang.org/book/ch05-03-method-syntax.html). `self` forms, associated functions, and "Where's the `->` operator?".
+- [Rust by Example: Associated functions & Methods](https://doc.rust-lang.org/rust-by-example/fn/methods.html).
+- [The Rust Reference: Method-call expressions](https://doc.rust-lang.org/reference/expressions/method-call-expr.html), for the exact lookup rule, [Associated items](https://doc.rust-lang.org/reference/items/associated-items.html), for associated constants, and [Visibility and privacy](https://doc.rust-lang.org/reference/visibility-and-privacy.html).
+- Rust API Guidelines: [builders](https://rust-lang.github.io/api-guidelines/type-safety.html#builders-enable-construction-of-complex-values-c-builder), [getter names](https://rust-lang.github.io/api-guidelines/naming.html#getter-names-follow-rust-convention-c-getter) and [conversion names](https://rust-lang.github.io/api-guidelines/naming.html#ad-hoc-conversions-follow-as_-to_-into_-conventions-c-conv).
+- [`std::process::Command`](https://doc.rust-lang.org/std/process/struct.Command.html) (a `&mut self` builder) and [`std::thread::Builder`](https://doc.rust-lang.org/std/thread/struct.Builder.html) (a `self` builder).
+- [Reading compiler errors](/errors/), for E0594, E0596, E0382, E0507, E0592, E0616 and E0716.

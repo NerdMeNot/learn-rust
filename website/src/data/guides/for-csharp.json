@@ -1,0 +1,342 @@
+{
+ "id": "for-csharp",
+ "files": {
+  "cs": {
+   "Dispose.cs": "using (var a = new Guard(\"a\"))\nusing (var b = new Guard(\"b\"))\n{\n    Console.WriteLine(\"working\");\n}\n\nvar c = new Guard(\"c\");          // no `using`: nothing ever calls Dispose\nConsole.WriteLine(\"end of Main\");\n\nclass Guard : IDisposable\n{\n    private readonly string name;\n\n    public Guard(string name)\n    {\n        this.name = name;\n        Console.WriteLine($\"open {name}\");\n    }\n\n    public void Dispose() => Console.WriteLine($\"close {name}\");\n}\n",
+   "Exceptions.cs": "static int Double(string text) => int.Parse(text) * 2;   // nothing here says it can throw\n\nConsole.WriteLine(Double(\"21\"));\ntry\n{\n    Console.WriteLine(Double(\"x\"));\n}\ncatch (FormatException e)\n{\n    Console.WriteLine($\"caught: {e.Message}\");\n}\n",
+   "Generic.cs": "static string Show<T>(T x) => $\"{typeof(T).Name}: {x}\";\n\nConsole.WriteLine(Show(5));\nConsole.WriteLine(Show(\"hi\"));\n",
+   "Grow.cs": "var xs = new List<int> { 1, 2, 3 };\ntry\n{\n    foreach (var x in xs)\n        xs.Add(x * 10);\n}\ncatch (InvalidOperationException e)\n{\n    Console.WriteLine($\"caught: {e.Message}\");\n}\nConsole.WriteLine(string.Join(\", \", xs));\n",
+   "Hot.cs": "static async Task<int> Save()\n{\n    Console.WriteLine(\"saving\");\n    await Task.Delay(1);\n    return 42;\n}\n\nvar task = Save();               // runs up to its first await that has to wait, right now\nConsole.WriteLine(\"called Save\");\nConsole.WriteLine(await task);\n",
+   "Idioms.cs": "// 1  a local that changes\nvar x = 5;\nx += 1;\nConsole.WriteLine($\"1  {x}\");\n\n// 2  null with a default\nstring? name = args.Length > 0 ? args[0] : null;\nConsole.WriteLine($\"2  {name ?? \"anon\"}\");\n\n// 3  call through a maybe-missing value\nstring? word = \"ana\";\nConsole.WriteLine($\"3  {word?.Length}\");\n\n// 4  parse without an exception\nstring text = \"42\";\nif (int.TryParse(text, out var n))\n    Console.WriteLine($\"4  {n}\");\n\n// 5  string interpolation with width and zero padding\nint seven = 7;\nConsole.WriteLine($\"5  [{seven,5}] [{seven:D3}]\");\n\n// 6  a LINQ pipeline\nvar xs = new List<int> { 3, 1, 2 };\nvar doubled = xs.Where(v => v > 1).Select(v => v * 2).ToList();\nConsole.WriteLine($\"6  {string.Join(\",\", doubled)}\");\n\n// 7  sum and max\nConsole.WriteLine($\"7  {xs.Sum()} {xs.Max()}\");\n\n// 8  walk a sorted dictionary\nvar ages = new SortedDictionary<string, int> { [\"bo\"] = 31, [\"ana\"] = 30 };\nforeach (var (k, v) in ages)\n    Console.WriteLine($\"8  {k}={v}\");\n\n// 9  look a key up\nif (ages.TryGetValue(\"bo\", out var bo))\n    Console.WriteLine($\"9  {bo}\");\n\n// 10  count words\nvar counts = new Dictionary<string, int>();\nforeach (var w in \"a b a\".Split(' '))\n    counts[w] = counts.GetValueOrDefault(w) + 1;\nConsole.WriteLine($\"10 a={counts[\"a\"]} b={counts[\"b\"]}\");\n\n// 11  a switch expression\nvar size = x switch { 1 => \"one\", _ => \"many\" };\nConsole.WriteLine($\"11 {size}\");\n\n// 12  test the kind of a value and take it apart\nShape sh = x > 5 ? new Circle(2) : new Square(1);\nif (sh is Circle c)\n    Console.WriteLine($\"12 radius {c.R}\");\nelse if (sh is Square sq)\n    Console.WriteLine($\"12 side {sq.Side}\");\n\n// 13  a record: equality and `with`\nvar p1 = new Point(1, 2);\nvar p2 = p1 with { X = 3 };\nConsole.WriteLine($\"13 {p1 == new Point(1, 2)} {p2}\");\n\n// 14  length in characters\nstring accent = \"héllo\";\nstring emoji = \"a😀\";\nConsole.WriteLine($\"14 {accent.Length} {emoji.Length}\");\n\n// 15  a lock around shared state\nvar gate = new object();\nint hits = 0;\nlock (gate) { hits++; }\nConsole.WriteLine($\"15 {hits}\");\n\n// 16  a property\nvar person = new Person { Age = 30 };\nperson.Age += 1;\nConsole.WriteLine($\"16 {person.Age}\");\n\nabstract record Shape;\nrecord Circle(double R) : Shape;\nrecord Square(double Side) : Shape;\nrecord Point(int X, int Y);\n\nclass Person\n{\n    public int Age { get; set; }\n}\n",
+   "Inherit.cs": "Shape[] shapes = { new Circle(1.0), new Square(2.0) };\nforeach (var s in shapes)\n    Console.WriteLine(s.Describe());\n\nabstract class Shape\n{\n    public abstract string Name { get; }\n    public abstract double Area();\n    public string Describe() => $\"{Name}: {Area():F2}\";\n}\n\nclass Circle(double r) : Shape\n{\n    public override string Name => \"circle\";\n    public override double Area() => Math.PI * r * r;\n}\n\nclass Square(double side) : Shape\n{\n    public override string Name => \"square\";\n    public override double Area() => side * side;\n}\n",
+   "Linq.cs": "var evens = Enumerable.Range(1, 6)\n    .Where(n => { Console.WriteLine($\"check {n}\"); return n % 2 == 0; })\n    .Select(n => n * 10);\nConsole.WriteLine(\"built the query\");\nConsole.WriteLine($\"first: {evens.First()}\");\nConsole.WriteLine($\"count: {evens.Count()}\");   // starts over from 1\n",
+   "Nullable.cs": "string? Find(string key) => key == \"a\" ? \"apple\" : null;\n\nvar s = Find(\"b\");\ntry\n{\n    Console.WriteLine(s.Length);\n}\ncatch (NullReferenceException e)\n{\n    Console.WriteLine($\"caught {e.GetType().Name}\");\n}\n",
+   "Reflect.cs": "foreach (var p in typeof(Person).GetProperties())\n    Console.WriteLine($\"{p.Name}: {p.PropertyType.Name}\");\n\nclass Person\n{\n    public string Name { get; set; } = \"\";\n    public int Age { get; set; }\n}\n",
+   "Shares.cs": "var a = new List<int> { 1, 2, 3 };\nvar b = a;\nb.Add(4);\nConsole.WriteLine($\"a has {a.Count} items\");\nConsole.WriteLine($\"same object: {ReferenceEquals(a, b)}\");\n",
+   "StructCopy.cs": "var a = new Team { Name = \"red\", Members = new List<string> { \"ana\" } };\nvar b = a;               // a struct is copied...\nb.Name = \"blue\";\nb.Members.Add(\"bo\");     // ...but the List inside it is not\nConsole.WriteLine($\"{a.Name} {a.Members.Count}\");\nConsole.WriteLine($\"{b.Name} {b.Members.Count}\");\n\nstruct Team\n{\n    public string Name;\n    public List<string> Members;\n}\n",
+   "cs.sh": "#!/bin/bash\n# Build and run one C# file the way the lessons do: inside the image's restored console\n# project (net10.0, nullable and implicit usings on). Prints the compiler's warnings and\n# errors for Program.cs, then runs the program.\nd=$(mktemp -d) && cp -r /opt/templates/csharp \"$d/app\" && cp \"$1\" \"$d/app/Program.cs\" && cd \"$d/app\" || exit 2\nif ! dotnet build --no-restore -v q -nologo -clp:NoSummary > build.log 2>&1; then\n  grep -E '^Program\\.cs\\([0-9]+,[0-9]+\\): (error|warning)' <(sed \"s#$d/app/##\" build.log) | sed -E 's# \\[[^]]*\\]$##' | sort -u\n  exit 1\nfi\ngrep -E '^Program\\.cs\\([0-9]+,[0-9]+\\): warning' <(sed \"s#$d/app/##\" build.log) | sed -E 's# \\[[^]]*\\]$##' | sort -u\ndotnet bin/Debug/net10.0/Program.dll\n",
+   "strict.sh": "#!/bin/bash\n# Like cs.sh, but the csproj also has <WarningsAsErrors>nullable</WarningsAsErrors>.\nd=$(mktemp -d) && cp -r /opt/templates/csharp \"$d/app\" && cp \"$1\" \"$d/app/Program.cs\" && cd \"$d/app\" || exit 2\nsed -i 's#<Nullable>enable</Nullable>#<Nullable>enable</Nullable><WarningsAsErrors>nullable</WarningsAsErrors>#' ./*.csproj\nif ! dotnet build --no-restore -v q -nologo -clp:NoSummary > build.log 2>&1; then\n  grep -E '^Program\\.cs\\([0-9]+,[0-9]+\\): (error|warning)' <(sed \"s#$d/app/##\" build.log) | sed -E 's# \\[[^]]*\\]$##' | sort -u\n  exit 1\nfi\ndotnet bin/Debug/net10.0/Program.dll\n"
+  },
+  "rust": {
+   "Cargo.lock": "# This file is automatically @generated by Cargo.\n# It is not intended for manual editing.\nversion = 4\n\n[[package]]\nname = \"for-csharp\"\nversion = \"0.1.0\"\n",
+   "Cargo.toml": "[package]\nname = \"for-csharp\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\n",
+   "src/bin/adder.rs": "fn add(a: i32, b: i32) -> i32 {\n    a + b\n}\n\nfn main() {\n    println!(\"{}\", add(2, 3));\n}\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n\n    #[test]\n    fn adds() {\n        assert_eq!(add(2, 3), 5);\n    }\n}\n",
+   "src/bin/bounded.rs": "use std::fmt::Display;\n\nfn show<T: Display>(x: T) -> String {\n    format!(\"{}: {}\", std::any::type_name::<T>(), x)\n}\n\nfn main() {\n    println!(\"{}\", show(5));\n    println!(\"{}\", show(\"hi\"));\n}\n",
+   "src/bin/copy_vec.rs": "#[derive(Clone, Copy)]\nstruct Team {\n    name: &'static str,\n    members: Vec<&'static str>,\n}\n\nfn main() {\n    let a = Team {\n        name: \"red\",\n        members: vec![\"ana\"],\n    };\n    let b = a;\n    println!(\"{} {}\", a.name, b.members.len());\n}\n",
+   "src/bin/drop.rs": "struct Guard(&'static str);\n\nimpl Guard {\n    fn new(name: &'static str) -> Guard {\n        println!(\"open {name}\");\n        Guard(name)\n    }\n}\n\nimpl Drop for Guard {\n    fn drop(&mut self) {\n        println!(\"close {}\", self.0);\n    }\n}\n\nfn main() {\n    {\n        let _a = Guard::new(\"a\");\n        let _b = Guard::new(\"b\");\n        println!(\"working\");\n    }\n    let _c = Guard::new(\"c\");\n    println!(\"end of main\");\n}\n",
+   "src/bin/grow.rs": "fn main() {\n    let mut xs = vec![1, 2, 3];\n    for x in &xs {\n        xs.push(x * 10);\n    }\n    println!(\"{xs:?}\");\n}\n",
+   "src/bin/grow_ok.rs": "fn main() {\n    let mut xs = vec![1, 2, 3];\n    let more: Vec<i32> = xs.iter().map(|x| x * 10).collect();\n    xs.extend(more);\n    println!(\"{xs:?}\");\n}\n",
+   "src/bin/idioms.rs": "use std::collections::BTreeMap;\nuse std::sync::Mutex;\n\nenum Shape {\n    Circle(f64),\n    Square(f64),\n}\n\n#[derive(Debug, Clone, PartialEq)]\nstruct Point {\n    x: i32,\n    y: i32,\n}\n\nstruct Person {\n    pub age: u32,\n}\n\nfn main() {\n    // 1  a local that changes\n    let mut x = 5;\n    x += 1;\n    println!(\"1  {x}\");\n\n    // 2  null with a default\n    let name = std::env::args().nth(1);\n    println!(\"2  {}\", name.as_deref().unwrap_or(\"anon\"));\n\n    // 3  call through a maybe-missing value\n    let word: Option<&str> = Some(\"ana\");\n    println!(\"3  {:?}\", word.map(str::len));\n\n    // 4  parse without an exception\n    let text = \"42\";\n    if let Ok(n) = text.parse::<i32>() {\n        println!(\"4  {n}\");\n    }\n\n    // 5  string interpolation with width and zero padding\n    let seven = 7;\n    println!(\"5  [{seven:5}] [{seven:03}]\");\n\n    // 6  an iterator pipeline\n    let xs = vec![3, 1, 2];\n    let doubled = xs\n        .iter()\n        .filter(|&&v| v > 1)\n        .map(|&v| v * 2)\n        .collect::<Vec<_>>();\n    println!(\"6  {doubled:?}\");\n\n    // 7  sum and max\n    println!(\"7  {} {:?}\", xs.iter().sum::<i32>(), xs.iter().max());\n\n    // 8  walk a sorted map\n    let ages = BTreeMap::from([(\"bo\", 31), (\"ana\", 30)]);\n    for (k, v) in &ages {\n        println!(\"8  {k}={v}\");\n    }\n\n    // 9  look a key up\n    if let Some(bo) = ages.get(\"bo\") {\n        println!(\"9  {bo}\");\n    }\n\n    // 10  count words\n    let mut counts = BTreeMap::new();\n    for w in \"a b a\".split(' ') {\n        *counts.entry(w).or_insert(0) += 1;\n    }\n    println!(\"10 a={} b={}\", counts[\"a\"], counts[\"b\"]);\n\n    // 11  a match expression\n    let size = match x {\n        1 => \"one\",\n        _ => \"many\",\n    };\n    println!(\"11 {size}\");\n\n    // 12  test the kind of a value and take it apart\n    let sh = if x > 5 {\n        Shape::Circle(2.0)\n    } else {\n        Shape::Square(1.0)\n    };\n    if let Shape::Circle(r) = sh {\n        println!(\"12 radius {r}\");\n    } else if let Shape::Square(s) = sh {\n        println!(\"12 side {s}\");\n    }\n\n    // 13  derive equality, and struct update\n    let p1 = Point { x: 1, y: 2 };\n    let p2 = Point { x: 3, ..p1 };\n    println!(\"13 {} {:?}\", p1 == Point { x: 1, y: 2 }, p2);\n\n    // 14  length in characters (and in bytes)\n    let accent = \"héllo\";\n    let emoji = \"a😀\";\n    println!(\n        \"14 {} {} {}\",\n        accent.chars().count(),\n        accent.len(),\n        emoji.chars().count()\n    );\n\n    // 15  a lock around shared state\n    let hits = Mutex::new(0);\n    *hits.lock().unwrap() += 1;\n    println!(\"15 {}\", hits.lock().unwrap());\n\n    // 16  a field\n    let mut person = Person { age: 30 };\n    person.age += 1;\n    println!(\"16 {}\", person.age);\n}\n",
+   "src/bin/iter_resume.rs": "fn main() {\n    let mut evens = (1..=6)\n        .filter(|n| {\n            println!(\"check {n}\");\n            n % 2 == 0\n        })\n        .map(|n| n * 10);\n    println!(\"built the iterator\");\n    println!(\"first: {:?}\", evens.next());\n    println!(\"count: {}\", evens.count());\n}\n",
+   "src/bin/iter_twice.rs": "fn main() {\n    let evens = (1..=6).filter(|n| n % 2 == 0).map(|n| n * 10);\n    println!(\"count: {}\", evens.count());\n    println!(\"count: {}\", evens.count());\n}\n",
+   "src/bin/lazy.rs": "use std::future::Future;\nuse std::pin::pin;\nuse std::task::{Context, Poll, Waker};\n\nasync fn save() -> i32 {\n    println!(\"saving\");\n    42\n}\n\n// A tiny executor, only to show when the body runs. It spins, so it suits only futures\n// that finish at once. Real programs use a runtime (Tokio).\nfn block_on<F: Future>(fut: F) -> F::Output {\n    let mut fut = pin!(fut);\n    let mut cx = Context::from_waker(Waker::noop());\n    loop {\n        if let Poll::Ready(v) = fut.as_mut().poll(&mut cx) {\n            return v;\n        }\n    }\n}\n\nfn main() {\n    let fut = save();\n    println!(\"called save\");\n    println!(\"{}\", block_on(fut));\n}\n",
+   "src/bin/moved.rs": "fn main() {\n    let a = vec![1, 2, 3];\n    let mut b = a;\n    b.push(4);\n    println!(\"a has {} items\", a.len());\n}\n",
+   "src/bin/option_missing.rs": "fn find(key: &str) -> Option<&'static str> {\n    if key == \"a\" { Some(\"apple\") } else { None }\n}\n\nfn main() {\n    let s = find(\"b\");\n    println!(\"{}\", s.to_uppercase());\n}\n",
+   "src/bin/parse.rs": "use std::num::ParseIntError;\n\nfn double(text: &str) -> Result<i32, ParseIntError> {\n    Ok(text.parse::<i32>()? * 2)\n}\n\nfn main() {\n    println!(\"{:?}\", double(\"21\"));\n    match double(\"x\") {\n        Ok(n) => println!(\"{n}\"),\n        Err(e) => println!(\"error: {e}\"),\n    }\n}\n",
+   "src/bin/reflect.rs": "#[derive(Debug)]\nstruct Person {\n    name: String,\n    age: u32,\n}\n\nfn main() {\n    let p = Person {\n        name: \"Ana\".to_string(),\n        age: 36,\n    };\n    println!(\"{p:?}\");\n    println!(\"{} is {}\", p.name, p.age);\n    println!(\"{p:#?}\");\n}\n",
+   "src/bin/shapes.rs": "use std::f64::consts::PI;\n\ntrait Shape {\n    fn name(&self) -> String;\n    fn area(&self) -> f64;\n    fn describe(&self) -> String {\n        format!(\"{}: {:.2}\", self.name(), self.area())\n    }\n}\n\nstruct Circle {\n    r: f64,\n}\n\nstruct Square {\n    side: f64,\n}\n\nimpl Shape for Circle {\n    fn name(&self) -> String {\n        \"circle\".to_string()\n    }\n    fn area(&self) -> f64 {\n        PI * self.r * self.r\n    }\n}\n\nimpl Shape for Square {\n    fn name(&self) -> String {\n        \"square\".to_string()\n    }\n    fn area(&self) -> f64 {\n        self.side * self.side\n    }\n}\n\nfn main() {\n    let shapes: Vec<Box<dyn Shape>> =\n        vec![Box::new(Circle { r: 1.0 }), Box::new(Square { side: 2.0 })];\n    for s in &shapes {\n        println!(\"{}\", s.describe());\n    }\n}\n",
+   "src/bin/team_clone.rs": "#[derive(Clone)]\nstruct Team {\n    name: String,\n    members: Vec<String>,\n}\n\nfn main() {\n    let a = Team {\n        name: \"red\".to_string(),\n        members: vec![\"ana\".to_string()],\n    };\n    let mut b = a.clone();\n    b.name = \"blue\".to_string();\n    b.members.push(\"bo\".to_string());\n    println!(\"{} {}\", a.name, a.members.len());\n    println!(\"{} {}\", b.name, b.members.len());\n}\n",
+   "src/bin/unbounded.rs": "fn show<T>(x: T) -> String {\n    format!(\"{}: {}\", std::any::type_name::<T>(), x)\n}\n\nfn main() {\n    println!(\"{}\", show(5));\n    println!(\"{}\", show(\"hi\"));\n}\n"
+  }
+ },
+ "sessions": {
+  "h1-cs": [
+   {
+    "show": "$ dotnet run",
+    "out": "a has 4 items\nsame object: True\n",
+    "exit": 0
+   }
+  ],
+  "h1-moved": [
+   {
+    "show": "$ cargo run",
+    "out": "error[E0382]: borrow of moved value: `a`\n --> src/bin/moved.rs:5:32\n  |\n2 |     let a = vec![1, 2, 3];\n  |         - move occurs because `a` has type `Vec<i32>`, which does not implement the `Copy` trait\n3 |     let mut b = a;\n  |                 - value moved here\n4 |     b.push(4);\n5 |     println!(\"a has {} items\", a.len());\n  |                                ^ value borrowed here after move\n  |\nhelp: consider cloning the value if the performance cost is acceptable\n  |\n3 |     let mut b = a.clone();\n  |                  ++++++++\n\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "h2-cs": [
+   {
+    "show": "$ dotnet run",
+    "out": "red 2\nblue 2\n",
+    "exit": 0
+   }
+  ],
+  "h2-copy-vec": [
+   {
+    "show": "$ cargo run",
+    "out": "error[E0204]: the trait `Copy` cannot be implemented for this type\n --> src/bin/copy_vec.rs:2:8\n  |\n1 | #[derive(Clone, Copy)]\n  |                 ---- in this derive macro expansion\n2 | struct Team {\n  |        ^^^^\n3 |     name: &'static str,\n4 |     members: Vec<&'static str>,\n  |     -------------------------- this field does not implement `Copy`\n\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "h2-team-clone": [
+   {
+    "show": "$ cargo run",
+    "out": "red 1\nblue 2\n",
+    "exit": 0
+   }
+  ],
+  "h3-cs": [
+   {
+    "show": "$ dotnet run",
+    "out": "circle: 3.14\nsquare: 4.00\n",
+    "exit": 0
+   }
+  ],
+  "h3-shapes": [
+   {
+    "show": "$ cargo run",
+    "out": "circle: 3.14\nsquare: 4.00\n",
+    "exit": 0
+   }
+  ],
+  "h4-cs": [
+   {
+    "show": "$ dotnet run",
+    "out": "Program.cs(6,23): warning CS8602: Dereference of a possibly null reference.\ncaught NullReferenceException\n",
+    "exit": 0
+   }
+  ],
+  "h4-strict": [
+   {
+    "show": "$ dotnet run   # with <WarningsAsErrors>nullable</WarningsAsErrors> in the csproj",
+    "out": "Program.cs(6,23): error CS8602: Dereference of a possibly null reference.\n",
+    "exit": 1,
+    "error": true
+   }
+  ],
+  "h4-option-missing": [
+   {
+    "show": "$ cargo run",
+    "out": "error[E0599]: no method named `to_uppercase` found for enum `Option<T>` in the current scope\n --> src/bin/option_missing.rs:7:22\n  |\n7 |     println!(\"{}\", s.to_uppercase());\n  |                      ^^^^^^^^^^^^ method not found in `Option<&str>`\n  |\nhelp: consider using `Option::expect` to unwrap the `&str` value, panicking if the value is an `Option::None`\n  |\n7 |     println!(\"{}\", s.expect(\"REASON\").to_uppercase());\n  |                     +++++++++++++++++\n\n  ... (notes pointing into the standard library trimmed)\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "h5-cs": [
+   {
+    "show": "$ dotnet run",
+    "out": "42\ncaught: The input string 'x' was not in a correct format.\n",
+    "exit": 0
+   }
+  ],
+  "h5-parse": [
+   {
+    "show": "$ cargo run",
+    "out": "Ok(42)\nerror: invalid digit found in string\n",
+    "exit": 0
+   }
+  ],
+  "h6-cs": [
+   {
+    "show": "$ dotnet run",
+    "out": "built the query\ncheck 1\ncheck 2\nfirst: 20\ncheck 1\ncheck 2\ncheck 3\ncheck 4\ncheck 5\ncheck 6\ncount: 3\n",
+    "exit": 0
+   }
+  ],
+  "h6-iter-resume": [
+   {
+    "show": "$ cargo run",
+    "out": "built the iterator\ncheck 1\ncheck 2\nfirst: Some(20)\ncheck 3\ncheck 4\ncheck 5\ncheck 6\ncount: 2\n",
+    "exit": 0
+   }
+  ],
+  "h6-iter-twice": [
+   {
+    "show": "$ cargo run",
+    "out": "error[E0382]: use of moved value: `evens`\n --> src/bin/iter_twice.rs:4:27\n  |\n2 |     let evens = (1..=6).filter(|n| n % 2 == 0).map(|n| n * 10);\n  |         ----- move occurs because `evens` has type `Map<Filter<RangeInclusive<i32>, {closure@...}>, {closure@...}>`, which does not implement the `Copy` trait\n3 |     println!(\"count: {}\", evens.count());\n  |                                 ------- `evens` moved due to this method call\n4 |     println!(\"count: {}\", evens.count());\n  |                           ^^^^^ value used here after move\n  |\nhelp: you can `clone` the value and consume it, but this might not be your desired behavior\n  |\n3 |     println!(\"count: {}\", evens.clone().count());\n  |                                ++++++++\n\n  ... (notes pointing into the standard library trimmed)\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "h7-cs": [
+   {
+    "show": "$ dotnet run",
+    "out": "saving\ncalled Save\n42\n",
+    "exit": 0
+   }
+  ],
+  "h7-lazy": [
+   {
+    "show": "$ cargo run",
+    "out": "called save\nsaving\n42\n",
+    "exit": 0
+   }
+  ],
+  "h8-cs": [
+   {
+    "show": "$ dotnet run",
+    "out": "open a\nopen b\nworking\nclose b\nclose a\nopen c\nend of Main\n",
+    "exit": 0
+   }
+  ],
+  "h8-drop": [
+   {
+    "show": "$ cargo run",
+    "out": "open a\nopen b\nworking\nclose b\nclose a\nopen c\nend of main\nclose c\n",
+    "exit": 0
+   }
+  ],
+  "h9-cs": [
+   {
+    "show": "$ dotnet run",
+    "out": "caught: Collection was modified; enumeration operation may not execute.\n1, 2, 3, 10\n",
+    "exit": 0
+   }
+  ],
+  "h9-grow": [
+   {
+    "show": "$ cargo run",
+    "out": "error[E0502]: cannot borrow `xs` as mutable because it is also borrowed as immutable\n --> src/bin/grow.rs:4:9\n  |\n3 |       for x in &xs {\n  |       -        ---\n  |       |        |\n  |       |        immutable borrow occurs here\n  |  _____|        immutable borrow later used here\n  | |\n4 | |         xs.push(x * 10);\n  | |         ^^^^^^^^^^^^^^^ mutable borrow occurs here\n5 | |     }\n  | |_____- this for loop borrows `xs` immutably, preventing mutation within its body\n  |\n  = help: consider using an index-based loop instead, or collecting modifications into a separate collection\n\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "h9-grow-ok": [
+   {
+    "show": "$ cargo run",
+    "out": "[1, 2, 3, 10, 20, 30]\n",
+    "exit": 0
+   }
+  ],
+  "h10-cs": [
+   {
+    "show": "$ dotnet run",
+    "out": "Int32: 5\nString: hi\n",
+    "exit": 0
+   }
+  ],
+  "h10-unbounded": [
+   {
+    "show": "$ cargo run",
+    "out": "error[E0277]: `T` doesn't implement `std::fmt::Display`\n --> src/bin/unbounded.rs:2:51\n  |\n2 |     format!(\"{}: {}\", std::any::type_name::<T>(), x)\n  |                  --                               ^ `T` cannot be formatted with the default formatter\n  |                  |\n  |                  required by this formatting parameter\n  |\n  = note: in format strings you may be able to use `{:?}` (or `{:#?}` for pretty-print) instead\nhelp: consider restricting type parameter `T` with trait `Display`\n  |\n1 | fn show<T: std::fmt::Display>(x: T) -> String {\n  |          +++++++++++++++++++\n\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "h10-bounded": [
+   {
+    "show": "$ cargo run",
+    "out": "i32: 5\n&str: hi\n",
+    "exit": 0
+   }
+  ],
+  "idioms-cs": [
+   {
+    "show": "$ dotnet run",
+    "out": "1  6\n2  anon\n3  3\n4  42\n5  [    7] [007]\n6  6,4\n7  6 3\n8  ana=30\n8  bo=31\n9  31\n10 a=2 b=1\n11 many\n12 radius 2\n13 True Point { X = 3, Y = 2 }\n14 5 3\n15 1\n16 31\n",
+    "exit": 0
+   }
+  ],
+  "idioms-rs": [
+   {
+    "show": "$ cargo run",
+    "out": "1  6\n2  anon\n3  Some(3)\n4  42\n5  [    7] [007]\n6  [6, 4]\n7  6 Some(3)\n8  ana=30\n8  bo=31\n9  31\n10 a=2 b=1\n11 many\n12 radius 2\n13 true Point { x: 3, y: 2 }\n14 5 6 2\n15 1\n16 31\n",
+    "exit": 0
+   }
+  ],
+  "reflect-cs": [
+   {
+    "show": "$ dotnet run",
+    "out": "Name: String\nAge: Int32\n",
+    "exit": 0
+   }
+  ],
+  "reflect-rs": [
+   {
+    "show": "$ cargo run",
+    "out": "Person { name: \"Ana\", age: 36 }\nAna is 36\nPerson {\n    name: \"Ana\",\n    age: 36,\n}\n",
+    "exit": 0
+   }
+  ],
+  "tools-rs": [
+   {
+    "show": "$ cargo --version && rustc --version",
+    "out": "cargo 1.99.1 (5f94df478 2026-08-27)\nrustc 1.99.1 (58cf8f9c3 2026-10-13)\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo fmt --check && echo \"cargo fmt: nothing to change\"",
+    "out": "cargo fmt: nothing to change\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo clippy --bin shapes -- -D warnings",
+    "out": "clippy: no warnings\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo test --bin adder",
+    "out": "running 1 test\ntest tests::adds ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n",
+    "exit": 0,
+    "varies": true
+   },
+   {
+    "show": "$ cargo doc --no-deps --bin shapes",
+    "out": " Documenting for-csharp v0.1.0 (/home/you/for-csharp)\n\n   Generated target/doc/shapes/index.html\n",
+    "exit": 0
+   }
+  ],
+  "tools-cs": [
+   {
+    "show": "$ dotnet --version",
+    "out": "10.0.402\n",
+    "exit": 0
+   },
+   {
+    "show": "$ dotnet new console -o app && dotnet format app --verify-no-changes",
+    "out": "The template \"Console App\" was created successfully.\n\ndotnet format: nothing to change\n",
+    "exit": 0
+   },
+   {
+    "show": "$ dotnet new xunit -o tests && dotnet test -v q --nologo -p:NoWarn=NETSDK1188 2>&1 | tail -3   # needs network: NuGet restore",
+    "out": "A total of 1 test files matched the specified pattern.\n\nPassed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 3 ms - tests.dll (net10.0)\n",
+    "exit": 0,
+    "varies": true
+   }
+  ],
+  "add-rs": [
+   {
+    "show": "$ cargo new demo && cargo add itoa@1   # needs network: crates.io",
+    "out": "    Updating crates.io index\n      Adding itoa v1 to dependencies\n    Updating crates.io index\n     Locking 1 package to highest Rust 1.99.1 compatible version\n",
+    "exit": 0,
+    "varies": true
+   }
+  ],
+  "miss-rs": [
+   {
+    "show": "$ cargo one.rs   # a single-file script",
+    "out": "error: running the file `one.rs` requires `-Zscript`\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "miss-cs": [
+   {
+    "show": "$ dotnet run one.cs   # a single-file program",
+    "out": "hi\n",
+    "exit": 0
+   }
+  ],
+  "try-rs": [
+   {
+    "show": "$ cargo run   # moved.rs with `a.clone()` in place of `a`",
+    "out": "a has 3 items\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo run   # drop.rs with `drop(_b);` before the \"working\" line",
+    "out": "open a\nopen b\nclose b\nworking\nclose a\nopen c\nend of main\nclose c\n",
+    "exit": 0
+   }
+  ],
+  "try-cs": [
+   {
+    "show": "$ dotnet run   # Nullable.cs with the `?` taken off `string? Find`",
+    "out": "Program.cs(1,28): warning CS8603: Possible null reference return.\ncaught NullReferenceException\n",
+    "exit": 0
+   }
+  ]
+ }
+}

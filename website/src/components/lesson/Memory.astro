@@ -1,0 +1,185 @@
+---
+// A picture of memory: variables on the stack, data on the heap, arrows between.
+//
+//   <Memory
+//     caption="After `let b = a;` the Vec belongs to b. a is still on the stack, but unusable."
+//     stack={[
+//       { name: 'a', type: 'Vec<i32>', cells: ['ptr', 'len 3', 'cap 3'], to: 'buf', gone: 'moved',
+//         note: 'the bits are still here, but the compiler won't let you use them' },
+//       { name: 'b', type: 'Vec<i32>', cells: ['ptr', 'len 3', 'cap 3'], to: 'buf' },
+//     ]}
+//     heap={[{ id: 'buf', label: '3 × i32', cells: ['1', '2', '3'] }]}
+//   />
+//
+// Stack variables:
+//   to      an arrow from the variable to a heap block (by id)
+//   gone    greys the variable out and labels it: 'moved', 'dropped', …
+//   note    a short line of text under the variable
+//   toVar   an arrow to another stack variable, by name: a reference `r` to a variable `x`
+//   toCell  with `to`, the arrow lands on one cell of the block (0-based), from above: a slice
+//           `&v[1..]` points at the second element, not at the whole Vec
+// Heap blocks:
+//   label   text above the block
+//   freed   greys the block out and marks it freed; a string says it your way:
+//           freed: 'dropped here, at the closing brace'
+//   links   arrows from a cell to another heap block, e.g. a Vec<String> whose cells
+//           each point at a string's bytes: links: [{ cell: 0, to: 's0' }]. Linked-to
+//           blocks are drawn in a second heap column.
+// Cells size themselves to their text, so write values in full (`len 1000000`).
+interface Var { name: string; type?: string; cells: string[]; to?: string; toCell?: number; toVar?: string; gone?: string; note?: string }
+interface Block { id: string; cells: string[]; label?: string; freed?: boolean | string; links?: { cell: number; to: string }[] }
+interface Props { stack: Var[]; heap?: Block[]; caption?: string; title?: string }
+const { stack, heap = [], caption, title } = Astro.props
+
+const CELL_H = 30, LABEL_H = 18, NOTE_H = 18, ROW_GAP = 24, PAD = 16, GAP = 110, TOP = PAD + 26
+// Monospace at 12px is about 7.3px a character; the labels are 13px.
+const cellW = (text: string) => Math.max(52, Math.ceil(text.length * 7.3) + 20)
+const textW = (text: string, px = 7.9) => Math.ceil(text.length * px)
+const rowW = (cells: string[]) => cells.reduce((s, c) => s + cellW(c), 0)
+const cellX = (cells: string[], j: number) => cells.slice(0, j).reduce((s, c) => s + cellW(c), 0)
+
+const varLabel = (v: Var) => `${v.name}${v.type ? `: ${v.type}` : ''}${v.gone ? `  (${v.gone})` : ''}`
+const stackW = Math.max(160, ...stack.map(v => Math.max(rowW(v.cells), textW(varLabel(v)), v.note ? textW(v.note, 6.6) : 0)))
+
+// Rows have different heights when some carry a note.
+const rowH = (v: Var) => LABEL_H + CELL_H + (v.note ? NOTE_H : 0)
+const rowYs: number[] = []
+let y0 = TOP
+for (const v of stack) { rowYs.push(y0); y0 += rowH(v) + ROW_GAP }
+const stackH = y0 - ROW_GAP + PAD
+
+// Heap blocks: column 1 holds blocks the stack points at; column 2 holds blocks that
+// only other heap blocks point at.
+const linkedTo = new Set(heap.flatMap(b => (b.links ?? []).map(l => l.to)))
+const col1 = heap.filter(b => !linkedTo.has(b.id) || stack.some(v => v.to === b.id))
+const col2 = heap.filter(b => !col1.includes(b))
+const freedText = (b: Block) => (typeof b.freed === 'string' ? b.freed : 'freed')
+const blockLabel = (b: Block) => `${b.label ?? ''}${b.freed ? `${b.label ? '  ' : ''}(${freedText(b)})` : ''}`
+const colW = (bs: Block[]) => Math.max(0, ...bs.map(b => Math.max(rowW(b.cells), textW(blockLabel(b)))))
+const heap1X = PAD + stackW + GAP
+const heap2X = heap1X + colW(col1) + GAP
+const pos = new Map<string, { x: number; y: number }>()
+function placeColumn(blocks: Block[], x: number, wantY: (b: Block) => number | undefined) {
+  let next = TOP
+  for (const b of blocks) {
+    const y = Math.max(next, wantY(b) ?? next)
+    pos.set(b.id, { x, y })
+    next = y + LABEL_H + CELL_H + ROW_GAP
+  }
+  return next
+}
+// A block sits beside the first thing that points at it.
+// Room under column-1 blocks for link lanes.
+const end1 = placeColumn(col1, heap1X, b => { const i = stack.findIndex(v => v.to === b.id); return i >= 0 ? rowYs[i] : undefined })
+const end2 = placeColumn(col2, heap2X, b => { const src = heap.find(h => h.links?.some(l => l.to === b.id)); return src ? pos.get(src.id)?.y : undefined })
+const totalH = Math.max(stackH, end1 - ROW_GAP + PAD, end2 - ROW_GAP + PAD)
+const totalW = col2.length ? heap2X + colW(col2) + PAD : col1.length ? heap1X + colW(col1) + PAD : PAD * 2 + stackW
+
+// Ids derived from the content, so the same diagram always renders the same HTML.
+let h = 0
+for (const ch of JSON.stringify(Astro.props)) h = (h * 31 + ch.charCodeAt(0)) | 0
+const uid = `m${(h >>> 0).toString(36)}`
+const mid = (y: number) => y + LABEL_H + CELL_H / 2
+
+// An arrow leaves to the right, runs in the gap between columns, then turns in.
+const curve = (x1: number, y1: number, gx: number, x2: number, y2: number) =>
+  `M ${x1} ${y1} L ${gx} ${y1} C ${gx + 40} ${y1}, ${x2 - 40} ${y2}, ${x2 - 4} ${y2}`
+---
+<figure class="lr-memory not-content">
+  {title && <figcaption class="lr-memory-title">{title}</figcaption>}
+  <svg viewBox={`0 0 ${totalW} ${totalH}`} role="img" aria-label={caption ?? 'Memory diagram'} style={`max-width:${totalW}px`}>
+    <defs>
+      <marker id={`${uid}-arrow`} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" class="arrowhead" />
+      </marker>
+    </defs>
+    <text x={PAD} y={PAD + 8} class="col">STACK</text>
+    {heap.length > 0 && <text x={heap1X} y={PAD + 8} class="col">HEAP</text>}
+    {stack.map((v, i) => {
+      const y = rowYs[i]
+      return (
+        <g class:list={['var', v.gone && 'gone']}>
+          <text x={PAD} y={y + 12} class="name">{v.name}{v.type ? <tspan class="type">: {v.type}</tspan> : null}{v.gone ? <tspan class="tag">  ({v.gone})</tspan> : null}</text>
+          {v.cells.map((c, j) => (
+            <g>
+              <rect x={PAD + cellX(v.cells, j)} y={y + LABEL_H} width={cellW(c)} height={CELL_H} class="cell" />
+              <text x={PAD + cellX(v.cells, j) + cellW(c) / 2} y={mid(y) + 4} class="val">{c}</text>
+            </g>
+          ))}
+          {v.note && <text x={PAD} y={y + LABEL_H + CELL_H + 14} class="note">{v.note}</text>}
+        </g>
+      )
+    })}
+    {heap.map(b => {
+      const { x, y } = pos.get(b.id)!
+      return (
+        <g class:list={['block', b.freed && 'gone']}>
+          <text x={x} y={y + 12} class="name">{b.label ?? ''}{b.freed ? <tspan class="tag">{b.label ? '  ' : ''}({freedText(b)})</tspan> : null}</text>
+          {b.cells.map((c, j) => (
+            <g>
+              <rect x={x + cellX(b.cells, j)} y={y + LABEL_H} width={cellW(c)} height={CELL_H} class="cell heapcell" />
+              <text x={x + cellX(b.cells, j) + cellW(c) / 2} y={mid(y) + 4} class="val">{c}</text>
+            </g>
+          ))}
+        </g>
+      )
+    })}
+    {stack.map((v, i) => {
+      const to = v.to && pos.get(v.to)
+      if (!to) return null
+      // Into one cell: end above it, pointing down, so the arrow never crosses the cells before it.
+      const target = heap.find(b => b.id === v.to)!
+      const cell = v.toCell !== undefined && target.cells[v.toCell] !== undefined ? v.toCell : undefined
+      const d = cell === undefined
+        ? curve(PAD + rowW(v.cells), mid(rowYs[i]), PAD + stackW + 8, to.x, mid(to.y))
+        : (() => {
+            const x1 = PAD + rowW(v.cells), y1 = mid(rowYs[i]), gx = PAD + stackW + 8
+            const cx = to.x + cellX(target.cells, cell) + cellW(target.cells[cell]) / 2
+            const top = to.y + LABEL_H, bottom = top + CELL_H
+            // From below when the variable sits lower than the block (the label stays clear), else from above.
+            return y1 > mid(to.y)
+              ? `M ${x1} ${y1} L ${gx} ${y1} C ${gx + 40} ${y1}, ${cx} ${bottom + 34}, ${cx} ${bottom + 3}`
+              : `M ${x1} ${y1} L ${gx} ${y1} C ${gx + 40} ${y1}, ${cx} ${top - 34}, ${cx} ${top - 3}`
+          })()
+      return (
+        <path d={d}
+          class:list={['arrow', v.gone && 'gone']} marker-end={`url(#${uid}-arrow)`} />
+      )
+    })}
+    {stack.flatMap((v, i) => {
+      // A reference to another variable on the stack: out of the right edge, down the gap
+      // beside the stack, and back in to the target's right edge.
+      const j = v.toVar ? stack.findIndex(x => x.name === v.toVar) : -1
+      if (j < 0) return []
+      const lane = stack.slice(0, i).filter(x => x.toVar).length
+      const gx = PAD + stackW + 12 + lane * 9
+      const x2 = PAD + rowW(stack[j].cells)
+      // Land a little below the middle when the target already has an arrow leaving from there.
+      const landing = stack[j].to ? 9 : 0
+      return [(
+        <path d={`M ${PAD + rowW(v.cells)} ${mid(rowYs[i])} L ${gx} ${mid(rowYs[i])} L ${gx} ${mid(rowYs[j]) + landing} L ${x2 + 5} ${mid(rowYs[j]) + landing}`}
+          class:list={['arrow', v.gone && 'gone']} marker-end={`url(#${uid}-arrow)`} />
+      )]
+    })}
+    {heap.flatMap(b => (b.links ?? []).map(l => {
+      const from = pos.get(b.id)!
+      const to = pos.get(l.to)
+      if (!to) return null
+      // From the bottom edge of the linking cell, down below the block, across into the
+      // gap (each link on its own lane, so they never overlap), then into the target.
+      const cx = from.x + cellX(b.cells, l.cell) + cellW(b.cells[l.cell] ?? '') / 2
+      const bottom = from.y + LABEL_H + CELL_H
+      const order = b.links!.indexOf(l)
+      const gy = bottom + 8 + order * 8
+      const gx = heap1X + colW(col1) + 14 + order * 10
+      return (
+        <g>
+          <circle cx={cx} cy={bottom} r="3" class="dot" />
+          <path d={`M ${cx} ${bottom} L ${cx} ${gy} L ${gx} ${gy} C ${gx + 30} ${gy}, ${to.x - 30} ${mid(to.y)}, ${to.x - 4} ${mid(to.y)}`}
+            class:list={['arrow', b.freed && 'gone']} marker-end={`url(#${uid}-arrow)`} />
+        </g>
+      )
+    }))}
+  </svg>
+  {caption && <figcaption class="lr-memory-caption"><Fragment set:html={caption.replace(/`([^`]+)`/g, '<code>$1</code>')} /></figcaption>}
+</figure>

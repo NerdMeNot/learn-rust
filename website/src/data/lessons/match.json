@@ -1,0 +1,465 @@
+{
+ "id": "match",
+ "title": "Match",
+ "part": "basics",
+ "intro": "`match` is Rust's `switch` / `when`. It also returns a value, it must cover every possible value, and its patterns can take a value apart (a tuple, a list, a range).",
+ "coming_from": {
+  "go": "`match` is a `switch` with no fall-through, where `_` is `default`, `6 | 7` lists values, and `1..=5` matches a range. It must cover every possible value, and it gives back a value, so there is no `var kind string` to fill in.",
+  "kotlin": "`match` is your `when`: `_` is `else`, `6 | 7` is `6, 7`, and `1..=5` is `in 1..5`. It must cover every value even for an `Int` used as a statement, which Kotlin's `when` does not check. A pattern can also take a value apart (`(0, y)`, `[first, ..]`), which a `when` branch cannot.",
+  "python": "This is Python's `match`/`case`, with `|` and `_` meaning the same thing. The differences are that `match` gives back a value, and the compiler refuses to build if some value isn't covered.",
+  "typescript": "`match` replaces `switch`, with no fall-through and no `break`. Each arm gives a value, and the compiler checks that every case is covered, which is the `never` trick built in.",
+  "java": "`match` is a Java 21 `switch` expression with arrows: it returns a value and must cover every case. `6 | 7` is `case 6, 7`, `_` is `default`, and the range `1..=5` is a pattern of its own, where Java uses a `when` guard (on an `Object` or `Integer`).",
+  "csharp": "`match` is your switch expression: `1..=5` is `>= 1 and <= 5`, `6 | 7` is `6 or 7`, and `_` is the same discard. The real difference is that a missing case is a compile error in Rust, not a CS8509 warning followed by a runtime exception.",
+  "c": "`match` is a `switch` that returns a value and never falls through, so there is no `break`. The compiler refuses a `match` that misses a possible value, where C would quietly skip it.",
+  "cpp": "`match` is a `switch` with no fall-through that produces a value, plus ranges (`1..=5`) and alternatives (`6 | 7`). Leaving out a case is a hard compile error. In C++ a `switch` over an `int` with no `default` says nothing at all."
+ },
+ "notes": [
+  "Cases never fall through to the next one. There is no `break` to forget.",
+  "`|` means \"or\". `1..=5` is a range that includes 5; `1..5` stops before it.",
+  "A plain name in a pattern is a new variable that fits anything. It does not compare with a variable of the same name.",
+  "`match` gets much more useful with enums, Option and Result (lessons below)."
+ ],
+ "gotcha": {
+  "title": "Leaving out the \"anything else\" case",
+  "verdict": "rust-rule",
+  "looks_fine": "You know `day` is between 1 and 7, so a `switch` without `default` looks fine. In several of the languages here that is allowed: a day you did not list leaves `kind` empty, or fails later at run time.",
+  "rust_sees": "The compiler does not know what you know. It only sees that `day` is an `i32`, and an i32 can be 0, -5 or 99.",
+  "why": "This is a rule, not a safety proof. Nothing unsafe happens in the other languages: each picks what a missing case does (an empty string, an exception). For `day = 99`, which branch runs, and what is `kind`? Rust asks you to answer now, for every value, even the ones you think can't happen.",
+  "langs": {
+   "go": {
+    "status": "runs",
+    "says": "Go runs this and prints weekend. With `day = 99` no case would match, and `kind` would quietly stay an empty string.",
+    "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tday := 6\n\tkind := \"\"\n\tswitch {\n\tcase day >= 1 && day <= 5:\n\t\tkind = \"weekday\"\n\tcase day == 6 || day == 7:\n\t\tkind = \"weekend\"\n\t}\n\tfmt.Println(kind)\n}\n",
+    "out": "weekend\n"
+   },
+   "kotlin": {
+    "status": "runs",
+    "says": "Kotlin runs this and prints weekend. A `when` statement over an `Int` doesn't have to cover every value (over an enum, a sealed type or a `Boolean` Kotlin does check), so `day = 99` would quietly leave `kind` empty. Written as `val kind = when (day) { … }`, Kotlin refuses it, as shown further down the page.",
+    "code": "fun main() {\n    val day = 6\n    var kind = \"\"\n    when (day) {\n        in 1..5 -> kind = \"weekday\"\n        6, 7 -> kind = \"weekend\"\n    }\n    println(kind)\n}\n",
+    "out": "weekend\n"
+   },
+   "python": {
+    "status": "runs",
+    "says": "Python prints weekend because 6 matches a case. With `day = 99` no case would match, `kind` would never be set, and the `print` would raise a NameError.",
+    "code": "day = 6\nmatch day:\n    case 1 | 2 | 3 | 4 | 5:\n        kind = \"weekday\"\n    case 6 | 7:\n        kind = \"weekend\"\nprint(kind)\n",
+    "out": "weekend\n"
+   },
+   "typescript": {
+    "status": "refuses",
+    "says": "TypeScript refuses this too (under `--strict`): the function promises a `string`, but when no case matches it falls off the end and would return `undefined`. The error does not say which case is missing.",
+    "code": "function kindOf(day: number): string {\n  switch (day) {\n    case 1: case 2: case 3: case 4: case 5:\n      return \"weekday\";\n    case 6: case 7:\n      return \"weekend\";\n  }\n}\n\nconsole.log(kindOf(6));\n",
+    "error": "main.ts(1,31): error TS2366: Function lacks ending return statement and return type does not include 'undefined'."
+   },
+   "java": {
+    "status": "refuses",
+    "says": "Java refuses this too: a switch expression on an int needs a `default` branch, or javac says it does not cover all possible input values.",
+    "code": "public class Main {\n    public static void main(String[] args) {\n        int day = 6;\n        String kind = switch (day) {\n            case 1, 2, 3, 4, 5 -> \"weekday\";\n            case 6, 7 -> \"weekend\";\n        };\n        System.out.println(kind);\n    }\n}\n",
+    "error": "Main.java:4: error: the switch expression does not cover all possible input values\n        String kind = switch (day) {\n                      ^\n1 error"
+   },
+   "csharp": {
+    "status": "runs",
+    "says": "It prints weekend, but the compiler warns that the switch is not exhaustive (CS8509). With day = 9 it would throw a SwitchExpressionException at run time.",
+    "code": "var day = 6;\nvar kind = day switch\n{\n    >= 1 and <= 5 => \"weekday\",\n    6 or 7 => \"weekend\",\n};\nConsole.WriteLine(kind);\n",
+    "warnings": "Program.cs(2,16): warning CS8509: The switch expression does not handle all possible values of its input type (it is not exhaustive). For example, the pattern '0' is not covered.",
+    "out": "weekend\n"
+   },
+   "c": {
+    "status": "runs",
+    "says": "C does not check that a switch covers every value. Day 6 prints weekend, but day 9 would quietly print an empty line.",
+    "code": "#include <stdio.h>\n\nint main(void) {\n    int day = 6;\n    const char *kind = \"\";\n    switch (day) {\n    case 1: case 2: case 3: case 4: case 5:\n        kind = \"weekday\";\n        break;\n    case 6: case 7:\n        kind = \"weekend\";\n        break;\n    }\n    printf(\"%s\\n\", kind);\n    return 0;\n}\n",
+    "out": "weekend\n"
+   },
+   "cpp": {
+    "status": "runs",
+    "says": "A `switch` without `default` is fine in C++, so this prints `weekend`. A day like 9 would leave `kind` as an empty string with no complaint.",
+    "code": "#include <iostream>\n#include <string>\n\nint main() {\n    int day = 6;\n    std::string kind;\n    switch (day) {\n        case 1: case 2: case 3: case 4: case 5:\n            kind = \"weekday\";\n            break;\n        case 6: case 7:\n            kind = \"weekend\";\n            break;\n    }\n    std::cout << kind << \"\\n\";\n}\n",
+    "out": "weekend\n"
+   }
+  },
+  "code": "fn main() {\n    let day = 6;\n    let kind = match day {\n        1..=5 => \"weekday\",\n        6 | 7 => \"weekend\",\n    };\n    println!(\"{kind}\");\n}\n",
+  "error": "error[E0004]: non-exhaustive patterns: `i32::MIN..=0_i32` and `8_i32..=i32::MAX` not covered\n --> src/main.rs:3:22\n  |\n3 |     let kind = match day {\n  |                      ^^^ patterns `i32::MIN..=0_i32` and `8_i32..=i32::MAX` not covered\n  |\n  = note: the matched value is of type `i32`\nhelp: ensure that all possible cases are being handled by adding a match arm with a wildcard pattern, a match arm with multiple or-patterns as shown, or multiple match arms\n  |\n5 ~         6 | 7 => \"weekend\",\n6 ~         i32::MIN..=0_i32 | 8_i32..=i32::MAX => todo!(),",
+  "error_code": "E0004",
+  "fixed": {
+   "code": "fn main() {\n    let day = 6;\n    let kind = match day {\n        1..=5 => \"weekday\",\n        6 | 7 => \"weekend\",\n        _ => \"not a day\",\n    };\n    println!(\"{kind}\");\n}\n",
+   "out": "weekend\n"
+  }
+ },
+ "order": 12,
+ "program": {
+  "rust": {
+   "code": "fn main() {\n    let day = 6;\n    let kind = match day {\n        1..=5 => \"weekday\",\n        6 | 7 => \"weekend\",\n        _ => \"not a day\", // _ means \"anything else\"\n    };\n    println!(\"{kind}\");\n}\n",
+   "out": "weekend\n"
+  },
+  "go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tday := 6\n\tvar kind string\n\tswitch {\n\tcase day >= 1 && day <= 5:\n\t\tkind = \"weekday\"\n\tcase day == 6 || day == 7:\n\t\tkind = \"weekend\"\n\tdefault:\n\t\tkind = \"not a day\"\n\t}\n\tfmt.Println(kind)\n}\n",
+   "out": "weekend\n"
+  },
+  "kotlin": {
+   "code": "fun main() {\n    val day = 6\n    val kind = when (day) {\n        in 1..5 -> \"weekday\"\n        6, 7 -> \"weekend\"\n        else -> \"not a day\"\n    }\n    println(kind)\n}\n",
+   "out": "weekend\n"
+  },
+  "python": {
+   "code": "day = 6\nmatch day:\n    case 1 | 2 | 3 | 4 | 5:\n        kind = \"weekday\"\n    case 6 | 7:\n        kind = \"weekend\"\n    case _:  # _ means \"anything else\"\n        kind = \"not a day\"\nprint(kind)\n",
+   "out": "weekend\n"
+  },
+  "typescript": {
+   "code": "function kindOf(day: number): string {\n  switch (day) {\n    case 1: case 2: case 3: case 4: case 5:\n      return \"weekday\";\n    case 6: case 7:\n      return \"weekend\";\n    default: // anything else\n      return \"not a day\";\n  }\n}\n\nconsole.log(kindOf(6));\n",
+   "out": "weekend\n"
+  },
+  "java": {
+   "code": "public class Main {\n    public static void main(String[] args) {\n        int day = 6;\n        String kind = switch (day) {\n            case 1, 2, 3, 4, 5 -> \"weekday\";\n            case 6, 7 -> \"weekend\";\n            default -> \"not a day\";   // default means \"anything else\"\n        };\n        System.out.println(kind);\n    }\n}\n",
+   "out": "weekend\n"
+  },
+  "csharp": {
+   "code": "var day = 6;\nvar kind = day switch\n{\n    >= 1 and <= 5 => \"weekday\",\n    6 or 7 => \"weekend\",\n    _ => \"not a day\",       // _ means \"anything else\"\n};\nConsole.WriteLine(kind);\n",
+   "out": "weekend\n"
+  },
+  "c": {
+   "code": "#include <stdio.h>\n\nint main(void) {\n    int day = 6;\n    const char *kind;\n    switch (day) {\n    case 1: case 2: case 3: case 4: case 5:\n        kind = \"weekday\";\n        break;\n    case 6: case 7:\n        kind = \"weekend\";\n        break;\n    default:                 // default means \"anything else\"\n        kind = \"not a day\";\n        break;\n    }\n    printf(\"%s\\n\", kind);\n    return 0;\n}\n",
+   "out": "weekend\n"
+  },
+  "cpp": {
+   "code": "#include <iostream>\n#include <string_view>\n\nstd::string_view kind_of(int day) {\n    switch (day) {\n        case 1: case 2: case 3: case 4: case 5:\n            return \"weekday\";\n        case 6: case 7:\n            return \"weekend\";\n        default:                // anything else\n            return \"not a day\";\n    }\n}\n\nint main() {\n    int day = 6;\n    std::cout << kind_of(day) << \"\\n\";\n}\n",
+   "out": "weekend\n"
+  }
+ },
+ "faq": [],
+ "snippets": {
+  "arms-type.fail.rs": {
+   "code": "fn main() {\n    let n = 3;\n    let label = match n {\n        0 => \"zero\",\n        _ => n,\n    };\n    println!(\"{label}\");\n}\n",
+   "error": "error[E0308]: `match` arms have incompatible types\n --> src/main.rs:5:14\n  |\n3 |       let label = match n {\n  |  _________________-\n4 | |         0 => \"zero\",\n  | |              ------ this is found to be of type `&str`\n5 | |         _ => n,\n  | |              ^ expected `&str`, found integer\n6 | |     };\n  | |_____- `match` arms have incompatible types\n",
+   "lang": "rust"
+  },
+  "binding.rs": {
+   "code": "fn main() {\n    for secs in [30, 1800, 4000, 90000] {\n        let minutes = secs / 60;\n        match minutes {\n            0 => println!(\"{secs} s: under a minute\"),\n            m @ 1..=59 => println!(\"{secs} s: {m} min\"),\n            m => println!(\"{secs} s: {} h {} min\", m / 60, m % 60),\n        }\n    }\n}\n",
+   "out": "30 s: under a minute\n1800 s: 30 min\n4000 s: 1 h 6 min\n90000 s: 25 h 0 min\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "block-arms.rs": {
+   "code": "fn main() {\n    for seconds in [45, 150, 7200] {\n        let text = match seconds {\n            0..=59 => format!(\"{seconds} s\"),\n            60..=3599 => {\n                let minutes = seconds / 60;\n                let rest = seconds % 60;\n                format!(\"{minutes} min {rest} s\")\n            }\n            _ => {\n                let hours = seconds / 3600;\n                format!(\"{hours} h\")\n            }\n        };\n        println!(\"{text}\");\n    }\n}\n",
+   "out": "45 s\n2 min 30 s\n2 h\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "chars.rs": {
+   "code": "fn main() {\n    for c in ['a', 'Z', '7', ' ', 'é'] {\n        let class = match c {\n            'a' | 'e' | 'i' | 'o' | 'u' => \"vowel\",\n            'a'..='z' | 'A'..='Z' => \"letter\",\n            '0'..='9' => \"digit\",\n            ' ' | '\\t' | '\\n' => \"space\",\n            _ => \"other\",\n        };\n        println!(\"{c:?} -> {class}\");\n    }\n}\n",
+   "out": "'a' -> vowel\n'Z' -> letter\n'7' -> digit\n' ' -> space\n'é' -> other\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-rows.rs": {
+   "code": "// Backs the pattern table and the \"your language, in Rust\" rows. Never shown.\n#![allow(clippy::redundant_guards)]\n\nfn main() {\n    // literal, range, exclusive range, open ranges\n    assert!(matches!(5, 5));\n    assert!(matches!('m', 'a'..='z'));\n    assert!(matches!(5, 1..=5));\n    assert!(!matches!(5, 1..5));\n    assert!(matches!(4, 1..5));\n    assert!(matches!(99, 10..));\n    assert!(!matches!(9, 10..));\n    for n in [-3, 0] {\n        assert!(match n {\n            ..=0 => true,\n            _ => false,\n        });\n    }\n\n    // `..0` stops before 0; `101..` is 101 or more; the Go and Kotlin \"greater than\" rows\n    assert!(matches!(-1, ..0));\n    assert!(!matches!(0, ..0));\n    assert!(matches!(101, 101..));\n    let size = |n: i32| match n {\n        ..0 => \"negative\",\n        0 => \"zero\",\n        1..=100 => \"some\",\n        101.. => \"big\",\n    };\n    assert_eq!(size(500), \"big\");\n\n    // alternatives\n    assert!(matches!(2, 1 | 2));\n    assert!(matches!(\"b\", \"a\" | \"b\"));\n\n    // `_` ignores, a name binds\n    let got = match 7 {\n        _ => \"ignored\",\n    };\n    assert_eq!(got, \"ignored\");\n    let doubled = match 7 {\n        n => n * 2,\n    };\n    assert_eq!(doubled, 14);\n\n    // @ binds and tests\n    let label = match 4 {\n        n @ 1..=5 => n * 10,\n        _ => 0,\n    };\n    assert_eq!(label, 40);\n\n    // Python's `as`: bind the whole thing and test it\n    assert!(matches!(2, k @ (1 | 2 | 3) if k == 2));\n\n    // tuples and nesting\n    assert!(matches!((0, 5), (0, _)));\n    assert!(matches!(((1, 2), 3), ((_, 2), 3)));\n\n    // slices\n    let v = [1, 2, 3, 4];\n    assert!(matches!(&v[..], [1, .., 4]));\n    assert!(matches!(&v[..], [1, ..]));\n    assert!(matches!(&v[..], [_, _, _, _]));\n    assert!(!matches!(&v[..], [_, _]));\n    let (head, rest_len) = match &v[..] {\n        [head, rest @ ..] => (*head, rest.len()),\n        [] => (0, 0),\n    };\n    assert_eq!((head, rest_len), (1, 3));\n    assert!(matches!(&v[1..], [_, _, last] if *last == 4));\n    // an empty slice matches [] and no other length\n    let empty: &[i32] = &[];\n    assert!(matches!(empty, []));\n\n    // arrays take the same patterns\n    let arr = [1, 2, 3];\n    assert!(matches!(arr, [1, .., 3]));\n    let [a, b, c] = arr;\n    assert_eq!(a + b + c, 6);\n\n    // struct and Option patterns\n    struct P {\n        x: i32,\n        y: i32,\n    }\n    let p = P { x: 0, y: 9 };\n    assert!(matches!(p, P { x: 0, .. }));\n    assert!(matches!(p, P { y, .. } if y > 5));\n    assert!(matches!(Some(3), Some(1..=9)));\n    assert!(matches!(Some(30), Some(n) if n > 9));\n    assert!(matches!(None::<i32>, None));\n\n    // a type test with a name: an enum variant, in `match` and in `if let`\n    enum Shape {\n        Circle(i32),\n        Rect { w: i32 },\n    }\n    let shape = Shape::Circle(2);\n    assert!(matches!(shape, Shape::Circle(2)));\n    if let Shape::Circle(c) = shape {\n        assert_eq!(c, 2);\n    }\n    let wide = Shape::Rect { w: 9 };\n    assert!(matches!(wide, Shape::Rect { w: 5.., .. }));\n\n    // Python's dict pattern has no match equivalent: look the key up\n    let mut modes = std::collections::HashMap::new();\n    modes.insert(\"mode\", \"fast\");\n    assert!(matches!(modes.get(\"mode\"), Some(&\"fast\")));\n    if let Some(m) = modes.get(\"mode\") {\n        assert_eq!(*m, \"fast\");\n    }\n\n    // patterns also follow `let`, sit in parameters, and follow `for`\n    let (pa, pb) = (1, 2);\n    let pair_sum = |(a, b): (i32, i32)| a + b;\n    assert_eq!(pair_sum((pa, pb)), 3);\n    for (i, c) in \"ab\".chars().enumerate() {\n        assert!(matches!((i, c), (0, 'a') | (1, 'b')));\n    }\n\n    // a reference pattern takes the & off; a literal pattern also sees through one\n    let r = &5;\n    assert!(matches!(r, &5));\n    assert!(matches!(r, 5));\n    let &copy = r;\n    assert_eq!(copy, 5);\n\n    // guards: first arm that fits wins, `_` last\n    let describe = |n: i32| match n {\n        n if n < 0 => \"negative\",\n        0 => \"zero\",\n        _ => \"positive\",\n    };\n    assert_eq!(describe(-4), \"negative\");\n    assert_eq!(describe(0), \"zero\");\n    assert_eq!(describe(9), \"positive\");\n\n    // a guard after `|` covers all the alternatives\n    let which = |n: i32, ok: bool| match n {\n        1 | 2 if ok => \"listed and ok\",\n        1 | 2 => \"listed\",\n        _ => \"other\",\n    };\n    assert_eq!(which(2, true), \"listed and ok\");\n    assert_eq!(which(2, false), \"listed\");\n\n    // a `switch` with no subject (Go, TypeScript `switch (true)`) is guards\n    let band = |n: i32| match () {\n        _ if n < 10 => \"small\",\n        _ if n < 100 => \"medium\",\n        _ => \"large\",\n    };\n    assert_eq!(band(5), \"small\");\n    assert_eq!(band(50), \"medium\");\n    assert_eq!(band(500), \"large\");\n\n    // a Python/Java/Kotlin \"else\" or \"default\" is `_`; it must come last\n    let late = |n: i32| match n {\n        1 => \"one\",\n        _ => \"default\",\n    };\n    assert_eq!(late(1), \"one\");\n    assert_eq!(late(5), \"default\");\n\n    // char, &str and String\n    assert_eq!(\n        match 'q' {\n            'a'..='m' => 1,\n            'n'..='z' => 2,\n            _ => 0,\n        },\n        2\n    );\n    let owned = String::from(\"go\");\n    assert!(matches!(owned.as_str(), \"go\" | \"run\"));\n\n    // exhaustive without `_`: bool, u8 ranges\n    let b = true;\n    assert_eq!(\n        match b {\n            true => 1,\n            false => 0,\n        },\n        1\n    );\n    let x: u8 = 255;\n    assert_eq!(\n        match x {\n            0..=127 => \"low\",\n            128..=255 => \"high\",\n        },\n        \"high\"\n    );\n\n    // an arm that never returns has type `!` and fits any other arm\n    let n: i32 = match \"12\".parse() {\n        Ok(n) => n,\n        Err(_) => panic!(\"not a number\"),\n    };\n    assert_eq!(n, 12);\n\n    println!(\"all checks passed\");\n}\n",
+   "out": "all checks passed\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "const-pattern.rs": {
+   "code": "const LIMIT: i32 = 10;\n\nfn main() {\n    let limit = 10;\n    for n in [3, 10, 42] {\n        match n {\n            LIMIT => println!(\"{n}: at the limit (const)\"),\n            n if n > limit => println!(\"{n}: over the limit (guard)\"),\n            _ => println!(\"{n}: under the limit\"),\n        }\n    }\n}\n",
+   "out": "3: under the limit\n10: at the limit (const)\n42: over the limit (guard)\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "exhaust-u8.rs": {
+   "code": "fn main() {\n    for byte in [10u8, 65, 127, 200] {\n        let class = match byte {\n            0..=31 => \"control\",\n            32..=126 => \"printable\",\n            127 => \"delete\",\n            128..=u8::MAX => \"high\",\n        };\n        println!(\"{byte} -> {class}\");\n    }\n}\n",
+   "out": "10 -> control\n65 -> printable\n127 -> delete\n200 -> high\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "guards-dont-count.fail.rs": {
+   "code": "fn main() {\n    let n = 5;\n    let sign = match n {\n        x if x < 0 => \"negative\",\n        x if x >= 0 => \"not negative\",\n    };\n    println!(\"{sign}\");\n}\n",
+   "error": "error[E0004]: non-exhaustive patterns: `i32::MIN..=i32::MAX` not covered\n --> src/main.rs:3:22\n  |\n3 |     let sign = match n {\n  |                      ^ pattern `i32::MIN..=i32::MAX` not covered\n  |\n  = note: the matched value is of type `i32`\n  = note: match arms with guards don't count towards exhaustivity\nhelp: ensure that all possible cases are being handled by adding a match arm with a wildcard pattern or an explicit pattern as shown\n  |\n5 ~         x if x >= 0 => \"not negative\",\n6 ~         i32::MIN..=i32::MAX => todo!(),",
+   "lang": "rust"
+  },
+  "guards.rs": {
+   "code": "fn main() {\n    for n in [-4, 0, 7, 12] {\n        let what = match n {\n            n if n < 0 => \"negative\",\n            0 => \"zero\",\n            n if n % 2 == 0 => \"even\",\n            _ => \"odd\",\n        };\n        println!(\"{n} is {what}\");\n    }\n}\n",
+   "out": "-4 is negative\n0 is zero\n7 is odd\n12 is even\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "matches.rs": {
+   "code": "fn main() {\n    let c = 'k';\n    println!(\"lowercase: {}\", matches!(c, 'a'..='z'));\n\n    let age = 15;\n    println!(\"teen: {}\", matches!(age, 13..=19));\n    println!(\n        \"odd and over 10: {}\",\n        matches!(age, n if n % 2 == 1 && n > 10)\n    );\n\n    let found = Some(4);\n    println!(\"some even: {}\", matches!(found, Some(n) if n % 2 == 0));\n}\n",
+   "out": "lowercase: true\nteen: true\nodd and over 10: true\nsome even: true\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "missing-int.fail.rs": {
+   "code": "fn main() {\n    let n = 7;\n    let size = match n {\n        0 => \"none\",\n        1..=5 => \"few\",\n    };\n    println!(\"{size}\");\n}\n",
+   "error": "error[E0004]: non-exhaustive patterns: `i32::MIN..=-1_i32` and `6_i32..=i32::MAX` not covered\n --> src/main.rs:3:22\n  |\n3 |     let size = match n {\n  |                      ^ patterns `i32::MIN..=-1_i32` and `6_i32..=i32::MAX` not covered\n  |\n  = note: the matched value is of type `i32`\nhelp: ensure that all possible cases are being handled by adding a match arm with a wildcard pattern, a match arm with multiple or-patterns as shown, or multiple match arms\n  |\n5 ~         1..=5 => \"few\",\n6 ~         i32::MIN..=-1_i32 | 6_i32..=i32::MAX => todo!(),",
+   "lang": "rust"
+  },
+  "missing-tuple.fail.rs": {
+   "code": "fn main() {\n    let (raining, windy) = (true, false);\n    let advice = match (raining, windy) {\n        (true, true) => \"stay in\",\n        (true, false) => \"umbrella\",\n        (false, true) => \"jacket\",\n    };\n    println!(\"{advice}\");\n}\n",
+   "error": "error[E0004]: non-exhaustive patterns: `(false, false)` not covered\n --> src/main.rs:3:24\n  |\n3 |     let advice = match (raining, windy) {\n  |                        ^^^^^^^^^^^^^^^^ pattern `(false, false)` not covered\n  |\n  = note: the matched value is of type `(bool, bool)`\nhelp: ensure that all possible cases are being handled by adding a match arm with a wildcard pattern or an explicit pattern as shown\n  |\n6 ~         (false, true) => \"jacket\",\n7 ~         (false, false) => todo!(),",
+   "lang": "rust"
+  },
+  "nested.rs": {
+   "code": "fn main() {\n    let moves = [((0, 0), (0, 5)), ((2, 2), (2, 2)), ((1, 1), (4, 5))];\n    for (from, to) in moves {\n        let kind = match (from, to) {\n            (a, b) if a == b => \"stay\",\n            ((x1, _), (x2, _)) if x1 == x2 => \"same column\",\n            ((_, y1), (_, y2)) if y1 == y2 => \"same row\",\n            _ => \"diagonal-ish\",\n        };\n        println!(\"{from:?} -> {to:?}: {kind}\");\n    }\n}\n",
+   "out": "(0, 0) -> (0, 5): same column\n(2, 2) -> (2, 2): stay\n(1, 1) -> (4, 5): diagonal-ish\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "never-arms.rs": {
+   "code": "fn main() {\n    let inputs = [\"4\", \"x\", \"9\"];\n    let mut total = 0;\n    for text in inputs {\n        let n: i32 = match text.parse() {\n            Ok(n) => n,\n            Err(_) => {\n                println!(\"skipping {text:?}\");\n                continue;\n            }\n        };\n        total += n;\n    }\n    println!(\"total: {total}\");\n}\n",
+   "out": "skipping \"x\"\ntotal: 13\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "new-variant-wild.rs": {
+   "code": "enum Light {\n    Red,\n    Yellow,\n    Green,\n}\n\nfn main() {\n    for light in [Light::Red, Light::Yellow, Light::Green] {\n        let action = match light {\n            Light::Red => \"stop\",\n            _ => \"go\",\n        };\n        println!(\"{action}\");\n    }\n}\n",
+   "out": "stop\ngo\ngo\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "new-variant.fail.rs": {
+   "code": "enum Light {\n    Red,\n    Yellow,\n    Green,\n}\n\nfn main() {\n    for light in [Light::Red, Light::Yellow, Light::Green] {\n        let action = match light {\n            Light::Red => \"stop\",\n            Light::Green => \"go\",\n        };\n        println!(\"{action}\");\n    }\n}\n",
+   "error": "error[E0004]: non-exhaustive patterns: `Light::Yellow` not covered\n  --> src/main.rs:9:28\n   |\n 9 |         let action = match light {\n   |                            ^^^^^ pattern `Light::Yellow` not covered\n   |\nnote: `Light` defined here\n  --> src/main.rs:1:6\n   |\n 1 | enum Light {\n   |      ^^^^^\n 2 |     Red,\n 3 |     Yellow,\n   |     ------ not covered\n   = note: the matched value is of type `Light`\nhelp: ensure that all possible cases are being handled by adding a match arm with a wildcard pattern or an explicit pattern as shown\n   |\n11 ~             Light::Green => \"go\",\n12 ~             Light::Yellow => todo!(),",
+   "lang": "rust"
+  },
+  "shadow-trap.fail.rs": {
+   "code": "#![deny(unreachable_patterns)]\n\nfn main() {\n    let limit = 10;\n    for n in [3, 10, 42] {\n        match n {\n            limit => println!(\"{n}: at the limit\"),\n            _ => println!(\"{n}: not at the limit\"),\n        }\n    }\n}\n",
+   "error": "error: unreachable pattern\n --> src/main.rs:8:13\n  |\n7 |             limit => println!(\"{n}: at the limit\"),\n  |             ----- matches any value\n8 |             _ => println!(\"{n}: not at the limit\"),\n  |             ^ no value can reach this\n  |\nnote: there is a binding of the same name; if you meant to pattern match against the value of that binding, that is a feature of constants that is not available for `let` bindings\n --> src/main.rs:4:9\n  |\n4 |     let limit = 10;\n  |         ^^^^^\nnote: the lint level is defined here\n --> src/main.rs:1:9\n  |\n1 | #![deny(unreachable_patterns)]\n  |         ^^^^^^^^^^^^^^^^^^^^",
+   "lang": "rust"
+  },
+  "shadow-trap.rs": {
+   "code": "// The warnings are silenced here so the program builds cleanly; the next example shows them.\n#![allow(unreachable_patterns, unused_variables)]\n\nfn main() {\n    let limit = 10;\n    for n in [3, 10, 42] {\n        match n {\n            limit => println!(\"{n}: at the limit\"),\n            _ => println!(\"{n}: not at the limit\"),\n        }\n    }\n}\n",
+   "out": "3: at the limit\n10: at the limit\n42: at the limit\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "slice-rest.rs": {
+   "code": "fn sum(items: &[i32]) -> i32 {\n    match items {\n        [] => 0,\n        [head, rest @ ..] => head + sum(rest),\n    }\n}\n\nfn run(words: &[&str]) {\n    match words {\n        [\"add\", a, b] => println!(\"{words:?}: add {a} and {b}\"),\n        [\"neg\", a] => println!(\"{words:?}: negate {a}\"),\n        [cmd, ..] => println!(\"{words:?}: unknown command {cmd}\"),\n        [] => println!(\"{words:?}: nothing to do\"),\n    }\n}\n\nfn main() {\n    println!(\"sum: {}\", sum(&[1, 2, 3, 4]));\n    run(&[\"add\", \"2\", \"3\"]);\n    run(&[\"neg\", \"7\"]);\n    run(&[\"add\", \"2\"]);\n    run(&[]);\n}\n",
+   "out": "sum: 10\n[\"add\", \"2\", \"3\"]: add 2 and 3\n[\"neg\", \"7\"]: negate 7\n[\"add\", \"2\"]: unknown command add\n[]: nothing to do\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "slices.rs": {
+   "code": "fn describe(items: &[i32]) {\n    match items {\n        [] => println!(\"{items:?}: empty\"),\n        [only] => println!(\"{items:?}: just {only}\"),\n        [a, b] => println!(\"{items:?}: a pair, {a} and {b}\"),\n        [first, .., last] => println!(\"{items:?}: from {first} to {last}\"),\n    }\n}\n\nfn main() {\n    describe(&[]);\n    describe(&[7]);\n    describe(&[3, 4]);\n    describe(&[1, 2, 3, 4]);\n}\n",
+   "out": "[]: empty\n[7]: just 7\n[3, 4]: a pair, 3 and 4\n[1, 2, 3, 4]: from 1 to 4\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "string-match.fail.rs": {
+   "code": "fn main() {\n    let cmd = String::from(\"go\");\n    match cmd {\n        \"go\" => println!(\"moving\"),\n        _ => println!(\"unknown command\"),\n    }\n}\n",
+   "error": "error[E0308]: mismatched types\n --> src/main.rs:4:9\n  |\n3 |     match cmd {\n  |           --- this expression has type `String`\n4 |         \"go\" => println!(\"moving\"),\n  |         ^^^^ expected `String`, found `&str`\n  |\nhelp: consider converting the `String` to a `&str` using `.as_str()`\n  |\n3 |     match cmd.as_str() {\n  |              +++++++++\n",
+   "lang": "rust"
+  },
+  "strs.rs": {
+   "code": "fn main() {\n    for cmd in [\"go\", \"run\", \"stop\", \"quit\", \"fly\"] {\n        let action = match cmd {\n            \"go\" | \"run\" => \"moving\",\n            \"stop\" => \"halting\",\n            \"quit\" | \"exit\" => \"leaving\",\n            _ => \"unknown command\",\n        };\n        println!(\"{cmd}: {action}\");\n    }\n\n    // A String is not a &str: borrow the text first.\n    let typed = String::from(\"stop\");\n    match typed.as_str() {\n        \"stop\" => println!(\"typed: halting\"),\n        _ => println!(\"typed: something else\"),\n    }\n}\n",
+   "out": "go: moving\nrun: moving\nstop: halting\nquit: leaving\nfly: unknown command\ntyped: halting\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "tuples.rs": {
+   "code": "fn main() {\n    for n in [3, 5, 7, 15] {\n        match (n % 3, n % 5) {\n            (0, 0) => println!(\"{n}: FizzBuzz\"),\n            (0, _) => println!(\"{n}: Fizz\"),\n            (_, 0) => println!(\"{n}: Buzz\"),\n            _ => println!(\"{n}: {n}\"),\n        }\n    }\n}\n",
+   "out": "3: Fizz\n5: Buzz\n7: 7\n15: FizzBuzz\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "value.rs": {
+   "code": "fn main() {\n    for n in [0, 3, 7, 12] {\n        let size = match n {\n            0 => \"none\",\n            1..=5 => \"few\",\n            6..=10 => \"several\",\n            _ => \"many\",\n        };\n        println!(\"{n} -> {size}\");\n    }\n}\n",
+   "out": "0 -> none\n3 -> few\n7 -> several\n12 -> many\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "vec-slice.fail.rs": {
+   "code": "fn main() {\n    let v = vec![1, 2, 3];\n    match v {\n        [] => println!(\"empty\"),\n        [first, ..] => println!(\"starts with {first}\"),\n    }\n}\n",
+   "error": "error[E0529]: expected an array or slice, found `Vec<{integer}>`\n --> src/main.rs:4:9\n  |\n4 |         [] => println!(\"empty\"),\n  |         ^^ pattern cannot match with input type `Vec<{integer}>`\n  |\nhelp: consider slicing here\n  |\n3 |     match v[..] {\n  |            ++++\n\nerror[E0529]: expected an array or slice, found `Vec<{integer}>`\n --> src/main.rs:5:9\n  |\n5 |         [first, ..] => println!(\"starts with {first}\"),\n  |         ^^^^^^^^^^^ pattern cannot match with input type `Vec<{integer}>`\n  |\nhelp: consider slicing here\n  |\n3 |     match v[..] {\n  |            ++++\n",
+   "lang": "rust"
+  },
+  "capture.fail.py": {
+   "code": "limit = 10\nn = 3\nmatch n:\n    case limit:\n        print(\"at the limit\")\n    case _:\n        print(\"not at the limit\")\n",
+   "out": "  File \"main.py\", line 4\n    case limit:\n         ^^^^^\nSyntaxError: name capture 'limit' makes remaining patterns unreachable\n",
+   "lang": "python",
+   "exit": 1
+  },
+  "day99.c": {
+   "code": "#include <stdio.h>\n\nint main(void) {\n    int day = 99;\n    const char *kind = \"\";\n    switch (day) {\n    case 1: case 2: case 3: case 4: case 5:\n        kind = \"weekday\";\n        break;\n    case 6: case 7:\n        kind = \"weekend\";\n        break;\n    }\n    printf(\"%s\\n\", kind);\n    return 0;\n}\n",
+   "out": "\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "day99.cpp": {
+   "code": "#include <iostream>\n#include <string>\n\nint main() {\n    int day = 99;\n    std::string kind;\n    switch (day) {\n        case 1: case 2: case 3: case 4: case 5:\n            kind = \"weekday\";\n            break;\n        case 6: case 7:\n            kind = \"weekend\";\n            break;\n    }\n    std::cout << kind << \"\\n\";\n}\n",
+   "out": "\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "day99.crash.cs": {
+   "code": "var day = 99;\nvar kind = day switch\n{\n    >= 1 and <= 5 => \"weekday\",\n    6 or 7 => \"weekend\",\n};\nConsole.WriteLine(kind);\n",
+   "warnings": "Program.cs(2,16): warning CS8509: The switch expression does not handle all possible values of its input type (it is not exhaustive). For example, the pattern '0' is not covered.",
+   "out": "Unhandled exception. System.Runtime.CompilerServices.SwitchExpressionException: Non-exhaustive switch expression failed to match its input.\nUnmatched value was 99.\n   at <PrivateImplementationDetails>.ThrowSwitchExpressionException(Object unmatchedValue)\n   at Program.<Main>$(String[] args) in Program.cs:line 2\n",
+   "lang": "csharp",
+   "exit": -6
+  },
+  "day99.fail.py": {
+   "code": "day = 99\nmatch day:\n    case 1 | 2 | 3 | 4 | 5:\n        kind = \"weekday\"\n    case 6 | 7:\n        kind = \"weekend\"\nprint(kind)\n",
+   "out": "Traceback (most recent call last):\n  File \"main.py\", line 7, in <module>\n    print(kind)\n          ^^^^\nNameError: name 'kind' is not defined\n",
+   "lang": "python",
+   "exit": 1
+  },
+  "day99.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tday := 99\n\tkind := \"\"\n\tswitch {\n\tcase day >= 1 && day <= 5:\n\t\tkind = \"weekday\"\n\tcase day == 6 || day == 7:\n\t\tkind = \"weekend\"\n\t}\n\tfmt.Println(kind)\n}\n",
+   "out": "\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "day99.kt": {
+   "code": "fun main() {\n    val day = 99\n    var kind = \"\"\n    when (day) {\n        in 1..5 -> kind = \"weekday\"\n        6, 7 -> kind = \"weekend\"\n    }\n    println(kind)\n}\n",
+   "out": "\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "default-first.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfor _, n := range []int{1, 5} {\n\t\tswitch n {\n\t\tdefault:\n\t\t\tfmt.Println(n, \"default\")\n\t\tcase 1:\n\t\t\tfmt.Println(n, \"one\")\n\t\t}\n\t}\n}\n",
+   "out": "1 one\n5 default\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "enum-switch.c": {
+   "code": "#include <stdio.h>\n\nenum Light { RED, YELLOW, GREEN };\n\nint main(void) {\n    enum Light light = YELLOW;\n    const char *action = \"no action\";\n    switch (light) {\n    case RED:\n        action = \"stop\";\n        break;\n    case GREEN:\n        action = \"go\";\n        break;\n    }\n    printf(\"%s\\n\", action);\n    return 0;\n}\n",
+   "warnings": "main.c: In function ‘main’:\nmain.c:8:5: warning: enumeration value ‘YELLOW’ not handled in switch [-Wswitch]\n    8 |     switch (light) {\n      |     ^~~~~~",
+   "out": "no action\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "enum-switch.cpp": {
+   "code": "#include <iostream>\n\nenum Light { RED, YELLOW, GREEN };\n\nint main() {\n    Light light = YELLOW;\n    const char *action = \"no action\";\n    switch (light) {\n    case RED:\n        action = \"stop\";\n        break;\n    case GREEN:\n        action = \"go\";\n        break;\n    }\n    std::cout << action << \"\\n\";\n}\n",
+   "warnings": "main.cpp: In function ‘int main()’:\nmain.cpp:8:12: warning: enumeration value ‘YELLOW’ not handled in switch [-Wswitch]\n    8 |     switch (light) {\n      |            ^",
+   "out": "no action\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "fallthrough.c": {
+   "code": "#include <stdio.h>\n\nint main(void) {\n    int n = 1;\n    int total = 0;\n    switch (n) {\n    case 1:\n        total += 1;\n    case 2:\n        total += 10;\n        break;\n    }\n    printf(\"%d\\n\", total);\n    return 0;\n}\n",
+   "warnings": "main.c: In function ‘main’:\nmain.c:8:15: warning: this statement may fall through [-Wimplicit-fallthrough=]\n    8 |         total += 1;\n      |         ~~~~~~^~~~\nmain.c:9:5: note: here\n    9 |     case 2:\n      |     ^~~~",
+   "out": "11\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "fallthrough.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfor _, n := range []int{1, 2, 3} {\n\t\tswitch n {\n\t\tcase 1:\n\t\t\tfmt.Println(n, \"case 1\")\n\t\t\tfallthrough\n\t\tcase 2:\n\t\t\tfmt.Println(n, \"case 2\")\n\t\tdefault:\n\t\t\tfmt.Println(n, \"default\")\n\t\t}\n\t}\n}\n",
+   "out": "1 case 1\n1 case 2\n2 case 2\n3 default\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "fallthrough.ts": {
+   "code": "function f(n: number): string {\n  let s = \"\";\n  switch (n) {\n    case 1:\n      s = \"one\";\n    case 2:\n      s += \"two\";\n      break;\n  }\n  return s;\n}\n\nconsole.log(f(1));\n",
+   "out": "onetwo\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "guard.java": {
+   "code": "public class Main {\n    sealed interface Shape permits Circle, Rect {}\n    record Circle(int r) implements Shape {}\n    record Rect(int w, int h) implements Shape {}\n\n    static String classify(Object o) {\n        return switch (o) {\n            case Integer i when i > 100 -> \"big \" + i;\n            case Integer i when i >= 1 && i <= 5 -> \"few \" + i;\n            case Integer i -> \"other number \" + i;\n            case String s -> \"text of \" + s.length() + \" chars\";\n            default -> \"something else\";\n        };\n    }\n\n    static String size(int n) {\n        return switch (n) {\n            case 1, 2, 3 -> \"tiny\";\n            case 4, 5 -> \"small\";\n            default -> \"bigger\";\n        };\n    }\n\n    static String describe(Shape s) {\n        return switch (s) {\n            case Circle c when c.r() > 10 -> \"big circle\";\n            case Circle(int r) -> \"circle \" + r;\n            case Rect(int w, int h) when w == h -> \"square \" + w;\n            case Rect(int w, int h) -> \"rect \" + w + \"x\" + h;\n        };\n    }\n\n    public static void main(String[] args) {\n        System.out.println(classify(500));\n        System.out.println(classify(3));\n        System.out.println(classify(-2));\n        System.out.println(classify(\"hello\"));\n        System.out.println(classify(2.5));\n        System.out.println(size(2) + \" \" + size(5) + \" \" + size(9));\n        System.out.println(describe(new Circle(20)));\n        System.out.println(describe(new Circle(2)));\n        System.out.println(describe(new Rect(3, 3)));\n        System.out.println(describe(new Rect(2, 5)));\n    }\n}\n",
+   "out": "big 500\nfew 3\nother number -2\ntext of 5 chars\nsomething else\ntiny small bigger\nbig circle\ncircle 2\nsquare 3\nrect 2x5\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "limit.fail.cs": {
+   "code": "int limit = 10;\nint n = 10;\nstring text = n switch\n{\n    limit => \"at the limit\",\n    _ => \"under\",\n};\nConsole.WriteLine(text);\n",
+   "error": "Program.cs(5,5): error CS9135: A constant value of type 'int' is expected",
+   "lang": "csharp"
+  },
+  "limit.fail.java": {
+   "code": "public class Main {\n    public static void main(String[] args) {\n        int limit = 10;\n        int n = 10;\n        String text = switch (n) {\n            case limit -> \"at the limit\";\n            default -> \"under\";\n        };\n        System.out.println(text);\n    }\n}\n",
+   "error": "Main.java:6: error: constant expression required\n            case limit -> \"at the limit\";\n                 ^\n1 error",
+   "lang": "java"
+  },
+  "limit.kt": {
+   "code": "fun main() {\n    val limit = 10\n    for (n in listOf(10, 3)) {\n        val text = when (n) {\n            limit -> \"at the limit\"\n            else -> \"under\"\n        }\n        println(\"$n: $text\")\n    }\n}\n",
+   "out": "10: at the limit\n3: under\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "match.py": {
+   "code": "from dataclasses import dataclass\n\n\n@dataclass\nclass Point:\n    x: int\n    y: int\n\n\ndef classify(n):\n    match n:\n        case 0:\n            return \"zero\"\n        case (1 | 2 | 3) as few:\n            return f\"few ({few})\"\n        case n if n < 0:\n            return \"negative\"\n        case _:\n            return \"many\"\n\n\ndef ends(items):\n    match items:\n        case []:\n            return \"empty\"\n        case [only]:\n            return f\"only {only}\"\n        case [first, *_, last]:\n            return f\"{first} to {last}\"\n\n\ndef place(p):\n    match p:\n        case Point(x=0, y=0):\n            return \"origin\"\n        case Point(x=0):\n            return \"on the y axis\"\n        case {\"mode\": m}:\n            return f\"a dict with mode {m}\"\n\n\nfor n in [0, 3, 12, -1]:\n    print(n, \"->\", classify(n))\nprint(ends([]), ends([7]), ends([1, 2, 3, 4]), ends((5, 6)), sep=\" | \")\nprint(place(Point(0, 0)), place(Point(0, 4)), place({\"mode\": \"fast\"}), sep=\" | \")\n",
+   "out": "0 -> zero\n3 -> few (3)\n12 -> many\n-1 -> negative\nempty | only 7 | 1 to 4 | 5 to 6\norigin | on the y axis | a dict with mode fast\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "narrow.ts": {
+   "code": "type Shape =\n  | { kind: \"circle\"; r: number }\n  | { kind: \"rect\"; w: number; h: number };\n\nfunction area(s: Shape): number {\n  switch (s.kind) {\n    case \"circle\":\n      return 3 * s.r * s.r;\n    case \"rect\":\n      return s.w * s.h;\n  }\n}\n\nconsole.log(area({ kind: \"circle\", r: 2 }), area({ kind: \"rect\", w: 2, h: 5 }));\n",
+   "out": "12 10\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "never.fail.ts": {
+   "code": "type Light = \"red\" | \"yellow\" | \"green\";\n\nfunction action(light: Light): string {\n  switch (light) {\n    case \"red\":\n      return \"stop\";\n    case \"green\":\n      return \"go\";\n    default: {\n      const missing: never = light;\n      return missing;\n    }\n  }\n}\n\nconsole.log(action(\"red\"));\n",
+   "error": "main.ts(10,13): error TS2322: Type '\"yellow\"' is not assignable to type 'never'.",
+   "lang": "typescript"
+  },
+  "sealed-missing.fail.java": {
+   "code": "public class Main {\n    sealed interface Shape permits Circle, Rect {}\n    record Circle(int r) implements Shape {}\n    record Rect(int w, int h) implements Shape {}\n\n    static int area(Shape s) {\n        return switch (s) {\n            case Circle c -> 3 * c.r() * c.r();\n        };\n    }\n\n    public static void main(String[] args) {\n        System.out.println(area(new Circle(2)));\n    }\n}\n",
+   "error": "Main.java:7: error: the switch expression does not cover all possible input values\n        return switch (s) {\n               ^\n1 error",
+   "lang": "java"
+  },
+  "sealed-missing.fail.kt": {
+   "code": "sealed interface Shape\nclass Circle(val r: Int) : Shape\nclass Rect(val w: Int, val h: Int) : Shape\n\nfun area(s: Shape): Int = when (s) {\n    is Circle -> 3 * s.r * s.r\n}\n\nfun main() {\n    println(area(Circle(2)))\n}\n",
+   "error": "Main.kt:5:27: error: 'when' expression must be exhaustive. Add the 'is Rect' branch or an 'else' branch.\nfun area(s: Shape): Int = when (s) {\n                          ^^^^",
+   "lang": "kotlin"
+  },
+  "sealed.kt": {
+   "code": "sealed interface Shape\nclass Circle(val r: Int) : Shape\nclass Rect(val w: Int, val h: Int) : Shape\n\nfun area(s: Shape): Int = when (s) {\n    is Circle -> 3 * s.r * s.r\n    is Rect -> s.w * s.h\n}\n\nfun main() {\n    println(area(Circle(2)))\n    println(area(Rect(2, 5)))\n}\n",
+   "out": "12\n10\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "string-case.fail.c": {
+   "code": "#include <stdio.h>\n\nint main(void) {\n    const char *cmd = \"go\";\n    switch (cmd) {\n    case \"go\":\n        printf(\"moving\\n\");\n        break;\n    default:\n        printf(\"unknown command\\n\");\n    }\n    return 0;\n}\n",
+   "error": "main.c: In function ‘main’:\nmain.c:5:13: error: switch quantity not an integer\n    5 |     switch (cmd) {\n      |             ^~~\nmain.c:6:5: error: pointers are not permitted as case values\n    6 |     case \"go\":\n      |     ^~~~",
+   "lang": "c"
+  },
+  "string-case.fail.cpp": {
+   "code": "#include <iostream>\n#include <string>\n\nint main() {\n    std::string cmd = \"go\";\n    switch (cmd) {\n    case \"go\":\n        std::cout << \"moving\\n\";\n        break;\n    default:\n        std::cout << \"unknown command\\n\";\n    }\n}\n",
+   "error": "main.cpp: In function ‘int main()’:\nmain.cpp:6:13: error: switch quantity not an integer\n    6 |     switch (cmd) {\n      |             ^~~",
+   "lang": "cpp"
+  },
+  "switch-expr.cs": {
+   "code": "static string Classify(int n) => n switch\n{\n    0 => \"zero\",\n    >= 1 and <= 5 => \"few\",\n    6 or 7 => \"some\",\n    < 0 => \"negative\",\n    > 100 => \"big\",\n    _ => \"many\",\n};\n\nstatic string Where((int x, int y) p) => p switch\n{\n    (0, 0) => \"origin\",\n    (> 0, > 0) => \"upper right\",\n    _ => \"elsewhere\",\n};\n\nstatic string Ends(int[] a) => a switch\n{\n    [] => \"empty\",\n    [var only] => $\"only {only}\",\n    [var first, .., var last] => $\"{first} to {last}\",\n};\n\nstatic string Describe(object? o) => o switch\n{\n    null => \"nothing\",\n    Circle c => $\"circle {c.R}\",\n    Rect { W: > 5 } => \"wide rect\",\n    int and not 0 => \"a non-zero int\",\n    _ => \"something else\",\n};\n\nforeach (var n in new[] { 0, 3, 7, 12, -1, 500 })\n{\n    Console.WriteLine($\"{n} -> {Classify(n)}\");\n}\nConsole.WriteLine(Where((0, 0)));\nConsole.WriteLine(Where((2, 3)));\nConsole.WriteLine(Ends(new[] { 1, 2, 3, 4 }));\nConsole.WriteLine(Describe(null));\nConsole.WriteLine(Describe(new Circle(2)));\nConsole.WriteLine(Describe(new Rect(9, 1)));\nConsole.WriteLine(Describe(7));\nConsole.WriteLine(Describe(0));\n\nrecord Circle(int R);\nrecord Rect(int W, int H);\n",
+   "out": "0 -> zero\n3 -> few\n7 -> some\n12 -> many\n-1 -> negative\n500 -> big\norigin\nupper right\n1 to 4\nnothing\ncircle 2\nwide rect\na non-zero int\nsomething else\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "when-expr.fail.kt": {
+   "code": "fun main() {\n    val day = 6\n    val kind = when (day) {\n        in 1..5 -> \"weekday\"\n        6, 7 -> \"weekend\"\n    }\n    println(kind)\n}\n",
+   "error": "Main.kt:3:16: error: 'when' expression must be exhaustive. Add an 'else' branch.\n    val kind = when (day) {\n               ^^^^",
+   "lang": "kotlin"
+  },
+  "when-pair.kt": {
+   "code": "fun place(p: Pair<Int, Int>): String = when (p) {\n    Pair(0, 0) -> \"origin\"\n    else -> {\n        val (x, y) = p\n        if (x == 0) \"on the y axis, y = $y\" else \"elsewhere\"\n    }\n}\n\nfun main() {\n    println(place(Pair(0, 0)))\n    println(place(Pair(0, 7)))\n    println(place(Pair(3, 4)))\n}\n",
+   "out": "origin\non the y axis, y = 7\nelsewhere\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "when.kt": {
+   "code": "fun classify(n: Int): String = when (n) {\n    0 -> \"zero\"\n    in 1..5 -> \"few\"\n    6, 7 -> \"some\"\n    else -> if (n < 0) \"negative\" else \"many\"\n}\n\nfun size(n: Int): String = when {\n    n > 100 -> \"big\"\n    n > 10 -> \"medium\"\n    else -> \"small\"\n}\n\nfun main() {\n    for (n in listOf(0, 3, 5, 7, 12, -1)) {\n        println(\"$n -> ${classify(n)}\")\n    }\n    println(\"${size(500)} ${size(50)} ${size(5)}\")\n}\n",
+   "out": "0 -> zero\n3 -> few\n5 -> few\n7 -> some\n12 -> many\n-1 -> negative\nbig medium small\n",
+   "lang": "kotlin",
+   "exit": 0
+  }
+ },
+ "exercises": {
+  "budget": {
+   "starter": "// Describe how much of a limit has been spent.\n//   nothing spent          -> \"unused\"\n//   more than the limit    -> \"over by N\"\n//   exactly the limit      -> \"exactly at the limit\"\n//   1 to 9 (under limit)   -> \"a little (N)\"\n//   anything else          -> \"N of LIMIT used\"\n// A pattern cannot compare with the variable `limit`, so the limit checks are guards.\nfn budget(spent: u32, limit: u32) -> String {\n    todo!(\n        \"a match on spent: a literal arm, guards that use limit, an @ range, then a name for the rest\"\n    )\n}\n\nfn main() {\n    assert_eq!(budget(0, 100), \"unused\");\n    // The first arm wins, even when the limit is also 0.\n    assert_eq!(budget(0, 0), \"unused\");\n    assert_eq!(budget(150, 100), \"over by 50\");\n    assert_eq!(budget(100, 100), \"exactly at the limit\");\n    assert_eq!(budget(5, 100), \"a little (5)\");\n    assert_eq!(budget(50, 100), \"50 of 100 used\");\n    // Over the limit beats \"a little\".\n    assert_eq!(budget(5, 3), \"over by 2\");\n    assert_eq!(budget(3, 3), \"exactly at the limit\");\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "// Describe how much of a limit has been spent.\n//   nothing spent          -> \"unused\"\n//   more than the limit    -> \"over by N\"\n//   exactly the limit      -> \"exactly at the limit\"\n//   1 to 9 (under limit)   -> \"a little (N)\"\n//   anything else          -> \"N of LIMIT used\"\n// A pattern cannot compare with the variable `limit`, so the limit checks are guards.\nfn budget(spent: u32, limit: u32) -> String {\n    match spent {\n        0 => String::from(\"unused\"),\n        n if n > limit => format!(\"over by {}\", n - limit),\n        n if n == limit => String::from(\"exactly at the limit\"),\n        n @ 1..=9 => format!(\"a little ({n})\"),\n        n => format!(\"{n} of {limit} used\"),\n    }\n}\n\nfn main() {\n    assert_eq!(budget(0, 100), \"unused\");\n    // The first arm wins, even when the limit is also 0.\n    assert_eq!(budget(0, 0), \"unused\");\n    assert_eq!(budget(150, 100), \"over by 50\");\n    assert_eq!(budget(100, 100), \"exactly at the limit\");\n    assert_eq!(budget(5, 100), \"a little (5)\");\n    assert_eq!(budget(50, 100), \"50 of 100 used\");\n    // Over the limit beats \"a little\".\n    assert_eq!(budget(5, 3), \"over by 2\");\n    assert_eq!(budget(3, 3), \"exactly at the limit\");\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "door": {
+   "starter": "// A door has two switches: is it open, is it locked?\n//   closed and unlocked -> \"closed\"\n//   closed and locked   -> \"locked\"\n//   open and unlocked   -> \"open\"\n//   open and locked     -> \"jammed\" (it is open, yet the bolt is out)\nfn door(open: bool, locked: bool) -> &'static str {\n    match (open, locked) {\n        _ => todo!(\"name all four; delete this line to read the E0004\"),\n    }\n}\n\nfn main() {\n    assert_eq!(door(false, false), \"closed\");\n    assert_eq!(door(false, true), \"locked\");\n    assert_eq!(door(true, false), \"open\");\n    assert_eq!(door(true, true), \"jammed\");\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "// A door has two switches: is it open, is it locked?\n//   closed and unlocked -> \"closed\"\n//   closed and locked   -> \"locked\"\n//   open and unlocked   -> \"open\"\n//   open and locked     -> \"jammed\" (it is open, yet the bolt is out)\nfn door(open: bool, locked: bool) -> &'static str {\n    match (open, locked) {\n        (false, false) => \"closed\",\n        (false, true) => \"locked\",\n        (true, false) => \"open\",\n        (true, true) => \"jammed\",\n    }\n}\n\nfn main() {\n    assert_eq!(door(false, false), \"closed\");\n    assert_eq!(door(false, true), \"locked\");\n    assert_eq!(door(true, false), \"open\");\n    assert_eq!(door(true, true), \"jammed\");\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "palindrome": {
+   "starter": "// Is the list the same read forwards and backwards?\n// Use a slice pattern with `middle @ ..` and check the outer two items,\n// then ask the same question about the middle.\nfn is_palindrome(items: &[i32]) -> bool {\n    todo!(\"one arm for [first, middle @ .., last], one for everything shorter\")\n}\n\nfn main() {\n    assert!(is_palindrome(&[]));\n    assert!(is_palindrome(&[7]));\n    assert!(is_palindrome(&[1, 2, 1]));\n    assert!(is_palindrome(&[1, 2, 2, 1]));\n    assert!(!is_palindrome(&[1, 2]));\n    assert!(!is_palindrome(&[1, 2, 3]));\n    // The outer pair matches but the inside does not.\n    assert!(!is_palindrome(&[1, 2, 3, 1]));\n    assert!(!is_palindrome(&[4, 5, 6, 5, 9]));\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "// Is the list the same read forwards and backwards?\n// Use a slice pattern with `middle @ ..` and check the outer two items,\n// then ask the same question about the middle.\nfn is_palindrome(items: &[i32]) -> bool {\n    match items {\n        [first, middle @ .., last] => first == last && is_palindrome(middle),\n        // Zero or one item: nothing left to compare.\n        _ => true,\n    }\n}\n\nfn main() {\n    assert!(is_palindrome(&[]));\n    assert!(is_palindrome(&[7]));\n    assert!(is_palindrome(&[1, 2, 1]));\n    assert!(is_palindrome(&[1, 2, 2, 1]));\n    assert!(!is_palindrome(&[1, 2]));\n    assert!(!is_palindrome(&[1, 2, 3]));\n    // The outer pair matches but the inside does not.\n    assert!(!is_palindrome(&[1, 2, 3, 1]));\n    assert!(!is_palindrome(&[4, 5, 6, 5, 9]));\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}

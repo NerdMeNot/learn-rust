@@ -1,0 +1,398 @@
+<p class="lr-layer">The toolkit</p>
+
+[Borrowing](/learn/borrowing/) lent a value out to be read, with `&`. This lesson lends it out to be changed, with `&mut`. One rule governs it, and it explains many of the first errors you will meet. Outputs come from Linux on 64-bit ARM; where a fact depends on the platform or build mode, the text says so.
+
+## `&mut`: lend a value to be changed
+
+A `&` reference only looks (a few types in [Shared state](/learn/shared-state/) are the exception). A `&mut` reference, a **mutable reference**, can change the value it points at. A function that changes its argument takes one:
+
+<Snippet file="add-one.rs" />
+
+`*x` means "the value `x` points at". `x` is the reference and `*x` is the number, so `*x += 1` changes the number. Printing and method calls look through a reference for you, so you mostly meet `*` on the left of an assignment.
+
+`add_one_to_copy` is there for comparison: its `mut x: i32` changes the function's *own copy*, and the caller's `n` stays 6. Only `&mut` reaches the caller's variable.
+
+`mut` appears in two places, and the compiler checks both. The variable must be `let mut`, and the borrow `&mut`:
+
+<Snippet file="needs-mut.fail.rs" />
+
+The suggestion (`let mut n`) is the fix. The call `add_one(&mut n)` also tells you, without opening `add_one`, that `n` may change.
+
+A function that only has a `&` can't push to its list. `items.push(0)` is a **method** call, a function attached to a type ([Methods](/learn/methods/)), and `push` needs a `&mut`:
+
+<Snippet file="behind-shared.fail.rs" />
+
+Same E0596, same reason. The fix is `&mut Vec<i32>` in the signature and `add_item(&mut items)` in the caller.
+
+<ForLang only="python typescript java kotlin csharp">
+In your language, a function that takes a list usually can change it, and a plain `list` or `List<Integer>` signature doesn't say. Read-only types exist (Kotlin's `List`, C#'s `IReadOnlyList`, TypeScript's `readonly number[]`), but they restrict only the reference you hold. In Rust the signature says it, and the caller writes `&mut` to agree. Numbers are passed as copies in your language; `&mut i32` is how Rust lets a function change the caller's number (C# has `ref int`).
+</ForLang>
+
+<ForLang only="go">
+`&mut T` is the pointer you would pass to change something. Unlike a Go pointer it is never `nil` and has no arithmetic, and a rule limits how many can exist at once. That rule is next.
+</ForLang>
+
+<ForLang only="c cpp">
+`&mut T` is a non-`const` `T&` (which can't be reseated either). What differs is a rule on how many can exist at once. That rule is next, and the [`restrict` comparison](#two-arguments-that-are-the-same-thing) is further down.
+</ForLang>
+
+## The rule: one writer, or any number of readers
+
+At any moment, a value can be borrowed in one of two ways:
+
+- **any number of `&` borrows** (readers), or
+- **exactly one `&mut` borrow** (the writer).
+
+Never both. While the writer exists, nobody else can use the value, not even the owner. Each cell is what happens while the borrow in the row is alive:
+
+| While this is alive… | another `&` | a `&mut` | the owner reads | the owner assigns |
+|---|---|---|---|---|
+| a `&` | fine | E0502 | fine | E0506 |
+| a `&mut` | E0502 | E0499 | E0502 or E0503 | E0506 |
+
+Many readers are fine because nobody can change anything under them:
+
+<Snippet file="readers.rs" />
+
+Two writers is E0499:
+
+<Snippet file="two-writers.fail.rs" />
+
+A reader and a writer is E0502:
+
+<Snippet file="reader-and-writer.fail.rs" />
+
+The owner is not exempt. Assigning is E0506 while either kind is alive. Reading while a writer is alive is E0502 when the read takes a borrow (a method call, `println!`) and E0503 when it copies a number out:
+
+<Snippet file="owner-uses.fail.rs" />
+
+Each error points at three places: the first borrow, the clashing one, and a *later use* of the first, which keeps it alive across the clash. Without that later use it would compile.
+
+## A borrow ends at its last use
+
+A borrow doesn't last until the end of the block. It lasts until the last time the reference is used. After that the value is free again:
+
+<Snippet file="last-use.rs" />
+
+`writer` was last used on its `push` line, so the borrow was over by the next line. Move the use of `writer` below the `println!` and the borrow is still alive at the print:
+
+<Snippet file="last-use.fail.rs" />
+
+The message says it: "mutable borrow later used here". `scores.push(40)` borrows `scores` as `&mut` for you, which is why `scores` has to be `let mut` though you never typed `&mut`.
+
+## Changing a list in place
+
+`for p in &mut prices` visits each element as a `&mut`. Indexing works too: `prices[i] *= 2` changes one element. The Vec has to be `let mut`:
+
+<Snippet file="loop-mut.rs" />
+
+The rule shows up in loops. A `for` loop over `&v` keeps `v` borrowed until the loop ends, so adding to the list inside it is a writer meeting a reader:
+
+<Snippet file="loop-push.fail.rs" />
+
+The loop is the reader, `push` is the writer. Two ways out, both from the compiler's `help:` line:
+
+<Snippet file="loop-push-fixes.rs" />
+
+Loop over the positions that exist now, or collect what to add in a second list and add it after the loop. [Ownership and Moves](/learn/ownership/#when-ownership-feels-like-a-fight) has more ways out.
+
+## When the rule is in the way
+
+The rule refuses some safe programs. These are the usual ways round it. Stuck on an error you can't fix? See [Working with the Borrow Checker](/learn/borrow-checker/#from-error-to-fix). Otherwise skip to [Going deeper](#why-one-writer-or-many-readers) and come back when the compiler stops you.
+
+### Handing a `&mut` on
+
+A `&mut` can't be copied, because a copy would be a second writer. `let second = first;` *moves* it, like a `String`:
+
+<Snippet file="not-copy.fail.rs" />
+
+(A `&` is copied freely, as `readers.rs` did.) So you might expect that passing a `&mut` to a function uses it up. It doesn't:
+
+<Snippet file="reborrow.rs" />
+
+When the parameter is known to be a `&mut`, the compiler lends `r` for the call: a **reborrow**, as if you'd written `&mut *r`. The loan lasts longer if the function returns a reference taken from it ([Returning references](/learn/returning-references/)). A generic parameter (`fn f<T>(t: T)`) has no known `&mut` to reborrow, so it moves `r` instead.
+
+### Reading while a push is on its way
+
+<Snippet file="push-len.rs" />
+
+`v.push(v.len())` reads `v` while a `&mut v` is on its way. It works because the `&mut` only becomes active when `push` runs, after its arguments are worked out: a [two-phase borrow](https://rustc-dev-guide.rust-lang.org/borrow-check/two-phase-borrows.html). Until then only reads are allowed, and only for borrows the compiler takes for you. A `&mut v` you write is taken first, and an argument that changes `v` is refused:
+
+<Snippet file="push-len-fn.fail.rs" />
+
+<ForLang only="c cpp">
+C++ handles this inside the library: `v.push_back(v[0])` is valid even when the push reallocates, because `push_back` must copy the argument before it moves anything:
+
+<Snippet file="push-back-self.cpp" />
+</ForLang>
+
+### Swapping and taking
+
+A `&mut` lets you change the value, but not take it. The caller still owns it and will drop it, so moving it out would drop it twice:
+
+<Snippet file="move-out-of-mut.fail.rs" />
+
+This is E0507 from [Ownership and Moves](/learn/ownership/#moving-out-of-things). What you can do is *put something else in its place*, with three functions from `std::mem`:
+
+- `mem::swap(&mut a, &mut b)` exchanges two values. (`mem::swap(&mut x, &mut x)` is refused as two writers.)
+- `mem::replace(&mut x, new)` puts `new` in `x` and returns the old value.
+- `mem::take(&mut x)` is `replace` with the type's default value (`""`, an empty `Vec`, `0`).
+
+<Snippet file="mem-tools.rs" />
+
+They are most useful inside a function that only has a `&mut`:
+
+<Snippet file="mem-in-fn.rs" />
+
+`drain_log` returns the whole list and leaves an empty one behind. The strings weren't copied: the third line shows the first text at the same address as before. Swapping a `String` or `Vec` exchanges its small header and leaves the text where it is ([the stack and the heap](/learn/stack-heap/)). `take` needs a type with a default value.
+
+<ForLang only="c cpp">
+These are bitwise moves that run no user code, so they can't throw or panic, unlike `std::swap`, which calls your move constructor and assignment. Rust has no moved-from state: the old name is unusable.
+</ForLang>
+
+### Changing two parts at once
+
+Fields of a **struct** (a type with named fields; [Structs](/learn/structs/)) are separate places, and the compiler knows it when you name them:
+
+<Snippet file="two-fields.rs" />
+
+That works only because both borrows name a field. Pass the whole struct to a function and it could touch any field:
+
+<Snippet file="whole-and-part.fail.rs" />
+
+Elements of a `Vec` are harder. The compiler doesn't look at index values, so `&mut v[i]` and `&mut v[j]` both borrow the whole Vec. It can't know that `i` and `j` differ:
+
+<Snippet file="two-elements.fail.rs" />
+
+This is the gotcha at the top of the page. Usually you don't need two references at all:
+
+<Snippet file="two-at-once.rs" />
+
+| You want | Use |
+|---|---|
+| to swap two elements | `v.swap(i, j)` |
+| to combine two numbers | read the numbers out (they're copied), then write |
+| a `&mut` into each of two elements | `v.split_at_mut(mid)`: two non-overlapping halves |
+
+`split_at_mut(2)` splits a list into `left`, the elements before position 2, and `right`, the rest. The halves are slices (`&mut [i32]`, a borrowed view of part of a list), and `right[0]` is `v[2]`. No element is in both halves, so there is no `i == j` to worry about. It panics if `mid` is past the end.
+
+<ForLang only="go" title="What you write today">
+| In Go | In Rust |
+|---|---|
+| `func f(s *[]int)` and `*s = append(*s, 0)` | `fn f(s: &mut Vec<i32>)` and `s.push(0)` |
+| `s[i], s[j] = s[j], s[i]` | `s.swap(i, j)` |
+| `old, x = x, 5` | `let old = mem::replace(&mut x, 5);` |
+| `old := s; s = nil` | `let old = mem::take(&mut s);` (leaves an empty `Vec`, not `nil`) |
+| `a, b := s[:2], s[2:]` (two views of one array) | `let (a, b) = s.split_at_mut(2);` |
+</ForLang>
+
+<ForLang only="java kotlin csharp" title="What you write today">
+| In Java, Kotlin or C# | In Rust |
+|---|---|
+| `Collections.swap(list, i, j)` (Java, Kotlin) | `v.swap(i, j);` |
+| `var old = field; field = next;` | `let old = mem::replace(&mut field, next);` |
+| copy the list, then `list.clear()` | `let old = mem::take(&mut list);` |
+| `ref int x` (C#) | `x: &mut i32` |
+</ForLang>
+
+<ForLang only="python typescript" title="What you write today">
+| In Python or TypeScript | In Rust |
+|---|---|
+| `a[i], a[j] = a[j], a[i]` (Python), `[a[i], a[j]] = [a[j], a[i]]` (TypeScript) | `a.swap(i, j);` |
+| `old, x = x, new` | `let old = mem::replace(&mut x, new);` |
+| `old = items; items = []` | `let old = mem::take(&mut items);` |
+</ForLang>
+
+<ForLang only="c cpp" title="What you write today">
+| In C or C++ | In Rust |
+|---|---|
+| `std::swap(a, b)` | `mem::swap(&mut a, &mut b);` |
+| `std::swap(v[i], v[j])` | `v.swap(i, j);` |
+| `auto old = std::exchange(x, next);` | `let old = mem::replace(&mut x, next);` |
+| `auto old = std::exchange(v, {});` | `let old = mem::take(&mut v);` |
+| two `std::span`s over halves of an array | `let (a, b) = v.split_at_mut(mid);` |
+</ForLang>
+
+<p class="lr-layer">Going deeper</p>
+
+## Why one writer or many readers?
+
+The rule can feel too strict for one thread and one list. It targets a problem every language with changeable data meets: **aliasing plus mutation**. Aliasing means two names for the same data. If both can read and one can write, the reader can see the data change under its feet, or follow a pointer to something that no longer exists. Rust forbids the combination. Other languages tolerate it and deal with the consequences, as the rest of this page shows.
+
+## Two arguments that are the same thing
+
+<Snippet file="alias-args.fail.rs" />
+
+Rust refuses the call because `total` would be written while `amount` reads the same number. That guarantees `*amount` can't change when `*total` does, and the compiler may rely on it.
+
+<ForLang only="c cpp" title="restrict, noalias and undefined behaviour">
+`&mut` is `restrict` made universal and checked. In C, `restrict` is a promise you keep yourself, about one pointer within its block, and it matters for objects that get modified. A `&mut` is exclusive for its whole lifetime, readers included, and the compiler checks it. The same function with plain pointers and with `restrict`:
+
+<Snippet file="restrict.c" />
+
+With plain pointers the function must be right for both calls: `x` ended at 3 with separate ints and at 4 with one int, because the second `+=` added the new value. With `restrict` the optimiser may assume the pointers differ, and at `-O2` the aliased call gave 3. Breaking the promise is undefined behaviour. The runner compiles with `-Wall`, and GCC 14 warned about this call. It compiles at default optimisation, so the attribute asks for `-O2` on that one function. (g++ spells the keyword `__restrict`.)
+
+Rust gives LLVM the same fact: a `&mut` parameter is marked `noalias`, and so is a `&` to data with no interior mutability. Two aliased `&mut` made with [`unsafe`](/learn/unsafe/) are undefined behaviour in Rust too, and [Miri](https://github.com/rust-lang/miri) finds them the way ASan and UBSan find yours. In safe Rust the question never arises.
+</ForLang>
+
+## A reference into a list that moves
+
+A `Vec` keeps its elements in one block on the [heap](/learn/stack-heap/). When a push doesn't fit, it asks the allocator for a bigger block. If the block can't be extended in place, the elements are moved to a new one and the old one is freed, leaving a reference to an element pointing at freed memory:
+
+<Memory
+  title="let mut v = vec![1, 2, 3, 4];   let first = &v[0];"
+  stack={[
+    { name: 'v', type: 'Vec<i32>', cells: ['ptr', 'len 4', 'cap 4'], to: 'old' },
+    { name: 'first', type: '&i32', cells: ['address of v[0]'], to: 'old' },
+  ]}
+  heap={[{ id: 'old', label: "v's buffer", cells: ['1', '2', '3', '4'] }]}
+  caption="Both `v` and `first` lead to the same buffer. So far this is fine, and the compiler accepts it."
+/>
+
+<Memory
+  title="v.push(5);   // what would happen if the compiler allowed it"
+  stack={[
+    { name: 'v', type: 'Vec<i32>', cells: ['ptr', 'len 5', 'cap 8'], to: 'new' },
+    { name: 'first', type: '&i32', cells: ['address of v[0]'], to: 'old', gone: 'dangling', note: 'points at freed memory' },
+  ]}
+  heap={[
+    { id: 'new', label: "v's new buffer", cells: ['1', '2', '3', '4', '5', '', '', ''] },
+    { id: 'old', label: 'old buffer', freed: true, cells: ['1', '2', '3', '4'] },
+  ]}
+  caption="The push needed room for a fifth element, so `Vec` moved the elements to a bigger buffer and freed the old one. `first` still holds the old address. Rust refuses this program, because it is a reader (`first`) meeting a writer (`push`)."
+/>
+
+This program can't hold a reference across the push, but it can compare `as_ptr()` (the buffer's address) before and after, as true or false, because the address itself changes from run to run:
+
+<Snippet file="grow.rs" />
+
+Capacity went from 4 to 8 both times, but only the second `Vec` got a new buffer. In the first the buffer stayed put, probably because nothing sat after it, so the allocator could extend it in place. Whether a push moves the elements depends on the allocator, which a program can't know in advance, so the compiler treats every push as if it might. This is a debug build; with `rustc -O` the unused `_neighbour` is removed and both stay put. The capacity numbers are what this version of `Vec` does, not a rule.
+
+<ForLang only="java kotlin csharp python typescript">
+This story is C-flavoured. A `Vec<i32>` holds its numbers inline. A Java `ArrayList`, Python `list` or TypeScript array holds *references* to objects, and the runtime keeps those objects alive, so a push can't leave your object dangling. What you meet instead is below.
+</ForLang>
+
+<ForLang only="c cpp">
+In Rust the move is a bitwise copy; `std::vector` uses `move_if_noexcept`, which copies if the move constructor can throw. A `std::vector` always gets a new block when it grows, because `std::allocator` offers `allocate` and `deallocate` but no way to extend a block ([cppreference](https://en.cppreference.com/w/cpp/memory/allocator)), so the C++ bug is deterministic where Rust's `Vec` may or may not move.
+</ForLang>
+
+## Changing a list while looping over it
+
+Rust refuses it (`loop-push.fail.rs` above). Each row names its test; the program for your language follows.
+
+| Language | Test | What happened |
+|---|---|---|
+| Rust | add inside `for x in &v` | does not compile (E0502) |
+| Java, Kotlin | add 99 when the loop sees 2 | `ConcurrentModificationException` |
+| Java | remove 3 from `[1, 2, 3, 4]` when the loop sees 3 | no exception; the loop skips 4 |
+| C# | add 99 when the loop sees 2 | `InvalidOperationException` |
+| Python | remove 3 from `[1, 2, 3, 4]` when the loop sees 3 | no error; the loop skips 4 |
+| TypeScript | same as Python | no error; the loop skips 4 |
+| Go | append 99 when `range` sees 2 | no error; `range` never reaches 99 |
+| C++ | `push_back` when a full vector's loop sees 2 | AddressSanitizer: `heap-use-after-free` |
+
+<ForLang only="java">
+`ArrayList` throws when its loop next asks for an element. The [docs](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/ArrayList.html) call this fail-fast on a best-effort basis, and it has nothing to do with threads:
+
+<Snippet file="cme-add.crash.java" />
+
+It may not fire. Removing the second-to-last item ends the loop quietly, because the "any more?" check compares positions and finds none left. `Iterator.remove()` is the supported way to remove in a loop, and `CopyOnWriteArrayList` walks a snapshot:
+
+<Snippet file="loop-fixes.java" />
+
+Read-only views protect only the reference you hold. `Collections.unmodifiableList` throws on `add`, yet the original list can still change underneath it. `List.of` has no changeable reference at all, so it is truly fixed.
+
+<Snippet file="read-only-view.java" />
+
+Rust adds a guarantee: while a `&mut` is alive there is no other alias at all, so no reader or loop can be surprised. Java's failure modes are the exception, silent skipping, and data races, which the [memory model](https://docs.oracle.com/javase/specs/jls/se25/html/jls-17.html#jls-17.4) defines, where C and C++ call them undefined. `ReentrantReadWriteLock` has this lesson's rule, enforced at run time and only where you wrote the lock.
+</ForLang>
+
+<ForLang only="kotlin">
+Kotlin's `List` is a read-only view type and `MutableList` the changeable one, checked when compiling. A view protects only its own name, and a cast gets write access back. On the JVM `mutableListOf` gives you a real `ArrayList` (the cast and the exception in the program below show it), so a loop that adds to it throws the same exception, and the Java fixes apply:
+
+<Snippet file="read-only-view.kt" />
+</ForLang>
+
+<ForLang only="csharp">
+A `foreach` over a `List<T>` throws `InvalidOperationException` if the list is changed during the loop ([`List<T>.GetEnumerator`](https://learn.microsoft.com/en-us/dotnet/api/system.collections.generic.list-1.getenumerator) describes this):
+
+<Snippet file="foreach-modified.crash.cs" />
+
+`IReadOnlyList<T>` protects only the reference you hold. The same program catches the removal that Java's loop missed:
+
+<Snippet file="read-only-view.cs" />
+
+Rust adds a guarantee: while a `&mut` is alive there is no other alias at all. C# checks `ref` and `Span<T>` lifetimes when compiling, but not whether two `ref` locals point at one slot.
+</ForLang>
+
+<ForLang only="python">
+Python has no read-only view of a list (a tuple is a separate type), so any name for a list can change it. That lets `def add_bonus(scores)` work, and makes "who changed my list?" a bug hunt. A list loop doesn't notice changes; a dict loop does:
+
+<Snippet file="list-modified.py" />
+</ForLang>
+
+<ForLang only="typescript">
+A `for...of` over an array doesn't notice changes. `readonly number[]` restricts only the name that has it:
+
+<Snippet file="loop-modified.ts" />
+
+<Snippet file="readonly-view.ts" />
+
+A Rust `&` is stronger: while it is alive nobody can change the value (the [Shared state](/learn/shared-state/) types excepted).
+</ForLang>
+
+<ForLang only="go">
+`range` reads the slice once before the loop starts, so an `append` inside it is invisible to the loop:
+
+<Snippet file="range-append.go" />
+
+Any Go pointer or slice can write, so two goroutines writing one element are a **data race**. `go run -race` reports races that happen in that run. This program uses a delay, not a lock, so the writes are unordered:
+
+<Snippet file="data-race.crash.race.go" />
+
+Go relies on the detector and discipline (`sync.Mutex`, [channels](/learn/channels/)). Rust checks this lesson's rule before the program runs.
+</ForLang>
+
+<ForLang only="c cpp">
+`const int *p` says *you* won't write through `p`, not that nobody will. C++ adds `std::span`, `_GLIBCXX_DEBUG`, sanitizers and a guideline: don't hold references across `push_back`. The standard documents what each container invalidates, so the contract is clear, but breaking it is undefined. `push_back` on a full vector reallocates, and the range-`for` keeps walking the old block:
+
+<Snippet file="push-back.crash.asan.cpp" />
+
+C++ also has [`std::shared_mutex`](https://en.cppreference.com/w/cpp/thread/shared_mutex), a read-write lock: this lesson's rule, checked at run time.
+</ForLang>
+
+## What the rule buys
+
+- **No data races in safe Rust.** A **data race** is two threads using the same memory at the same time, with at least one writing and nothing coordinating them. "One writer or many readers" is the main rule that prevents it, together with `Send` and `Sync` (traits that say which types may cross threads; [Send and Sync](/learn/send-sync/)). [Shared state](/learn/shared-state/) shows the tools for sharing on purpose.
+- **A signature that says a lot.** `&T`, `&mut T` and `T` usually say whether a function reads, changes or takes its argument. (Interior-mutable types change through a `&`; a `Copy` type isn't consumed.)
+- **Optimisation the compiler can trust.** If a `&mut` is the only way to reach a value, the compiler can assume nothing else changes it. With `rustc -O --emit=llvm-ir` a `&mut i32` parameter comes out marked `noalias` for LLVM, the compiler backend ([Rustonomicon](https://doc.rust-lang.org/nomicon/aliasing.html)). Whether that speeds up a given program depends on the program; this lesson claims no number.
+
+The rule has a price: it refuses safe programs, like two `&mut` to elements 0 and 2, which never overlap. You work round it as above. Some designs don't fit at all, such as two objects that both hold a mutable pointer to a third. For those, some types change data through a shared `&`. `Cell` only copies values in and out, so it can't clash; `RefCell` and `Mutex` check the rule while the program runs ([`RefCell` in Smart pointers](/learn/smart-pointers/#cell-and-refcell-change-it-through-a-shared-reference), [`Mutex` in Shared state](/learn/shared-state/)).
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Open each exercise in the Playground, replace the `todo!()`, and run it until it prints `all checks passed`. Some checks compare text addresses with `as_ptr()`, so an answer that copies Strings fails.
+
+<Exercise name="swap-ends" title="Swap the ends">
+Swap the first and last element of a list of `String`s, and leave lists with fewer than two elements as they are. You can't move a `String` out of an index or borrow two elements mutably, but the Vec has a method for this. Mind the empty list: `len - 1` on zero underflows (a panic in a debug build).
+</Exercise>
+
+<Exercise name="move-points" title="Move points">
+Write `transfer`, which moves up to `amount` points from one `&mut u32` to another and returns how many moved. `main` calls it with two fields of one struct. Then write `transfer_in_list` for two positions of a list, where `&mut scores[i]` and `&mut scores[j]` won't compile. If `i == j`, nothing moves.
+</Exercise>
+
+<Exercise name="rename-and-drain" title="Rename and drain">
+With only a `&mut Profile`, return the old name while storing a new one, and return all the tags while leaving an empty list behind. Both come from [swapping and taking](#swapping-and-taking), and neither may copy a `String`.
+</Exercise>
+
+## Read more
+
+- [Reading compiler errors](/errors/): how an error is laid out, and every error code on this site with what it means and where to see it.
+- [The Rust Book, chapter 4.2: References and Borrowing](https://doc.rust-lang.org/book/ch04-02-references-and-borrowing.html). Mutable references and the "one writer or many readers" rule, in the Book's words.
+- [Rust by Example: Mutability (borrowing)](https://doc.rust-lang.org/rust-by-example/scope/borrow/mut.html) for `&mut`, and [Mutability (variable bindings)](https://doc.rust-lang.org/rust-by-example/variable_bindings/mut.html) for `let mut`.
+- [`std::mem::swap`](https://doc.rust-lang.org/std/mem/fn.swap.html), [`replace`](https://doc.rust-lang.org/std/mem/fn.replace.html) and [`take`](https://doc.rust-lang.org/std/mem/fn.take.html).
+- [`slice::split_at_mut`](https://doc.rust-lang.org/std/primitive.slice.html#method.split_at_mut) and [`slice::swap`](https://doc.rust-lang.org/std/primitive.slice.html#method.swap) (`Vec` gets both through its slice).
+- [The Rustonomicon: Aliasing](https://doc.rust-lang.org/nomicon/aliasing.html), for why the compiler cares and what it assumes.
+- [The rustc dev guide: Two-phase borrows](https://rustc-dev-guide.rust-lang.org/borrow-check/two-phase-borrows.html), for why `v.push(v.len())` works.

@@ -1,0 +1,108 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Closures"
+part: "collections"
+intro: >-
+  Closures are anonymous functions written `|args| body`. They can use variables from
+  around them.
+coming_from:
+  go: >-
+    `|x: i32| x * factor` is `func(x int) int { return x * factor }`, usually with the
+    types left out. A closure that changes a captured variable must itself be `let mut`,
+    and `move` makes it take ownership of what it uses.
+  kotlin: >-
+    `|x| x * factor` is `{ x: Int -> x * factor }`. A closure that changes a captured
+    variable must be stored in a `let mut`, and while it's still going to be used, you
+    can't read that variable yourself.
+  python: >-
+    A closure is a `lambda` that can hold a whole block with `|| { ... }`. Python makes
+    you say `nonlocal` to change a captured variable; Rust makes you say `mut`: the
+    closure itself must be `let mut`.
+  typescript: >-
+    `|x| x * factor` is the arrow function `(x) => x * factor`. A closure that changes a
+    captured variable must be `let mut`, and while it's still going to be used, nothing
+    else can read or write that variable.
+  java: >-
+    `|x| x * factor` is a lambda, but Rust closures may change captured locals. Java
+    forbids that; the workaround is an `AtomicInteger`, a one-element array or a field.
+    A closure that changes something must itself be declared `let mut`.
+  csharp: >-
+    `|x| x * factor` is a lambda like `x => x * factor`, and like C# it can change
+    captured variables. Rust adds two rules: a closure that changes state must be `let
+    mut`, and while it holds that borrow nobody else can use `count`.
+  c: >-
+    C has no closures; you'd pass a function pointer plus a `void *` for context. A Rust
+    closure bundles both, captures variables by itself, and is type-checked, so there's
+    no cast from `void *`.
+  cpp: >-
+    A closure is a lambda that works out its own capture list: it borrows what it reads,
+    borrows mutably what it changes, and `move` takes ownership. Rust needs `let
+    mut` for a closure that changes what it captured even when it changes it through a
+    reference, where a C++ `[&]` lambda needs nothing.
+notes:
+  - >-
+    A closure borrows what it uses. `times` holds a `&factor`, and `inc` holds a `&mut
+    count`.
+  - >-
+    While `inc` is still going to be used, nothing else can touch `count`. That is the
+    one-writer rule. Reading `count` works here because `inc` is never used again after
+    that line.
+  - >-
+    `move |x| ...` makes the closure take ownership of what it uses instead of
+    borrowing. A closure given to `thread::spawn` needs it when it uses local variables,
+    because the thread can outlive the function that started it (see Threads).
+  - >-
+    Rust works out from the body whether a closure is `Fn` (only reads), `FnMut`
+    (changes something) or `FnOnce` (gives something away). A function that takes a
+    closure says which kind it accepts.
+gotcha:
+  title: "A changing closure without mut"
+  verdict: "rust-rule"
+  looks_fine: "Go and Kotlin closures can change captured variables freely."
+  rust_sees: >-
+    `inc` carries a hidden `&mut count` inside it. Calling `inc` changes something, so
+    `inc` itself counts as a value that changes.
+  why: >-
+    It is the same rule as in Methods: anything that changes has to be marked `mut`, so
+    you can spot every place where state changes.
+  langs:
+    go:
+      status: "runs"
+      says: >-
+        Go runs this and prints count=2. Any closure can change the variables it
+        captured, with nothing to mark.
+    kotlin:
+      status: "runs"
+      says: >-
+        Kotlin runs this and prints count=2. A lambda stored in a `val` can still change
+        a captured `var`.
+    python:
+      status: "crash"
+      says: >-
+        Python raises UnboundLocalError. Assigning to `count` inside `inc` makes it a
+        new local variable, so you need `global count` (or `nonlocal` in a nested
+        function).
+    typescript:
+      status: "runs"
+      says: >-
+        Prints count=2. A TypeScript arrow function can change outer `let` variables
+        with no extra marking.
+    java:
+      status: "refuses"
+      says: >-
+        Java refuses this too, for a different reason: a lambda can't change a local
+        variable it captures. Use an AtomicInteger or a field instead.
+    csharp:
+      status: "runs"
+      says: >-
+        C# lambdas can change captured variables with no extra marker, so this prints
+        count=2.
+    c:
+      status: "none"
+      says: >-
+        C has no closures. A function that changes a counter takes a pointer to it, as
+        in the lesson.
+    cpp:
+      status: "runs"
+      says: >-
+        A `[&]` lambda can change `count` without any marker, so this prints `count=2`.
+        Capture by value and C++ also wants a keyword: `mutable`.

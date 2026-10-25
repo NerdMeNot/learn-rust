@@ -1,0 +1,46 @@
+---
+// Files from a guide's project, as tabs when there are several, with an optional real
+// session underneath (its commands and what they printed).
+//
+//   <Files guide="serde" dir="rust" files={['Cargo.toml', 'src/main.rs']} run="run" />
+import { Code } from '@astrojs/starlight/components'
+import { LANG, type Lang } from '../../lib/langs'
+import { file, langOf, session } from './data'
+
+interface Props { guide: string; dir: string; files: string[]; run?: string; lang?: Lang | 'javascript' | 'sh' | 'sql' | 'toml'; title?: string }
+const { guide: id, dir, files, run, lang = 'rust', title } = Astro.props
+// Pages may show a file in a language that is not one of the site's nine (JavaScript, shell...).
+const NAMES: Record<string, string> = { javascript: 'JavaScript', sh: 'Shell', sql: 'SQL', toml: 'TOML' }
+const L = LANG[lang as Lang] ?? { name: NAMES[lang] ?? lang, color: 'var(--lr-muted)' }
+const steps = run ? session(id, run) : []
+const trim = (s: string) => s.replace(/\n+$/, '')
+---
+<div class="lr-panel lr-files not-content">
+  <div class="lr-panel-head">
+    <span class="lr-lang" style={`--c:${L.color}`}>{title ?? L.name}</span>
+    {files.length === 1 ? (
+      <span class="lr-file">{files[0]}</span>
+    ) : (
+      <div class="lr-ftabs" role="tablist" aria-label="Files">
+        {files.map((f, i) => <button class="lr-ftab" role="tab" type="button" data-i={i} aria-selected={i === 0 ? 'true' : 'false'}>{f}</button>)}
+      </div>
+    )}
+    <button class="lr-copy" type="button" data-copy>Copy</button>
+  </div>
+  {files.map((f, i) => (
+    <div class="lr-fpane" data-i={i} hidden={i > 0}>
+      <div class="lr-code" data-code><Code code={trim(file(id, dir, f))} lang={langOf(f)} frame="none" /></div>
+    </div>
+  ))}
+  {steps.length > 0 && (
+    <div class="lr-out">
+      {steps.map(s => (
+        <>
+          <span class="lr-cmd">{s.show}</span>
+          <pre>{trim(s.out)}</pre>
+        </>
+      ))}
+      {steps.some(s => s.varies) && <p class="lr-varies">This output changes from run to run. This is one real run.</p>}
+    </div>
+  )}
+</div>

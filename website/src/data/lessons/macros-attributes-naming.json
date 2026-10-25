@@ -1,0 +1,398 @@
+{
+ "id": "macros-attributes-naming",
+ "title": "Macros, attributes and comments",
+ "part": "syntax",
+ "intro": "A name followed by `!`, such as `println!` or `vec!`, is a macro call: the compiler expands it into other code first. An ordinary Rust function has a fixed list of parameters, so this is how `println!` takes any number of arguments and checks its format string before the program runs. A line that starts with `#[...]` is an attribute, a note to the compiler about the item below it. Comments start with `//`, and `///` turns a comment into documentation. `cargo fmt` and `cargo clippy` format and check the code.",
+ "coming_from": {
+  "go": "`fmt.Printf(\"%d %s\", n, s)` is `println!(\"{} {}\", n, s)`: `{}` replaces the verbs, and the compiler checks the string against the arguments. Struct tags like `json:\"name\"` become attributes such as `#[serde(rename = \"name\")]` (from the serde crate). The nearest thing to `//go:build linux` is `#[cfg(target_os = \"linux\")]`, which applies to one item, not a whole file. `cargo fmt` is `gofmt`.",
+  "kotlin": "`println(\"$name is $age\")` is `println!(\"{name} is {age}\")`, and `\"%5d\".format(n)` becomes `{:5}` inside the same macro. `@Test` is `#[test]`, `@Suppress(\"unused\")` is `#[allow(unused)]`, and what a `data class` writes for you (`toString`, `equals`) comes from `#[derive(Debug, PartialEq)]`.",
+  "python": "`print(f\"{name} is {age}\")` is `println!(\"{name} is {age}\")`, and the specs after the colon are close to yours (`{x:>5}`, `{x:05}`). One difference: Rust's `{x:.2}` means two decimals, where Python's `.2` alone means two significant digits. `@dataclass` is closest to `#[derive(...)]`; a decorator that wraps a function has no direct equivalent, because attributes act while the program is compiled, not when it runs.",
+  "typescript": "A template literal `${name}` is `{name}` inside `println!` or `format!`, but only a plain name goes inside the braces, not `a + b`. `/** JSDoc */` becomes `///`, and Prettier and ESLint are closest to `cargo fmt` and `cargo clippy`.",
+  "java": "`System.out.printf(\"%5d%n\", n)` is `println!(\"{:5}\", n)`, and `println!` adds the newline for you. Annotations become attributes: `@Test` is `#[test]`, `@Deprecated` is `#[deprecated]`, `@SuppressWarnings` is `#[allow(...)]`. There is no `@Override`, and `assert!` is always on, unlike Java's `assert`.",
+  "csharp": "Attributes are in the family you know: the Rust Reference says its `#[...]` syntax comes from C#. `[Fact]` is `#[test]`, `[Obsolete]` is `#[deprecated]`, `#if DEBUG` is `#[cfg(debug_assertions)]`, and `$\"{n,5}\"` is `{n:5}` inside `println!`.",
+  "c": "`printf(\"%5.2f %d\\n\", x, n)` is `println!(\"{:5.2} {}\", x, n)`: there is no `%d` or `%s`, and the compiler checks the string against the arguments, so a mismatch is always an error. (GCC warns about `printf` mismatches under `-Wall`, but the C standard still calls them undefined behaviour.) `#define` macros substitute tokens; Rust's `name!` macros receive parsed syntax.",
+  "cpp": "C++20's `std::format(\"{:>5}\", n)` already uses `{}` placeholders like `println!` (though `{:d}` is legal there and an error in Rust). `#define` macros substitute tokens; Rust's `name!` macros receive parsed syntax. `[[nodiscard]]` and `[[deprecated]]` are `#[must_use]` and `#[deprecated]`."
+ },
+ "notes": [
+  "`name!(...)` is a macro call, not a function call. The compiler expands it before it checks types, which is how `println!` accepts any number of arguments although Rust functions cannot.",
+  "In a format string, `{}` prints with `Display`, `{:?}` with `Debug`, and a spec after the colon sets width, alignment and precision. `{{` and `}}` print one brace each.",
+  "`#[...]` applies to the item after it, and `#![...]` to the file or module it sits in. The common ones are `derive`, `test`, `allow` and `cfg`.",
+  "`//` and `/* */` are comments (block comments nest). `///` documents the item below it and `//!` the file around it; `cargo doc` builds web pages from them.",
+  "`cargo fmt` rewrites your code in the standard style, and `cargo clippy` adds more checks than the compiler runs."
+ ],
+ "gotcha": {
+  "title": "Using %d in a format string",
+  "verdict": "rust-rule",
+  "looks_fine": "In C, Go, Java, Kotlin and Python, `%d` marks where a number goes. It is the format string you already know.",
+  "rust_sees": "`println!` uses braces for placeholders. It sees `%d` as plain text, finds an argument with no placeholder, and stops with `argument never used`. It even points at the fix: `{}`.",
+  "why": "Rust's format strings use `{}`, and the compiler checks that every argument has a placeholder and every placeholder has an argument. It does not know that `%d` means anything: `%d` is plain text to it, so an argument aimed at a `%d` is left without a placeholder and is rejected. (A `%d` with no argument at all compiles and prints `%d`.) The fix is `{}` with no letter: the argument's type decides how it prints, and `{:?}` asks for the debugging form. Most other languages run this program; the C# outputs show a version that runs but prints the wrong thing.",
+  "langs": {
+   "go": {
+    "status": "runs",
+    "says": "Go prints `count: 5`. `Printf` takes verbs such as `%d`.",
+    "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tcount := 5\n\tfmt.Printf(\"count: %d\\n\", count)\n}\n",
+    "out": "count: 5\n"
+   },
+   "kotlin": {
+    "status": "runs",
+    "says": "Kotlin prints `count: 5`. `\"count: %d\".format(count)` uses Java's format syntax.",
+    "code": "fun main() {\n    val count = 5\n    println(\"count: %d\".format(count))\n}\n",
+    "out": "count: 5\n"
+   },
+   "python": {
+    "status": "runs",
+    "says": "Python prints `count: 5`. The `%` operator on a string is Python's older formatting style.",
+    "code": "count = 5\nprint(\"count: %d\" % count)\n",
+    "out": "count: 5\n"
+   },
+   "typescript": {
+    "status": "runs",
+    "says": "TypeScript prints `count: 5`. Node's `console.log` treats `%d` in the first argument as a placeholder.",
+    "code": "const count = 5;\nconsole.log(\"count: %d\", count);\n",
+    "out": "count: 5\n"
+   },
+   "java": {
+    "status": "runs",
+    "says": "Java prints `count: 5`. `printf` takes `%d`, and `%n` is the newline.",
+    "code": "public class Main {\n    public static void main(String[] args) {\n        int count = 5;\n        System.out.printf(\"count: %d%n\", count);\n    }\n}\n",
+    "out": "count: 5\n"
+   },
+   "csharp": {
+    "status": "wrong",
+    "says": "C# compiles this and prints `count: %d`. Its composite format strings use `{0}`, so `%d` is plain text and the extra argument is ignored, with no compiler message by default.",
+    "code": "int count = 5;\nConsole.WriteLine(\"count: %d\", count);\n",
+    "out": "count: %d\n"
+   },
+   "c": {
+    "status": "runs",
+    "says": "C prints `count: 5`. `printf` is where `%d` comes from.",
+    "code": "#include <stdio.h>\n\nint main(void) {\n    int count = 5;\n    printf(\"count: %d\\n\", count);\n    return 0;\n}\n",
+    "out": "count: 5\n"
+   },
+   "cpp": {
+    "status": "runs",
+    "says": "C++ prints `count: 5` with `printf`. `std::format` (C++20) uses `{}` as Rust does, though it accepts `{:d}`, which Rust does not.",
+    "code": "#include <cstdio>\n\nint main() {\n    int count = 5;\n    std::printf(\"count: %d\\n\", count);\n    return 0;\n}\n",
+    "out": "count: 5\n"
+   }
+  },
+  "code": "fn main() {\n    let count = 5;\n    println!(\"count: %d\", count);\n}\n",
+  "error": "error: argument never used\n --> src/main.rs:3:27\n  |\n3 |     println!(\"count: %d\", count);\n  |                           ^^^^^ argument never used\n  |\n  = note: printf formatting is not supported; see the documentation for `std::fmt`\nhelp: format specifiers use curly braces\n  |\n3 -     println!(\"count: %d\", count);\n3 +     println!(\"count: {}\", count);",
+  "fixed": {
+   "code": "fn main() {\n    let count = 5;\n    println!(\"count: {}\", count);\n}\n",
+   "out": "count: 5\n"
+  }
+ },
+ "order": 6,
+ "program": {
+  "rust": {
+   "code": "//! Prints a few values in different formats.\n\n/// A point on a grid. `derive(Debug)` lets `{:?}` print it.\n#[derive(Debug)]\n#[allow(dead_code)] // the fields are only printed, never read\nstruct Point {\n    x: i32,\n    y: i32,\n}\n\nfn main() {\n    let p = Point { x: 3, y: 4 }; // a line comment\n    let items = vec![1, 2, 3];\n    assert_eq!(items.len(), 3); // stops with a message if false\n    println!(\"point: {p:?}\");\n    println!(\"items: {items:?}\");\n    println!(\"row: [{:>5}] [{:<5}] [{:05}]\", 42, 42, 42);\n    let pi = format!(\"{:.2}\", 3.14159);\n    println!(\"pi: {pi} {{done}}\");\n}\n",
+   "out": "point: Point { x: 3, y: 4 }\nitems: [1, 2, 3]\nrow: [   42] [42   ] [00042]\npi: 3.14 {done}\n"
+  },
+  "go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"strings\"\n)\n\n// Point is a point on a grid.\ntype Point struct{ x, y int }\n\nfunc main() {\n\tp := Point{3, 4} // a line comment\n\titems := []int{1, 2, 3}\n\tif len(items) != 3 {\n\t\tpanic(\"items should have 3 elements\")\n\t}\n\tfmt.Printf(\"point: Point { x: %d, y: %d }\\n\", p.x, p.y)\n\tfmt.Printf(\"items: %s\\n\", strings.ReplaceAll(fmt.Sprint(items), \" \", \", \"))\n\tfmt.Printf(\"row: [%5d] [%-5d] [%05d]\\n\", 42, 42, 42)\n\tpi := fmt.Sprintf(\"%.2f\", 3.14159)\n\tfmt.Printf(\"pi: %s {done}\\n\", pi)\n}\n",
+   "out": "point: Point { x: 3, y: 4 }\nitems: [1, 2, 3]\nrow: [   42] [42   ] [00042]\npi: 3.14 {done}\n"
+  },
+  "kotlin": {
+   "code": "/** A point on a grid. */\ndata class Point(val x: Int, val y: Int)\n\nfun main() {\n    val p = Point(3, 4) // a line comment\n    val items = listOf(1, 2, 3)\n    check(items.size == 3) // stops with an exception if false\n    println(\"point: Point { x: ${p.x}, y: ${p.y} }\")\n    println(\"items: $items\")\n    println(\"row: [${\"%5d\".format(42)}] [${\"%-5d\".format(42)}] [${\"%05d\".format(42)}]\")\n    val pi = \"%.2f\".format(3.14159)\n    println(\"pi: $pi {done}\")\n}\n",
+   "out": "point: Point { x: 3, y: 4 }\nitems: [1, 2, 3]\nrow: [   42] [42   ] [00042]\npi: 3.14 {done}\n"
+  },
+  "python": {
+   "code": "from dataclasses import dataclass\n\n\n@dataclass\nclass Point:\n    \"\"\"A point on a grid.\"\"\"\n\n    x: int\n    y: int\n\n\np = Point(3, 4)  # a line comment\nitems = [1, 2, 3]\nassert len(items) == 3  # stops with an error if false\nprint(f\"point: Point {{ x: {p.x}, y: {p.y} }}\")\nprint(f\"items: {items}\")\nprint(f\"row: [{42:>5}] [{42:<5}] [{42:05}]\")\npi = f\"{3.14159:.2f}\"\nprint(f\"pi: {pi} {{done}}\")\n",
+   "out": "point: Point { x: 3, y: 4 }\nitems: [1, 2, 3]\nrow: [   42] [42   ] [00042]\npi: 3.14 {done}\n"
+  },
+  "typescript": {
+   "code": "/** A point on a grid. */\ninterface Point {\n  x: number;\n  y: number;\n}\n\nconst p: Point = { x: 3, y: 4 }; // a line comment\nconst items = [1, 2, 3];\nif (items.length !== 3) throw new Error(\"items should have 3 elements\");\nconsole.log(`point: Point { x: ${p.x}, y: ${p.y} }`);\nconsole.log(`items: [${items.join(\", \")}]`);\nconsole.log(`row: [${String(42).padStart(5)}] [${String(42).padEnd(5)}] [${String(42).padStart(5, \"0\")}]`);\nconst pi = (3.14159).toFixed(2);\nconsole.log(`pi: ${pi} {done}`);\n",
+   "out": "point: Point { x: 3, y: 4 }\nitems: [1, 2, 3]\nrow: [   42] [42   ] [00042]\npi: 3.14 {done}\n"
+  },
+  "java": {
+   "code": "import java.util.List;\n\npublic class Main {\n    /** A point on a grid. */\n    record Point(int x, int y) {}\n\n    public static void main(String[] args) {\n        Point p = new Point(3, 4); // a line comment\n        List<Integer> items = List.of(1, 2, 3);\n        if (items.size() != 3) throw new IllegalStateException(\"items should have 3 elements\");\n        System.out.println(\"point: Point { x: \" + p.x() + \", y: \" + p.y() + \" }\");\n        System.out.println(\"items: \" + items);\n        System.out.println(String.format(\"row: [%5d] [%-5d] [%05d]\", 42, 42, 42));\n        String pi = String.format(\"%.2f\", 3.14159);\n        System.out.println(\"pi: \" + pi + \" {done}\");\n    }\n}\n",
+   "out": "point: Point { x: 3, y: 4 }\nitems: [1, 2, 3]\nrow: [   42] [42   ] [00042]\npi: 3.14 {done}\n"
+  },
+  "csharp": {
+   "code": "var p = new Point(3, 4); // a line comment\nvar items = new List<int> { 1, 2, 3 };\nif (items.Count != 3) throw new Exception(\"items should have 3 elements\");\nConsole.WriteLine($\"point: Point {{ x: {p.X}, y: {p.Y} }}\");\nConsole.WriteLine($\"items: [{string.Join(\", \", items)}]\");\nConsole.WriteLine($\"row: [{42,5}] [{42,-5}] [{42:D5}]\");\nvar pi = 3.14159.ToString(\"F2\");\nConsole.WriteLine($\"pi: {pi} {{done}}\");\n\n/// <summary>A point on a grid.</summary>\nrecord Point(int X, int Y);\n",
+   "out": "point: Point { x: 3, y: 4 }\nitems: [1, 2, 3]\nrow: [   42] [42   ] [00042]\npi: 3.14 {done}\n"
+  },
+  "c": {
+   "code": "#include <stdio.h>\n\n/* A point on a grid. */\nstruct Point {\n    int x;\n    int y;\n};\n\nint main(void) {\n    struct Point p = {3, 4}; // a line comment\n    int items[] = {1, 2, 3};\n    if (sizeof items / sizeof items[0] != 3) return 1;\n    printf(\"point: Point { x: %d, y: %d }\\n\", p.x, p.y);\n    printf(\"items: [%d, %d, %d]\\n\", items[0], items[1], items[2]);\n    printf(\"row: [%5d] [%-5d] [%05d]\\n\", 42, 42, 42);\n    char pi[16];\n    snprintf(pi, sizeof pi, \"%.2f\", 3.14159);\n    printf(\"pi: %s {done}\\n\", pi);\n    return 0;\n}\n",
+   "out": "point: Point { x: 3, y: 4 }\nitems: [1, 2, 3]\nrow: [   42] [42   ] [00042]\npi: 3.14 {done}\n"
+  },
+  "cpp": {
+   "code": "#include <format>\n#include <iostream>\n#include <string>\n#include <vector>\n\n// A point on a grid.\nstruct Point {\n    int x;\n    int y;\n};\n\nint main() {\n    Point p{3, 4}; // a line comment\n    std::vector<int> items{1, 2, 3};\n    if (items.size() != 3) return 1;\n    std::cout << std::format(\"point: Point {{ x: {}, y: {} }}\\n\", p.x, p.y);\n    std::cout << std::format(\"items: [{}, {}, {}]\\n\", items[0], items[1], items[2]);\n    std::cout << std::format(\"row: [{:>5}] [{:<5}] [{:05}]\\n\", 42, 42, 42);\n    std::string pi = std::format(\"{:.2f}\", 3.14159);\n    std::cout << std::format(\"pi: {} {{done}}\\n\", pi);\n    return 0;\n}\n",
+   "out": "point: Point { x: 3, y: 4 }\nitems: [1, 2, 3]\nrow: [   42] [42   ] [00042]\npi: 3.14 {done}\n"
+  }
+ },
+ "faq": [],
+ "snippets": {
+  "assert-eq.panic.rs": {
+   "code": "fn main() {\n    let total = 2 + 2;\n    assert_eq!(total, 5, \"total was wrong after {} steps\", 2);\n}\n",
+   "out": "\nthread 'main' (1) panicked at src/main.rs:3:5:\nassertion `left == right` failed: total was wrong after 2 steps\n  left: 4\n right: 5\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+   "lang": "rust",
+   "exit": 101
+  },
+  "cfg.rs": {
+   "code": "#[cfg(target_os = \"linux\")]\nfn os() -> &'static str {\n    \"linux\"\n}\n\n#[cfg(not(target_os = \"linux\"))]\nfn os() -> &'static str {\n    \"something else\"\n}\n\nfn main() {\n    println!(\"os: {}\", os());\n    println!(\"debug build: {}\", cfg!(debug_assertions));\n}\n",
+   "out": "os: linux\ndebug build: true\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-percent-d.rs": {
+   "code": "// Backs the gotcha text: a `%d` with no argument is plain text and compiles. Never shown.\nfn main() {\n    let text = format!(\"count: %d\");\n    assert_eq!(text, \"count: %d\");\n    println!(\"ok\");\n}\n",
+   "out": "ok\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-tables.rs": {
+   "code": "// Backs the Rust column of the \"you write -> in Rust\" tables in lesson.mdx. Never shown.\n// Every other check-* file asserts the same strings in its own language.\nfn main() {\n    let (n, pi, name) = (42, 3.14159, \"Ada\");\n    assert_eq!(format!(\"{:5}\", n), \"   42\");\n    assert_eq!(format!(\"{:<5}\", n), \"42   \");\n    assert_eq!(format!(\"{:05}\", n), \"00042\");\n    assert_eq!(format!(\"{:+}\", n), \"+42\");\n    assert_eq!(format!(\"{:.2}\", pi), \"3.14\");\n    assert_eq!(format!(\"{:8.3}\", pi), \"   3.142\");\n    assert_eq!(format!(\"{:x}\", 255), \"ff\");\n    assert_eq!(format!(\"{:#x}\", 255), \"0xff\");\n    assert_eq!(format!(\"{:>10}\", name), \"       Ada\");\n    assert_eq!(format!(\"{:10}\", name), \"Ada       \");\n    assert_eq!(format!(\"{:<10}\", name), \"Ada       \");\n    assert_eq!(format!(\"{:.3}\", \"Lovelace\"), \"Lov\");\n    assert_eq!(format!(\"{} {}\", n, name), \"42 Ada\");\n    assert_eq!(format!(\"{n} {name}\"), \"42 Ada\");\n    assert_eq!(format!(\"{{}}\"), \"{}\");\n    println!(\"ok\");\n}\n",
+   "out": "ok\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "clippy.rs": {
+   "code": "use std::fs;\nuse std::process::Command;\n\nconst SOURCE: &str = r#\"fn double(x: i32) -> i32 {\n    return x * 2;\n}\n\nfn no_items(items: &[i32]) -> bool {\n    items.len() == 0\n}\n\nfn main() {\n    println!(\"{} {}\", double(4), no_items(&[]));\n}\n\"#;\n\nfn main() {\n    // A throwaway Cargo project, so that `cargo clippy` has something to check.\n    let dir = std::env::temp_dir().join(\"clippy-demo\");\n    let _ = fs::remove_dir_all(&dir);\n    fs::create_dir_all(dir.join(\"src\")).unwrap();\n    let manifest = \"[package]\\nname = \\\"demo\\\"\\nversion = \\\"0.1.0\\\"\\nedition = \\\"2024\\\"\\n\";\n    fs::write(dir.join(\"Cargo.toml\"), manifest).unwrap();\n    fs::write(dir.join(\"src/main.rs\"), SOURCE).unwrap();\n\n    let out = Command::new(\"cargo\")\n        .arg(\"clippy\")\n        .current_dir(&dir)\n        .output()\n        .unwrap();\n    for line in String::from_utf8_lossy(&out.stderr).lines() {\n        if !line.trim_start().starts_with(\"Checking\") && !line.trim_start().starts_with(\"Finished\")\n        {\n            println!(\"{line}\");\n        }\n    }\n}\n",
+   "out": "warning: unneeded `return` statement\n --> src/main.rs:2:5\n  |\n2 |     return x * 2;\n  |     ^^^^^^^^^^^^\n  |\n  = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#needless_return\n  = note: `#[warn(clippy::needless_return)]` on by default\nhelp: remove `return`\n  |\n2 -     return x * 2;\n2 +     x * 2\n  |\n\nwarning: length comparison to zero\n --> src/main.rs:6:5\n  |\n6 |     items.len() == 0\n  |     ^^^^^^^^^^^^^^^^ help: using `is_empty` is clearer and more explicit: `items.is_empty()`\n  |\n  = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#len_zero\n  = note: `#[warn(clippy::len_zero)]` on by default\n\nwarning: `demo` (bin \"demo\") generated 2 warnings (run `cargo clippy --fix --bin \"demo\" -p demo -- ` to apply 2 suggestions)\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "comments.rs": {
+   "code": "//! Inner doc comment: describes the file (crate) it sits in.\n\n/// Outer doc comment: documents the item below it.\nfn add(a: i32, b: i32) -> i32 {\n    // A line comment runs to the end of the line.\n    /* A block comment /* can nest */ and still be one comment. */\n    a + b\n}\n\nfn main() {\n    println!(\"2 + 3 = {}\", add(2, 3));\n}\n",
+   "out": "2 + 3 = 5\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "debug-missing.fail.rs": {
+   "code": "struct Point {\n    x: i32,\n    y: i32,\n}\n\nfn main() {\n    let p = Point { x: 1, y: 2 };\n    println!(\"point: {:?}\", p);\n}\n",
+   "error": "error[E0277]: `Point` doesn't implement `Debug`\n --> src/main.rs:8:29\n  |\n8 |     println!(\"point: {:?}\", p);\n  |                      ----   ^ `Point` cannot be formatted using `{:?}` because it doesn't implement `Debug`\n  |                      |\n  |                      required by this formatting parameter\n  |\n  = help: the trait `Debug` is not implemented for `Point`\nhelp: consider annotating `Point` with `#[derive(Debug)]`\n  |\n1 + #[derive(Debug)]\n2 | struct Point {",
+   "lang": "rust"
+  },
+  "derive.rs": {
+   "code": "#[derive(Debug, Clone, PartialEq)]\nstruct Point {\n    x: i32,\n    y: i32,\n}\n\nfn main() {\n    let a = Point { x: 1, y: 2 };\n    let b = a.clone();\n    println!(\"{{:?}}  -> {:?}\", a);\n    println!(\"{{:#?}} -> {:#?}\", a);\n    println!(\"equal: {}\", a == b);\n}\n",
+   "out": "{:?}  -> Point { x: 1, y: 2 }\n{:#?} -> Point {\n    x: 1,\n    y: 2,\n}\nequal: true\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "display-missing.fail.rs": {
+   "code": "struct Point {\n    x: i32,\n    y: i32,\n}\n\nfn main() {\n    let p = Point { x: 1, y: 2 };\n    println!(\"point: {}\", p);\n}\n",
+   "error": "error[E0277]: `Point` doesn't implement `std::fmt::Display`\n --> src/main.rs:8:27\n  |\n8 |     println!(\"point: {}\", p);\n  |                      --   ^ `Point` cannot be formatted with the default formatter\n  |                      |\n  |                      required by this formatting parameter\n  |\nhelp: the trait `std::fmt::Display` is not implemented for `Point`\n --> src/main.rs:1:1\n  |\n1 | struct Point {\n  | ^^^^^^^^^^^^\n  = note: in format strings you may be able to use `{:?}` (or `{:#?}` for pretty-print) instead\n",
+   "lang": "rust"
+  },
+  "format-specs.rs": {
+   "code": "fn main() {\n    let name = \"Ada\";\n    let n = 255;\n    let pi = 3.14159265;\n    println!(\"escape: {{ and }}\");\n    println!(\"positional: {0}-{1}-{0}\", \"a\", \"b\");\n    println!(\"named: {who} is {age}\", who = name, age = 36);\n    println!(\"inline: {name} {n}\");\n    println!(\"display vs debug: {} {:?}\", name, name);\n    println!(\n        \"width: [{:8}] [{:<8}] [{:^8}] [{:>8}]\",\n        name, name, name, name\n    );\n    println!(\"fill: [{:*^9}] [{:->9}]\", name, name);\n    println!(\"integers: [{:5}] [{:<5}] [{:05}] [{:+}]\", n, n, n, n);\n    println!(\"floats: [{}] [{:.2}] [{:8.3}]\", pi, pi, pi);\n    println!(\"bases: {n:x} {n:X} {n:#x} {n:b} {n:#010b} {n:o}\");\n    let (w, p) = (7, 1);\n    println!(\n        \"from variables: [{:>w$}] [{:.p$}] [{:>w$.p$}]\",\n        name, pi, pi\n    );\n    println!(\"too long: [{:3}]\", \"Lovelace\");\n    println!(\"truncated: [{:.3}]\", \"Lovelace\");\n    println!(\"one character: [{:>4}]\", \"é\");\n}\n",
+   "out": "escape: { and }\npositional: a-b-a\nnamed: Ada is 36\ninline: Ada 255\ndisplay vs debug: Ada \"Ada\"\nwidth: [Ada     ] [Ada     ] [  Ada   ] [     Ada]\nfill: [***Ada***] [------Ada]\nintegers: [  255] [255  ] [00255] [+255]\nfloats: [3.14159265] [3.14] [   3.142]\nbases: ff FF 0xff 11111111 0b11111111 377\nfrom variables: [    Ada] [3.1] [    3.1]\ntoo long: [Lovelace]\ntruncated: [Lov]\none character: [   é]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "format-verbs.fail.rs": {
+   "code": "fn main() {\n    println!(\"{:d}\", 5);\n    println!(\"{:.2f}\", 3.14159);\n}\n",
+   "error": "error: unknown format trait `d`\n --> src/main.rs:2:17\n  |\n2 |     println!(\"{:d}\", 5);\n  |                 ^\n  |\n  = note: the only appropriate formatting traits are:\n          - ``, which uses the `Display` trait\n          - `?`, which uses the `Debug` trait\n          - `e`, which uses the `LowerExp` trait\n          - `E`, which uses the `UpperExp` trait\n          - `o`, which uses the `Octal` trait\n          - `p`, which uses the `Pointer` trait\n          - `b`, which uses the `Binary` trait\n          - `x`, which uses the `LowerHex` trait\n          - `X`, which uses the `UpperHex` trait\n\nerror: unknown format trait `f`\n --> src/main.rs:3:19\n  |\n3 |     println!(\"{:.2f}\", 3.14159);\n  |                   ^\n  |\n  = note: the only appropriate formatting traits are:\n          - ``, which uses the `Display` trait\n          - `?`, which uses the `Debug` trait\n          - `e`, which uses the `LowerExp` trait\n          - `E`, which uses the `UpperExp` trait\n          - `o`, which uses the `Octal` trait\n          - `p`, which uses the `Pointer` trait\n          - `b`, which uses the `Binary` trait\n          - `x`, which uses the `LowerHex` trait\n          - `X`, which uses the `UpperHex` trait",
+   "lang": "rust"
+  },
+  "lint-levels.rs": {
+   "code": "use std::fs;\nuse std::process::Command;\n\nconst BODY: &str = \"fn main() {\\n    let count = 3;\\n}\\n\";\n\n// Compile `source` with the plain `rustc` command and return what it printed.\nfn rustc(source: &str) -> String {\n    let dir = std::env::temp_dir().join(\"lint-levels-demo\");\n    fs::create_dir_all(&dir).unwrap();\n    fs::write(dir.join(\"demo.rs\"), source).unwrap();\n    let out = Command::new(\"rustc\")\n        .args([\"--edition\", \"2024\", \"demo.rs\"])\n        .current_dir(&dir)\n        .output()\n        .unwrap();\n    String::from_utf8_lossy(&out.stderr).into_owned()\n}\n\nfn main() {\n    println!(\"--- no attribute (the default level) ---\");\n    print!(\"{}\", rustc(BODY));\n\n    println!(\"--- #[allow(unused_variables)] ---\");\n    let out = rustc(&format!(\"#[allow(unused_variables)]\\n{BODY}\"));\n    println!(\n        \"{}\",\n        if out.is_empty() {\n            \"(nothing printed)\"\n        } else {\n            &out\n        }\n    );\n\n    println!(\"--- #![deny(unused_variables)] ---\");\n    let out = rustc(&format!(\"#![deny(unused_variables)]\\n{BODY}\"));\n    println!(\"{}\", out.lines().next().unwrap());\n}\n",
+   "out": "--- no attribute (the default level) ---\nwarning: unused variable: `count`\n --> demo.rs:2:9\n  |\n2 |     let count = 3;\n  |         ^^^^^ help: if this is intentional, prefix it with an underscore: `_count`\n  |\n  = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default\n\nwarning: 1 warning emitted\n\n--- #[allow(unused_variables)] ---\n(nothing printed)\n--- #![deny(unused_variables)] ---\nerror: unused variable: `count`\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "macro-hygiene.rs": {
+   "code": "macro_rules! square {\n    ($x:expr) => {\n        $x * $x\n    };\n}\n\nmacro_rules! double_into {\n    ($dst:ident, $src:expr) => {\n        let tmp = $src * 2;\n        $dst = tmp;\n    };\n}\n\nfn square_fn(x: i32) -> i32 {\n    x * x\n}\n\nfn main() {\n    println!(\"square!(1 + 2) = {}\", square!(1 + 2));\n    let mut tmp = 0;\n    println!(\"tmp before: {tmp}\");\n    double_into!(tmp, 5);\n    println!(\"tmp after double_into!(tmp, 5) = {tmp}\");\n\n    let mut i = 0;\n    let r = square!({\n        i += 1;\n        i\n    });\n    println!(\"square!({{ i += 1; i }}) = {r}, and i = {i}\");\n    let mut j = 0;\n    let r = square_fn({\n        j += 1;\n        j\n    });\n    println!(\"square_fn(..) = {r}, and j = {j}\");\n}\n",
+   "out": "square!(1 + 2) = 9\ntmp before: 0\ntmp after double_into!(tmp, 5) = 10\nsquare!({ i += 1; i }) = 2, and i = 2\nsquare_fn(..) = 1, and j = 1\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "macro-tour.rs": {
+   "code": "fn main() {\n    print!(\"print! has no newline; \");\n    println!(\"println! adds one\");\n    let s = format!(\"{}-{}\", 1, 2);\n    println!(\"format! returns a String: {s}\");\n    let v = vec![10, 20, 30];\n    println!(\"vec! builds a Vec: {v:?}\");\n    assert!(v.len() == 3);\n    assert_eq!(v[0], 10);\n    let c = 'k';\n    println!(\n        \"matches! is a yes/no pattern test: {}\",\n        matches!(c, 'a'..='z' | 'A'..='Z')\n    );\n    let doubled = dbg!(v[1] * 2);\n    println!(\"dbg! returned the value: {doubled}\");\n}\n",
+   "out": "print! has no newline; println! adds one\nformat! returns a String: 1-2\nvec! builds a Vec: [10, 20, 30]\nmatches! is a yes/no pattern test: true\n[src/main.rs:15:19] v[1] * 2 = 40\ndbg! returned the value: 40\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "override-typo.fail.rs": {
+   "code": "trait Shape {\n    fn area(&self) -> f64;\n}\n\nstruct Square(f64);\n\nimpl Shape for Square {\n    fn area(&self) -> f64 {\n        self.0 * self.0\n    }\n    fn perimiter(&self) -> f64 {\n        4.0 * self.0\n    }\n}\n\nfn main() {\n    println!(\"area: {}\", Square(2.0).area());\n}\n",
+   "error": "error[E0407]: method `perimiter` is not a member of trait `Shape`\n  --> src/main.rs:11:5\n   |\n11 | /     fn perimiter(&self) -> f64 {\n12 | |         4.0 * self.0\n13 | |     }\n   | |_____^ not a member of trait `Shape`\n",
+   "lang": "rust"
+  },
+  "print-slips.fail.rs": {
+   "code": "struct Point {\n    x: i32,\n}\n\nfn main() {\n    let count = 5;\n    let p = Point { x: 1 };\n    println!(\"count:\", count);\n    println!(count);\n    println!(\"x is {p.x}\");\n    println!(\"count: \" + count);\n}\n",
+   "error": "error: argument never used\n --> src/main.rs:8:24\n  |\n8 |     println!(\"count:\", count);\n  |              --------  ^^^^^ argument never used\n  |              |\n  |              formatting specifier missing\n  |\nhelp: format specifiers use curly braces, consider adding a format specifier\n  |\n8 |     println!(\"count:{}\", count);\n  |                     ++\n\nerror: format argument must be a string literal\n --> src/main.rs:9:14\n  |\n9 |     println!(count);\n  |              ^^^^^\n  |\nhelp: you might be missing a string literal to format with\n  |\n9 |     println!(\"{}\", count);\n  |              +++++\n\nerror: invalid format string: field access isn't supported\n  --> src/main.rs:10:21\n   |\n10 |     println!(\"x is {p.x}\");\n   |                     ^^^ not supported in format string\n   |\n   = note: consider moving this expression to a local variable and then using the local here instead\nhelp: consider using a positional formatting argument instead\n   |\n10 -     println!(\"x is {p.x}\");\n10 +     println!(\"x is {0}\", p.x);\n\nerror: expected `,`, found `+`\n  --> src/main.rs:11:24\n   |\n11 |     println!(\"count: \" + count);\n   |                        ^ expected `,`",
+   "lang": "rust"
+  },
+  "rustfmt.rs": {
+   "code": "use std::io::Write;\nuse std::process::{Command, Stdio};\n\nfn main() {\n    let messy = r#\"fn area(w:u32,h:u32)->u32{\nlet a=w*h;\n  if a>100 {println!(\"big\");}\n        a\n}\nstruct Point{x:i32,y:i32}\n\"#;\n    // With no file name, `rustfmt` reads source from stdin and writes the result to stdout.\n    let mut child = Command::new(\"rustfmt\")\n        .args([\"--edition\", \"2024\"])\n        .stdin(Stdio::piped())\n        .stdout(Stdio::piped())\n        .spawn()\n        .unwrap();\n    child\n        .stdin\n        .take()\n        .unwrap()\n        .write_all(messy.as_bytes())\n        .unwrap();\n    let out = child.wait_with_output().unwrap();\n    println!(\n        \"--- before ---\\n{messy}--- after ---\\n{}\",\n        String::from_utf8_lossy(&out.stdout)\n    );\n}\n",
+   "out": "--- before ---\nfn area(w:u32,h:u32)->u32{\nlet a=w*h;\n  if a>100 {println!(\"big\");}\n        a\n}\nstruct Point{x:i32,y:i32}\n--- after ---\nfn area(w: u32, h: u32) -> u32 {\n    let a = w * h;\n    if a > 100 {\n        println!(\"big\");\n    }\n    a\n}\nstruct Point {\n    x: i32,\n    y: i32,\n}\n\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "assert-ndebug.c": {
+   "code": "#define NDEBUG\n#include <assert.h>\n#include <stdio.h>\n\nint main(void) {\n    assert(1 + 1 == 3);\n    printf(\"assert did not stop the program\\n\");\n    return 0;\n}\n",
+   "out": "assert did not stop the program\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "assert-ndebug.cpp": {
+   "code": "#define NDEBUG\n#include <cassert>\n#include <iostream>\n\nint main() {\n    assert(1 + 1 == 3);\n    std::cout << \"assert did not stop the program\\n\";\n    return 0;\n}\n",
+   "out": "assert did not stop the program\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "assert-o.py": {
+   "code": "import subprocess\nimport sys\n\ncode = \"assert 1 + 1 == 3\\nprint('assert did not stop the program')\"\nresult = subprocess.run([sys.executable, \"-O\", \"-c\", code], capture_output=True, text=True)\nprint(result.stdout, end=\"\")\n",
+   "out": "assert did not stop the program\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "assert-off.java": {
+   "code": "public class Main {\n    public static void main(String[] args) {\n        assert 1 + 1 == 3 : \"arithmetic broke\";\n        System.out.println(\"assert did not stop the program\");\n    }\n}\n",
+   "out": "assert did not stop the program\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "check-c.c": {
+   "code": "#include <stdio.h>\n#include <string.h>\n\nstatic int bad = 0;\n\nstatic void same(const char *got, const char *want) {\n    if (strcmp(got, want) != 0) {\n        printf(\"got [%s], want [%s]\\n\", got, want);\n        bad = 1;\n    }\n}\n\nint main(void) {\n    char b[64];\n    snprintf(b, sizeof b, \"%5d\", 42);\n    same(b, \"   42\");\n    snprintf(b, sizeof b, \"%-5d\", 42);\n    same(b, \"42   \");\n    snprintf(b, sizeof b, \"%05d\", 42);\n    same(b, \"00042\");\n    snprintf(b, sizeof b, \"%+d\", 42);\n    same(b, \"+42\");\n    snprintf(b, sizeof b, \"%.2f\", 3.14159);\n    same(b, \"3.14\");\n    snprintf(b, sizeof b, \"%8.3f\", 3.14159);\n    same(b, \"   3.142\");\n    snprintf(b, sizeof b, \"%x\", 255);\n    same(b, \"ff\");\n    snprintf(b, sizeof b, \"%#x\", 255);\n    same(b, \"0xff\");\n    snprintf(b, sizeof b, \"%10s\", \"Ada\");\n    same(b, \"       Ada\");\n    snprintf(b, sizeof b, \"%-10s\", \"Ada\");\n    same(b, \"Ada       \");\n    snprintf(b, sizeof b, \"%.3s\", \"Lovelace\");\n    same(b, \"Lov\");\n    snprintf(b, sizeof b, \"%d %s\", 42, \"Ada\");\n    same(b, \"42 Ada\");\n    if (!bad) printf(\"ok\\n\");\n    return bad;\n}\n",
+   "out": "ok\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "check-cpp.cpp": {
+   "code": "#include <format>\n#include <iostream>\n#include <string>\n\nstatic int bad = 0;\n\nstatic void same(const std::string &got, const std::string &want) {\n    if (got != want) {\n        std::cout << \"got [\" << got << \"], want [\" << want << \"]\\n\";\n        bad = 1;\n    }\n}\n\nint main() {\n    same(std::format(\"{:5}\", 42), \"   42\");\n    same(std::format(\"{:<5}\", 42), \"42   \");\n    same(std::format(\"{:05}\", 42), \"00042\");\n    same(std::format(\"{:+}\", 42), \"+42\");\n    same(std::format(\"{:.2f}\", 3.14159), \"3.14\");\n    same(std::format(\"{:8.3f}\", 3.14159), \"   3.142\");\n    same(std::format(\"{:x}\", 255), \"ff\");\n    same(std::format(\"{:#x}\", 255), \"0xff\");\n    same(std::format(\"{:>10}\", \"Ada\"), \"       Ada\");\n    same(std::format(\"{:10}\", \"Ada\"), \"Ada       \");\n    same(std::format(\"{:.3}\", \"Lovelace\"), \"Lov\");\n    same(std::format(\"{:.2}\", 3.14159), \"3.1\");\n    same(std::format(\"{:d}\", 5), \"5\");\n    same(std::format(\"{} {}\", 42, \"Ada\"), \"42 Ada\");\n    same(std::format(\"{{}}\"), \"{}\");\n    if (!bad) std::cout << \"ok\\n\";\n    return bad;\n}\n",
+   "out": "ok\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "check-cs.cs": {
+   "code": "var bad = false;\n\nvoid Same(string got, string want)\n{\n    if (got != want)\n    {\n        Console.WriteLine($\"got [{got}], want [{want}]\");\n        bad = true;\n    }\n}\n\nSame($\"{42,5}\", \"   42\");\nSame($\"{42,-5}\", \"42   \");\nSame($\"{42:D5}\", \"00042\");\nSame($\"{3.14159:F2}\", \"3.14\");\nSame($\"{3.14159,8:F3}\", \"   3.142\");\nSame($\"{255:x}\", \"ff\");\nSame($\"{\"Ada\",10}\", \"       Ada\");\nSame($\"{\"Ada\",-10}\", \"Ada       \");\nSame($\"{42} {\"Ada\"}\", \"42 Ada\");\nSame($\"{{}}\", \"{}\");\nif (bad) throw new Exception(\"a C# format row is wrong\");\nConsole.WriteLine(\"ok\");\n",
+   "out": "ok\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "check-format-compile.fail.cpp": {
+   "code": "// Backs the claim that C++20 std::format checks its format string when compiling. Never shown.\n#include <format>\n#include <iostream>\n\nint main() {\n    std::cout << std::format(\"{} and {}\", 1) << \"\\n\";\n    return 0;\n}\n",
+   "error": "main.cpp: In function ‘int main()’:\nmain.cpp:6:29: error: call to consteval function ‘std::basic_format_string<char, int>(\"{} and {}\")’ is not a constant expression\n    6 |     std::cout << std::format(\"{} and {}\", 1) << \"\\n\";\n      |                  ~~~~~~~~~~~^~~~~~~~~~~~~~~~\nIn file included from main.cpp:2:\nmain.cpp:6:29:   in ‘constexpr’ expansion of ‘std::basic_format_string<char, int>(\"{} and {}\")’\n/usr/include/c++/14/format:4214:19:   in ‘constexpr’ expansion of ‘__scanner.std::__format::_Checking_scanner<char, int>::std::__format::_Scanner<char>.std::__format::_Scanner<char>::_M_scan()’\n/usr/include/c++/14/format:3955:30:   in ‘constexpr’ expansion of ‘((std::__format::_Scanner<char>*)this)->std::__format::_Scanner<char>::_M_on_replacement_field()’\n/usr/include/c++/14/format:3988:28:   in ‘constexpr’ expansion of ‘((std::__format::_Scanner<char>*)this)->std::__format::_Scanner<char>::_M_pc.std::basic_format_parse_context<char>::next_arg_id()’\n/usr/include/c++/14/format:270:56: error: call to non-‘constexpr’ function ‘void std::__format::__invalid_arg_id_in_format_string()’\n  270 |             __format::__invalid_arg_id_in_format_string();\n      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~\n/usr/include/c++/14/format:218:3: note: ‘void std::__format::__invalid_arg_id_in_format_string()’ declared here\n  218 |   __invalid_arg_id_in_format_string()\n      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~",
+   "lang": "cpp"
+  },
+  "check-go.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nvar bad = false\n\nfunc same(got, want string) {\n\tif got != want {\n\t\tfmt.Printf(\"got [%s], want [%s]\\n\", got, want)\n\t\tbad = true\n\t}\n}\n\nfunc main() {\n\tsame(fmt.Sprintf(\"%5d\", 42), \"   42\")\n\tsame(fmt.Sprintf(\"%-5d\", 42), \"42   \")\n\tsame(fmt.Sprintf(\"%05d\", 42), \"00042\")\n\tsame(fmt.Sprintf(\"%+d\", 42), \"+42\")\n\tsame(fmt.Sprintf(\"%.2f\", 3.14159), \"3.14\")\n\tsame(fmt.Sprintf(\"%8.3f\", 3.14159), \"   3.142\")\n\tsame(fmt.Sprintf(\"%x\", 255), \"ff\")\n\tsame(fmt.Sprintf(\"%#x\", 255), \"0xff\")\n\tsame(fmt.Sprintf(\"%10s\", \"Ada\"), \"       Ada\")\n\tsame(fmt.Sprintf(\"%-10s\", \"Ada\"), \"Ada       \")\n\tsame(fmt.Sprintf(\"%.3s\", \"Lovelace\"), \"Lov\")\n\tsame(fmt.Sprintf(\"%d %s\", 42, \"Ada\"), \"42 Ada\")\n\tif bad {\n\t\tpanic(\"a Go format row is wrong\")\n\t}\n\tfmt.Println(\"ok\")\n}\n",
+   "out": "ok\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "check-java.java": {
+   "code": "public class Main {\n    static boolean bad = false;\n\n    static void same(String got, String want) {\n        if (!got.equals(want)) {\n            System.out.println(\"got [\" + got + \"], want [\" + want + \"]\");\n            bad = true;\n        }\n    }\n\n    public static void main(String[] args) {\n        same(String.format(\"%5d\", 42), \"   42\");\n        same(String.format(\"%-5d\", 42), \"42   \");\n        same(String.format(\"%05d\", 42), \"00042\");\n        same(String.format(\"%+d\", 42), \"+42\");\n        same(String.format(\"%.2f\", 3.14159), \"3.14\");\n        same(String.format(\"%8.3f\", 3.14159), \"   3.142\");\n        same(String.format(\"%x\", 255), \"ff\");\n        same(String.format(\"%#x\", 255), \"0xff\");\n        same(String.format(\"%10s\", \"Ada\"), \"       Ada\");\n        same(String.format(\"%-10s\", \"Ada\"), \"Ada       \");\n        same(String.format(\"%.3s\", \"Lovelace\"), \"Lov\");\n        same(String.format(\"%d %s\", 42, \"Ada\"), \"42 Ada\");\n        if (bad) throw new AssertionError(\"a Java format row is wrong\");\n        System.out.println(\"ok\");\n    }\n}\n",
+   "out": "ok\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "check-kt.kt": {
+   "code": "var bad = false\n\nfun same(got: String, want: String) {\n    if (got != want) {\n        println(\"got [$got], want [$want]\")\n        bad = true\n    }\n}\n\nfun main() {\n    same(\"%5d\".format(42), \"   42\")\n    same(\"%-5d\".format(42), \"42   \")\n    same(\"%05d\".format(42), \"00042\")\n    same(\"%+d\".format(42), \"+42\")\n    same(\"%.2f\".format(3.14159), \"3.14\")\n    same(\"%8.3f\".format(3.14159), \"   3.142\")\n    same(\"%x\".format(255), \"ff\")\n    same(\"%#x\".format(255), \"0xff\")\n    same(\"%10s\".format(\"Ada\"), \"       Ada\")\n    same(\"%.3s\".format(\"Lovelace\"), \"Lov\")\n    same(\"%d %s\".format(42, \"Ada\"), \"42 Ada\")\n    if (bad) throw AssertionError(\"a Kotlin format row is wrong\")\n    println(\"ok\")\n}\n",
+   "out": "ok\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "check-py.py": {
+   "code": "n, pi, name = 42, 3.14159, \"Ada\"\nassert f\"{n:5}\" == \"   42\"\nassert f\"{n:<5}\" == \"42   \"\nassert f\"{n:05}\" == \"00042\"\nassert f\"{n:+}\" == \"+42\"\nassert f\"{pi:.2f}\" == \"3.14\"\nassert f\"{pi:8.3f}\" == \"   3.142\"\nassert f\"{255:x}\" == \"ff\"\nassert f\"{255:#x}\" == \"0xff\"\nassert f\"{name:>10}\" == \"       Ada\"\nassert f\"{name:10}\" == \"Ada       \"\nassert f\"{'Lovelace':.3}\" == \"Lov\"\nassert f\"{n} {name}\" == \"42 Ada\"\nassert f\"{{}}\" == \"{}\"\nprint(\"ok\")\n",
+   "out": "ok\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "check-ts.ts": {
+   "code": "function same(got: string, want: string): void {\n  if (got !== want) throw new Error(`got [${got}], want [${want}]`);\n}\n\nconst n = 42;\nconst pi = 3.14159;\nsame(String(n).padStart(5), \"   42\");\nsame(String(n).padEnd(5), \"42   \");\nsame(String(n).padStart(5, \"0\"), \"00042\");\nsame(pi.toFixed(2), \"3.14\");\nsame(pi.toFixed(3).padStart(8), \"   3.142\");\nsame((255).toString(16), \"ff\");\nsame(\"0x\" + (255).toString(16), \"0xff\");\nsame(\"Ada\".padStart(10), \"       Ada\");\nsame(\"Ada\".padEnd(10), \"Ada       \");\nsame(\"Lovelace\".slice(0, 3), \"Lov\");\nsame(`${n} ${\"Ada\"}`, \"42 Ada\");\nconsole.log(\"ok\");\n",
+   "out": "ok\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "decorator.py": {
+   "code": "def shout(func):\n    print(\"decorating\", func.__name__)\n\n    def wrapper():\n        print(\"before\")\n        func()\n        print(\"after\")\n\n    return wrapper\n\n\n@shout\ndef greet():\n    print(\"hello\")\n\n\ngreet()\n",
+   "out": "decorating greet\nbefore\nhello\nafter\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "format-missing.crash.java": {
+   "code": "public class Main {\n    public static void main(String[] args) {\n        System.out.println(String.format(\"%d and %d\", 1));\n    }\n}\n",
+   "out": "Exception in thread \"main\" java.util.MissingFormatArgumentException: Format specifier '%d'\n\tat java.base/java.util.Formatter.format(Formatter.java:2760)\n\tat java.base/java.util.Formatter.format(Formatter.java:2698)\n\tat java.base/java.lang.String.format(String.java:4455)\n\tat Main.main(Main.java:3)\n",
+   "lang": "java",
+   "exit": 1
+  },
+  "macro-text.c": {
+   "code": "#include <stdio.h>\n\n#define SQUARE(x) x * x\n#define DOUBLE_INTO(dst, src) \\\n    {                         \\\n        int tmp = (src) * 2;  \\\n        dst = tmp;            \\\n    }\n\nint main(void) {\n    printf(\"SQUARE(1 + 2) = %d\\n\", SQUARE(1 + 2));\n    int tmp = 0;\n    printf(\"tmp before: %d\\n\", tmp);\n    DOUBLE_INTO(tmp, 5);\n    printf(\"tmp after DOUBLE_INTO(tmp, 5) = %d\\n\", tmp);\n    return 0;\n}\n",
+   "out": "SQUARE(1 + 2) = 5\ntmp before: 0\ntmp after DOUBLE_INTO(tmp, 5) = 0\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "macro-text.cpp": {
+   "code": "#include <iostream>\n\n#define SQUARE(x) x * x\n#define DOUBLE_INTO(dst, src) \\\n    {                         \\\n        int tmp = (src) * 2;  \\\n        dst = tmp;            \\\n    }\n\nint main() {\n    std::cout << \"SQUARE(1 + 2) = \" << SQUARE(1 + 2) << \"\\n\";\n    int tmp = 0;\n    std::cout << \"tmp before: \" << tmp << \"\\n\";\n    DOUBLE_INTO(tmp, 5);\n    std::cout << \"tmp after DOUBLE_INTO(tmp, 5) = \" << tmp << \"\\n\";\n    return 0;\n}\n",
+   "out": "SQUARE(1 + 2) = 5\ntmp before: 0\ntmp after DOUBLE_INTO(tmp, 5) = 0\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "nested-comment.fail.c": {
+   "code": "#include <stdio.h>\n\nint main(void) {\n    /* outer /* inner */ still outer? */\n    printf(\"hello\\n\");\n    return 0;\n}\n",
+   "error": "main.c: In function ‘main’:\nmain.c:4:14: warning: \"/*\" within comment [-Wcomment]\n    4 |     /* outer /* inner */ still outer? */\nmain.c:4:26: error: unknown type name ‘still’\n    4 |     /* outer /* inner */ still outer? */\n      |                          ^~~~~\nmain.c:4:37: error: expected ‘=’, ‘,’, ‘;’, ‘asm’ or ‘__attribute__’ before ‘?’ token\n    4 |     /* outer /* inner */ still outer? */\n      |                                     ^",
+   "lang": "c"
+  },
+  "nested-comment.fail.cpp": {
+   "code": "#include <iostream>\n\nint main() {\n    /* outer /* inner */ still outer? */\n    std::cout << \"hello\\n\";\n    return 0;\n}\n",
+   "error": "main.cpp:4:14: warning: \"/*\" within comment [-Wcomment]\n    4 |     /* outer /* inner */ still outer? */\nmain.cpp: In function ‘int main()’:\nmain.cpp:4:26: error: ‘still’ was not declared in this scope\n    4 |     /* outer /* inner */ still outer? */\n      |                          ^~~~~",
+   "lang": "cpp"
+  },
+  "precision.py": {
+   "code": "pi = 3.14159265\nprint(f\"{pi:.2f}\")\nprint(f\"{pi:.2}\")\n",
+   "out": "3.14\n3.1\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "printf-mismatch.c": {
+   "code": "#include <stdio.h>\n\nint main(void) {\n    /* %ld expects a long, but 5 is an int: undefined behaviour in the C standard. */\n    printf(\"%ld\\n\", 5);\n    return 0;\n}\n",
+   "warnings": "main.c: In function ‘main’:\nmain.c:5:15: warning: format ‘%ld’ expects argument of type ‘long int’, but argument 2 has type ‘int’ [-Wformat=]\n    5 |     printf(\"%ld\\n\", 5);\n      |             ~~^     ~\n      |               |     |\n      |               |     int\n      |               long int\n      |             %d",
+   "out": "5\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "tags.go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"reflect\"\n)\n\ntype User struct {\n\tName string `json:\"name\"`\n}\n\nfunc main() {\n\tfield, _ := reflect.TypeOf(User{}).FieldByName(\"Name\")\n\tfmt.Println(\"tag read at run time:\", field.Tag.Get(\"json\"))\n}\n",
+   "out": "tag read at run time: name\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "unused-var.fail.go": {
+   "code": "package main\n\nfunc main() {\n\tcount := 3\n}\n",
+   "error": "# command-line-arguments\n./main.go:4:2: declared and not used: count",
+   "lang": "go"
+  }
+ },
+ "exercises": {
+  "debug-text": {
+   "starter": "#[derive(Debug)]\n#[allow(dead_code)] // the fields are only printed, never read\nstruct Point {\n    x: i32,\n    y: i32,\n}\n\n/// The `Debug` text of an optional point: on one line, or spread over\n/// several lines when `pretty` is true.\nfn show(p: &Option<Point>, pretty: bool) -> String {\n    todo!(\"format! can print a value in its one-line Debug form or its multi-line form\")\n}\n\nfn main() {\n    let some = Some(Point { x: 1, y: -2 });\n    assert_eq!(show(&some, false), \"Some(Point { x: 1, y: -2 })\");\n    assert_eq!(\n        show(&some, true),\n        \"Some(\\n    Point {\\n        x: 1,\\n        y: -2,\\n    },\\n)\"\n    );\n    // The case to watch: there may be no point at all.\n    assert_eq!(show(&None, false), \"None\");\n    assert_eq!(show(&None, true), \"None\");\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "#[derive(Debug)]\n#[allow(dead_code)] // the fields are only printed, never read\nstruct Point {\n    x: i32,\n    y: i32,\n}\n\n/// The `Debug` text of an optional point: on one line, or spread over\n/// several lines when `pretty` is true.\nfn show(p: &Option<Point>, pretty: bool) -> String {\n    if pretty {\n        format!(\"{:#?}\", p)\n    } else {\n        format!(\"{:?}\", p)\n    }\n}\n\nfn main() {\n    let some = Some(Point { x: 1, y: -2 });\n    assert_eq!(show(&some, false), \"Some(Point { x: 1, y: -2 })\");\n    assert_eq!(\n        show(&some, true),\n        \"Some(\\n    Point {\\n        x: 1,\\n        y: -2,\\n    },\\n)\"\n    );\n    // The case to watch: there may be no point at all.\n    assert_eq!(show(&None, false), \"None\");\n    assert_eq!(show(&None, true), \"None\");\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "is-hex": {
+   "starter": "/// True if `c` is one of the characters 0-9, a-f or A-F.\n/// Hint: `matches!(value, pattern)` is true when the value fits the pattern.\n/// A pattern can be a range such as `'a'..='f'`, and `|` means \"or\".\nfn is_hex_digit(c: char) -> bool {\n    todo!(\"matches! with three ranges joined by |\")\n}\n\nfn main() {\n    for c in ['0', '9', 'a', 'f', 'F'] {\n        assert!(is_hex_digit(c), \"{c} should be a hex digit\");\n    }\n    for c in ['g', 'G', ' ', '/'] {\n        assert!(!is_hex_digit(c), \"{c} should not be a hex digit\");\n    }\n    // The case to watch: look-alike digits and letters from other alphabets.\n    assert!(!is_hex_digit('٣'), \"an Arabic-Indic digit is not 0-9\");\n    assert!(!is_hex_digit('ａ'), \"a full-width letter is not a-f\");\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "/// True if `c` is one of the characters 0-9, a-f or A-F.\n/// Hint: `matches!(value, pattern)` is true when the value fits the pattern.\n/// A pattern can be a range such as `'a'..='f'`, and `|` means \"or\".\nfn is_hex_digit(c: char) -> bool {\n    matches!(c, '0'..='9' | 'a'..='f' | 'A'..='F')\n}\n\nfn main() {\n    for c in ['0', '9', 'a', 'f', 'F'] {\n        assert!(is_hex_digit(c), \"{c} should be a hex digit\");\n    }\n    for c in ['g', 'G', ' ', '/'] {\n        assert!(!is_hex_digit(c), \"{c} should not be a hex digit\");\n    }\n    // The case to watch: look-alike digits and letters from other alphabets.\n    assert!(!is_hex_digit('٣'), \"an Arabic-Indic digit is not 0-9\");\n    assert!(!is_hex_digit('ａ'), \"a full-width letter is not a-f\");\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "json-pair": {
+   "starter": "/// Build the text of a one-entry JSON object, such as `{\"age\": 36}`.\n/// Hint: in a format string, `{{` prints one `{` and `}}` prints one `}`.\nfn json_pair(key: &str, value: i32) -> String {\n    todo!(\"write the braces twice in the format string to print one, and put the key in quotes\")\n}\n\nfn main() {\n    assert_eq!(json_pair(\"age\", 36), \"{\\\"age\\\": 36}\");\n    assert_eq!(json_pair(\"score\", -5), \"{\\\"score\\\": -5}\");\n    // The case to watch: braces inside an argument are printed as they are.\n    assert_eq!(json_pair(\"{x}\", 1), \"{\\\"{x}\\\": 1}\");\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "/// Build the text of a one-entry JSON object, such as `{\"age\": 36}`.\n/// Hint: in a format string, `{{` prints one `{` and `}}` prints one `}`.\nfn json_pair(key: &str, value: i32) -> String {\n    format!(\"{{\\\"{key}\\\": {value}}}\")\n}\n\nfn main() {\n    assert_eq!(json_pair(\"age\", 36), \"{\\\"age\\\": 36}\");\n    assert_eq!(json_pair(\"score\", -5), \"{\\\"score\\\": -5}\");\n    // The case to watch: braces inside an argument are printed as they are.\n    assert_eq!(json_pair(\"{x}\", 1), \"{\\\"{x}\\\": 1}\");\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "price-row": {
+   "starter": "/// One line of a receipt, in three columns separated by `|`:\n///   the name, left-aligned in a column 10 wide;\n///   the quantity, right-aligned in a column 3 wide;\n///   the price with 2 decimals, right-aligned in a column 8 wide.\nfn row(name: &str, qty: u32, price: f64) -> String {\n    todo!(\n        \"one format! call: the number after the colon is the width, `<` or `>` before it picks the side, and `.N` sets the decimals\"\n    )\n}\n\nfn main() {\n    assert_eq!(row(\"apple\", 3, 1.5), \"apple     |  3|    1.50\");\n    assert_eq!(row(\"melon\", 12, 1234.5), \"melon     | 12| 1234.50\");\n    // The case to watch: a value wider than its column is not cut off.\n    assert_eq!(\n        row(\"watermelon-xl\", 1000, 2.0),\n        \"watermelon-xl|1000|    2.00\"\n    );\n    // Width counts characters, not bytes: \"crème\" is 5 characters (6 bytes).\n    assert_eq!(row(\"crème\", 1, 0.5), \"crème     |  1|    0.50\");\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "/// One line of a receipt, in three columns separated by `|`:\n///   the name, left-aligned in a column 10 wide;\n///   the quantity, right-aligned in a column 3 wide;\n///   the price with 2 decimals, right-aligned in a column 8 wide.\nfn row(name: &str, qty: u32, price: f64) -> String {\n    format!(\"{:<10}|{:>3}|{:>8.2}\", name, qty, price)\n}\n\nfn main() {\n    assert_eq!(row(\"apple\", 3, 1.5), \"apple     |  3|    1.50\");\n    assert_eq!(row(\"melon\", 12, 1234.5), \"melon     | 12| 1234.50\");\n    // The case to watch: a value wider than its column is not cut off.\n    assert_eq!(\n        row(\"watermelon-xl\", 1000, 2.0),\n        \"watermelon-xl|1000|    2.00\"\n    );\n    // Width counts characters, not bytes: \"crème\" is 5 characters (6 bytes).\n    assert_eq!(row(\"crème\", 1, 0.5), \"crème     |  1|    0.50\");\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "read-output": {
+   "starter": "// Read the format strings and attributes, then write what each line produces, spaces\n// included. Replace the `todo!()` and run until the checks print `all checks passed`.\n//\n// `#[cfg(test)]` keeps the next item only in a test build; `#[cfg(not(test))]` is the\n// opposite and keeps it when `test` is off, which is the case in a normal run.\n#[derive(Debug, Clone, PartialEq)]\nstruct Point {\n    x: i32,\n    y: i32,\n}\n\n#[cfg(test)]\nfn build() -> &'static str {\n    \"test\"\n}\n\n#[cfg(not(test))]\nfn build() -> &'static str {\n    \"normal\"\n}\n\nfn shown() -> [String; 6] {\n    let p = Point { x: 3, y: -4 };\n    let q = p.clone();\n    [\n        format!(\"{:5}|{:5}|\", 42, \"ab\"),\n        format!(\"{:05}|{:+}|{:#x}\", 42, 42, 255),\n        format!(\"{:.2}|{:8.3}|\", 3.14159, 3.14159),\n        format!(\"{{}}{}\", 7),\n        format!(\"{p:?}\"),\n        format!(\"{} {}\", p == q, build()),\n    ]\n}\n\n/// Hint, one per line:\n/// 1. a number sits at the right of its width, text at the left.\n/// 2. `0` pads with zeros, `+` shows the sign, `#x` is hex with a `0x` prefix.\n/// 3. `.2` is two decimals; `8.3` is a width of 8 and three decimals.\n/// 4. a doubled brace is one brace.\n/// 5. `:?` is the Debug form, which a derive writes as `Name { field: value }`.\n/// 6. `==` gives `true` or `false`; `build()` is the `cfg(not(test))` one in a normal run.\nfn answers() -> [&'static str; 6] {\n    todo!(\n        \"write the six strings, in order: numbers and text align differently, a doubled brace is one brace, the `:?` form is Debug, and `cfg(test)` is off in a normal run\"\n    )\n}\n\nfn main() {\n    let (shown, answers) = (shown(), answers());\n    for i in 0..6 {\n        assert!(\n            answers[i] == shown[i],\n            \"line {} of `shown`: you wrote {:?}\",\n            i + 1,\n            answers[i]\n        );\n        println!(\"ok: line {} is {:?}\", i + 1, answers[i]);\n    }\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "// Read the format strings and attributes, then write what each line produces, spaces\n// included. Replace the `todo!()` and run until the checks print `all checks passed`.\n//\n// `#[cfg(test)]` keeps the next item only in a test build; `#[cfg(not(test))]` is the\n// opposite and keeps it when `test` is off, which is the case in a normal run.\n#[derive(Debug, Clone, PartialEq)]\nstruct Point {\n    x: i32,\n    y: i32,\n}\n\n#[cfg(test)]\nfn build() -> &'static str {\n    \"test\"\n}\n\n#[cfg(not(test))]\nfn build() -> &'static str {\n    \"normal\"\n}\n\nfn shown() -> [String; 6] {\n    let p = Point { x: 3, y: -4 };\n    let q = p.clone();\n    [\n        format!(\"{:5}|{:5}|\", 42, \"ab\"),\n        format!(\"{:05}|{:+}|{:#x}\", 42, 42, 255),\n        format!(\"{:.2}|{:8.3}|\", 3.14159, 3.14159),\n        format!(\"{{}}{}\", 7),\n        format!(\"{p:?}\"),\n        format!(\"{} {}\", p == q, build()),\n    ]\n}\n\n/// Hint, one per line:\n/// 1. a number sits at the right of its width, text at the left.\n/// 2. `0` pads with zeros, `+` shows the sign, `#x` is hex with a `0x` prefix.\n/// 3. `.2` is two decimals; `8.3` is a width of 8 and three decimals.\n/// 4. a doubled brace is one brace.\n/// 5. `:?` is the Debug form, which a derive writes as `Name { field: value }`.\n/// 6. `==` gives `true` or `false`; `build()` is the `cfg(not(test))` one in a normal run.\nfn answers() -> [&'static str; 6] {\n    [\n        \"   42|ab   |\",\n        \"00042|+42|0xff\",\n        \"3.14|   3.142|\",\n        \"{}7\",\n        \"Point { x: 3, y: -4 }\",\n        \"true normal\",\n    ]\n}\n\nfn main() {\n    let (shown, answers) = (shown(), answers());\n    for i in 0..6 {\n        assert!(\n            answers[i] == shown[i],\n            \"line {} of `shown`: you wrote {:?}\",\n            i + 1,\n            answers[i]\n        );\n        println!(\"ok: line {} is {:?}\", i + 1, answers[i]);\n    }\n    println!(\"all checks passed\");\n}\n",
+    "out": "ok: line 1 is \"   42|ab   |\"\nok: line 2 is \"00042|+42|0xff\"\nok: line 3 is \"3.14|   3.142|\"\nok: line 4 is \"{}7\"\nok: line 5 is \"Point { x: 3, y: -4 }\"\nok: line 6 is \"true normal\"\nall checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}

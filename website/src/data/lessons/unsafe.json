@@ -1,0 +1,309 @@
+{
+ "id": "unsafe",
+ "title": "unsafe, honestly",
+ "part": "further",
+ "intro": "`unsafe` does not turn the compiler off. It unlocks a short list of operations the compiler cannot check, such as reading through a raw pointer, and moves the proof to you: you write the conditions down and promise they hold. You can write whole programs without it. It is there for talking to C, for building the pieces the standard library is made of, and for data structures the borrow checker cannot express. The craft is to keep the promise small and wrap it in a function that is safe to call.",
+ "coming_from": {
+  "go": "Go has the `unsafe` package: `unsafe.Pointer` and `unsafe.Add` give you pointer arithmetic, as the program above shows. A file that imports `unsafe` can use it anywhere, with no block marking each use. Rust marks every use and expects a `// SAFETY:` comment saying why it is sound.",
+  "kotlin": "Kotlin has no `unsafe` keyword. On the JVM the low-level tools are Java's: `sun.misc.Unsafe` and the `java.lang.foreign` API that the program above uses. They are library calls, not a language boundary: no keyword or block marks the code that uses them, though the JDK now prints warnings.",
+  "python": "Python has no raw pointers in the language. The `ctypes` module is the escape hatch, and its documentation says that indexing a `ctypes` pointer can \"access or change arbitrary memory locations\". Rust draws that line in the language: the `unsafe` keyword, checked by the compiler.",
+  "typescript": "TypeScript has no pointers and no way to read memory by address. Its escape hatches (`as`, `any`) switch off the type checker but not memory safety. The nearest thing to the program above is a `DataView` over an `ArrayBuffer`, which is bounds-checked.",
+  "java": "Java hides raw memory behind APIs, not a keyword: `sun.misc.Unsafe` (now warning that it will be removed) and the `java.lang.foreign` API that the program above uses, which is bounds-checked. The JDK now warns when you use either, but they are library calls. In Rust the keyword marks each block, and calling an `unsafe fn` is itself unsafe.",
+  "csharp": "C# has an `unsafe` keyword for pointers, and the compiler refuses it unless the project sets `AllowUnsafeBlocks`. By default `unsafe` there places no obligation on callers; in Rust an `unsafe fn` does. The program above avoids the keyword with the `Unsafe` class.",
+  "c": "C has no safe subset marked in the language: pointer arithmetic, indexing past the end and use after free all compile. Rust's `unsafe` adds a boundary, not a new power: inside it you can do what C does (with stricter rules for references), outside it the compiler checks.",
+  "cpp": "C++ has the same unchecked pointers as C, plus checked alternatives such as `at()` that you have to choose. Rust inverts the default: the checked forms are what you get, and the unchecked ones are behind `unsafe`, with a name (`get_unchecked`) that says so."
+ },
+ "notes": [
+  "`unsafe` does not turn off the borrow checker. A reference inside an `unsafe` block is still checked. The keyword unlocks five main operations (the Reference lists a few more): dereference a raw pointer, call an `unsafe fn`, use a `static mut`, implement an `unsafe trait`, and read a `union` field.",
+  "Making a raw pointer is safe. Reading or writing through it is not, because only you know whether it is null, dangling, misaligned or aliased.",
+  "An `unsafe fn` lists conditions its caller must meet. An `unsafe` block says \"I checked them, here is why\". Write the why in a `// SAFETY:` comment, and the conditions in a `# Safety` section.",
+  "The point is a safe abstraction: a function whose checks make every call sound, so callers never write `unsafe`. The standard library's `Vec` and `split_at_mut` work this way."
+ ],
+ "gotcha": {
+  "title": "Reading through a raw pointer without `unsafe`",
+  "verdict": "fine-elsewhere",
+  "looks_fine": "You made a pointer to the first element and want the second, as you would in C, with Go's `unsafe` package or with Python's `ctypes`: move the pointer along and read.",
+  "rust_sees": "`p.add(1)` is a call to an `unsafe` function (it needs the result to stay inside the same allocation) and `*` on a raw pointer is a dereference. Both are among the operations that only an `unsafe` block allows, so the compiler reports each.",
+  "why": "The compiler cannot see what `p` points at. It could be null, freed, misaligned or already borrowed, and a read through it would then be undefined behavior. An `unsafe` block says you checked, and the `// SAFETY:` comment is where you write what you checked.",
+  "langs": {
+   "go": {
+    "status": "runs",
+    "says": "Go compiles this and prints `second: 20`. The `import \"unsafe\"` line is the marker; the compiler asks for no block and no reason at the place of use.",
+    "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"unsafe\"\n)\n\nfunc main() {\n\tprices := []int{10, 20, 30}\n\tp := unsafe.Pointer(&prices[0])\n\tsecond := *(*int)(unsafe.Add(p, unsafe.Sizeof(prices[0])))\n\tfmt.Printf(\"second: %d\\n\", second)\n}\n",
+    "out": "second: 20\n"
+   },
+   "kotlin": {
+    "status": "none",
+    "says": "Kotlin on the JVM has no pointers to dereference. The JVM's raw-memory APIs are Java's, and they are calls, not syntax."
+   },
+   "python": {
+    "status": "runs",
+    "says": "Python prints `second: 20`. `ctypes` pointers can be indexed with no marker, and its documentation says that you can use them to \"access or change arbitrary memory locations\".",
+    "code": "import ctypes\n\nprices = (ctypes.c_int * 3)(10, 20, 30)\np = ctypes.cast(prices, ctypes.POINTER(ctypes.c_int))\nsecond = p[1]\nprint(f\"second: {second}\")\n",
+    "out": "second: 20\n"
+   },
+   "typescript": {
+    "status": "none",
+    "says": "TypeScript has no pointers. The nearest thing is a `DataView`, which reads by byte offset inside an `ArrayBuffer`."
+   },
+   "java": {
+    "status": "none",
+    "says": "Java has no pointers in the language. Reading memory by address goes through `sun.misc.Unsafe` or `java.lang.foreign`, which are library calls and not syntax."
+   },
+   "csharp": {
+    "status": "refuses",
+    "says": "C# refuses this too: `CS0214`, pointers may only be used in an unsafe context. It has the same idea, and it adds a project switch (`AllowUnsafeBlocks`) before an `unsafe` block compiles at all.",
+    "code": "int[] prices = [10, 20, 30];\nfixed (int* p = prices)\n{\n    int second = *(p + 1);\n    Console.WriteLine($\"second: {second}\");\n}\n",
+    "error": "Program.cs(2,1): error CS0214: Pointers and fixed size buffers may only be used in an unsafe context\nProgram.cs(2,8): error CS0214: Pointers and fixed size buffers may only be used in an unsafe context\nProgram.cs(4,20): error CS0214: Pointers and fixed size buffers may only be used in an unsafe context\nProgram.cs(4,19): error CS0214: Pointers and fixed size buffers may only be used in an unsafe context"
+   },
+   "c": {
+    "status": "runs",
+    "says": "C prints `second: 20`. Pointer arithmetic is ordinary C: it needs no marker.",
+    "code": "#include <stdio.h>\n\nint main(void) {\n    int prices[] = {10, 20, 30};\n    int *p = prices;\n    int second = *(p + 1);\n    printf(\"second: %d\\n\", second);\n    return 0;\n}\n",
+    "out": "second: 20\n"
+   },
+   "cpp": {
+    "status": "runs",
+    "says": "C++ prints `second: 20`. Pointer arithmetic on `data()` needs no marker, and `at()` is the checked alternative you have to choose.",
+    "code": "#include <array>\n#include <cstdio>\n\nint main() {\n    std::array<int, 3> prices = {10, 20, 30};\n    const int *p = prices.data();\n    int second = *(p + 1);\n    std::printf(\"second: %d\\n\", second);\n}\n",
+    "out": "second: 20\n"
+   }
+  },
+  "code": "fn main() {\n    let prices = [10, 20, 30];\n    let p = prices.as_ptr();\n    let second = *p.add(1);\n    println!(\"second: {second}\");\n}\n",
+  "error": "error[E0133]: dereference of raw pointer is unsafe and requires unsafe block\n --> src/main.rs:4:18\n  |\n4 |     let second = *p.add(1);\n  |                  ^^^^^^^^^ dereference of raw pointer\n  |\n  = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior\n\nerror[E0133]: call to unsafe function `std::ptr::const_ptr::<impl *const T>::add` is unsafe and requires unsafe block\n --> src/main.rs:4:19\n  |\n4 |     let second = *p.add(1);\n  |                   ^^^^^^^^ call to unsafe function\n  |\n  = note: consult the function's documentation for information on how to avoid undefined behavior\n",
+  "error_code": "E0133",
+  "fixed": {
+   "code": "fn main() {\n    let prices = [10, 20, 30];\n    let p = prices.as_ptr();\n    // SAFETY: `p` points at the first of three elements of `prices`, which is alive, and 1 < 3\n    let second = unsafe { *p.add(1) };\n    println!(\"second: {second}\");\n}\n",
+   "out": "second: 20\n"
+  }
+ },
+ "order": 52,
+ "program": {
+  "rust": {
+   "code": "fn main() {\n    let prices = [10, 20, 30];\n    let p = prices.as_ptr(); // making a raw pointer is safe\n    // SAFETY: `p` points at the first of three elements of `prices`, which is alive, and 1 < 3\n    let second = unsafe { *p.add(1) };\n    println!(\"second, read by offset: {second}\");\n    println!(\"get(1): {:?}\", prices.get(1));\n    println!(\"get(9): {:?}\", prices.get(9));\n}\n",
+   "out": "second, read by offset: 20\nget(1): Some(20)\nget(9): None\n"
+  },
+  "go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"unsafe\"\n)\n\nfunc get(a []int, i int) string {\n\tif i < len(a) {\n\t\treturn fmt.Sprintf(\"Some(%d)\", a[i])\n\t}\n\treturn \"None\"\n}\n\nfunc main() {\n\tprices := []int{10, 20, 30}\n\tp := unsafe.Pointer(&prices[0])\n\tsecond := *(*int)(unsafe.Add(p, unsafe.Sizeof(prices[0])))\n\tfmt.Printf(\"second, read by offset: %d\\n\", second)\n\tfmt.Printf(\"get(1): %s\\n\", get(prices, 1))\n\tfmt.Printf(\"get(9): %s\\n\", get(prices, 9))\n}\n",
+   "out": "second, read by offset: 20\nget(1): Some(20)\nget(9): None\n"
+  },
+  "kotlin": {
+   "code": "import java.lang.foreign.MemorySegment\nimport java.lang.foreign.ValueLayout\n\nfun get(a: IntArray, i: Int) = a.getOrNull(i)?.let { \"Some($it)\" } ?: \"None\"\n\nfun main() {\n    val prices = intArrayOf(10, 20, 30)\n    // a MemorySegment is a bounds-checked view of memory, read by byte offset\n    val second = MemorySegment.ofArray(prices).get(ValueLayout.JAVA_INT, 4)\n    println(\"second, read by offset: $second\")\n    println(\"get(1): ${get(prices, 1)}\")\n    println(\"get(9): ${get(prices, 9)}\")\n}\n",
+   "out": "second, read by offset: 20\nget(1): Some(20)\nget(9): None\n"
+  },
+  "python": {
+   "code": "import ctypes\n\n\ndef get(a, i):\n    return f\"Some({a[i]})\" if i < len(a) else \"None\"\n\n\nprices = (ctypes.c_int * 3)(10, 20, 30)\np = ctypes.cast(prices, ctypes.POINTER(ctypes.c_int))\nsecond = p[1]  # a ctypes pointer is not bounds-checked\nprint(f\"second, read by offset: {second}\")\nprint(f\"get(1): {get(prices, 1)}\")\nprint(f\"get(9): {get(prices, 9)}\")\n",
+   "out": "second, read by offset: 20\nget(1): Some(20)\nget(9): None\n"
+  },
+  "typescript": {
+   "code": "function get(a: Int32Array, i: number): string {\n  return i < a.length ? `Some(${a[i]})` : \"None\";\n}\n\nconst prices = new Int32Array([10, 20, 30]);\n// there are no pointers: the nearest thing is a byte offset into an ArrayBuffer\nconst second = new DataView(prices.buffer).getInt32(4, true);\nconsole.log(`second, read by offset: ${second}`);\nconsole.log(`get(1): ${get(prices, 1)}`);\nconsole.log(`get(9): ${get(prices, 9)}`);\n",
+   "out": "second, read by offset: 20\nget(1): Some(20)\nget(9): None\n"
+  },
+  "java": {
+   "code": "import java.lang.foreign.MemorySegment;\nimport java.lang.foreign.ValueLayout;\n\npublic class Main {\n    static String get(int[] a, int i) {\n        return i < a.length ? \"Some(\" + a[i] + \")\" : \"None\";\n    }\n\n    public static void main(String[] args) {\n        int[] prices = {10, 20, 30};\n        // a MemorySegment is a bounds-checked view of memory, read by byte offset\n        MemorySegment seg = MemorySegment.ofArray(prices);\n        int second = seg.get(ValueLayout.JAVA_INT, 4);\n        System.out.println(\"second, read by offset: \" + second);\n        System.out.println(\"get(1): \" + get(prices, 1));\n        System.out.println(\"get(9): \" + get(prices, 9));\n    }\n}\n",
+   "out": "second, read by offset: 20\nget(1): Some(20)\nget(9): None\n"
+  },
+  "csharp": {
+   "code": "using System.Runtime.CompilerServices;\nusing System.Runtime.InteropServices;\n\nstatic string Get(int[] a, int i) => i < a.Length ? $\"Some({a[i]})\" : \"None\";\n\nint[] prices = [10, 20, 30];\n// no `unsafe` keyword needed: the Unsafe class does pointer-style arithmetic on a ref\nint second = Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(prices), 1);\nConsole.WriteLine($\"second, read by offset: {second}\");\nConsole.WriteLine($\"get(1): {Get(prices, 1)}\");\nConsole.WriteLine($\"get(9): {Get(prices, 9)}\");\n",
+   "out": "second, read by offset: 20\nget(1): Some(20)\nget(9): None\n"
+  },
+  "c": {
+   "code": "#include <stdio.h>\n\nstatic void get(const int *a, int len, int i) {\n    if (i < len) printf(\"get(%d): Some(%d)\\n\", i, a[i]);\n    else printf(\"get(%d): None\\n\", i);\n}\n\nint main(void) {\n    int prices[] = {10, 20, 30};\n    int *p = prices;\n    int second = *(p + 1);\n    printf(\"second, read by offset: %d\\n\", second);\n    get(prices, 3, 1);\n    get(prices, 3, 9);\n    return 0;\n}\n",
+   "out": "second, read by offset: 20\nget(1): Some(20)\nget(9): None\n"
+  },
+  "cpp": {
+   "code": "#include <array>\n#include <cstdio>\n#include <string>\n\nstatic std::string get(const std::array<int, 3> &a, std::size_t i) {\n    return i < a.size() ? \"Some(\" + std::to_string(a[i]) + \")\" : \"None\";\n}\n\nint main() {\n    std::array<int, 3> prices = {10, 20, 30};\n    const int *p = prices.data();\n    int second = *(p + 1);\n    std::printf(\"second, read by offset: %d\\n\", second);\n    std::printf(\"get(1): %s\\n\", get(prices, 1).c_str());\n    std::printf(\"get(9): %s\\n\", get(prices, 9).c_str());\n}\n",
+   "out": "second, read by offset: 20\nget(1): Some(20)\nget(9): None\n"
+  }
+ },
+ "faq": [],
+ "snippets": {
+  "as-bytes.rs": {
+   "code": "fn main() {\n    let s = \"héllo\";\n    let b = s.as_bytes(); // a view of the same memory: no copy, no unsafe\n    println!(\"bytes: {b:?}\");\n    println!(\"same address: {}\", s.as_ptr() == b.as_ptr());\n    println!(\"size of &str: {}\", size_of::<&str>());\n}\n",
+   "out": "bytes: [104, 195, 169, 108, 108, 111]\nsame address: true\nsize of &str: 16\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "dangling.rs": {
+   "code": "fn main() {\n    let p: *const i32;\n    {\n        let x = 5;\n        p = &raw const x;\n    }\n    // `x` is gone. Making the pointer and checking it for null are allowed; reading it is not.\n    println!(\"null: {}\", p.is_null());\n}\n",
+   "out": "null: false\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "extern-block.fail.rs": {
+   "code": "use std::ffi::{CString, c_char};\nextern \"C\" {\n    fn strlen(s: *const c_char) -> usize;\n}\nfn main() {\n    let s = CString::new(\"hello\").unwrap();\n    println!(\"{}\", unsafe { strlen(s.as_ptr()) });\n}\n",
+   "error": "error: extern blocks must be unsafe\n --> src/main.rs:2:1\n  |\n2 |   extern \"C\" {\n  |   ^\n  |   |\n  |  _help: needs `unsafe` before the extern keyword: `unsafe`\n  | |\n3 | |     fn strlen(s: *const c_char) -> usize;\n4 | | }\n  | |_^",
+   "lang": "rust"
+  },
+  "ffi.rs": {
+   "code": "use std::ffi::{CString, c_char};\n\nunsafe extern \"C\" {\n    fn strlen(s: *const c_char) -> usize;\n    safe fn sqrt(x: f64) -> f64;\n}\n\nfn main() {\n    let text = CString::new(\"héllo\").unwrap();\n    // SAFETY: `text` is a valid NUL-terminated string that lives until after the call\n    let n = unsafe { strlen(text.as_ptr()) };\n    println!(\"strlen(\\\"héllo\\\") = {n} bytes\");\n    println!(\"sqrt(81) = {}\", sqrt(81.0));\n    println!(\"str::len = {}\", \"héllo\".len());\n}\n",
+   "out": "strlen(\"héllo\") = 6 bytes\nsqrt(81) = 9\nstr::len = 6\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "five.rs": {
+   "code": "union Bits {\n    float: f32,\n    int: u32,\n}\n\nstatic mut HITS: u32 = 0;\n\n/// # Safety\n/// `p` must point to a valid, initialized `i32`.\nunsafe fn read(p: *const i32) -> i32 {\n    // SAFETY: the caller promised `p` is valid for reads\n    unsafe { *p }\n}\n\n/// # Safety\n/// Implement this only for types where every all-zero bit pattern is a valid value.\nunsafe trait ZeroIsValid {}\n\n// SAFETY: the integer 0 is a valid u32\nunsafe impl ZeroIsValid for u32 {}\n\nfn zeroed<T: ZeroIsValid>() -> T {\n    // SAFETY: the trait's contract says all-zero bits are a valid T\n    unsafe { std::mem::zeroed() }\n}\n\nfn main() {\n    let x = 7;\n    let p = &raw const x; // making a raw pointer is safe\n    println!(\"p is null: {}\", p.is_null());\n    // SAFETY: `p` points at `x`, which is alive, initialized and not mutated\n    let first = unsafe { *p };\n    println!(\"1 dereference: {first}\");\n    // SAFETY: the same `p` meets `read`'s condition\n    let second = unsafe { read(p) };\n    println!(\"2 unsafe fn: {second}\");\n    // SAFETY: this program has one thread, so no other access to `HITS` happens\n    let hits = unsafe {\n        HITS += 1;\n        HITS // a copy, not a reference\n    };\n    println!(\"3 static mut: {hits}\");\n    println!(\"4 unsafe trait: {}\", zeroed::<u32>());\n    let bits = Bits { float: 1.0 };\n    // SAFETY: every 4-byte pattern is a valid u32\n    let int = unsafe { bits.int };\n    println!(\"5 union field: {int}\");\n}\n",
+   "out": "p is null: false\n1 dereference: 7\n2 unsafe fn: 7\n3 static mut: 1\n4 unsafe trait: 0\n5 union field: 1065353216\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "forbid.fail.rs": {
+   "code": "#![forbid(unsafe_code)]\n\nfn main() {\n    let x = 7;\n    let p = &raw const x;\n    // SAFETY: `p` points at `x`, which is alive\n    println!(\"{}\", unsafe { *p });\n}\n",
+   "error": "error: usage of an `unsafe` block\n --> src/main.rs:7:20\n  |\n7 |     println!(\"{}\", unsafe { *p });\n  |                    ^^^^^^^^^^^^^\n  |\nnote: the lint level is defined here\n --> src/main.rs:1:11\n  |\n1 | #![forbid(unsafe_code)]\n  |           ^^^^^^^^^^^",
+   "lang": "rust"
+  },
+  "precondition.panic.rs": {
+   "code": "fn main() {\n    let v = vec![1, 2, 3];\n    let i = v.len() + 6;\n    // SAFETY: none. This breaks the rule that `i` must be less than `v.len()`.\n    let x = unsafe { *v.get_unchecked(i) };\n    println!(\"{x}\");\n}\n",
+   "out": "\nthread 'main' (1) panicked at src/main.rs:5:25:\nunsafe precondition(s) violated: slice::get_unchecked requires that the index is within the slice\n\nThis indicates a bug in the program. This Undefined Behavior check is optional, and cannot be relied on for safety.\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nthread caused non-unwinding panic. aborting.\n",
+   "lang": "rust",
+   "exit": -6
+  },
+  "raw-alias.rs": {
+   "code": "fn main() {\n    let mut n = 1;\n    let a = &raw mut n;\n    let b = a; // a second pointer to the same place: the compiler tracks neither\n    // SAFETY: `a` and `b` are copies of one pointer to `n`, which is alive, and the\n    // two writes happen one after the other\n    unsafe {\n        *a += 10;\n        *b += 100;\n    }\n    println!(\"n = {n}\");\n}\n",
+   "out": "n = 111\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "raw-pointers.rs": {
+   "code": "use std::mem::align_of;\nuse std::ptr;\n\nfn main() {\n    let mut scores = [10, 20, 30];\n\n    // creating raw pointers is safe, from an array or from nothing\n    let first: *const i32 = scores.as_ptr();\n    let nothing: *const i32 = ptr::null();\n    println!(\n        \"first is null: {}, nothing is null: {}\",\n        first.is_null(),\n        nothing.is_null()\n    );\n    println!(\n        \"first is aligned: {}\",\n        (first as usize).is_multiple_of(align_of::<i32>())\n    );\n\n    // wrapping_add is safe: it makes a pointer and promises nothing about it\n    let end = first.wrapping_add(3);\n    // SAFETY: both pointers come from `scores`; `end` is one past its last element\n    let gap = unsafe { end.offset_from(first) };\n    println!(\"end - first, in elements: {gap}\");\n\n    // reading and writing through a pointer are not safe\n    let last: *mut i32 = &raw mut scores[2];\n    // SAFETY: `last` points at scores[2], which is alive, initialised and not borrowed\n    unsafe {\n        *last += 1;\n        println!(\"last through the pointer: {}\", *last);\n    }\n    println!(\"scores: {scores:?}\");\n}\n",
+   "out": "first is null: false, nothing is null: true\nfirst is aligned: true\nend - first, in elements: 3\nlast through the pointer: 31\nscores: [10, 20, 31]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "split-naive.fail.rs": {
+   "code": "fn split_at_mut(v: &mut [i32], mid: usize) -> (&mut [i32], &mut [i32]) {\n    assert!(mid <= v.len());\n    (&mut v[..mid], &mut v[mid..])\n}\n\nfn main() {\n    let mut v = [1, 2, 3, 4];\n    let (a, b) = split_at_mut(&mut v, 2);\n    a[0] = 10;\n    b[0] = 30;\n    println!(\"{v:?}\");\n}\n",
+   "error": "error[E0499]: cannot borrow `*v` as mutable more than once at a time\n --> src/main.rs:3:26\n  |\n1 | fn split_at_mut(v: &mut [i32], mid: usize) -> (&mut [i32], &mut [i32]) {\n  |                    - let's call the lifetime of this reference `'1`\n2 |     assert!(mid <= v.len());\n3 |     (&mut v[..mid], &mut v[mid..])\n  |     ---------------------^--------\n  |     |     |              |\n  |     |     |              second mutable borrow occurs here\n  |     |     first mutable borrow occurs here\n  |     returning this value requires that `*v` is borrowed for `'1`\n  |\n  = help: use `.split_at_mut(position)` to obtain two mutable non-overlapping sub-slices\n",
+   "lang": "rust"
+  },
+  "split-panic.panic.rs": {
+   "code": "use std::slice;\n\nfn split_at_mut(v: &mut [i32], mid: usize) -> (&mut [i32], &mut [i32]) {\n    let len = v.len();\n    let ptr = v.as_mut_ptr();\n    assert!(mid <= len, \"mid {mid} is past the end ({len})\");\n    // SAFETY: mid <= len, as asserted above, so both halves are in bounds and do not overlap\n    unsafe {\n        (\n            slice::from_raw_parts_mut(ptr, mid),\n            slice::from_raw_parts_mut(ptr.add(mid), len - mid),\n        )\n    }\n}\n\nfn main() {\n    let mut v = [1, 2, 3];\n    let _halves = split_at_mut(&mut v, 9);\n}\n",
+   "out": "\nthread 'main' (1) panicked at src/main.rs:6:5:\nmid 9 is past the end (3)\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+   "lang": "rust",
+   "exit": 101
+  },
+  "split.rs": {
+   "code": "use std::slice;\n\n/// Splits `v` into two non-overlapping mutable halves at `mid`.\nfn split_at_mut(v: &mut [i32], mid: usize) -> (&mut [i32], &mut [i32]) {\n    let len = v.len();\n    let ptr = v.as_mut_ptr();\n    assert!(mid <= len, \"mid {mid} is past the end ({len})\");\n    // SAFETY: `ptr` is valid for `len` elements and we hold the only `&mut` to them.\n    // mid <= len, so [0, mid) and [mid, len) are in bounds and do not overlap.\n    unsafe {\n        (\n            slice::from_raw_parts_mut(ptr, mid),\n            slice::from_raw_parts_mut(ptr.add(mid), len - mid),\n        )\n    }\n}\n\nfn main() {\n    let mut v = [1, 2, 3, 4, 5];\n    let (a, b) = split_at_mut(&mut v, 2);\n    a[0] = 10;\n    b[0] = 30;\n    println!(\"halves: {a:?} and {b:?}\");\n    println!(\"whole: {v:?}\");\n}\n",
+   "out": "halves: [10, 2] and [30, 4, 5]\nwhole: [10, 2, 30, 4, 5]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "static-fix.rs": {
+   "code": "use std::sync::Mutex;\n\n// `Mutex::new` is a `const fn`, so it can start a `static`\nstatic LOG: Mutex<Vec<String>> = Mutex::new(Vec::new());\n\nfn main() {\n    LOG.lock().unwrap().push(String::from(\"started\"));\n    println!(\"log: {:?}\", LOG.lock().unwrap());\n}\n",
+   "out": "log: [\"started\"]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "still-checked.fail.rs": {
+   "code": "fn main() {\n    let mut scores = vec![1, 2, 3];\n    unsafe {\n        let p = scores.as_ptr();\n        let last = *p.add(2); // needs unsafe\n        let first = &mut scores[0]; // an ordinary reference\n        let second = &mut scores[1]; // a second one: still checked\n        *first += last;\n        *second += last;\n    }\n    println!(\"{scores:?}\");\n}\n",
+   "error": "error[E0499]: cannot borrow `scores` as mutable more than once at a time\n --> src/main.rs:7:27\n  |\n6 |         let first = &mut scores[0]; // an ordinary reference\n  |                          ------ first mutable borrow occurs here\n7 |         let second = &mut scores[1]; // a second one: still checked\n  |                           ^^^^^^ second mutable borrow occurs here\n8 |         *first += last;\n  |         -------------- first borrow later used here\n  |\n  = help: use `.split_at_mut(position)` to obtain two mutable non-overlapping sub-slices\n",
+   "lang": "rust"
+  },
+  "ub-bool.fail.rs": {
+   "code": "// SAFETY: none. Only 0 and 1 are valid bools, so this breaks the rule for `transmute`.\nconst FLAG: bool = unsafe { std::mem::transmute::<u8, bool>(3) };\n\nfn main() {\n    println!(\"{FLAG}\");\n}\n",
+   "error": "error[E0080]: constructing invalid value of type bool: encountered 0x03, but expected a boolean\n --> src/main.rs:2:1\n  |\n2 | const FLAG: bool = unsafe { std::mem::transmute::<u8, bool>(3) };\n  | ^^^^^^^^^^^^^^^^ it is undefined behavior to use this value\n  |\n  = note: the rules on what exactly is undefined behavior aren't clear, so this check might be overzealous. Please open an issue on the rustc repository if you believe it should not be considered undefined behavior.\n  = note: the raw bytes of the constant (size: 1, align: 1) {\n              03                                              │ .\n          }\n\nnote: erroneous constant encountered\n --> src/main.rs:5:16\n  |\n5 |     println!(\"{FLAG}\");\n  |                ^^^^\n",
+   "lang": "rust"
+  },
+  "unsafe-fn-body.fail.rs": {
+   "code": "#![deny(unsafe_op_in_unsafe_fn)]\n\n/// # Safety\n/// `p` must point to a valid, initialised `i32`.\nunsafe fn read(p: *const i32) -> i32 {\n    *p\n}\n\nfn main() {\n    let x = 7;\n    // SAFETY: `&raw const x` points at `x`, which is alive and initialised\n    println!(\"{}\", unsafe { read(&raw const x) });\n}\n",
+   "error": "error[E0133]: dereference of raw pointer is unsafe and requires unsafe block\n --> src/main.rs:6:5\n  |\n6 |     *p\n  |     ^^ dereference of raw pointer\n  |\n  = note: raw pointers may be null, dangling or unaligned; they can violate aliasing rules and cause data races: all of these are undefined behavior\nnote: an unsafe function restricts its caller, but its body is safe by default\n --> src/main.rs:5:1\n  |\n5 | unsafe fn read(p: *const i32) -> i32 {\n  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>\nnote: the lint level is defined here\n --> src/main.rs:1:9\n  |\n1 | #![deny(unsafe_op_in_unsafe_fn)]\n  |         ^^^^^^^^^^^^^^^^^^^^^^\n",
+   "lang": "rust"
+  },
+  "vec-parts.rs": {
+   "code": "use std::mem::size_of;\n\nfn main() {\n    let mut v: Vec<i32> = Vec::with_capacity(4);\n    v.extend([10, 20, 30]);\n    println!(\"size_of::<Vec<i32>>(): {} bytes\", size_of::<Vec<i32>>());\n    println!(\n        \"three words: {}\",\n        size_of::<Vec<i32>>() == 3 * size_of::<usize>()\n    );\n    println!(\"len: {}\", v.len());\n    println!(\"capacity >= 4: {}\", v.capacity() >= 4);\n    // slot 3 is inside the buffer but holds no value yet: only `len` slots are initialised\n    println!(\"get(3): {:?}\", v.get(3));\n}\n",
+   "out": "size_of::<Vec<i32>>(): 24 bytes\nthree words: true\nlen: 3\ncapacity >= 4: true\nget(3): None\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "as-lie.ts": {
+   "code": "const parsed = JSON.parse('\"not a number\"') as number; // `as` makes the checker believe you\nconsole.log(\"typeof parsed:\", typeof parsed);\nconsole.log(\"parsed + 1:\", parsed + 1);\n",
+   "out": "typeof parsed: string\nparsed + 1: not a number1\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "at-checked.cpp": {
+   "code": "#include <iostream>\n#include <stdexcept>\n#include <vector>\n\nint main() {\n    std::vector<int> prices = {10, 20, 30};\n    try {\n        std::cout << prices.at(9) << \"\\n\";\n    } catch (const std::out_of_range &e) {\n        std::cout << \"at(9): \" << e.what() << \"\\n\";\n    }\n}\n",
+   "out": "at(9): vector::_M_range_check: __n (which is 9) >= this->size() (which is 3)\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "bounds.java": {
+   "code": "import java.lang.foreign.MemorySegment;\nimport java.lang.foreign.ValueLayout;\n\npublic class Main {\n    public static void main(String[] args) {\n        MemorySegment seg = MemorySegment.ofArray(new int[] {10, 20, 30});\n        try {\n            seg.get(ValueLayout.JAVA_INT, 12); // byte offset 12 is just past the end\n        } catch (IndexOutOfBoundsException e) {\n            System.out.println(\"caught \" + e.getClass().getSimpleName());\n        }\n    }\n}\n",
+   "out": "caught IndexOutOfBoundsException\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "bounds.ts": {
+   "code": "const prices = new Int32Array([10, 20, 30]);\ntry {\n  new DataView(prices.buffer).getInt32(12, true); // byte offset 12 is just past the end\n} catch (e) {\n  console.log(\"caught \" + (e as Error).name);\n}\n",
+   "out": "caught RangeError\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "ctypes-call.py": {
+   "code": "import ctypes\n\nlibc = ctypes.CDLL(None)  # the C library already loaded into this process\nlibc.strlen.argtypes = [ctypes.c_char_p]  # nothing checks these declarations against C\nlibc.strlen.restype = ctypes.c_size_t\nprint(\"strlen('héllo') =\", libc.strlen(\"héllo\".encode()), \"bytes\")\nprint(\"len('héllo') =\", len(\"héllo\"), \"characters\")\n",
+   "out": "strlen('héllo') = 6 bytes\nlen('héllo') = 5 characters\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "overflow.crash.asan.c": {
+   "code": "#include <stdio.h>\n#include <stdlib.h>\n\nint main(void) {\n    int *prices = malloc(3 * sizeof(int));\n    prices[0] = 10;\n    prices[1] = 20;\n    prices[2] = 30;\n    printf(\"prices[3] = %d\\n\", prices[3]); /* one past the last element */\n    free(prices);\n    return 0;\n}\n",
+   "out": "=================================================================\n==1==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x············ at pc 0x············ bp 0x············ sp 0x············\nREAD of size 4 at 0x············ thread T0\n    #0 0x············ in main main.c:9\n    #1 0x············  (/lib/aarch64-linux-gnu/libc.so.6+0x22258)\n    #2 0x············ in __libc_start_main (/lib/aarch64-linux-gnu/libc.so.6+0x22338)\n    #3 0x············ in _start (main+0xaac)\n\n0x············ is located 0 bytes after 12-byte region [0x············,0x············)\nallocated by thread T0 here:\n    #0 0x············ in malloc ../../../../src/libsanitizer/asan/asan_malloc_linux.cpp:69\n    #1 0x············ in main main.c:5\n    #2 0x············  (/lib/aarch64-linux-gnu/libc.so.6+0x22258)\n    #3 0x············ in __libc_start_main (/lib/aarch64-linux-gnu/libc.so.6+0x22338)\n    #4 0x············ in _start (main+0xaac)\n\nSUMMARY: AddressSanitizer: heap-buffer-overflow main.c:9 in main\nShadow bytes around the buggy address:\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n=>0x············: fa fa 00[04]fa fa fa fa fa fa fa fa fa fa fa fa\n  0x············: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\n  0x············: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\n  0x············: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\n  0x············: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\n  0x············: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\nShadow byte legend (one shadow byte represents 8 application bytes):\n  Addressable:           00\n  Partially addressable: 01 02 03 04 05 06 07 \n  Heap left redzone:       fa\n  Freed heap region:       fd\n  Stack left redzone:      f1\n  Stack mid redzone:       f2\n  Stack right redzone:     f3\n  Stack after return:      f5\n  Stack use after scope:   f8\n  Global redzone:          f9\n  Global init order:       f6\n  Poisoned by user:        f7\n  Container overflow:      fc\n  Array cookie:            ac\n  Intra object redzone:    bb\n  ASan internal:           fe\n  Left alloca redzone:     ca\n  Right alloca redzone:    cb\n==1==ABORTING\n",
+   "lang": "c",
+   "mode": "asan",
+   "exit": 1
+  },
+  "panama.java": {
+   "code": "import java.lang.foreign.*;\nimport java.lang.invoke.MethodHandle;\n\npublic class Main {\n    public static void main(String[] args) throws Throwable {\n        Linker linker = Linker.nativeLinker();\n        MethodHandle strlen = linker.downcallHandle(\n            linker.defaultLookup().find(\"strlen\").orElseThrow(),\n            FunctionDescriptor.of(ValueLayout.JAVA_LONG, ValueLayout.ADDRESS));\n        try (Arena arena = Arena.ofConfined()) {\n            MemorySegment s = arena.allocateFrom(\"héllo\");\n            System.out.println(\"strlen(\\\"héllo\\\") = \" + (long) strlen.invokeExact(s) + \" bytes\");\n        }\n    }\n}\n",
+   "out": "WARNING: A restricted method in java.lang.foreign.Linker has been called\nWARNING: java.lang.foreign.Linker::downcallHandle has been called by Main in an unnamed module (file:)\nWARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module\nWARNING: Restricted methods will be blocked in a future release unless native access is enabled\n\nstrlen(\"héllo\") = 6 bytes\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "pinvoke.cs": {
+   "code": "using System.Runtime.InteropServices;\n\n// no `unsafe` keyword and no project switch: the runtime converts the string\nConsole.WriteLine($\"strlen(\\\"héllo\\\") = {Native.strlen(\"héllo\")} bytes\");\n\nstatic class Native\n{\n    [DllImport(\"libc.so.6\")]\n    public static extern nuint strlen([MarshalAs(UnmanagedType.LPUTF8Str)] string s);\n}\n",
+   "out": "strlen(\"héllo\") = 6 bytes\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "unsafe-block.fail.cs": {
+   "code": "int[] prices = [10, 20, 30];\nunsafe\n{\n    fixed (int* p = prices)\n    {\n        Console.WriteLine($\"second: {*(p + 1)}\");\n    }\n}\n",
+   "error": "Program.cs(2,1): error CS0227: Unsafe code may only appear if compiling with /unsafe",
+   "lang": "csharp"
+  },
+  "unsafe-class.java": {
+   "code": "import java.lang.reflect.Field;\nimport sun.misc.Unsafe;\n\npublic class Main {\n    public static void main(String[] args) throws Exception {\n        Field f = Unsafe.class.getDeclaredField(\"theUnsafe\");\n        f.setAccessible(true);\n        Unsafe unsafe = (Unsafe) f.get(null);\n        long addr = unsafe.allocateMemory(12);\n        try {\n            unsafe.putInt(addr, 10);\n            unsafe.putInt(addr + 4, 20);\n            unsafe.putInt(addr + 8, 30);\n            System.out.println(\"second, read by address: \" + unsafe.getInt(addr + 4));\n        } finally {\n            unsafe.freeMemory(addr);\n        }\n    }\n}\n",
+   "warnings": "Main.java:2: warning: Unsafe is internal proprietary API and may be removed in a future release\nimport sun.misc.Unsafe;\n               ^\nMain.java:6: warning: Unsafe is internal proprietary API and may be removed in a future release\n        Field f = Unsafe.class.getDeclaredField(\"theUnsafe\");\n                  ^\nMain.java:8: warning: Unsafe is internal proprietary API and may be removed in a future release\n        Unsafe unsafe = (Unsafe) f.get(null);\n        ^\nMain.java:8: warning: Unsafe is internal proprietary API and may be removed in a future release\n        Unsafe unsafe = (Unsafe) f.get(null);\n                         ^\nMain.java:9: warning: [removal] allocateMemory(long) in Unsafe has been deprecated and marked for removal\n        long addr = unsafe.allocateMemory(12);\n                          ^\nMain.java:11: warning: [removal] putInt(long,int) in Unsafe has been deprecated and marked for removal\n            unsafe.putInt(addr, 10);\n                  ^\nMain.java:12: warning: [removal] putInt(long,int) in Unsafe has been deprecated and marked for removal\n            unsafe.putInt(addr + 4, 20);\n                  ^\nMain.java:13: warning: [removal] putInt(long,int) in Unsafe has been deprecated and marked for removal\n            unsafe.putInt(addr + 8, 30);\n                  ^\nMain.java:14: warning: [removal] getInt(long) in Unsafe has been deprecated and marked for removal\n            System.out.println(\"second, read by address: \" + unsafe.getInt(addr + 4));\n                                                                   ^\nMain.java:16: warning: [removal] freeMemory(long) in Unsafe has been deprecated and marked for removal\n            unsafe.freeMemory(addr);\n                  ^\n10 warnings",
+   "out": "WARNING: A terminally deprecated method in sun.misc.Unsafe has been called\nWARNING: sun.misc.Unsafe::allocateMemory has been called by Main (file:)\nWARNING: Please consider reporting this to the maintainers of class Main\nWARNING: sun.misc.Unsafe::allocateMemory will be removed in a future release\nsecond, read by address: 20\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "view.go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"unsafe\"\n)\n\nfunc main() {\n\ts := \"héllo\"\n\t// a []byte that shares the string's memory instead of copying it\n\tb := unsafe.Slice(unsafe.StringData(s), len(s))\n\tfmt.Println(\"bytes:\", b)\n\tfmt.Println(\"same address:\", unsafe.StringData(s) == &b[0])\n\tfmt.Println(\"sizeof string header:\", unsafe.Sizeof(s))\n}\n",
+   "out": "bytes: [104 195 169 108 108 111]\nsame address: true\nsizeof string header: 16\n",
+   "lang": "go",
+   "exit": 0
+  }
+ },
+ "exercises": {
+  "audit": {
+   "starter": "// `blank` makes rustc warn (invalid_value); the lint is allowed so the file stays quiet\n#![allow(dead_code, invalid_value)]\n\nuse std::slice;\n\n/// What a `// SAFETY:` comment on the unsafe block below would have to promise,\n/// and the code does not make true.\n#[derive(Debug, Clone, Copy, PartialEq)]\nenum Missing {\n    /// Nothing is missing: the code establishes everything its unsafe block needs.\n    NothingMissing,\n    /// The index is within the slice.\n    InBounds,\n    /// The pointer has the alignment of the type it is read as.\n    Aligned,\n    /// The pointer points at something that is still alive.\n    Alive,\n    /// The memory holds a valid value of the type.\n    Initialized,\n    /// No other reference to the same memory exists while this one is used.\n    NotAliased,\n}\n\nfn first(v: &[u32]) -> u32 {\n    // SAFETY: `v` is a valid slice, so its pointer is valid for reads\n    unsafe { *v.as_ptr() }\n}\n\nfn as_words(bytes: &[u8]) -> &[u32] {\n    // SAFETY: the pointer is valid for `bytes.len() / 4` words of 4 bytes each\n    unsafe { slice::from_raw_parts(bytes.as_ptr() as *const u32, bytes.len() / 4) }\n}\n\nfn leftover() -> i32 {\n    let p = {\n        let x = 7;\n        &raw const x\n    };\n    // SAFETY: `p` was made from a valid variable\n    unsafe { *p }\n}\n\nfn blank() -> String {\n    // SAFETY: a `String` is just bytes, so all zero bytes are a valid `String`\n    unsafe { std::mem::zeroed() }\n}\n\nfn last(v: &[u32]) -> Option<u32> {\n    if v.is_empty() {\n        return None;\n    }\n    // SAFETY: `v` is not empty, so `len - 1` is in bounds, and the pointer comes from a live slice\n    Some(unsafe { *v.as_ptr().add(v.len() - 1) })\n}\n\nfn twice(v: &mut [i32]) -> (&mut i32, &mut i32) {\n    assert!(!v.is_empty());\n    let p = v.as_mut_ptr();\n    // SAFETY: `p` is valid for reads and writes of one `i32`, since `v` is not empty\n    unsafe { (&mut *p, &mut *p) }\n}\n\n/// For each function above, in order (`first`, `as_words`, `leftover`, `blank`, `last`,\n/// `twice`), say which condition its unsafe block relies on without making it true.\n/// Do not call them: five of the six are undefined behavior on some input.\nfn audit() -> [Missing; 6] {\n    todo!(\"one Missing per function: read each SAFETY comment, then the code around it\")\n}\n\nfn main() {\n    let expected = [\n        Missing::InBounds,\n        Missing::Aligned,\n        Missing::Alive,\n        Missing::Initialized,\n        Missing::NothingMissing,\n        Missing::NotAliased,\n    ];\n    let names = [\"first\", \"as_words\", \"leftover\", \"blank\", \"last\", \"twice\"];\n    let hints = [\n        \"what does `v.as_ptr()` point at when `v` has no elements?\",\n        \"a `&[u8]` can start at any address; which addresses may a `u32` live at?\",\n        \"where does `x` live, and when does that end?\",\n        \"can all-zero bytes be a `String`? Think about its pointer field.\",\n        \"read the code above the block: is each condition already made true there?\",\n        \"how many `&mut` to the same `i32` exist at once? (the `assert!` already handles the empty slice)\",\n    ];\n    let guess = audit();\n    // the first wrong answer is named, with a question to reason from, not the answer\n    for (i, (g, e)) in guess.iter().zip(&expected).enumerate() {\n        assert!(\n            g == e,\n            \"{}: you answered {g:?}. Ask: {}\",\n            names[i],\n            hints[i]\n        );\n    }\n    // the one sound function really is sound: it handles both of the cases that matter\n    assert_eq!(last(&[]), None);\n    assert_eq!(last(&[1, 2, 3]), Some(3));\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "// `blank` makes rustc warn (invalid_value); the lint is allowed so the file stays quiet\n#![allow(dead_code, invalid_value)]\n\nuse std::slice;\n\n/// What a `// SAFETY:` comment on the unsafe block below would have to promise,\n/// and the code does not make true.\n#[derive(Debug, Clone, Copy, PartialEq)]\nenum Missing {\n    /// Nothing is missing: the code establishes everything its unsafe block needs.\n    NothingMissing,\n    /// The index is within the slice.\n    InBounds,\n    /// The pointer has the alignment of the type it is read as.\n    Aligned,\n    /// The pointer points at something that is still alive.\n    Alive,\n    /// The memory holds a valid value of the type.\n    Initialized,\n    /// No other reference to the same memory exists while this one is used.\n    NotAliased,\n}\n\nfn first(v: &[u32]) -> u32 {\n    // SAFETY: `v` is a valid slice, so its pointer is valid for reads\n    unsafe { *v.as_ptr() }\n}\n\nfn as_words(bytes: &[u8]) -> &[u32] {\n    // SAFETY: the pointer is valid for `bytes.len() / 4` words of 4 bytes each\n    unsafe { slice::from_raw_parts(bytes.as_ptr() as *const u32, bytes.len() / 4) }\n}\n\nfn leftover() -> i32 {\n    let p = {\n        let x = 7;\n        &raw const x\n    };\n    // SAFETY: `p` was made from a valid variable\n    unsafe { *p }\n}\n\nfn blank() -> String {\n    // SAFETY: a `String` is just bytes, so all zero bytes are a valid `String`\n    unsafe { std::mem::zeroed() }\n}\n\nfn last(v: &[u32]) -> Option<u32> {\n    if v.is_empty() {\n        return None;\n    }\n    // SAFETY: `v` is not empty, so `len - 1` is in bounds, and the pointer comes from a live slice\n    Some(unsafe { *v.as_ptr().add(v.len() - 1) })\n}\n\nfn twice(v: &mut [i32]) -> (&mut i32, &mut i32) {\n    assert!(!v.is_empty());\n    let p = v.as_mut_ptr();\n    // SAFETY: `p` is valid for reads and writes of one `i32`, since `v` is not empty\n    unsafe { (&mut *p, &mut *p) }\n}\n\n/// For each function above, in order (`first`, `as_words`, `leftover`, `blank`, `last`,\n/// `twice`), say which condition its unsafe block relies on without making it true.\n/// Do not call them: five of the six are undefined behavior on some input.\nfn audit() -> [Missing; 6] {\n    [\n        Missing::InBounds,\n        Missing::Aligned,\n        Missing::Alive,\n        Missing::Initialized,\n        Missing::NothingMissing,\n        Missing::NotAliased,\n    ]\n}\n\nfn main() {\n    let expected = [\n        Missing::InBounds,\n        Missing::Aligned,\n        Missing::Alive,\n        Missing::Initialized,\n        Missing::NothingMissing,\n        Missing::NotAliased,\n    ];\n    let names = [\"first\", \"as_words\", \"leftover\", \"blank\", \"last\", \"twice\"];\n    let hints = [\n        \"what does `v.as_ptr()` point at when `v` has no elements?\",\n        \"a `&[u8]` can start at any address; which addresses may a `u32` live at?\",\n        \"where does `x` live, and when does that end?\",\n        \"can all-zero bytes be a `String`? Think about its pointer field.\",\n        \"read the code above the block: is each condition already made true there?\",\n        \"how many `&mut` to the same `i32` exist at once? (the `assert!` already handles the empty slice)\",\n    ];\n    let guess = audit();\n    // the first wrong answer is named, with a question to reason from, not the answer\n    for (i, (g, e)) in guess.iter().zip(&expected).enumerate() {\n        assert!(\n            g == e,\n            \"{}: you answered {g:?}. Ask: {}\",\n            names[i],\n            hints[i]\n        );\n    }\n    // the one sound function really is sound: it handles both of the cases that matter\n    assert_eq!(last(&[]), None);\n    assert_eq!(last(&[1, 2, 3]), Some(3));\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "registry": {
+   "starter": "#![forbid(unsafe_code)]\n\nuse std::collections::HashSet;\nuse std::thread;\n\n// Declare the global state here. It must be a `static` that several threads can use.\n// The file forbids `unsafe`, so `static mut` is not an option.\n\n/// Records `name` and returns how many names are recorded, counting this one.\nfn register(name: &str) -> usize {\n    todo!(\"add the name to a global and return the new count: {name}\")\n}\n\n/// Every recorded name, sorted.\nfn names() -> Vec<String> {\n    todo!(\"read the global\")\n}\n\nfn main() {\n    let counts: Vec<usize> = thread::scope(|s| {\n        let handles: Vec<_> = (0..4)\n            .map(|t| {\n                s.spawn(move || {\n                    (0..250)\n                        .map(|i| register(&format!(\"t{t}-{i:03}\")))\n                        .collect::<Vec<_>>()\n                })\n            })\n            .collect();\n        handles\n            .into_iter()\n            .flat_map(|h| h.join().unwrap())\n            .collect()\n    });\n\n    // every call saw a different count, 1 through 1000: no update was lost\n    let unique: HashSet<usize> = counts.iter().copied().collect();\n    assert_eq!(unique.len(), 1000, \"two calls returned the same count\");\n    assert_eq!(counts.iter().max(), Some(&1000));\n\n    let all = names();\n    assert_eq!(all.len(), 1000);\n    assert!(\n        all.windows(2).all(|w| w[0] < w[1]),\n        \"names must be sorted and unique\"\n    );\n    assert_eq!(all[0], \"t0-000\");\n    assert_eq!(all[999], \"t3-249\");\n\n    // a late registration must show up too: the global holds the names, not just a count\n    assert_eq!(register(\"zzz\"), 1001);\n    assert!(\n        names().contains(&String::from(\"zzz\")),\n        \"names() lost a name\"\n    );\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "#![forbid(unsafe_code)]\n\nuse std::collections::HashSet;\nuse std::sync::Mutex;\nuse std::thread;\n\n// Declare the global state here. It must be a `static` that several threads can use.\n// The file forbids `unsafe`, so `static mut` is not an option.\nstatic NAMES: Mutex<Vec<String>> = Mutex::new(Vec::new());\n\n/// Records `name` and returns how many names are recorded, counting this one.\nfn register(name: &str) -> usize {\n    let mut names = NAMES.lock().unwrap();\n    names.push(name.to_string());\n    names.len()\n}\n\n/// Every recorded name, sorted.\nfn names() -> Vec<String> {\n    let mut all = NAMES.lock().unwrap().clone();\n    all.sort();\n    all\n}\n\nfn main() {\n    let counts: Vec<usize> = thread::scope(|s| {\n        let handles: Vec<_> = (0..4)\n            .map(|t| {\n                s.spawn(move || {\n                    (0..250)\n                        .map(|i| register(&format!(\"t{t}-{i:03}\")))\n                        .collect::<Vec<_>>()\n                })\n            })\n            .collect();\n        handles\n            .into_iter()\n            .flat_map(|h| h.join().unwrap())\n            .collect()\n    });\n\n    // every call saw a different count, 1 through 1000: no update was lost\n    let unique: HashSet<usize> = counts.iter().copied().collect();\n    assert_eq!(unique.len(), 1000, \"two calls returned the same count\");\n    assert_eq!(counts.iter().max(), Some(&1000));\n\n    let all = names();\n    assert_eq!(all.len(), 1000);\n    assert!(\n        all.windows(2).all(|w| w[0] < w[1]),\n        \"names must be sorted and unique\"\n    );\n    assert_eq!(all[0], \"t0-000\");\n    assert_eq!(all[999], \"t3-249\");\n\n    // a late registration must show up too: the global holds the names, not just a count\n    assert_eq!(register(\"zzz\"), 1001);\n    assert!(\n        names().contains(&String::from(\"zzz\")),\n        \"names() lost a name\"\n    );\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "wrap": {
+   "starter": "use std::sync::atomic::{AtomicUsize, Ordering};\n\nstatic CALLS: AtomicUsize = AtomicUsize::new(0);\nstatic BAD_CALLS: AtomicUsize = AtomicUsize::new(0);\n\n/// Swaps `v[i]` and `v[j]` without checking the indices.\n///\n/// # Safety\n/// `i` and `j` must both be less than `v.len()`.\nunsafe fn swap_unchecked(v: &mut [i32], i: usize, j: usize) {\n    CALLS.fetch_add(1, Ordering::SeqCst);\n    if i >= v.len() || j >= v.len() {\n        // The real thing would be undefined behavior. For this exercise the mistake is\n        // counted and nothing else happens, so a wrong answer cannot corrupt memory.\n        BAD_CALLS.fetch_add(1, Ordering::SeqCst);\n        return;\n    }\n    let p = v.as_mut_ptr();\n    // SAFETY: both indices are in bounds, and `ptr::swap` allows `i == j`\n    unsafe { std::ptr::swap(p.add(i), p.add(j)) }\n}\n\n#[derive(Debug, PartialEq)]\nenum SwapError {\n    OutOfRange { index: usize, len: usize },\n}\n\n/// A safe wrapper around `swap_unchecked`: check `i` first, then `j`, and call the unsafe\n/// function only when both are in range. Say in a `// SAFETY:` comment why the call is sound.\nfn swap_checked(v: &mut [i32], i: usize, j: usize) -> Result<(), SwapError> {\n    todo!(\"return Err(OutOfRange) for the first index that is too big, else call swap_unchecked\")\n}\n\nfn main() {\n    let mut v = [1, 2, 3];\n    assert_eq!(swap_checked(&mut v, 0, 2), Ok(()));\n    assert_eq!(v, [3, 2, 1]);\n    assert_eq!(swap_checked(&mut v, 1, 1), Ok(()));\n    assert_eq!(v, [3, 2, 1]);\n\n    assert_eq!(\n        swap_checked(&mut v, 7, 0),\n        Err(SwapError::OutOfRange { index: 7, len: 3 })\n    );\n    assert_eq!(\n        swap_checked(&mut v, 0, 9),\n        Err(SwapError::OutOfRange { index: 9, len: 3 })\n    );\n    assert_eq!(\n        swap_checked(&mut v, 7, 9),\n        Err(SwapError::OutOfRange { index: 7, len: 3 })\n    );\n    assert_eq!(v, [3, 2, 1], \"a rejected call must not change the slice\");\n    assert_eq!(\n        swap_checked(&mut [], 0, 0),\n        Err(SwapError::OutOfRange { index: 0, len: 0 })\n    );\n\n    // two calls were allowed to reach the unsafe function: no more, no fewer, and none wrong\n    assert_eq!(\n        CALLS.load(Ordering::SeqCst),\n        2,\n        \"call the unsafe function once per valid swap, and only then\"\n    );\n    assert_eq!(\n        BAD_CALLS.load(Ordering::SeqCst),\n        0,\n        \"the unsafe function was called with a bad index\"\n    );\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "use std::sync::atomic::{AtomicUsize, Ordering};\n\nstatic CALLS: AtomicUsize = AtomicUsize::new(0);\nstatic BAD_CALLS: AtomicUsize = AtomicUsize::new(0);\n\n/// Swaps `v[i]` and `v[j]` without checking the indices.\n///\n/// # Safety\n/// `i` and `j` must both be less than `v.len()`.\nunsafe fn swap_unchecked(v: &mut [i32], i: usize, j: usize) {\n    CALLS.fetch_add(1, Ordering::SeqCst);\n    if i >= v.len() || j >= v.len() {\n        // The real thing would be undefined behavior. For this exercise the mistake is\n        // counted and nothing else happens, so a wrong answer cannot corrupt memory.\n        BAD_CALLS.fetch_add(1, Ordering::SeqCst);\n        return;\n    }\n    let p = v.as_mut_ptr();\n    // SAFETY: both indices are in bounds, and `ptr::swap` allows `i == j`\n    unsafe { std::ptr::swap(p.add(i), p.add(j)) }\n}\n\n#[derive(Debug, PartialEq)]\nenum SwapError {\n    OutOfRange { index: usize, len: usize },\n}\n\n/// A safe wrapper around `swap_unchecked`: check `i` first, then `j`, and call the unsafe\n/// function only when both are in range. Say in a `// SAFETY:` comment why the call is sound.\nfn swap_checked(v: &mut [i32], i: usize, j: usize) -> Result<(), SwapError> {\n    for index in [i, j] {\n        if index >= v.len() {\n            return Err(SwapError::OutOfRange {\n                index,\n                len: v.len(),\n            });\n        }\n    }\n    // SAFETY: both indices were just checked to be less than `v.len()`\n    unsafe { swap_unchecked(v, i, j) };\n    Ok(())\n}\n\nfn main() {\n    let mut v = [1, 2, 3];\n    assert_eq!(swap_checked(&mut v, 0, 2), Ok(()));\n    assert_eq!(v, [3, 2, 1]);\n    assert_eq!(swap_checked(&mut v, 1, 1), Ok(()));\n    assert_eq!(v, [3, 2, 1]);\n\n    assert_eq!(\n        swap_checked(&mut v, 7, 0),\n        Err(SwapError::OutOfRange { index: 7, len: 3 })\n    );\n    assert_eq!(\n        swap_checked(&mut v, 0, 9),\n        Err(SwapError::OutOfRange { index: 9, len: 3 })\n    );\n    assert_eq!(\n        swap_checked(&mut v, 7, 9),\n        Err(SwapError::OutOfRange { index: 7, len: 3 })\n    );\n    assert_eq!(v, [3, 2, 1], \"a rejected call must not change the slice\");\n    assert_eq!(\n        swap_checked(&mut [], 0, 0),\n        Err(SwapError::OutOfRange { index: 0, len: 0 })\n    );\n\n    // two calls were allowed to reach the unsafe function: no more, no fewer, and none wrong\n    assert_eq!(\n        CALLS.load(Ordering::SeqCst),\n        2,\n        \"call the unsafe function once per valid swap, and only then\"\n    );\n    assert_eq!(\n        BAD_CALLS.load(Ordering::SeqCst),\n        0,\n        \"the unsafe function was called with a bad index\"\n    );\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}

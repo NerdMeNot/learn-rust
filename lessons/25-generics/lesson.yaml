@@ -1,0 +1,117 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Generics"
+part: "abstractions"
+intro: >-
+  A generic function or type is written once with a placeholder, `T`, and the compiler
+  fills it in for each type you use. A bound such as `T: PartialOrd` says what `T` must
+  be able to do, and the body may use only that.
+coming_from:
+  go: >-
+    `fn largest<T: PartialOrd>` is `func largest[T cmp.Ordered]`, with the type
+    parameter in angle brackets. The bound is a trait, so any type that implements
+    `PartialOrd`, including your own structs, qualifies, not just the built-in ordered
+    types.
+  kotlin: >-
+    `<T: PartialOrd>` reads like `<T : Comparable<T>>`. Rust compiles a separate copy of
+    the function for each type you use, so there is no type erasure and no `reified`
+    keyword: `TypeId::of::<T>()` identifies a `'static` type, and trait functions such as
+    `T::default()` cover the rest.
+  python: >-
+    `fn largest<T: PartialOrd>` is the 3.12 syntax `def largest[T: Comparable]`, but the
+    compiler enforces the bound. You can't use `>` on `T` unless the bound says it can.
+    Python does not check hints when the program runs; a type checker such as mypy can,
+    but only if you run one.
+  typescript: >-
+    `<T: PartialOrd>` is like `<T extends ...>`, but the bound is a trait (something the
+    type can do), not a list of allowed types. Any type with `PartialOrd`, including
+    your own struct with `#[derive(PartialOrd)]`, can be passed in.
+  java: >-
+    `fn largest<T: PartialOrd>` is `<T extends Comparable<T>>`, and you can use `<` and
+    `>` directly. Rust generics are not erased: the compiler makes a separate copy for
+    each type used, so `T` works with plain numbers without boxing.
+  csharp: >-
+    `<T: PartialOrd>` is `where T : IComparable<T>`, and you can use `<` and `>` instead
+    of `CompareTo`. Like C#, Rust does not erase `T`, but it gets there differently: the
+    compiler makes a separate copy of the function for each type, so no `T` exists at
+    run time (C# keeps it, and `typeof(T)` works).
+  c: >-
+    C has no generics, so you'd write `largest_int` and `largest_str` by hand or paste
+    text with a macro. Rust writes those copies for you and type-checks them.
+  cpp: >-
+    Generics are templates with a concept, `T: PartialOrd` playing the role of
+    `std::totally_ordered T`, and each type gets its own compiled copy. The difference
+    is that Rust checks the function body against the bound once, so a missing bound is
+    reported at the definition. A concept checks the call, not the body: a `+` it never
+    promised still fails per type, inside the body.
+notes:
+  - >-
+    `T: PartialOrd` means "any type `T` whose values can be compared with `<` and `>`".
+    Without it, the compiler won't let you compare two `T` values.
+  - >-
+    This returns `&T`, a reference to the biggest item inside `items`, so nothing is
+    copied.
+  - >-
+    Several bounds: `T: PartialOrd + Display`. Long lists go in a `where` clause after
+    the signature.
+  - >-
+    Rust makes you state the constraint up front. `largest<T>` with no bound is a
+    compile error, because the compiler checks a generic function on its own, before
+    anyone calls it.
+gotcha:
+  title: "Adding two `T`s and returning a `T`"
+  verdict: "rust-rule"
+  looks_fine: >-
+    Adding two numbers of one type gives that type, so a generic `add(a, b)` that
+    returns `T` only seems to need a way to say that `T` can be added.
+  rust_sees: >-
+    `T: Add` says only that two `T` values can be added. The type of the sum is a
+    separate type, `<T as Add>::Output`, and nothing says it is `T`. So the compiler
+    refuses to return it as a `T`.
+  why: >-
+    In Rust, `+` calls the `add` method of the `Add` trait, and each implementation
+    chooses its own result type. For `i32` it is `i32`, but for `&i32` it is also `i32`,
+    not `&i32`. `Add<Output = T>` promises that the sum is a `T`, and the compiler's
+    `help:` writes it for you. The toolkit below prints the types.
+  langs:
+    go:
+      status: "runs"
+      says: >-
+        Go prints 5 and 3.75. The constraint `int | float64` lists the allowed types, and
+        `+` on a `T` gives a `T` back, so nothing more needs to be said.
+    kotlin:
+      status: "refuses"
+      says: >-
+        Kotlin refuses too. `Number` has no `plus`, so `a + b` on a `T : Number` finds
+        nothing to call.
+    python:
+      status: "runs"
+      says: >-
+        Python prints 5 and 3.75. The interpreter does not check the `[T]` hint when the
+        program runs, so `a + b` is tried with whatever arrives. A type checker such as mypy
+        would reject `a + b` on an unbounded `T`; this site does not run one.
+    typescript:
+      status: "refuses"
+      says: >-
+        TypeScript refuses too, in terms close to Rust's: the sum is a `number`, and `T`
+        could be a narrower type, so it cannot be returned as a `T`.
+    java:
+      status: "refuses"
+      says: >-
+        Java refuses too (`bad operand types for binary operator '+'`). `Number` has no `+`,
+        and a type variable cannot supply one.
+    csharp:
+      status: "runs"
+      says: >-
+        C# prints 5 and 3.75. The `INumber<T>` constraint (C# 11) says `T` has `+` and that
+        adding two `T` gives a `T`, so the promise is in the constraint.
+    c:
+      status: "runs"
+      says: >-
+        C prints 5 and 3.75. The macro pastes `((2) + (3))` and `((1.5) + (2.25))` before
+        the compiler looks at types, so there is no generic function to check.
+    cpp:
+      status: "runs"
+      says: >-
+        C++ prints 5 and 3.75. With no constraint, the template body is checked when it is
+        used with `int` and with `double`. A C++20 concept would check the call, not the
+        body. Rust checks the body once, against the bound.

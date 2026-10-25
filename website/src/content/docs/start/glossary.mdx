@@ -1,0 +1,246 @@
+---
+title: "Glossary: Rust words in plain English"
+description: "Look up a Rust word, see what it means in plain words, the closest idea in Go, Java, Kotlin, C#, Python, TypeScript, C or C++, and the lesson that teaches it."
+---
+
+You will meet words in Rust code, compiler messages and docs that no other language uses. This page gives each a plain meaning, the closest idea you may already know, and the lesson section that teaches it. Symbols come first, then A to Z. A word that a lesson only mentions in passing is explained in one line here.
+
+## Symbols
+
+| Word | Plain meaning | You may know it as | Taught in |
+| --- | --- | --- | --- |
+| **`'a`** | A lifetime name that ties a returned reference to the inputs it borrows from. | None in Go, Java, Kotlin, C#, Python or TypeScript. | [Lifetimes](/learn/lifetimes/#naming-a-lifetime-a) |
+| **`'static`** | A lifetime that lasts the whole run of the program; as a bound, `T: 'static` means `T` holds no borrow that could end early. | Not C's `static`. | [Lifetimes](/learn/lifetimes/#static) |
+| **`?`** | After a `Result` or an `Option`, it takes the value out, or returns the failure from the whole function right now. | Go: the `if err != nil { return err }` pair, in one character. Not a ternary, not `?.`. | [Errors and Result](/learn/errors/#-pass-the-error-up) |
+| **`!`** after a name | Marks a macro call, as in `println!`. | C: nothing at the call shows a macro. | [Macros, attributes and comments](/learn/macros-attributes-naming/#the--a-macro-call) |
+| **`&T`** | A shared reference: the address of a value that already exists, read-only, owning nothing. | C++: close to `const T&`, but the compiler checks it cannot outlive the value. | [Borrowing](/learn/borrowing/#a-reference-is-a-read-only-address) |
+| **`&mut T`** | A mutable reference: it may change the value it points at, and while it exists nothing else may use that value. | C#: `ref` is the nearest form. C++: close to `T&`, with the one-writer rule checked. | [Mutable Borrows](/learn/mutable-borrows/#mut-lend-a-value-to-be-changed) |
+| **`::`** | Walks a path to a name, such as a module, a type or a function; `.` works on a value you hold. | C++: `::` is also a path. | [Rust at a glance](/learn/rust-at-a-glance/#paths-and-dots) |
+| **`@`** | In a pattern, tests a pattern and names the value in one step, as in `n @ 1..=9`. | Python: `case 1 \| 2 \| 3 as n` in `match`. | [Match](/learn/match/#names--and-guards) |
+| **`_`** | A pattern that fits anything and binds nothing; `_name` is a real variable that only silences the unused warning. | Go and Python: `_`. | [Patterns](/learn/patterns/#_-ignores-_name-binds) |
+
+## A
+
+| Word | Plain meaning | You may know it as | Taught in |
+| --- | --- | --- | --- |
+| **`as`** | Converts between simple types, mostly numbers; it never fails at run time, so it can lose information. | C: a cast such as `(int)x`, but every case is defined (no undefined behaviour). | [Numbers and Types](/learn/types/#as-casts-that-never-fail) |
+| **associated function** | A function in an `impl` with no `self`, called with `::` on the type, like `Account::new`. | Java, C#: a static method. Kotlin: a companion-object function. | [Methods](/learn/methods/#functions-without-self-new-self-and-constants) |
+| **associated type** | A type that a trait leaves for each implementing type to choose, like `Item` in `Iterator`. | Close to an interface's type parameter, but the implementer fixes it once. | [Traits](/learn/traits/#associated-types-and-constants) |
+| **`async`** | Marks a function or block whose body becomes a future: nothing runs until it is `.await`ed or handed to a runtime, and the standard library has no runtime. | C#, Python, TypeScript: `async` and `await`. Python coroutines are also lazy; C# tasks and JavaScript promises start at once. | [Async Basics](/learn/async-basics/), [Async with Tokio](/build/tokio/) |
+| **attribute** | A note to the compiler about the item after it, written `#[...]`, or `#![...]` for the item it sits inside. | Java: annotation. C#: attribute. Not a Python decorator. | [Macros, attributes and comments](/learn/macros-attributes-naming/#attributes-) |
+
+## B
+
+| Word | Plain meaning | You may know it as | Taught in |
+| --- | --- | --- | --- |
+| **binding mode** (default binding modes, match ergonomics) | When you match a reference against a pattern that is not a reference, Rust looks through it and makes each name a reference too. | None. | [Patterns](/learn/patterns/#references-in-patterns) |
+| **borrow** | To make a reference to a value you do not own; it lasts until the reference's last use. | C++: close to passing a `const T&`, but the compiler checks how long it lives. | [Borrowing](/learn/borrowing/#a-reference-is-a-read-only-address) |
+| **borrow checker** | The part of the compiler that checks every borrow. | None in your languages. | [Borrowing](/learn/borrowing/#what-the-compiler-is-checking) |
+| **`Box<T>`** | An owned pointer to one `T` on the heap; the value is freed when the box is dropped. | C++: `std::unique_ptr<T>`. | [Ownership and Moves](/learn/ownership/#boxt-one-value-on-the-heap) |
+
+## C
+
+| Word | Plain meaning | You may know it as | Taught in |
+| --- | --- | --- | --- |
+| **Cargo** | Rust's build tool and package manager: `cargo new`, `cargo run`, `cargo build`. | Go: the `go` command. C#: `dotnet`. Node: npm. | [Hello World](/learn/hello-world/#the-commands) |
+| **`Cargo.toml`** (manifest) | The file that holds a package's name, version, edition and dependencies. | `package.json`, `go.mod`, `pom.xml`. | [Hello World](/learn/hello-world/#the-commands) |
+| **`Cell`, `RefCell`** | Types that change a value through a plain `let` or a shared reference; `Cell` copies values in and out, `RefCell` checks the borrow rules while the program runs. | None. C++: a `mutable` member does the same job for a const object. | [Smart pointers](/learn/smart-pointers/#cell-and-refcell-change-it-through-a-shared-reference) |
+| **`char`** | One Unicode scalar value, 4 bytes wide. It is not a byte. | Go: `rune`. Not C's or Java's `char`. | [Declarations and types](/learn/declarations-types/#a-char-is-not-a-byte) |
+| **`Clone`** | A trait with `.clone()`, an explicit copy that may run any code. | C++: close to a copy constructor, but it runs only when you call it. | [Ownership and Moves](/learn/ownership/#clone) |
+| **closure** | A small function written inline, as `\|x\| x + 1`, that can use the variables around it. | Lambda in Java, Kotlin, C#, Python, TypeScript. Go: a func literal. | [Closures](/learn/closures/#what-a-closure-captures) |
+| **`const`** | A name for a value known before the program runs, copied into every place that uses it. | Go and C#: `const`. | [Variables](/learn/variables/#const-static-and-let) |
+| **const generic** | A generic parameter that is an integer, `char` or `bool`, known when the program is compiled, such as the length of an array. | C++: a non-type template parameter. | [Generics](/learn/generics/#const-generics) |
+| **constructor** | Rust has none; a plain function that returns the struct does the job, and `new` is only a habit. | A static factory method. Go: a `NewX` function, the same habit. | [Methods](/learn/methods/#functions-without-self-new-self-and-constants) |
+| **`Copy`** | A trait for types that a plain bit-for-bit copy duplicates, so `let b = a;` leaves `a` usable. | Go struct assignment always copies; in Rust you opt in. | [Ownership and Moves](/learn/ownership/#copy-types) |
+| **crate** | One unit of compilation: a program or a library, made of a tree of modules. | Java, Kotlin: a module. C#: an assembly. | [Modules and Visibility](/learn/modules/#packages-and-crates) |
+
+## D
+
+| Word | Plain meaning | You may know it as | Taught in |
+| --- | --- | --- | --- |
+| **dangling reference** | A reference to something that is gone; in safe Rust the compiler refuses a program that would make one. | C and C++: dangling pointers compile. | [Borrowing](/learn/borrowing/#how-long-a-borrow-lasts) |
+| **data race** | Two threads using the same memory at the same time, at least one writing, with nothing coordinating them. | The same term in Go, Java and C++; in C++ it is undefined behaviour. | [Mutable Borrows](/learn/mutable-borrows/#what-the-rule-buys), [Shared state](/learn/shared-state/#what-rust-refuses) |
+| **`Debug`** | The trait behind `{:?}`: a form meant for programmers, which `#[derive(Debug)]` writes for you. | Python: `repr`. Go: close to `%v`. | [Macros, attributes and comments](/learn/macros-attributes-naming/#format-strings) |
+| **`Default`** | A trait that makes a "blank" value, for `T::default()` and `..Default::default()`. | Close to Go's zero value, but only types that opt in have one. | [Common Traits](/learn/common-traits/#starting-from-a-default) |
+| **deref coercion** | Where the type is known, the compiler turns a `&String` into a `&str`, and a `&Vec<T>` into a `&[T]`, by itself. | None. | [Borrowing](/learn/borrowing/#string-becomes-str-by-itself) |
+| **derive** | `#[derive(...)]` asks the compiler to write standard trait code for a type from its fields. | Close to a Kotlin `data class` or Java `record`, but those also declare the fields and constructor; `derive` only adds trait code to a struct you declare, and you pick each trait. | [Structs](/learn/structs/#derive-asking-the-compiler-for-standard-behaviour) |
+| **destructuring** | Taking a value apart with a pattern, so each name gets its part. | Python: unpacking. TypeScript: destructuring. C#: deconstruction. | [Patterns](/learn/patterns/#patterns-stand-in-many-places) |
+| **discriminant** | The number each variant of a data-free enum has, starting at 0 or at the value you give it. | C: the value of an enum constant. Java: `ordinal()`. | [Enums](/learn/enums/#enums-with-no-data-are-numbers-underneath) |
+| **`Display`** | The trait behind `{}` and `.to_string()`: text for the people who use the program, which you write yourself. | Java: `toString()`. Python: `__str__`. Go: `String()`. | [Common Traits](/learn/common-traits/#printing-debug-and-display) |
+| **`Drop`** | A trait whose `drop` method runs when a value goes out of scope. | C++: a destructor. Go: `defer` is close. | [Ownership and Moves](/learn/ownership/#scopes-drop-order-and-let-_) |
+| **`dyn`** | Marks a type known only by the trait it has; which method runs is looked up at run time. | Go: an interface value. Java: an interface reference. | [Trait Objects](/learn/trait-objects/#a-value-whose-type-you-have-forgotten) |
+| **dynamic dispatch** | Choosing the method to run at run time, through a vtable. | Java: an ordinary interface call. C++: a virtual call. | [Traits](/learn/traits/#static-and-dynamic-dispatch-in-one-program) |
+
+## E
+
+| Word | Plain meaning | You may know it as | Taught in |
+| --- | --- | --- | --- |
+| **edition** | A named set of language rules that a package picks in `Cargo.toml`, so Rust can change without breaking old code. | C++: the `-std=` choice is close. | [Hello World](/learn/hello-world/#editions) |
+| **elision** (lifetime elision) | The compiler fills in lifetimes by three fixed rules, so you often write none. | None. | [Lifetimes](/learn/lifetimes/#leaving-them-out-the-elision-rules) |
+| **enum** | A type that is exactly one of a fixed list of variants, and each variant can carry its own data. | Kotlin: `sealed class`. Java: `sealed interface` and records. Not a plain C enum. | [Enums](/learn/enums/#an-enum-is-one-of-a-fixed-list) |
+| **exhaustive** | A `match` must cover every possible value, and the compiler checks it. | Kotlin `when` and Java `switch` over a sealed type. | [Match](/learn/match/#every-case-must-be-covered) |
+| **expression** | Code that produces a value; in Rust `if`, `match`, `loop` and blocks are expressions too. | The same word. Kotlin: `if` and `when` are expressions too. Elsewhere `if` is a statement. | [Statements and expressions](/learn/statements-expressions/#statement-or-expression) |
+
+## F
+
+| Word | Plain meaning | You may know it as | Taught in |
+| --- | --- | --- | --- |
+| **fat pointer** | A pointer plus a second word: for a slice or `&str`, the length; for `dyn`, the address of the vtable. | Go: an interface value is also two words. | [Trait Objects](/learn/trait-objects/#what-a-dyn-pointer-is-made-of) |
+| **`Fn`, `FnMut`, `FnOnce`** | Three traits; each closure gets the ones its body allows: `Fn` if it only reads what it captured, `FnMut` if it changes it, `FnOnce` if it gives it away (a closure that gives something away is only `FnOnce`). | None. | [Closures](/learn/closures/#fn-fnmut-and-fnonce) |
+| **`From`, `Into`** | `From` converts one type into another without failing; implement it and `.into()` comes free. | C++: a converting constructor is close, but those are implicit; Rust conversions are always written (`.into()`). | [Common Traits](/learn/common-traits/#converting-between-types) |
+
+## G
+
+| Word | Plain meaning | You may know it as | Taught in |
+| --- | --- | --- | --- |
+| **generic** | Written once with a placeholder type such as `T`, which the compiler fills in at each call. | Generics in Java, Kotlin, C# and Go. C++ templates are closest. | [Generics](/learn/generics/#generic-functions) |
+| **guard** | An `if` condition after a pattern; the arm runs only if the pattern fits and the condition is true. | Python: `case n if ...`. C#: `when`. | [Match](/learn/match/#names--and-guards) |
+
+## H
+
+| Word | Plain meaning | You may know it as | Taught in |
+| --- | --- | --- | --- |
+| **`Hash`** | A trait that feeds a value into a hasher; a `HashMap` key or `HashSet` item needs `Hash` and `Eq` (a `BTreeMap` key needs `Ord`). | Java: `hashCode()`. C#: `GetHashCode()`. Python: `__hash__`. | [Common Traits](/learn/common-traits/#equality-order-and-hashing) |
+| **heap** | A large pool of memory the program asks an allocator for while it runs; `String`, `Vec` and `Box` own heap data. | C and C++: the same heap. | [Values, the Stack and the Heap](/learn/stack-heap/#the-heap) |
+
+## I
+
+| Word | Plain meaning | You may know it as | Taught in |
+| --- | --- | --- | --- |
+| **`impl`** | A block that gives a type its methods, or `impl Trait for Type` that gives it a trait's methods. | Go: methods declared outside the struct. | [Methods](/learn/methods/#a-method-is-a-function-with-a-self-parameter) |
+| **`impl Trait`** | In a parameter, shorthand for a bounded type parameter; in a result, one type the function chooses and hides. | The parameter form: Java's `<T extends X>`. | [Traits](/learn/traits/#returning-something-that-implements-a-trait) |
+| **interior mutability** | Types that change data through a shared `&` on purpose, and stay safe by other means. | C++: `mutable` members are close. | [Borrowing](/learn/borrowing/#what-the-compiler-is-checking) |
+| **`IntoIterator`** | The trait for "can become an iterator"; `for x in v` calls it. | Java: `Iterable`. Python: an iterable. | [Iterators](/learn/iterators/#intoiterator-why-for-x-in-v-works) |
+| **irrefutable** | A pattern that fits every value of its type, so `let` and `for` accept it. | None. | [Patterns](/learn/patterns/#patterns-that-must-always-fit) |
+| **iterator** | Anything with a `next()` method that returns `Some(item)` until it returns `None`. | Java: `Iterator`, with `hasNext` and `next` in one call. | [Iterators](/learn/iterators/#what-an-iterator-is) |
+
+## L
+
+| Word | Plain meaning | You may know it as | Taught in |
+| --- | --- | --- | --- |
+| **lazy** | An iterator chain only describes the work; nothing runs until something at the end pulls items through. | Java streams, C# LINQ, Python generators. | [Iterators](/learn/iterators/#what-an-iterator-is) |
+| **let chain** | An `if let` joined with more tests by `&&`; it needs edition 2024. | None. | [If / Else](/learn/if-else/#let-chains) |
+| **`let ... else`** | Unpacks a pattern, or runs an `else` block that must leave. | None. | [If / Else](/learn/if-else/#if-let-and-let--else) |
+| **lifetime** | How long a reference may be used: a region of the program that must fit inside the life of the value it points at. | None in garbage-collected languages. C++: "lifetime" means an object's own life; a Rust lifetime belongs to a borrow. | [Lifetimes](/learn/lifetimes/#when-you-write-a-lifetime) |
+
+## M
+
+| Word | Plain meaning | You may know it as | Taught in |
+| --- | --- | --- | --- |
+| **macro** | Code that the compiler expands into other code before it checks types; the `!` marks a call. | C: a preprocessor macro, but this one takes tokens, not text. | [Macros, attributes and comments](/learn/macros-attributes-naming/#the--a-macro-call) |
+| **`match`** | Compares one value with a list of patterns and gives the value of the first that fits; it must cover every case. | Kotlin `when`, Java and C# `switch` expressions, Python `match`. A C-style `switch` is further off: it only compares numbers. | [Match](/learn/match/#match-is-an-expression) |
+| **method** | A function with a `self` first parameter, defined in an `impl` and called with a dot. | A method, as in Java, Kotlin, C# and Python. | [Methods](/learn/methods/#a-method-is-a-function-with-a-self-parameter) |
+| **module** | A named group of items that hides whatever you do not mark `pub`; it is also the privacy boundary. | Go, Java: a package. C#: a namespace (not a privacy line). Rust's module is also the privacy line: a child module sees its parent's private items. | [Modules and Visibility](/learn/modules/#private-by-default) |
+| **monomorphization** | The compiler writes a separate copy of a generic function for each type it is used with. | C++: template instantiation. | [Generics](/learn/generics/#one-copy-per-type) |
+| **move** | Handing a value to a new owner; the old name can no longer be used. | C++: `std::move`, but using a moved-from value does not compile here. | [Ownership and Moves](/learn/ownership/#moves) |
+| **`move` (closure)** | Before the bars of a closure, makes it take every variable it uses by value. | None. | [Closures](/learn/closures/#move-take-ownership) |
+| **`mut`** | Lets a variable change; it belongs to the name, not to the value. | Kotlin: `var`. Java: a variable that is not `final`. But Kotlin `val` and Java `final` stop only reassignment; Rust's plain `let` also stops changing the contents. | [Variables](/learn/variables/#frozen-unless-you-say-mut) |
+
+## N
+
+| Word | Plain meaning | You may know it as | Taught in |
+| --- | --- | --- | --- |
+| **never type** (`!`) | The type of `return`, `break`, `continue` and `panic!`, which never produce a value, so they fit where any type is expected. | Kotlin: `Nothing`. | [Statements and expressions](/learn/statements-expressions/#when-nothing-comes-back-the-never-type) |
+| **newtype** | A tuple struct with one field: a new type to the compiler, the size of the type inside. | Go: `type Meters float64` is close. Kotlin: a value class. | [Structs](/learn/structs/#tuple-structs-and-unit-structs) |
+| **niche** | A bit pattern a type never uses, which the compiler reuses to mean "no value" (`None`), so `Option<&T>` is the size of `&T`. | None. | [Enums](/learn/enums/#niches-why-option-is-often-free) |
+| **NLL** (non-lexical lifetimes) | The borrow checker's design that ends a borrow at the last use of the reference, not at the end of the block. | None. | [Lifetimes](/learn/lifetimes/#where-a-borrow-really-ends) |
+
+## O
+
+| Word | Plain meaning | You may know it as | Taught in |
+| --- | --- | --- | --- |
+| **`Option`** | An enum that is `Some(value)` or `None`; safe Rust has no null references. | Close to Java's `Optional<T>` or Kotlin's `T?`. | [Option](/learn/option/#what-option-is) |
+| **orphan rule** | You may write `impl Trait for Type` if the trait or the type is defined in your own crate (a type of yours among the trait's own type parameters also counts); otherwise it is refused. | None. | [Traits](/learn/traits/#traits-for-types-you-did-not-write) |
+| **overflow** | A result outside its number type's range: by default a panic in a debug build and a wrap in a release build. | Java, Go and C# (by default) wrap silently. C, C++: signed overflow is undefined behaviour. Python has no overflow. | [Numbers and Types](/learn/types/#overflow-a-panic-in-debug-a-wrap-in-release) |
+| **owned vs borrowed** | An owned value is held, and freed, by its owner; a borrowed one is a reference to a value someone else owns. | C++: `std::string` against `std::string_view`. | [Strings](/learn/strings/#two-string-types-and-which-one-to-use) |
+| **ownership** | Every value has one owner, a handoff moves it, and it is dropped when its owner goes out of scope. | C++: RAII, but enforced by the compiler. | [Ownership and Moves](/learn/ownership/#the-three-rules) |
+
+## P
+
+| Word | Plain meaning | You may know it as | Taught in |
+| --- | --- | --- | --- |
+| **package** | A `Cargo.toml` with one or more crates beside it. | An npm package, not a Java or Go `package`. | [Modules and Visibility](/learn/modules/#packages-and-crates) |
+| **panic** | Stops the thread (the program, on the main thread) with a message; it is for bugs, not for expected failures. | Go: `panic`, but an unrecovered Go panic in any goroutine ends the whole program; a Rust panic ends only its thread. Java: an exception that nothing catches. | [Errors and Result](/learn/errors/#panics-when-the-thread-stops) |
+| **`PartialEq`, `Eq`** | `PartialEq` gives `==`; `Eq` is the promise that a value equals itself, which `f64` cannot make because of `NaN`. | Java: `equals()`. Python: `__eq__`. | [Common Traits](/learn/common-traits/#equality-order-and-hashing) |
+| **partial move** | Moving one field out of a struct you own; the other fields stay usable but the whole struct does not. | None. | [Ownership and Moves](/learn/ownership/#moving-out-of-a-struct) |
+| **`PartialOrd`, `Ord`** | `PartialOrd` gives `<` and `>`; `Ord` is the full order that `sort` and `max` need. | Java: `Comparable`. C#: `IComparable`. | [Common Traits](/learn/common-traits/#equality-order-and-hashing) |
+| **path** | A name for an item reached by walking through modules with `::`. | An import path, as in Python or Java. | [Reading a function signature](/learn/reading-signatures/#paths-use-pub-and-mod) |
+| **pattern** | A shape a value can have, with names where you want to keep a part. | Python: `match`. C#: patterns. TypeScript: destructuring. | [Match](/learn/match/#the-patterns) |
+| **prelude** | The short list of names every module gets without writing `use`. | Python: the builtins. Java: `java.lang`. | [Modules and Visibility](/learn/modules/#globs-and-the-prelude) |
+| **`pub`** | Makes an item visible outside its module; everything is private by default. | Java, C#: `public`. Go: a capital letter. | [Modules and Visibility](/learn/modules/#private-by-default) |
+
+## R
+
+| Word | Plain meaning | You may know it as | Taught in |
+| --- | --- | --- | --- |
+| **RAII** | A resource is released when the value that owns it goes out of scope; Rust does this with `Drop`. | C++: RAII. C# `using` and Java try-with-resources are the manual version (the caller has to remember to write it). | [Ownership and Moves](/learn/ownership/#why-rust-does-this) |
+| **`Rc`, `Arc`** | Pointers for several owners of one value: each clone adds an owner, and the value is freed when the last goes. `Arc` is the thread-safe one. | C++: `std::shared_ptr`, but `Rc` gives read-only access, while a `shared_ptr` lets every owner change the value. | [Ownership and Moves](/learn/ownership/#shared-ownership-rc-and-arc), [Shared state](/learn/shared-state/#arct-owners-across-threads) |
+| **reference** | The address of a value that already exists, copying nothing and owning nothing. | C++: close to a reference, but checked. Not a Java object reference. | [Borrowing](/learn/borrowing/#a-reference-is-a-read-only-address) |
+| **refutable** | A pattern that can fail to fit, such as `Some(n)`. | None. | [Patterns](/learn/patterns/#patterns-that-must-always-fit) |
+| **`Result`** | An enum that is `Ok(value)` when things worked or `Err(error)` when they did not. | Go: close to the `(value, error)` pair, but it is one value. | [Errors and Result](/learn/errors/#result-is-an-enum) |
+
+## S
+
+| Word | Plain meaning | You may know it as | Taught in |
+| --- | --- | --- | --- |
+| **`self`, `Self`** | In a method, `self` is the value it is called on and `Self` is the type itself. | `this` in Java and C#. Python: `self`, written out too. | [Methods](/learn/methods/#a-method-is-a-function-with-a-self-parameter) |
+| **`Send`, `Sync`** | Traits for threads. `Send`: a value of the type may be moved to another thread. `Sync`: a shared reference `&T` may be used from several threads (`T` is `Sync` when `&T` is `Send`). | None in your languages. | [Send and Sync](/learn/send-sync/) |
+| **shadowing** | Writing `let` again with the same name makes a new variable that hides the old one; the type may change. | Go, Kotlin, TypeScript, C, C++: inner scopes only. Java and C# refuse even that. Rust allows the same scope too. | [Variables](/learn/variables/#shadowing-or-mut) |
+| **`Sized`** | A trait for types whose size is known when compiled; every type parameter has it unless you write `?Sized`. | None. | [Generics](/learn/generics/#t-has-a-known-size-unless-you-say-otherwise) |
+| **slice** | A borrowed view of items stored in a row: an address and a length, written `&[T]`. | Go: close to a slice, but it has no capacity and is borrow-checked. Python: a slice is a copy; a Rust slice is a view. | [Vectors and Slices](/learn/vectors/#slices-a-window-onto-a-list) |
+| **slice pattern** | A pattern that describes a list by its shape, like `[first, .., last]`. | Python: `[first, *rest]` in `match`. | [Match](/learn/match/#lists-slice-patterns) |
+| **smart pointer** | A type that owns a value behind a pointer, such as `Box`, `Rc` and `Arc`. | C++: smart pointers, the same term. | [Smart pointers](/learn/smart-pointers/#what-makes-a-pointer-smart) |
+| **stack** | The memory that holds each call's frame; fast, and everything on it has a size known when compiled. | The call stack in every language. In Java, Kotlin, Python and TypeScript objects live on the heap and the stack holds references to them. | [Values, the Stack and the Heap](/learn/stack-heap/#the-stack) |
+| **statement** | An instruction that does something and produces no value, such as `let x = 7;`. | The same word. | [Statements and expressions](/learn/statements-expressions/#statement-or-expression) |
+| **`static`** | A value stored once for the whole program, so every reference points to one place. | Java: a `static final` field. Go: a package-level `var`, which Go lets you assign and Rust does not. | [Variables](/learn/variables/#const-static-and-let) |
+| **static dispatch** | The compiler knows which method each call runs, because each call is for one type. | C++: a non-virtual call. | [Traits](/learn/traits/#static-and-dynamic-dispatch-in-one-program) |
+| **`&str`** | Read-only text you borrow from someone else; a pointer and a length. String literals are `&str`. | Go: `string`. C++: `std::string_view`. | [Strings](/learn/strings/#two-string-types-and-which-one-to-use) |
+| **`String`** | Text you own, held on the heap, that can grow. | Closest: `StringBuilder` in Java and Kotlin, or `std::string` in C++. | [Strings](/learn/strings/#two-string-types-and-which-one-to-use) |
+| **struct** | A type that groups named values, its fields, under one name. | Go and C: `struct`. C#: `struct`. | [Structs](/learn/structs/#defining-and-building-a-struct) |
+| **struct update syntax** | `..base` at the end of a struct literal takes the unlisted fields from another value. | TypeScript: `{ ...base, x: 1 }`, but the spread goes first; Rust's `..base` goes last and moves any non-`Copy` field out of `base`. | [Structs](/learn/structs/#building-one-struct-from-another) |
+| **supertrait** | A trait that requires another, as in `trait Pet: Speaker`; it is a promise, not inheritance. | Java: an interface that extends another, but a Rust type still needs its own `impl` of each trait. | [Traits](/learn/traits/#supertraits) |
+
+## T
+
+| Word | Plain meaning | You may know it as | Taught in |
+| --- | --- | --- | --- |
+| **tail expression** | The last expression of a block, with no `;`; it is the block's value. | The last line of a Kotlin lambda. | [Statements and expressions](/learn/statements-expressions/#statement-or-expression) |
+| **trait** | A named set of methods that a type can have, added with `impl Trait for Type`. | Java, Kotlin, C#: an interface. Go: an interface, but a Rust type must say it implements it. | [Traits](/learn/traits/#defining-a-trait-and-implementing-it) |
+| **trait bound** | A requirement on a type parameter, such as `T: Display`. | Java: `T extends Comparable<T>`. C#: `where`. C++20: a concept. | [Traits](/learn/traits/#asking-for-a-trait-bounds) |
+| **trait object** | A value of some type that implements a trait, where the code no longer knows which; written `dyn Trait`. | Go: an interface value. Java: an interface reference. | [Trait Objects](/learn/trait-objects/#a-value-whose-type-you-have-forgotten) |
+| **`TryFrom`** | A conversion that can fail and returns a `Result`. | C#: the same try-style idea as `TryParse`, but for converting between types; text uses `parse`. | [Common Traits](/learn/common-traits/#converting-between-types) |
+| **tuple** | A fixed number of values, each slot with its own type. | Python: a tuple. Kotlin: `Pair`. | [Multiple Return Values](/learn/tuples/#a-tuple-has-numbered-slots) |
+| **tuple struct** | A struct whose fields have positions, not names, as in `struct Meters(f64);`. | None. | [Structs](/learn/structs/#tuple-structs-and-unit-structs) |
+| **turbofish** | `::<T>`, which gives a type argument inside an expression, as in `parse::<i32>()`. | Kotlin and C++ write `f<T>()`; Rust needs the `::`. | [Declarations and types](/learn/declarations-types/#as-and-the-turbofish) |
+
+## U
+
+| Word | Plain meaning | You may know it as | Taught in |
+| --- | --- | --- | --- |
+| **unit** (`()`) | The type with exactly one value, also written `()`: Rust's "nothing", which you can store. | Kotlin: `Unit`. Python: `None` is the closest relative. | [Statements and expressions](/learn/statements-expressions/#-the-value-for-nothing) |
+| **`unsafe`** | A block (or an `unsafe fn` or `unsafe impl`) where you promise the compiler you checked what it cannot. | C#: `unsafe` blocks. Rust's `unsafe` does not switch off the borrow checker; it only unlocks a few extra operations. | [What Rust leaves out](/learn/what-rust-lacks/#no-mutable-globals) |
+| **unwinding** | By default, on a panic, Rust walks back up the call stack and cleans up each function's values. | C++, Java, C#: stack unwinding when an exception propagates. | [Errors and Result](/learn/errors/#panics-when-the-thread-stops) |
+| **`unwrap`, `expect`** | Take the value out of an `Option` or `Result`, and panic on `None` or `Err`; `expect` adds your message. | Kotlin: `!!`. Java: `Optional.get()`. | [Errors and Result](/learn/errors/#unwrap-and-expect) |
+| **`use`** | Gives a path a shorter name in the module (or block) where you write it; it loads nothing. | Java: `import`, which also only shortens names. Python, TypeScript: `import` also loads the module. | [Splitting code into files](/start/files-and-modules/#two-keywords-two-jobs) |
+| **`usize`** | The unsigned integer as wide as a memory address; lengths and indexes use it. | C and C++: `size_t`. | [Numbers and Types](/learn/types/#indexes-are-usize) |
+
+## V
+
+| Word | Plain meaning | You may know it as | Taught in |
+| --- | --- | --- | --- |
+| **variant** | One of the named forms of an enum, such as `Some` or `Quit`. | Kotlin: a subclass of a sealed class, but a Rust variant is not a type of its own. | [Enums](/learn/enums/#variants-that-carry-data) |
+| **`Vec<T>`** | A growable list of `T` on the heap: a pointer, a length and a capacity. | C++: `std::vector`. Java: `ArrayList`. | [Vectors and Slices](/learn/vectors/#making-a-vec) |
+| **vtable** | A table of a type's method addresses for one trait; a `dyn` pointer holds its address. | C++: the same idea, but the pointer lives in every object; Rust keeps it in the `dyn` pointer. | [Trait Objects](/learn/trait-objects/#what-a-dyn-pointer-is-made-of) |
+
+## W
+
+| Word | Plain meaning | You may know it as | Taught in |
+| --- | --- | --- | --- |
+| **`where`** | Lists, after a signature, what a generic type must be able to do. | C#: `where`. C++20: `requires`. | [Traits](/learn/traits/#asking-for-a-trait-bounds) |
+| **workspace** | Several packages that share a `Cargo.lock` and a `target/` folder. | npm workspaces. Go: `go.work`. | [Modules and Visibility](/learn/modules/#packages-and-crates) |
+
+## Z
+
+| Word | Plain meaning | You may know it as | Taught in |
+| --- | --- | --- | --- |
+| **ZST** (zero-sized type) | A type whose values take no space, such as `()`, a unit struct, or a closure that captures nothing. | Go: `struct{}`. | [Structs](/learn/structs/#tuple-structs-and-unit-structs) |

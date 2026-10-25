@@ -1,0 +1,461 @@
+<p class="lr-layer">The toolkit</p>
+
+## Two kinds of failure
+
+Rust splits failures into two kinds and gives each its own tool.
+
+| | Expected failure | Bug |
+|---|---|---|
+| Examples | The user typed `abc` where a number goes. A file is missing. | An index past the end. A "can't happen" that happened. A broken promise by the caller. |
+| What happens | The caller decides: retry, use a default, report it | Nobody can fix it at run time, so the thread stops (on the main thread, the program) |
+| Tool | Return a `Result` | `panic!` |
+| In the signature | Yes. The caller handles it or passes it up with `?`; ignoring it draws a warning | No |
+
+A value that is merely missing, such as a search that found nothing, is not a failure: that is `Option`, in the [previous lesson](/learn/option/). The rest of this lesson is mostly `Result`.
+
+## `Result` is an enum
+
+`Result<T, E>` is an enum with two variants: `Ok(T)` holds the value when things worked, `Err(E)` holds the error when they did not. [Enums](/learn/enums/) showed how to take one apart with `match`. A `Result` is the same:
+
+<Snippet file="matching.rs" />
+
+`parse` can fail, so it returns a `Result`. You cannot use the number without opening it first, and `match` will not compile unless you handle both arms. The `{e}` and `{:?}` texts above come from the same `ParseIntError`.
+
+## `?`: pass the error up
+
+Most functions can do nothing useful about an error except hand it to their caller. A `match` for that on every line is noisy, so Rust has `?`:
+
+<Snippet file="question-mark.rs" />
+
+After an expression that returns a `Result`, `?` means: if it is `Ok`, take the value out and carry on. If it is `Err`, return that error from the whole function, right now. The happy path stays a straight line, and each `?` marks a place where the function may return early.
+
+Here is the same function with the `?` written out as a `match`:
+
+<Snippet file="question-expanded.rs" />
+
+Both print the same. The `Err` arm calls `From::from(e)` before returning. `From` is the standard way to say "make this type out of that one". Here the error is already a `ParseIntError`, so it changes nothing.
+
+### When the error types differ
+
+The error `?` finds has to become the error type in your signature. If Rust has no conversion between the two, you get E0277:
+
+<Snippet file="mismatch.fail.rs" />
+
+The message says it: `?` converts through the `From` trait, and `String` has no `From<ParseIntError>`. Three ways out:
+
+- **`map_err`**: change the error by hand at that spot (below).
+- **A `From` impl** for your own error type, so `?` converts by itself (see [Your own error type](#your-own-error-type)).
+- **`Box<dyn Error>`** as the error type, which accepts any error type (see [the catch-all](#boxdyn-error-the-catch-all)).
+
+### `?` needs a function that returns a `Result`
+
+`?` returns the error, so the function's return type must be able to hold one. `main` returns `()` by default:
+
+<Snippet file="question-in-main.fail.rs" />
+
+The `help:` shows the fix: give `main` a return type ([below](#main-can-return-a-result)). `?` also works on an `Option` inside a function that returns `Option`, as the [Option lesson](/learn/option/) shows.
+
+### Cleanup still happens
+
+An early return from `?` does not skip cleanup. A value with a `Drop` impl (code that runs when the value goes out of scope, from [Ownership](/learn/ownership/)) is cleaned up on both paths:
+
+<Snippet file="cleanup.rs" />
+
+This does the job of `finally`, a destructor or `defer`. One limit: `drop` cannot return an error, so if closing or flushing a file can fail, call the type's `flush` yourself and use `?`.
+
+## Do not ignore a `Result`
+
+If you call a function that returns a `Result` and do nothing with it, Rust warns you: `Result` is marked `#[must_use]`. By default that is only a warning and the program still builds. To show the message on this page, the program below turns that one warning into an error:
+
+<Snippet file="ignored.fail.rs" />
+
+`let _ = save("");` says "I know, and I do not care". It is allowed and visible in the code, and only the first call is flagged.
+
+## Panics: when the thread stops
+
+A panic stops the code at the spot where something impossible happened. The most common source is `unwrap`, which takes the `Ok` value out of a `Result` and panics on `Err`:
+
+<Snippet file="unwrap-err.panic.rs" />
+
+Read it from the top. `thread 'main' (1) panicked at src/main.rs:3:36:` gives the thread (`main`, then its id number, which differs between runs) and the place: line 3, column 36. The next line is the message; for `unwrap` it shows the error's `Debug` form (the `{:?}` text). The `note:` says that setting `RUST_BACKTRACE=1` makes a panic also print a backtrace, the calls that led here ([the Book, chapter 9.1](https://doc.rust-lang.org/book/ch09-01-unrecoverable-errors-with-panic.html)). A panic on the main thread ends the program with exit code 101 (with the default unwinding, [below](#exit-codes)).
+
+By default a panic **unwinds**: Rust walks back up the call stack and cleans up each function's values. The Book describes a `panic = "abort"` setting in `Cargo.toml` that skips the cleanup and ends the program at once.
+
+A panic ends only the thread it happens on. A spawned thread that panics leaves the rest of the program running, and the thread waiting for it gets an `Err` from `join` ([threads](/learn/threads/) come later):
+
+<Snippet file="thread-panic.rs" />
+
+`std::panic::catch_unwind` can catch a panic, but its docs say not to use it as a general try/catch.
+
+Panics also come from indexing past the end, a failed `assert!` (checked in every build, release too), `unreachable!()`, `todo!()`, and your own `panic!("message")`. Here is a panic that is the right call: the function has a rule (the slice must not be empty), and a caller who breaks it has a bug:
+
+<Snippet file="panic-bug.panic.rs" />
+
+The Book's rule of thumb: return a `Result` when failure can happen in a correct program, such as bad input. Panic when an assumption or promise is broken, because that is a bug, and a caller should not have to handle a bug ([chapter 9.3](https://doc.rust-lang.org/book/ch09-03-to-panic-or-not-to-panic.html)). If an empty list can come from user data, return an `Option` or `Result` instead.
+
+## `unwrap` and `expect`
+
+`unwrap` says "I am sure this worked, and if I am wrong, stop." It is what an uncaught exception does elsewhere, minus the traceback. `expect("why")` adds your message in front of the error, so the panic explains your assumption:
+
+<Snippet file="expect-err.panic.rs" />
+
+Both are fine in some places:
+
+<Snippet file="unwrap-fine.rs" />
+
+- **A value you can check by reading the code**, like the hard-coded address. Use `expect` and say why it cannot fail.
+- **Tests, examples and quick prototypes**, where a panic is the failure you want. The Book says this too.
+- **A chosen fallback** with `unwrap_or(80)` is not a crash at all.
+
+On real input, `unwrap` waits for the wrong input. Use `?` or `match` there.
+
+## Changing and combining results
+
+Small methods on `Result` cover most of what you would otherwise `match` for. `|e| …` is a closure, a small unnamed function ([Closures](/learn/closures/) come later). Read it as "given `e`, do this".
+
+<Snippet file="combinators.rs" />
+
+- `ok_or(error)` turns an `Option` into a `Result`: `None` becomes `Err(error)`. `ok_or_else(|| …)` builds the error only when needed, which matters when that costs something, such as making a `String`.
+- `map_err(f)` rewrites the error and leaves an `Ok` alone. Use it to add context or switch to your own error type.
+- `and_then(f)` runs the next step only if the last one worked. The step returns a `Result` itself, so failures chain without nesting.
+
+More methods. The inputs are `Ok(4)` and `Err("bad")`, with `String` as the error type:
+
+| Method | Does | On `Ok(4)` | On `Err("bad")` |
+|---|---|---|---|
+| `map(\|n\| n * 10)` | change the `Ok` value | `Ok(40)` | `Err("bad")` |
+| `map_err(\|e\| e.len())` | change the `Err` value | `Ok(4)` | `Err(3)` |
+| `unwrap_or(0)` | value, or a fallback | `4` | `0` |
+| `unwrap_or_else(\|e\| e.len() as i32)` | value, or compute a fallback from the error | `4` | `3` |
+| `ok()` | drop the error: becomes an `Option` | `Some(4)` | `None` |
+| `is_ok()` / `is_err()` | ask which one | `true` / `false` | `false` / `true` |
+
+<Snippet file="check-methods.rs" hideOutput />
+
+## Collecting results
+
+To parse a whole list, a `for` loop with `?` works. An iterator's `collect` can also build a `Result<Vec<_>, _>` from items that are each a `Result`: `Ok` with every value, or the first `Err`.
+
+<Snippet file="collect.rs" />
+
+Note the last row: `""` splits into one empty piece, which is not a number. The [iterators lesson](/learn/iterators/#collecting-into-a-result-stop-at-the-first-error) explains `map` and `collect`.
+
+## Your own error type
+
+A `String` error works for a first draft, but a caller cannot tell failures apart without comparing text. The usual answer is an `enum` with one variant per way to fail. Variants can carry data, as [Enums](/learn/enums/) showed:
+
+<Snippet file="custom-error.rs" />
+
+Four parts:
+- `#[derive(Debug)]` gives the `Debug:` lines, the shape of the value for programmers.
+- `impl fmt::Display for ConfigError` writes the message a person reads, the `Display:` lines (what `{}` prints). An `impl` block holds the functions of a type, as in [Methods](/learn/methods/). This one reads `impl Trait for Type`: a **trait** is a named set of functions a type promises to provide, much like an interface, and `Display` is the one `{}` asks for ([Traits](/learn/traits/) covers them). For now read it as "here is how to print a `ConfigError`". `write!` is `println!` that writes into `f`. `fmt::Result` is a short name for `Result<(), fmt::Error>`.
+- `impl Error for ConfigError` marks the type as an error, which `Box<dyn Error>` and other tools need. It requires `Debug` and `Display`. Its `source` method is optional: it returns the error that caused this one, or `None`. Copy that signature as written. A message describes its own level and leaves the cause to `source`, so the cause is not printed twice.
+- `impl From<ParseIntError> for ConfigError` is the function `?` calls. Because it exists, `text.parse()?` compiles in a function that returns `Result<_, ConfigError>`, and `NotANumber` is built for you. When two failures of one type need different context, use `map_err` instead.
+
+The `match` in `fmt` has no `_` arm, so a new variant makes the compiler list every `match` that needs one.
+
+## `Box<dyn Error>`: the catch-all
+
+When you do not care which errors there are, only that they are errors (a small tool, a script, `main`), the error type can be `Box<dyn Error>` ([in a library's API](/learn/idioms/#boxdyn-error-in-a-librarys-api)):
+
+<Snippet file="boxed.rs" />
+
+Read `Box<dyn Error>` as "some error, of a type decided when the program runs". `dyn` marks a type not fixed at compile time. A `Box` is a pointer to a value on the heap, and the value is any type that implements `Error`. ([Trait objects](/learn/trait-objects/) get their own lesson later; the [picture below](#what-a-result-looks-like-in-memory) shows what is inside.) `?` turns any type that implements `Error` into one. So does `.into()`, which is `From` seen from the other side, and it also turns a `&str` or `String` into one.
+
+The price is that the type is hidden. `downcast_ref` asks "was it this one?", but a `match` on an enum is nicer. Many projects use their own enum in libraries and `Box<dyn Error>` in applications.
+
+<Aside type="tip" title="Real projects use two crates for this">
+A **crate** is a library you add to a project. `thiserror` writes the `Display`, `Error` and `From` code above from a few attributes. `anyhow` gives you one error type that, like `Box<dyn Error>`, holds any error, and it adds context ("while reading config.toml") as an error travels up. [Errors in real apps](/build/app-errors/) shows both. Learn the by-hand version first: `thiserror` generates this code.
+</Aside>
+
+## `main` can return a `Result`
+
+Give `main` the return type `Result<(), Box<dyn Error>>` and you can use `?` all through the program:
+
+<Snippet file="main-result.rs" />
+
+When `main` returns an `Err`, the program prints `Error:` and the error's `Debug` form, then exits with a failure code:
+
+<Snippet file="main-err.panic.rs" />
+
+Note what is not there: no stack trace, and `RUST_BACKTRACE=1` does not add one (that variable is for panics). A plain error value does not record where it was created. That is a real cost when debugging, and why people add context as errors travel up.
+
+## Exit codes
+
+An exit code tells the shell how a program ended: 0 means success. This program starts copies of itself to show the codes:
+
+<Snippet file="exit-codes.rs" />
+
+| How the program ends | Exit code |
+|---|---|
+| `main` returns normally (`Ok`) | 0 |
+| `main` returns `Err` | 1 |
+| a panic on the main thread (default unwinding) | 101 |
+| `std::process::exit(2)` | 2 |
+
+`std::process::exit(code)` ends the program on the spot, and its docs warn that no destructors run. Prefer returning from `main`, which can return an [`ExitCode`](https://doc.rust-lang.org/std/process/struct.ExitCode.html) to pick the code. The table is what the program printed (Linux on ARM64, Rust 1.99.1).
+
+## Your language's error handling, in Rust
+
+<ForLang only="go">
+
+Go is the closest cousin: errors are values that you return, so the failure path is in plain sight.
+
+| You write in Go | In Rust |
+|---|---|
+| `v, err := f()` then `if err != nil { return 0, err }` | `let v = f()?;` |
+| `fmt.Errorf("setting %q: %w", k, err)` | `.map_err(\|e\| MyError::Setting { key, source: e })?`, or a `From` impl |
+| `var ErrMissing = errors.New("missing")` | an enum variant: `ConfigError::Missing` |
+| `errors.Is(err, ErrMissing)` | `matches!(err, ConfigError::Missing)` checks the outer error only. To search the chain, loop over `source()` |
+| `errors.As(err, &numErr)` | a `match` on the outer variant, or a loop over `source()` with `downcast_ref` (see [error chains](#error-chains-and-source)) |
+| `errors.Unwrap(err)` | `err.source()` |
+| the `error` interface | the `Error` trait; `Box<dyn Error>` is the nearest thing to an `error` value (also two pointers: data and a method table) |
+| `n, _ := f()` | `f().unwrap_or(0)`, or `let _ = f();` |
+| `panic` and `recover` | `panic!`. `catch_unwind` exists, but its docs say not to use it as a general try/catch |
+
+Here is Go doing what this lesson did: wrap with `%w`, then test with `errors.Is` and `errors.As`.
+
+<Snippet file="wrap.go" />
+
+**What Rust gives up.** `%w` gives you the message text and the chain at once. In Rust they are two things you write: the `Display` text and the `source` method. Go needs one method to make an `error`. Rust needs a derive and two or three impls, and where two libraries meet you add a `From`.
+
+**What Rust gains.** You cannot read `n` from a `Result` until you have opened it, and a `Result` is `Ok` or `Err`, never both and never neither. Ignoring one draws a warning, and a `match` on your error enum is checked for missing cases.
+
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+
+Your language reports failure by throwing an exception that unwinds the stack to a `catch`. In Rust a function returns the failure, and the caller sees it in the return type.
+
+<ForLang only="java">
+
+| You write in Java | In Rust |
+|---|---|
+| `throw new X(…)` | `return Err(MyError::…)` (or `panic!` for a bug) |
+| `try { … } catch (X e) { … }` | `match f() { Ok(v) => …, Err(MyError::X) => … }` |
+| `catch (A \| B e)` | an or-pattern: `Err(A) \| Err(B) => …` |
+| `class AppException extends Exception`, one subclass per case | one `enum`, a variant per case. To group, nest enums and use `From` |
+| `throws IOException, ParseException` | the return type. Two different error types need an enum with a `From` for each, or `Box<dyn Error>` |
+| `Exception`, `getMessage()` | the `Error` trait and `Display` (`{e}`). `Box<dyn Error>` is like `throws Exception` |
+| `getCause()`, `new X(msg, e)` | `source()`, and `map_err` into a variant that keeps the cause |
+| `finally`, try-with-resources | `Drop`, run at the end of scope (see [Cleanup still happens](#cleanup-still-happens)) |
+| `main(…) throws Exception` | `fn main() -> Result<(), Box<dyn Error>>` |
+
+A trait is like an interface, and `dyn Error` is a variable typed as that interface: any implementer, with the method picked at run time.
+
+</ForLang>
+
+<ForLang only="kotlin csharp">
+
+| You write | In Rust |
+|---|---|
+| `throw X(…)`, `throw new X(…)` | `return Err(MyError::…)` (or `panic!` for a bug) |
+| `try { … } catch (X e)` | `match f() { Ok(v) => …, Err(MyError::X) => … }` |
+| `finally`, `using` | `Drop`, run at the end of scope (see [Cleanup still happens](#cleanup-still-happens)) |
+| `InnerException`, `cause` | `source()`, and `map_err` into a variant that keeps the cause |
+
+</ForLang>
+
+<ForLang only="java">
+
+**Java is the nearest in spirit.** A checked exception puts the failure in the method signature, and the compiler refuses code that ignores it:
+
+<Snippet file="unhandled.fail.java" />
+
+A `Result` is close to that: you cannot use the value without opening it, and ignoring it entirely draws a warning. The difference is how it travels: a checked exception is thrown, and a `Result` is an ordinary value that you can store, map, or collect a list of.
+
+</ForLang>
+
+<ForLang only="kotlin csharp">
+
+**Kotlin and C# have no checked exceptions.** Nothing in a signature says what can be thrown ([the Kotlin docs](https://kotlinlang.org/docs/exceptions.html) say so directly). This compiles and fails at run time:
+
+<ForLang only="kotlin">
+<Snippet file="nochecked.crash.kt" />
+</ForLang>
+
+<ForLang only="csharp">
+<Snippet file="nochecked.crash.cs" />
+</ForLang>
+
+</ForLang>
+
+<ForLang only="java">
+
+An uncaught exception in Java prints a stack trace:
+
+<Snippet file="uncaught.crash.java" />
+
+</ForLang>
+
+**What Rust gives up.** An exception carries a stack trace by default. A returned `Err` does not (compare `main-err.panic.rs` above: one line), so you add context as the error travels up. `throws A, B` grows by itself as you call more methods, where Rust needs you to write the enum or the box. And a new failure deep in the code changes every signature above it, as with checked exceptions. `?` is a cost on every fallible call. Exceptions are lighter for one job: with unchecked exceptions, a failure that every layer would only pass along needs no code in the middle layers.
+
+**What Rust gains.** Every function that can fail in an expected way says so in its type, by convention. The early returns are visible at the call site, as `?`. And a `Result` is a value, so you can collect a list of them. One more difference: Rust's `assert!` is always on, where Java's `assert` is off unless you pass `-ea`.
+
+</ForLang>
+
+<ForLang only="python typescript">
+
+<ForLang only="python">
+
+| You write in Python | In Rust |
+|---|---|
+| `raise ConfigError(…)` | `return Err(ConfigError::…)` |
+| `class ConfigError(Exception)` and subclasses | one `enum`, a variant per case |
+| `try: … except ValueError as e:`, `isinstance(e, X)` | `match f() { Ok(v) => …, Err(e) => … }`, with a pattern per variant |
+| letting an exception fly up to the caller | `?` |
+| `str(e)`, `repr(e)` | `Display` (`{e}`), `Debug` (`{e:?}`) |
+| `raise X from e`, `e.__cause__` | `map_err` into a variant that keeps the cause, and `source()` |
+| `with`, `finally` | `Drop`, run at the end of scope (see [Cleanup still happens](#cleanup-still-happens)) |
+
+Python's style is EAFP, "easier to ask forgiveness than permission": try it and handle what goes wrong. Rust works the same way in spirit. The Python version of `custom-error.rs` needs only a class and `raise ... from`:
+
+<Snippet file="eafp.py" />
+
+Nothing in `def threads(data)` tells a caller that it raises `ConfigError`. In Rust the signature says `Result<u32, ConfigError>`. An uncaught Python exception ends the program with a traceback:
+
+<Snippet file="uncaught.fail.py" />
+
+A Rust `Err` that reaches `main` prints one line and no trace, even with `RUST_BACKTRACE=1`. A panic prints the place it happened, and `RUST_BACKTRACE=1` adds the call chain.
+
+</ForLang>
+
+<ForLang only="typescript">
+
+| You write in TypeScript | In Rust |
+|---|---|
+| `throw new Error(…)` | `return Err(MyError::…)` |
+| `try { } catch (e) { }` | `match f() { Ok(v) => …, Err(e) => … }` |
+| letting an exception fly up | `?` |
+| `new Error(msg, { cause: e })`, `e.cause` | `map_err` into a variant that keeps the cause, and `source()` |
+| `finally` | `Drop`, run at the end of scope (see [Cleanup still happens](#cleanup-still-happens)) |
+
+In strict TypeScript a `catch` variable is `unknown`, so you cannot read `e.message` until you check what it is (for example with `e instanceof Error`):
+
+<Snippet file="unknown-catch.fail.ts" />
+
+You can write a `Result` yourself as a union, and the compiler narrows it as it does for Rust's `match`:
+
+<Snippet file="result.ts" />
+
+It is the same idea, but a convention you write and follow yourself, and any library can still throw. In Rust there is one `Result` that everything uses, and `?` is built in.
+
+</ForLang>
+
+**What Rust gives up.** A `raise` can come from anywhere. In Rust, making a deep function fallible changes the signatures above it (or needs a `Box<dyn Error>`), every fallible call carries a `?`, and you write the error types: `custom-error.rs` needs an enum and four `impl` blocks where Python needs a three-line class. A returned `Err` carries no traceback.
+
+**What Rust gains.** No uncaught `KeyError` three layers down: the signature tells you. And `unwrap` is the honest name for what your code does today when it does not catch: it ends the program.
+
+</ForLang>
+
+<ForLang only="c cpp">
+
+<ForLang only="c">
+
+C reports failure through return codes, and often through the `errno` variable as well. Everything depends on the caller checking:
+
+<Snippet file="errno.c" />
+
+`strtol` uses three signals (the return value, `errno`, and the end pointer), and nothing makes the caller look at any of them. A `Result<T, E>` holds the same information in one value that Rust will not let you read unchecked.
+
+</ForLang>
+
+<ForLang only="cpp">
+
+C++ has two styles: exceptions and returned codes. Nothing in this signature says the function can throw:
+
+<Snippet file="uncaught.crash.cpp" />
+
+A returned code is easy to ignore. `[[nodiscard]]` makes GCC warn (see below the code): on a function it covers that function, and on a type it covers every function returning it, which is what `Result` has built in:
+
+<Snippet file="nodiscard.cpp" />
+
+C++23 adds [`std::expected<T, E>`](https://en.cppreference.com/w/cpp/utility/expected), the same idea as `Result<T, E>`. It has `and_then`, `transform` and `or_else` like `Result`, but no `?`: an early return still needs `if (!r) return std::unexpected(r.error());` on every call.
+
+</ForLang>
+
+| You write | In Rust |
+|---|---|
+| `int f(…, T *out)` returning 0 or an error code | `fn f(…) -> Result<T, E>` |
+| `if (err) return err;` after each call | `?` |
+| `throw std::runtime_error(…)`, `what()` | `return Err(…)` (a panic for a bug), printed with `Display` (`{e}`) |
+| `try { … } catch (const std::exception& e)` | `match`, or `?` to pass it up |
+| `std::expected<T, E>` (C++23) | `Result<T, E>` |
+| a destructor or RAII guard | `Drop`, run at the end of scope, including on a `?` return (see [Cleanup still happens](#cleanup-still-happens)) |
+
+**What Rust gives up.** A constructor cannot return a `Result`, so a type that can fail to build uses a function such as `fn new(…) -> Result<Self, E>`. Each fallible call carries a `?`. Panics unwind and clean up (see Panics above), but they are for bugs, not for control flow.
+
+**What Rust gains.** Every early exit is written as `?` at the call site, and an ignored `Result` draws a warning without any attribute on your functions.
+
+</ForLang>
+
+<p class="lr-layer">Going deeper</p>
+
+## What `?` really does
+
+The `match` earlier is a simplified `?`. The Reference defines `?` through a trait named `Try`, which is unstable, so you cannot implement it for your own types yet. For a `Result` its rules are the ones used here: `Ok(val)` evaluates to `val`, and `Err(e)` returns `Err(From::from(e))`. The same operator also covers `Option` and a few other types ([Reference](https://doc.rust-lang.org/reference/expressions/operator-expr.html)).
+
+The conversion is why `Box<dyn Error>` accepts any type that implements `Error`: it has a `From` impl for those types (and for `&str` and `String`), which the `?` in `boxed.rs` uses.
+
+## What a `Result` looks like in memory
+
+A `Result` is an enum, so it is stored as the [enums lesson](/learn/enums/) showed: a tag for the variant, and room for the biggest payload. A `Result<u32, ParseIntError>` lives entirely on the stack:
+
+<Memory
+  title={'let ok = "42".parse::<u32>();   let bad = "4x2".parse::<u32>();'}
+  stack={[
+    { name: 'ok', type: 'Result<u32, ParseIntError>', cells: ['tag: Ok', 'u32: 42'] },
+    { name: 'bad', type: 'Result<u32, ParseIntError>', cells: ['tag: Err', 'kind: InvalidDigit'] },
+  ]}
+  caption="Both are the same size, and no heap memory is used. (The exact bytes are the compiler's choice; the program below prints the size.)"
+/>
+
+A `Box<dyn Error>` is two pointers wide, because it must say both where the error is and what type it is:
+
+<Memory
+  title={'let boxed: Box<dyn Error> = Box::new("x".parse::<u32>().unwrap_err());'}
+  stack={[
+    { name: 'boxed', type: 'Box<dyn Error>', cells: ['data ptr', 'vtable ptr'], to: 'err', note: 'the vtable is a table of functions for this type, including its Error and Display ones' },
+  ]}
+  heap={[{ id: 'err', label: 'a ParseIntError', cells: ['kind: InvalidDigit'] }]}
+  caption="The data pointer finds the error on the heap. The vtable pointer finds the functions to call on it, so `{e}` works without knowing the type. `size_of` below says 16 bytes: two 8-byte pointers on this 64-bit platform."
+/>
+
+<Snippet file="layout.rs" />
+
+The sizes show it: `Box<dyn Error>` is 16 bytes, and `Result<(), Box<dyn Error>>` is also 16, because the pointer is never null, so the `Ok` case fits in the null value (a niche; [Enums](/learn/enums/#niches-why-option-is-often-free) has the details). The `ParseIntError` inside the box is 1 byte. Boxing a value that has a size takes a heap allocation.
+
+## Error chains and `source`
+
+An error often has a cause: "could not load limits.txt", because "bad value for threads", because "invalid digit found in string". Each error returns the one below it from `source()`, and `custom-error.rs` already did this for `NotANumber`. This program walks a two-level chain, then does what Go's `errors.As` does: look for a `ParseIntError` at any depth.
+
+<Snippet file="chain.rs" />
+
+Testing only the top-level error finds nothing, because `downcast_ref` and `matches!` look at one layer. The loop over `source()` finds the `ParseIntError`. It is the same shape as Go's `errors.Unwrap`, Java's `getCause`, C#'s `InnerException` and Python's `__cause__`. The std docs say a cause should be reached through `source()` or shown in `Display`, but not both.
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Each exercise has checks in `main`. Open it in the Playground, replace the `todo!()`, and run it until it prints `all checks passed`. A plain `for` loop is fine.
+
+<Exercise name="parse-range" title="Parse a range">
+Write `parse_range`, which turns `"3-7"` into `Ok((3, 7))`, with an `Err` message for each failure: no `-` (`"missing '-'"`), a side that is not a whole number (starting `"bad start"` or `"bad end"`), and a start after the end (`"start is after end"`). Use `split_once`, `ok_or`, `map_err` and `?`. Spaces are fine, and an empty side such as `"-7"` is an error.
+</Exercise>
+
+<Exercise name="username" title="Check a username">
+Finish the `Display` impl for `UsernameError`, then write `check_username`. A name is 1 to 12 characters, each alphanumeric (letters and numbers of any script count) or `_`. Count characters, not bytes: twelve `é` are 24 bytes and still a valid name.
+</Exercise>
+
+<Exercise name="sum-numbers" title="Sum a list of numbers">
+Write `sum_numbers`, which adds up `"1, 2, 3"`. Return a `Box<dyn Error>` for a bad piece and for a sum that overflows an `i32` (see `checked_add`). An empty string has no numbers, so its sum is 0, but `"1,,2"` has an empty piece and is an error.
+</Exercise>
+
+## Read more
+
+- [`Result`](https://doc.rust-lang.org/std/result/enum.Result.html) in the standard library. Every method, each with an example.
+- [`std::error::Error`](https://doc.rust-lang.org/std/error/trait.Error.html), including `source`.
+- [`std::process::exit`](https://doc.rust-lang.org/std/process/fn.exit.html) and [`ExitCode`](https://doc.rust-lang.org/std/process/struct.ExitCode.html).
+- The Rust Book, chapter 9: [Unrecoverable errors with `panic!`](https://doc.rust-lang.org/book/ch09-01-unrecoverable-errors-with-panic.html), [Recoverable errors with `Result`](https://doc.rust-lang.org/book/ch09-02-recoverable-errors-with-result.html) and [To panic or not to panic](https://doc.rust-lang.org/book/ch09-03-to-panic-or-not-to-panic.html).
+- [Rust by Example: Error handling](https://doc.rust-lang.org/rust-by-example/error.html).
+- [Errors in real apps](/build/app-errors/): `thiserror` and `anyhow`.

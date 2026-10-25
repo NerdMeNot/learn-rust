@@ -1,0 +1,334 @@
+<p class="lr-layer">The toolkit</p>
+
+## Two string types, and which one to use
+
+Almost every string you touch is one of two types.
+
+| | `String` | `&str` |
+|---|---|---|
+| What it is | Text you own. It lives on the heap and can grow. | A view into text someone else owns. Read-only. |
+| Where you see it | Struct fields, return values, anything built at runtime | Function parameters, string literals, pieces of other strings |
+| Costs | Allocates once it holds text, and when it grows | Free: it is a pointer and a length |
+
+<Aside type="note" title="Stack and heap in one paragraph">
+Your program keeps data in two places. The **stack** holds each function's local variables. It is fast, but every value there has a fixed size, known when the program is compiled, and it disappears when the function returns. The **heap** is a big pool of memory for data whose size is only known at runtime, or that must outlive the function that made it. Asking the heap for room (allocating) costs a little more. A `String` uses both: a small header on the stack (where the text is, how long it is, how much room is reserved) and the text itself on the heap, so it can grow. [Ownership](/learn/ownership/) covers who frees that heap memory, and when.
+</Aside>
+
+The rule that settles most decisions: **take `&str`, store `String`, return `String`**. A function that takes `&str` accepts every kind of text, because a `&String` turns into a `&str` on its own, and a slice of a `String` is already one:
+
+<Snippet file="which-type.rs" />
+
+Quoted text like `"hello"` is a `&'static str`: the text is baked into your program, and `'static` says it lasts as long as the program does. You'll meet that `'static` again in error messages; it is nothing to worry about here.
+
+<Aside type="tip" title="Where the methods live">
+Open the docs for [`String`](https://doc.rust-lang.org/std/string/struct.String.html) and you'll find surprisingly few methods. Most of them are defined on `str` and work on a `String` too, because a `String` can always be viewed as a `str`. In the `String` docs, scroll to **Methods from `Deref<Target = str>`**, or go straight to the [`str` docs](https://doc.rust-lang.org/std/primitive.str.html). The rule of thumb: methods that change the text are on `String`; methods that read it are on `str`.
+</Aside>
+
+## Building strings
+
+`String::from("…")` and `"…".to_string()` turn text into an owned `String`, and they do the same thing. You'll also see `"…".to_owned()` and `"…".into()`, which do it too.
+
+<Snippet file="building.rs" />
+
+- `push_str` adds text and `push` adds one `char`. Both change the string, so it must be `let mut`.
+- `format!` is `println!` that returns the `String` instead of printing it. It's the usual way to build a string from several values, like `fmt.Sprintf`, f-strings or template literals.
+- `join` and `concat` glue a list of strings together.
+- `String::with_capacity` reserves room up front. You don't need it often, but in a loop that builds a large string it saves the repeated growing.
+
+## Looking inside
+
+These methods read the text and never change it:
+
+<Snippet file="searching.rs" />
+
+`find` returns `Option<usize>` rather than `-1` when there's no match, so you can't forget the "not found" case. The number is a **byte** position, which matters for non-English text. More on that below.
+
+Most search methods accept a `char`, a `&str`, or a closure that tests each `char`, which saves you from writing a regular expression for simple jobs. For real regular expressions, use the [`regex`](https://docs.rs/regex) crate.
+
+## Splitting and trimming
+
+This is where most day-to-day text work happens: reading input, parsing lines, cleaning up values.
+
+<Snippet file="splitting.rs" />
+
+A few things to know:
+
+- `split` returns an **iterator**, not a list. Loop over it directly, or `collect()` it into a `Vec` when you need one. The [iterators lesson](/learn/iterators/) shows what else you can do with it.
+- Splitting and trimming copy nothing. Each piece is a `&str` pointing into the original text, so they are cheap even on large input.
+- Use `split_whitespace` rather than `split(' ')` for words: it handles tabs, newlines and repeated spaces, and never gives empty pieces.
+- `split_once` is the tidy way to handle `key=value`. It returns `Option<(&str, &str)>`, so a line without `=` is handled, not ignored.
+- `strip_prefix` returns `None` when the prefix isn't there, unlike `trim_start_matches`, which quietly returns the text unchanged.
+- [Working with Text](/learn/text/) covers the rest of the everyday toolkit: `parse`, case and the Unicode traps.
+
+## Changing text
+
+Methods that produce a new version of the text return a new `String`. Methods that change it in place need a `mut` `String`.
+
+<Snippet file="changing.rs" />
+
+Two things here surprise people:
+
+- `to_uppercase` understands Unicode: `"straße"` becomes `"STRASSE"`, one character turning into two. That's correct German, and it's why case conversion returns a new `String` rather than changing the old one in place.
+- Comparing and sorting `String`s compares bytes, so every capital letter sorts before every lowercase one. For human-friendly order, sort by a lowercased key (or use a collation crate for real locale rules).
+
+## Converting to and from strings
+
+<Snippet file="converting.rs" />
+
+- `parse` turns text into any type that knows how: numbers, `bool`, IP addresses, and your own types if you implement [`FromStr`](https://doc.rust-lang.org/std/str/trait.FromStr.html). It returns a `Result`, so a bad value is an error you handle, not an exception or a silent zero.
+- `to_string()` works on anything that implements `Display`, which is what `{}` uses. The `{:>8.2}` mini-language is in [Macros, attributes, naming](/learn/macros-attributes-naming/#format-strings), and the [formatting lesson](/learn/formatting/) covers the traits and `Formatter` behind it.
+- A `String` is always valid UTF-8. Turning bytes into one is checked (`String::from_utf8` returns a `Result`), or lossy if you ask (`from_utf8_lossy` puts `�` where bytes are invalid).
+
+## Your string methods in Rust
+
+Pick your language in "Coming from" at the top of the page to see how the calls you already know map to Rust.
+
+<ForLang only="go">
+
+| You write in Go | In Rust |
+|---|---|
+| `strings.Cut(s, "=")` | `s.split_once('=')`, an `Option<(&str, &str)>` |
+| `strings.CutPrefix(s, "v")` | `s.strip_prefix('v')`, an `Option<&str>` |
+| `strings.Fields(s)` | `s.split_whitespace()` |
+| `strings.Split(s, ",")` | `s.split(',')`, an iterator; add `.collect::<Vec<_>>()` for a slice |
+| `strings.TrimSpace(s)` | `s.trim()` |
+| `strings.Contains`, `HasPrefix`, `HasSuffix` | `s.contains(…)`, `s.starts_with(…)`, `s.ends_with(…)` |
+| `strings.Index(s, "/")` | `s.find('/')`, an `Option<usize>` instead of `-1` |
+| `strings.Join(parts, ", ")` | `parts.join(", ")` |
+| `strings.Builder` | a `mut String` and `push_str` |
+| `fmt.Sprintf("%s=%d", k, v)` | `format!("{k}={v}")` |
+| `strconv.Atoi(s)` | `s.parse::<i32>()`, a `Result` |
+| `[]byte(s)` | `s.as_bytes()` (a view, no copy), or `s.as_bytes().to_vec()` for a `Vec<u8>` |
+| `[]rune(s)` | `s.chars().collect::<Vec<char>>()` |
+| `for i, r := range s` | `for (i, c) in s.char_indices()` |
+
+</ForLang>
+
+<ForLang only="java">
+
+| In Java | In Rust |
+|---|---|
+| `s.substring(a, b)` | `&s[a..b]`, with **byte** positions |
+| `s.indexOf("/")` | `s.find('/')`, an `Option<usize>` instead of `-1` |
+| `s.split(",")` (a regex) | `s.split(',')`, an iterator, and never a regex |
+| `s.trim()` | `s.trim()` |
+| `s.startsWith("x")` | `s.starts_with("x")` |
+| `String.join(", ", list)` | `list.join(", ")` |
+| `StringBuilder` | a `mut String` and `push_str` |
+| `Integer.parseInt(s)` | `s.parse::<i32>()`, a `Result` |
+| `String.format("%s=%d", k, v)` | `format!("{k}={v}")` |
+
+`==` on Rust strings compares the text, so there is no `.equals` trap, and a `String` and a `&str` compare with each other directly. Comparing with `<` or sorting goes by bytes, not by locale.
+
+</ForLang>
+
+<ForLang only="kotlin">
+
+| In Kotlin | In Rust |
+|---|---|
+| `s.substring(a, b)` | `&s[a..b]`, with **byte** positions |
+| `s.indexOf("/")` | `s.find('/')`, an `Option<usize>` instead of `-1` |
+| `s.split(",")` | `s.split(',')`, an iterator |
+| `s.trim()` | `s.trim()` |
+| `s.startsWith("x")` | `s.starts_with("x")` |
+| `list.joinToString(", ")` | `list.join(", ")` |
+| `StringBuilder` / `buildString` | a `mut String` and `push_str` |
+| `s.toInt()` | `s.parse::<i32>()`, a `Result` |
+| `"$k=$v"` | `format!("{k}={v}")` |
+
+`==` on Rust strings compares the text, so there is no `.equals` trap, and a `String` and a `&str` compare with each other directly. Comparing with `<` or sorting goes by bytes, not by locale.
+
+</ForLang>
+
+<ForLang only="csharp">
+
+| In C# | In Rust |
+|---|---|
+| `s.Substring(a, b - a)` | `&s[a..b]`, with **byte** positions |
+| `s.IndexOf("/")` | `s.find('/')`, an `Option<usize>` instead of `-1` |
+| `s.Split(',')` | `s.split(',')`, an iterator |
+| `s.Trim()` | `s.trim()` |
+| `s.StartsWith("x")` | `s.starts_with("x")` |
+| `string.Join(", ", list)` | `list.join(", ")` |
+| `StringBuilder` | a `mut String` and `push_str` |
+| `int.Parse(s)` | `s.parse::<i32>()`, a `Result` |
+| `$"{k}={v}"` | `format!("{k}={v}")` |
+
+`==` on Rust strings compares the text, so there is no `.equals` trap, and a `String` and a `&str` compare with each other directly. Comparing with `<` or sorting goes by bytes, not by locale.
+
+</ForLang>
+
+<ForLang only="python">
+
+| You write in Python | In Rust |
+|---|---|
+| `s.split()` | `s.split_whitespace()` |
+| `s.split(",")` | `s.split(',')`, an iterator; add `.collect::<Vec<_>>()` for a list |
+| `s.partition("=")` | `s.split_once('=')`, an `Option<(&str, &str)>` |
+| `s.strip()`, `s.lstrip()`, `s.rstrip()` | `s.trim()`, `s.trim_start()`, `s.trim_end()` |
+| `s.startswith("x")`, `s.endswith("x")` | `s.starts_with("x")`, `s.ends_with("x")` |
+| `"x" in s` | `s.contains("x")` |
+| `s.find("/")` | `s.find('/')`, an `Option<usize>` instead of `-1` |
+| `s.removeprefix("v")` | `s.strip_prefix('v')`, `None` if it wasn't there |
+| `", ".join(items)` | `items.join(", ")` |
+| `f"{name} is {age}"` | `format!("{name} is {age}")` |
+| `int(s)` | `s.parse::<i64>()`, a `Result` instead of a `ValueError` |
+| `len(s)` | `s.chars().count()` (`s.len()` is bytes) |
+
+</ForLang>
+
+<ForLang only="typescript">
+
+| You write in TypeScript | In Rust |
+|---|---|
+| `s.split(",")` | `s.split(',')`, an iterator; add `.collect::<Vec<_>>()` for an array |
+| `s.trim()` | `s.trim()` |
+| `s.includes("x")` | `s.contains("x")` |
+| `s.startsWith("x")`, `s.endsWith("x")` | `s.starts_with("x")`, `s.ends_with("x")` |
+| `s.indexOf("/")` | `s.find('/')`, an `Option<usize>` instead of `-1` |
+| `s.slice(a, b)` | `&s[a..b]`, with **byte** positions |
+| `` `${name} is ${age}` `` | `format!("{name} is {age}")` |
+| `parseInt(s, 10)` | `s.parse::<i32>()`, a `Result` instead of `NaN` |
+| `parts.join(", ")` | `parts.join(", ")` |
+| `[...s].length` | `s.chars().count()` (`s.len()` is bytes, and `s.length` counts UTF-16 units) |
+
+</ForLang>
+
+<ForLang only="c cpp">
+
+| You write in C or C++ | In Rust |
+|---|---|
+| `strlen(s)`, `s.size()` | `s.len()`, stored, not counted |
+| `strcmp(a, b) == 0`, `a == b` | `a == b` |
+| `strstr(s, "x")`, `s.find("x")` | `s.find("x")`, an `Option<usize>` instead of `NULL` or `npos` |
+| `strtok(s, ",")` | `s.split(',')`, which doesn't modify `s` |
+| `s.substr(a, n)` | `&s[a..a + n]`, a view, not a copy |
+| `snprintf`, `std::format` | `format!` |
+| `atoi`, `strtol`, `std::stoi` | `s.parse::<i32>()`, a `Result` |
+| `s += "x"`, `s.append("x")` | `s.push_str("x")` |
+
+How `String` differs from `std::string` underneath is in [What a `String` is in memory](#what-a-string-is-in-memory) below.
+
+</ForLang>
+
+## Characters, bytes and what a person sees
+
+Here is the part most languages let you ignore until it bites, and Rust makes you face up front.
+
+<Snippet file="chars-and-bytes.rs" />
+
+A Rust string is a sequence of **bytes** in UTF-8. On top of those bytes you can view it as **chars** (Unicode scalar values). A person, though, sees **graphemes**: the flag above is one symbol on screen, made of two chars, which take eight bytes. Three different answers to "how long is this string?", and all three are correct.
+
+| You want | Use |
+|---|---|
+| Size in memory, or a byte position from `find` | `.len()`, byte ranges |
+| Characters, for processing text | `.chars()`, `.char_indices()` |
+| What a person would call a letter (for cursors, truncating names, counting user input) | the [`unicode-segmentation`](https://docs.rs/unicode-segmentation) crate, shown in [Finding and using crates](/start/using-crates/) |
+
+Slicing with `&text[a..b]` uses byte positions. If a position lands inside a multi-byte character, the program stops with a clear message rather than giving you half a character:
+
+<Snippet file="slice-mid-char.panic.rs" />
+
+When the positions come from somewhere you don't control, use `text.get(a..b)`, which returns `None` instead of panicking. Positions you got from `find` or `char_indices` are always safe to slice at.
+
+<p class="lr-layer">Going deeper</p>
+
+## What a `String` is in memory
+
+A `String` is three numbers on the stack: a pointer to the text on the heap, its length, and how much room is reserved (its capacity). A `&str` is just two: a pointer and a length. That's why slicing is free: the slice points into text that already exists.
+
+<Memory
+  title={'let s = String::from("héllo");   let v: &str = &s[0..3];'}
+  stack={[
+    { name: 's', type: 'String', cells: ['ptr', 'len 6', 'cap 6'], to: 'buf' },
+    { name: 'v', type: '&str', cells: ['ptr', 'len 3'], to: 'buf' },
+  ]}
+  heap={[{ id: 'buf', label: '6 bytes of UTF-8', cells: ['h', 'é ①', 'é ②', 'l', 'l', 'o'] }]}
+  caption="`é` takes two bytes, so `héllo` is 5 characters but 6 bytes. `v` points at the same bytes as `s`: the first three, `hé`. Nothing was copied."
+/>
+
+You can check every part of that picture:
+
+<Snippet file="memory.rs" />
+
+When `s` goes out of scope, Rust frees the heap bytes. While `v` exists, the borrow checker won't let `s` be changed or dropped, because `v` would be left pointing at freed or moved memory. That is the [borrowing](/learn/borrowing/) rule doing its job on text.
+
+<ForLang only="c cpp">
+
+A Rust `String` looks like `std::string`, but it makes different promises.
+
+- **Encoding.** `std::string` holds any bytes, with no fixed encoding. A Rust `String` is always valid UTF-8: bytes only become one after a check (`String::from_utf8`) or through `unsafe`.
+- **No small-string optimisation.** libstdc++ and libc++ store short strings inside the `std::string` object itself, with no allocation. Rust's `String` keeps its text on the heap whenever it isn't empty. `String::new()` allocates nothing, but even `"hi"` is a heap allocation:
+
+<Snippet file="no-small-strings.rs" />
+
+- **No NUL terminator.** The length is stored, and a `String` can contain `\0`. To hand text to C, use [`CString`](https://doc.rust-lang.org/std/ffi/struct.CString.html), which adds the terminator and refuses interior NULs. To read a `const char *` from C, use [`CStr`](https://doc.rust-lang.org/std/ffi/struct.CStr.html).
+- **`char` is not a byte.** Rust's `char` is 4 bytes and holds one Unicode scalar value, like `char32_t` without the surrogate range. The type for C's `char` is `u8` (`as_bytes()` gives you a `&[u8]`).
+
+</ForLang>
+
+## Why `s[0]` doesn't compile
+
+<Snippet file="index.fail.rs" />
+
+In most languages `s[i]` is a quick jump to position `i`. In UTF-8, characters are 1 to 4 bytes long, so finding the i-th character means walking from the start. Rust refuses to give `s[0]` a meaning that is either wrong (a byte, as in Go and C) or secretly slow (a walk, which `[]` should never be). So you say which one you mean: `.bytes().nth(i)`, `.chars().nth(i)`, or a byte range `&s[a..b]`.
+
+## `+` takes the left side
+
+`a + &b` looks symmetrical, but it isn't. It takes `a` by value, appends `b` to `a`'s buffer, and hands that buffer back. No new allocation is made when there's room, which is why it's designed this way. The cost is that `a` is gone afterwards:
+
+<Snippet file="plus-moves.fail.rs" />
+
+So use `+` when you're done with the left side, and `format!` when you want to keep everything:
+
+<Snippet file="plus.rs" />
+
+## How this compares with your language
+
+| Language | String type | Stored as | Indexing `s[i]` gives | Can you change it? |
+|---|---|---|---|---|
+| Rust | `String` / `&str` | UTF-8, always valid | doesn't compile | `String`: yes. `&str`: no |
+| Go | `string` | bytes, usually UTF-8 | a byte | no (immutable) |
+| Java, Kotlin | `String` | UTF-16 | a UTF-16 unit | no (immutable) |
+| C# | `string` | UTF-16 | a UTF-16 unit | no (immutable) |
+| Python | `str` | Unicode code points | a code point | no (immutable) |
+| TypeScript | `string` | UTF-16 | a UTF-16 unit | no (immutable) |
+| C | `char *` | bytes, ends with `\0` | a byte | yes |
+| C++ | `std::string` | bytes | a byte | yes |
+
+Rust is the only one where the type guarantees valid text, and the only one that won't pick an answer to `s[i]` for you.
+
+## Other string types you'll meet
+
+You won't need these on day one, but you'll see them in signatures:
+
+- [`Cow<str>`](https://doc.rust-lang.org/std/borrow/enum.Cow.html): "a `&str` or a `String`, whichever I had". Functions that usually return their input unchanged but sometimes need to modify it use it to avoid a copy.
+- [`OsString` / `OsStr`](https://doc.rust-lang.org/std/ffi/struct.OsString.html): file names and environment variables, which on most systems are not guaranteed to be valid UTF-8.
+- [`PathBuf` / `Path`](https://doc.rust-lang.org/std/path/struct.PathBuf.html): file paths. Use these instead of joining strings with `/`.
+- `&[u8]` and `b"bytes"`: raw bytes, when the data isn't text.
+- `Box<str>` and `Arc<str>`: text that won't change again, stored more compactly or shared between threads.
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Each exercise is a small program with checks in `main`. Open it in the Playground, replace the `todo!()`, and run it until it prints `all checks passed`. A plain `for` loop is fine for all of them. The solutions also show a shorter version with iterator methods, which the [iterators lesson](/learn/iterators/) explains.
+
+<Exercise name="initials" title="Initials">
+Write `initials`, which turns `"Ada Lovelace"` into `"AL"`. It must handle extra spaces and names that start with a non-English letter.
+</Exercise>
+
+<Exercise name="parse-settings" title="Parse a settings line">
+Turn `"name = Ada; age=36 ;city= London"` into a list of `(key, value)` pairs, trimming spaces, and skipping pieces that have no `=`.
+</Exercise>
+
+<Exercise name="truncate-chars" title="Shorten text safely">
+Shorten text to at most `max` characters, adding `…` when it was cut. It must never panic, even on `"🦀🦀🦀"`. This is the bug that breaks real apps when a user's name isn't English.
+</Exercise>
+
+## Read more
+
+- [`String`](https://doc.rust-lang.org/std/string/struct.String.html) and [`str`](https://doc.rust-lang.org/std/primitive.str.html) in the standard library docs. Every method, each with a runnable example.
+- [The Rust Book, chapter 8.2: Storing UTF-8 Encoded Text with Strings](https://doc.rust-lang.org/book/ch08-02-strings.html)
+- [Rust by Example: Strings](https://doc.rust-lang.org/rust-by-example/std/str.html)
+- [`std::fmt`](https://doc.rust-lang.org/std/fmt/index.html): everything `format!` and `println!` can do.

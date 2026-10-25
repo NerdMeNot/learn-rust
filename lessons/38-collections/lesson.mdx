@@ -1,0 +1,300 @@
+<p class="lr-layer">The toolkit</p>
+
+`std::collections` holds the containers beyond `Vec`: `HashMap` and `HashSet`, `BTreeMap` and `BTreeSet`, `VecDeque`, `BinaryHeap` and `LinkedList`. The module docs open with advice worth hearing first: "you should probably just use Vec or HashMap", because the others "have specific use cases where they are the optimal choice". This page is about those use cases. [Vectors](/learn/vectors/) and [Maps](/learn/maps/) already cover the two basics, `entry`, `retain`, `with_capacity` and a first look at `BTreeMap` and sets. Outputs come from Linux on 64-bit ARM with Rust 1.99.1.
+
+## Which collection?
+
+`check-table.rs`, `check-set-index.fail.rs` and `check-linked-index.fail.rs` assert every cell below except the hashed loop order, which the docs call "arbitrary" and no test can prove:
+
+| | Use it for | Loop order | A repeated item | `x[i]` or `x[&key]` |
+|---|---|---|---|---|
+| `Vec` | a list, or a stack (`push` and `pop` at the end) | by position | kept | yes |
+| `VecDeque` | a queue: add at one end, take from the other | front to back | kept | yes |
+| `HashMap`, `HashSet` | a value found by key; "have I seen this?" | arbitrary | replaces or is refused | map: yes, set: no |
+| `BTreeMap`, `BTreeSet` | keys in order, a range of keys, the smallest or largest | sorted by key | replaces or is refused | map: yes, set: no |
+| `BinaryHeap` | the biggest item next | `iter`: arbitrary; `pop`, `into_sorted_vec`: ordered | kept | no |
+| `LinkedList` | joining two long lists in O(1) | front to back | kept | no |
+
+The standard docs also give costs, with `n` items and `i` a position. `~` means expected and `*` amortized (averaged over the occasional resize):
+
+| | `get(i)` | `insert(i)` | `remove(i)` | `range` |
+|---|---|---|---|---|
+| `Vec` | O(1) | O(n-i)* | O(n-i) | none |
+| `VecDeque` | O(1) | O(min(i, n-i))* | O(min(i, n-i)) | none |
+| `HashMap` | O(1)~ | O(1)~* | O(1)~ | none |
+| `BTreeMap` | O(log n) | O(log n) | O(log n) | O(log n) |
+
+These are [the docs' tables](https://doc.rust-lang.org/std/collections/index.html#performance), not measurements. Big-O ignores constant factors, so it cannot rank collections on a small input; for equal costs the docs say "Vec is generally going to be faster than VecDeque, and VecDeque is generally going to be faster than LinkedList". Rule a collection out with the tables, then measure.
+
+## Sets: union and friends
+
+The set methods return iterators, and the operators `&`, `|`, `-` and `^` build a new set (cloning the items, so `T: Clone`). Both sets must be the same kind, hashed or sorted (`check-set-needs.fail.rs`: E0308 for a mixed pair, E0369 without `Clone`). A `HashSet` has no promised order, so sort before printing:
+
+<Snippet file="set-ops.rs" />
+
+`insert` returns `true` only when the item was new, which makes it the one-line way to spot a repeat.
+
+## `BTreeMap`: more than sorted
+
+[Maps](/learn/maps/) showed `first_key_value` and `range`. The same type also offers `entry` with sorted keys, nearest-key lookups, removal from both ends, and cutting the map in two:
+
+<Snippet file="btree-more.rs" />
+
+`range` takes a normal range of keys, or a pair of `Bound`s (`Included(x)`, `Excluded(x)` or `Unbounded`) for cases a range cannot spell, such as "after 25, but not 25". It panics on a range that runs backwards:
+
+<Snippet file="range-panics.panic.rs" />
+
+Check `from < to` when the bounds come from a user. `BTreeSet` has `range`, `first`, `pop_first` and `split_off` too.
+
+## `VecDeque`: a queue you can index
+
+`VecDeque` adds and removes at both ends. Iteration goes front to back whatever the layout, and `q[i]` works.
+
+<Snippet file="deque.rs" />
+
+Its items may sit in two pieces of memory (Going deeper shows how). A `VecDeque` is not a slice: for `sort` or a slice-only function, call `make_contiguous`, which moves the items into one piece and hands back a `&mut [T]`.
+
+## `BinaryHeap`: the biggest next
+
+A `BinaryHeap` is a priority queue, and it is a **max**-heap: `pop` gives the greatest item by `Ord`. `peek` looks without removing, `into_sorted_vec` ends the heap and gives a `Vec` sorted ascending (smallest first), and `peek_mut` changes the top in place and restores the heap's order when the reference goes away. Wrap items in `std::cmp::Reverse` to flip the order:
+
+<Snippet file="heap.rs" />
+
+Tuples and `derive(Ord)` compare field by field, so put the priority first. Ties fall to the next field:
+
+<Snippet file="job-heap.rs" />
+
+Both `deploy` and `alert` have priority 9, and `deploy` came out first although `alert` was pushed first, because `"deploy" > "alert"`. The docs promise no first-in, first-out order among equal items. For one, give each item an arrival number, compared last and in `Reverse` so the earlier arrival counts as greater (the second half).
+
+A `BinaryHeap` has no comparator argument and no update in place: the order comes from the item's `Ord`, so a different order means a wrapper type or a tuple. There is no `remove` by value, no `contains` and no decrease-key (`check-heap-missing.fail.rs` gets E0599 for `new_by`, `remove` and `contains`). To change a priority, push a new entry and skip the old one when it pops.
+
+The classic use is shortest paths. Dijkstra's algorithm, for costs that are never negative, repeatedly fixes the cost of the cheapest node not yet fixed, and a min-heap (`Reverse`) of `(cost, node)` pairs finds it:
+
+<Snippet file="dijkstra.rs" />
+
+Node 4 has no way in, so its answer is `None`. A cost cannot be lowered in the heap, so an entry is pushed for each route found, a node can pop more than once, and the loop skips the later, dearer entries.
+
+## `LinkedList`: one row
+
+The docs say "It is almost always better to use Vec or VecDeque because array-based containers are generally faster, more memory efficient, and make better use of CPU cache". The index lists reasons to use one anyway, among them that you can't tolerate amortization or want to "efficiently split and append lists". `append` joins two lists in O(1), but `split_off` still walks to the split point (O(n) in the docs); `check-table.rs` runs both. There is no `x[i]` (E0608, `check-linked-index.fail.rs`). And an insert or remove at a position you already hold is not on stable Rust: `remove` and the cursor methods are unstable, E0658 on 1.99.1 (`check-linked-unstable.fail.rs`).
+
+## What the items must provide
+
+`Vec`, `VecDeque` and `LinkedList` need nothing from their items. `HashMap` keys and `HashSet` items need `Hash` and `Eq` ([Maps](/learn/maps/)); `BTreeMap` keys, `BTreeSet` items and `BinaryHeap` items need `Ord` ([Common traits](/learn/common-traits/)).
+
+`derive` gives your own types these traits; an order other than the derived one is a hand-written `Ord`, as the last exercise has you write. Leave one out and the error names it:
+
+<Snippet file="key-needs.fail.rs" />
+
+The classic case is a float. `f64` has no `Ord` because `NaN` is not equal to anything, so neither `BinaryHeap<f64>` nor `BTreeSet<f64>` compiles (`check-float-btree.fail.rs`):
+
+<Snippet file="float-heap.fail.rs" />
+
+The usual fix is a wrapper whose `Ord` calls `f64::total_cmp`, which orders every value, `NaN` included (the `ordered-float` crate packages the idea):
+
+<Snippet file="float-heap-fixed.rs" />
+
+## Housekeeping
+
+The docs say "Rust's collections never automatically shrink"; `shrink_to_fit` gives memory back. `extract_if` is `retain` that hands you the items it removes. It is stable on `Vec` (1.87), on `HashMap` and `HashSet` (1.88), and on `BTreeMap` and `BTreeSet` (1.91):
+
+<Snippet file="housekeeping.rs" />
+
+<ForLang only="go">
+
+| You write in Go | In Rust |
+|---|---|
+| `container/heap` with `Len`, `Less`, `Swap`, `Push`, `Pop` | `BinaryHeap<T>` with `Ord` on `T` |
+| `heap.Fix(h, i)`, `heap.Remove(h, i)` | none: push a new entry, skip the old one when it pops |
+| a slice used as a queue, `q = q[1:]` | `VecDeque` |
+| a sorted slice with `slices.BinarySearch` and `slices.Insert` | `BTreeMap` / `BTreeSet` |
+| `container/list` | `LinkedList` |
+
+Go's heap needs five methods you write yourself, and `Less` decides min or max. `heap.Fix` restores the order after you change an item:
+
+<Snippet file="heap.go" />
+
+Rust's heap is a max-heap ordered by the type's `Ord`, with no `Less` to swap in; `Reverse` gives the same pops. There is no `Fix`: push a second entry and skip the stale one later, as the Dijkstra program does. Go has no sorted map, so this keeps a sorted slice:
+
+<Snippet file="sorted.go" />
+
+The search gives the index where a key would go: Rust's `range(30..).next()` in more steps. `slices.Insert` is O(len(s) + len(v)) in the Go docs; a `BTreeMap` inserts in O(log n). `container/list` removes through an `*Element` you hold; stable `LinkedList` has no such handle.
+
+</ForLang>
+
+<ForLang only="java">
+
+| You write in Java | In Rust |
+|---|---|
+| `new PriorityQueue<>()` (smallest first) | `BinaryHeap<Reverse<T>>` (`BinaryHeap<T>` pops the largest) |
+| `Comparator.comparingInt(Job::priority)` on a `PriorityQueue` or `TreeMap` | `impl Ord for Job`: no comparator argument |
+| `TreeMap`, `TreeSet` | `BTreeMap`, `BTreeSet` |
+| `floorKey(k)`, `ceilingKey(k)`, `subMap(a, b)` | `range(..=k).next_back()`, `range(k..).next()`, `range(a..b)` |
+| `ArrayDeque` as a queue, or as a stack | `VecDeque`, or `Vec` (`push`, `pop`) |
+| `LinkedHashMap`, `LinkedHashSet` | none in std: a `Vec` beside a `HashSet` (the `first_seen` exercise), or the `indexmap` crate |
+| `a.retainAll(b)`, `addAll`, `removeAll` (change `a`) | `&a & &b`, `&a \| &b`, `&a - &b` (new set) |
+
+<Snippet file="queues.java" />
+
+A port that forgets `Reverse` gets the wrong end of the heap, and `pq.remove(x)` has no `BinaryHeap` counterpart (push a new entry instead). `Set.add` returns a boolean, as `insert` does. `retainAll` changes the set; `&a & &b` builds a new one (`intersection` returns an iterator). `subMap` is a live view: the program printed the new entry in the same view after `put(30, ...)`. Rust's `range` borrows the map, so the compiler refuses a change while the iterator is in use.
+
+A comparator chosen at run time (a column the user picked) cannot be a Rust `Ord`, because `cmp(&self, &other)` sees only the two items: put a sort key in each item. A `TreeSet` with `String.CASE_INSENSITIVE_ORDER` refuses `"ana"` after `"Ana"`, as the `Word` in Going deeper does.
+
+</ForLang>
+
+<ForLang only="kotlin">
+
+| You write in Kotlin | In Rust |
+|---|---|
+| `ArrayDeque` (`kotlin.collections.ArrayDeque`) as a queue, or as a stack | `VecDeque`, or `Vec` (`push`, `pop`) |
+| `sortedMapOf(...)` | `BTreeMap` |
+| `setOf`, `mutableSetOf`, `mutableMapOf` (they remember insertion order) | none in std: a `Vec` beside a `HashSet` (the `first_seen` exercise), or the `indexmap` crate |
+| `java.util.PriorityQueue` (smallest first, takes a comparator) | `BinaryHeap<Reverse<T>>`, order from `impl Ord` |
+| `a intersect b`, `a union b`, `a subtract b` | `&a & &b`, `&a \| &b`, `&a - &b` |
+
+<Snippet file="queues.kt" />
+
+`sortedMapOf` builds a `java.util.TreeMap`, but its Kotlin type is only `SortedMap`, which has no `floorKey`; the program builds a `TreeMap` for that. `setOf` and `mutableMapOf` are a `LinkedHashSet` and a `LinkedHashMap`, so your everyday set and map remember insertion order and Rust's `HashSet` and `HashMap` do not (`distinct()` is one call in Kotlin).
+
+</ForLang>
+
+<ForLang only="csharp">
+
+| You write in C# | In Rust |
+|---|---|
+| `Queue<T>` (adds at the back only) | `VecDeque` (both ends) |
+| `PriorityQueue<TElement, TPriority>` | `BinaryHeap` of a type that orders by priority, in `Reverse` for lowest first |
+| `SortedDictionary`, `SortedSet` | `BTreeMap`, `BTreeSet` |
+| `set.GetViewBetween(a, b)` | `range(a..=b)` |
+| `a.IntersectWith(b)`, `UnionWith` (change `a`) | `&a & &b`, `&a \| &b` (new set) |
+| `a.Intersect(b)` (LINQ, a new sequence) | `a.intersection(&b)` (a lazy iterator) |
+
+<Snippet file="queues.cs" />
+
+C#'s `PriorityQueue` hands out the lowest priority number first and keeps the element and its priority apart. A `BinaryHeap` has one item type and pops the greatest by its `Ord`: write `Ord` to compare only the priority, since a derived order falls through to the next field on ties. `HashSet.Add` returns a boolean, as `insert` does. `GetViewBetween` is a live view, as the program printed; Rust's `range` borrows.
+
+</ForLang>
+
+<ForLang only="python">
+
+| You write in Python | In Rust |
+|---|---|
+| `heapq.heappush`, `heappop` on a list (smallest first) | `BinaryHeap<Reverse<T>>` |
+| `(priority, counter, item)` tuples in a heap | `(priority, Reverse(counter), item)` |
+| `heapq.nlargest(k, it)` | none in std: the `top_k` exercise |
+| `collections.deque` | `VecDeque` |
+| `dict.fromkeys(items)`, for distinct items in first-seen order | `HashSet` forgets order: the `first_seen` exercise |
+| `bisect.insort` on a list | `BTreeSet` |
+| `sortedcontainers.SortedDict` (a third-party package) | `BTreeMap` |
+
+<Snippet file="queues.py" />
+
+A `heapq` list is in heap order, not sorted, and so is a Rust heap's `iter` order; `BinaryHeap` is a type, so nothing can break the invariant by touching the list. Rust's heap pops the greatest, so the counter goes in `Reverse`. A `deque` slows to O(n) in the middle (the Python docs); `VecDeque` indexing is O(1) anywhere. `bisect.insort` shifts the list ("the slow O(n) insertion step", say the Python docs); a `BTreeSet` insert is O(log n). `sortedcontainers` is not installed here, so the import failed above and it was not run.
+
+</ForLang>
+
+<ForLang only="typescript">
+
+| You write in TypeScript | In Rust |
+|---|---|
+| `Set`, `a.union(b)` (a new `Set`) | `HashSet`, `a.union(&b)` (a lazy iterator) or `&a \| &b` (a new set) |
+| `new Set(items)`, for distinct items in first-seen order | `HashSet` forgets order: the `first_seen` exercise |
+| `Map` (insertion order) | `HashMap` has no such order; `BTreeMap` is sorted |
+| an array with `push` and `shift` as a queue | `VecDeque` |
+
+<Snippet file="sets.ts" />
+
+The `Set` methods ran on Node 24; older engines may lack them. A JavaScript `Map` guarantees insertion order and code relies on it; a Rust `HashMap` does not, so sort the keys or use a `BTreeMap`. A `Set` or `Map` compares object keys by identity, as the program printed; a `HashMap` compares by value, so `(i32, i32)` keys just work. `VecDeque` adds and removes at both ends in O(1) (amortized when adding); `shift()` is defined as moving every other item down one index (engines may optimise).
+
+</ForLang>
+
+<ForLang only="c">
+
+| You write in C | In Rust |
+|---|---|
+| a sorted array, `qsort`, `bsearch` | `BTreeMap` or `BTreeSet` |
+| a hand-written hash table, or POSIX `hsearch` | `HashMap` |
+| a ring buffer with head and length fields | `VecDeque` |
+| a hand-written heap in an array | `BinaryHeap` |
+
+<Snippet file="ordered.c" />
+
+A sorted array makes lookup cheap and insertion shift items. A generic `BTreeMap<K, V>` needs only `Ord` on `K`, where `qsort` takes a comparison function whose arguments you cast by hand.
+
+</ForLang>
+
+<ForLang only="cpp">
+
+| You write in C++ | In Rust |
+|---|---|
+| `std::priority_queue<T>` (max-heap) | `BinaryHeap<T>` (also a max-heap) |
+| `priority_queue<T, vector<T>, greater<T>>`, or a lambda comparator | `BinaryHeap<Reverse<T>>`, or `impl Ord` on the item |
+| `std::map`, `std::multimap` | `BTreeMap`, `BTreeMap<K, Vec<V>>` with `entry(k).or_default().push(v)` |
+| `lower_bound(k)`, `upper_bound(k)` | `range(k..)`, `range((Excluded(k), Unbounded))` |
+| `std::set_intersection` on sorted ranges | `a.intersection(&b)` |
+| `std::deque`, `std::list` | `VecDeque`, `LinkedList` |
+| `std::unordered_set`, `unordered_map` | `HashSet`, `HashMap` |
+
+<Snippet file="queues.cpp" />
+
+Both heaps pop the largest first. `std::set_intersection` works on sorted ranges, so `std::unordered_set` has no set algebra in the standard library; Rust's `HashSet` and `BTreeSet` both have it. `std::map` `[]` inserts a default for a missing key; Rust's `[]` never inserts (the gotcha above).
+
+`std::map` keeps iterators to its entries valid across inserts and across erases of other entries, so entries never move; the program held one through 189 inserts. `BTreeMap` is a B-Tree, which keeps several entries in a node and shifts them as nodes fill and empty, so it makes no such promise, and the borrow checker enforces the other side: a reference into the map blocks an insert ([Maps](/learn/maps/)). `std::deque` likewise keeps references valid across `push_back` and `push_front` (the program held one through 2,000), where `VecDeque` is one ring buffer that may reallocate. `std::list` inserts and erases through an iterator you hold; stable `LinkedList` cannot.
+
+</ForLang>
+
+<p class="lr-layer">Going deeper</p>
+
+## How `VecDeque` keeps both ends cheap
+
+A `Vec` keeps its items at the start of its buffer, so `remove(0)` moves every other item down. A `VecDeque` is, in the docs' words, "a growable ring buffer": the buffer is a circle and a head position says where the first item is. Removing from the front moves the head; adding at the back may wrap round to free space at the buffer's start. This program fills a capacity-4 deque, pops two items, pushes two more and asks for the pieces:
+
+<Snippet file="ring.rs" />
+
+After the pushes, the items `3, 4` and `5, 6` are two slices, though the deque still iterates `3, 4, 5, 6`. `make_contiguous` moves them into one. A deque is a `Vec`-sized header plus one word, 32 bytes here against 24.
+
+<Memory
+  title="VecDeque<u32>: capacity 4, after pop_front twice, then push_back 5 and push_back 6"
+  stack={[
+    { name: 'q', type: 'VecDeque<u32>', cells: ['ptr', 'head 2', 'len 4', 'cap 4'], to: 'buf' },
+  ]}
+  heap={[{ id: 'buf', label: 'buffer: slots 0 to 3', cells: ['5', '6', '3', '4'] }]}
+  caption="A simplified picture. The program proves the two slices, [3, 4] then [5, 6], the capacity of 4 and the 32-byte header. The field names and slot positions are the natural reading of a ring buffer; the real fields are private and can change."
+/>
+
+## `==` and `cmp` must agree
+
+A `BTreeMap` or `BTreeSet` decides that two keys are the same with `cmp` alone: `insert`, `contains`, `range` and the set operations never call `==`. `collect` and `From` differ: they also use `==` to drop repeats. The `Ord` docs say `PartialEq`, `PartialOrd` and `Ord` must agree. This `Word` compares by `cmp` ignoring case but by `==` on exact spelling, which shows what a disagreement costs:
+
+<Snippet file="case-key.rs" />
+
+`insert` refused `ana` without calling `==` once, and `collect` kept both spellings, because `==` said they differ. A `HashMap` has the same rule: equal keys must hash equally, which `derive` guarantees and a hand-written pair can break. A key whose ordering changes while it is in the map is, say the docs, "a logic error" with unspecified results, "encapsulated to the BTreeMap" and not undefined behaviour. The map owns its keys, so ordinary code has no second handle to change one; the docs name the ways in: interior mutability (`Cell`, `RefCell`: [Smart pointers](/learn/smart-pointers/)), global state, I/O or `unsafe`.
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Replace each `todo!()` and run until it prints `all checks passed`. The checks count things (live values, equality tests, memory addresses), so the quick wrong answer fails.
+
+<Exercise name="top_k" title="The k largest, in bounded memory">
+Return the `k` largest items from a stream, largest first; equal items each count. `Reading` is test scaffolding that counts how many exist at once, so sorting the whole stream fails. Keep a min-heap of the best `k` so far.
+</Exercise>
+
+<Exercise name="first_seen" title="Distinct items, first-seen order">
+Return the distinct items in the order they first appear. A `HashSet` finds repeats quickly but forgets the order it was filled in, so it cannot be the whole answer. The checks count equality tests across 4,000 items, so a `Vec` that is asked `contains` for each item fails.
+</Exercise>
+
+<Exercise name="round_robin" title="A queue of turns">
+The job at the front of the queue gets one turn of `quantum` units of work. If it has work left it goes to the back; otherwise it leaves. Write `serve`, one turn. The checks record where each waiting job sits in memory: `pop_front` takes O(1), so it cannot move the others, but rebuilding the queue (into a `Vec`, `remove(0)`, back) does and fails.
+</Exercise>
+
+<Exercise name="run_order" title="A comparator becomes Ord">
+Highest priority first; among equals, the earlier due day; then the smaller name. Write `Ord for Task` by hand (a derive gets the due days the wrong way round) and `run_order` with a `BinaryHeap`. The checks test each rule of `cmp`, including that it says `Equal` only for tasks that are `==`.
+</Exercise>
+
+## Read more
+
+- [`std::collections`](https://doc.rust-lang.org/std/collections/index.html): when to use which collection, and the cost tables quoted above.
+- [`BinaryHeap`](https://doc.rust-lang.org/std/collections/struct.BinaryHeap.html), [`VecDeque`](https://doc.rust-lang.org/std/collections/struct.VecDeque.html), [`BTreeMap`](https://doc.rust-lang.org/std/collections/struct.BTreeMap.html) and [`LinkedList`](https://doc.rust-lang.org/std/collections/struct.LinkedList.html): the complete method lists.
+- [The Rust Book: Common Collections](https://doc.rust-lang.org/book/ch08-00-common-collections.html) covers `Vec`, `String` and `HashMap`.
+- [Rust by Example: std library types](https://doc.rust-lang.org/rust-by-example/std.html).

@@ -1,0 +1,380 @@
+<p class="lr-layer">The toolkit</p>
+
+A **trait** names a set of methods. A type that has those methods, and says so, can be used wherever the trait is asked for. It is what Rust uses where other languages use interfaces, abstract base classes or protocols. Outputs come from Linux on 64-bit ARM, Rust 1.99.1.
+
+## Defining a trait and implementing it
+
+<Snippet file="first-trait.rs" />
+
+- `trait Speaker { ... }` lists methods. `speak` has no body: every type that implements the trait must write one. `shout` has a body: a **default method**, used unless a type replaces it.
+- `impl Speaker for Dog { ... }` is a block of its own, apart from the struct. The trait is not part of the type's definition, so it can be added later, and in another place.
+- `Parrot` replaces `shout`, and `Dog` and `Robot` keep the default. The default calls `self.speak()`, so it works for any type.
+- The first parameter means what it does in [Methods](/learn/methods/).
+- Once the trait is in scope, `Dog.speak()` is an ordinary method call ([scope](#a-traits-methods-and-scope), below).
+
+A replacement cannot call the default it replaces. There is no `super`. Writing `Speaker::shout(self)` inside `Parrot`'s `shout` names `Parrot`'s own `shout`, so it calls itself until the stack is gone:
+
+<Snippet file="super-call.panic.rs" />
+
+Move the shared part into another method or a plain function.
+
+A trait can hold more than methods:
+
+| A trait can list | Example | Shown in |
+|---|---|---|
+| Methods, with or without a default body | `fn speak(&self) -> String;` | `first-trait.rs` above |
+| Associated functions, with no `self` | `fn make() -> String;` | [two traits](#two-traits-one-method-name) |
+| Associated types and constants | `type Item;`, `const LIMIT: u32;` | [associated items](#associated-types-and-constants) |
+| Fields | not allowed | below |
+
+<Snippet file="no-fields.fail.rs" />
+
+A trait body has no fields. When the data matters, the trait asks for a method (`fn name(&self) -> &str`) and each type decides where the data is stored.
+
+## Asking for a trait: bounds
+
+A function says which trait it needs from its argument. That requirement is a **bound**.
+
+<Snippet file="bounds.rs" />
+
+- `T: Speaker` reads "T is some type that implements `Speaker`". `T` is a **type parameter**, a placeholder the caller fills in ([Generics](/learn/generics/)).
+- `&impl Speaker` is the same bound without naming `T`. `where T: Speaker` is the same bound moved after the signature, which helps when a signature gets long.
+- `+` asks for several traits: `T: Speaker + Display`.
+- Inside the function, the bounds decide which methods `T` has: `intro_a` can call `speak` because of its bound, and nothing the bound does not mention.
+
+Each call to `intro_a` uses one concrete type, chosen by the caller and known when the program is compiled: the compiler produces a copy of the function for each type. That is **static dispatch**. [Going deeper](#static-and-dynamic-dispatch-in-one-program) shows the other kind.
+
+## When the type has no impl
+
+Pass a type that has not implemented the trait, and the compiler stops at the call:
+
+<Snippet file="no-impl.fail.rs" />
+
+[E0277](/errors/#E0277) means "this type lacks something the code asks of it": here the `T: Speaker` bound. Calling the method directly gives a different error:
+
+<Snippet file="no-method.fail.rs" />
+
+[E0599](/errors/#E0599) is "no such method". The hint names the trait that defines `speak`, so you can implement it. An impl that leaves out a required method is refused with [E0046](/errors/#E0046):
+
+<Snippet file="missing-item.fail.rs" />
+
+## A trait's methods and scope
+
+To call a trait's method on a concrete type, the trait must be in scope in the **module** where you write the call. A `mod` block in the same file is another scope (a named container of code, covered in [Modules](/learn/modules/)):
+
+<Snippet file="not-in-scope.fail.rs" />
+
+The impl exists, and the compiler suggests `use crate::zoo::Speaker;`. Two cases need no import: a generic function with a bound `T: zoo::Speaker`, and a `&dyn zoo::Speaker`. The bound names the trait, so its methods are reachable. And `use ... as _;` brings a trait into scope for method calls without taking its name:
+
+<Snippet file="scope-ok.rs" />
+
+The **prelude** (the names every module gets without writing `use`) already includes `Iterator`, `Clone`, `Default` and other common traits, which is why you do not usually import those. [Its page](https://doc.rust-lang.org/std/prelude/index.html) lists them.
+
+## Two traits, one method name
+
+Two traits can have a method with the same name. A type's own method wins over a trait's. To pick a trait yourself, name it:
+
+<Snippet file="explicit-call.rs" />
+
+- `Vehicle::start(&car)` calls the `Vehicle` version, passing the receiver by hand.
+- `<Car as Appliance>::make()` is the **fully qualified** form. With no `self` there is no receiver to guide the choice, so you name the type and the trait.
+
+A type may implement both traits, even when both have a default `start`. The error comes only from a bare call that could mean either:
+
+<Snippet file="same-default.fail.rs" />
+
+## Traits for types you did not write
+
+You can implement your trait for any type, including `i32`, `&str` and `Vec<T>`:
+
+<Snippet file="foreign.rs" />
+
+`impl<T: Describe> Describe for Vec<T>` says "a `Vec` of describable things is describable". A blanket impl covers every type that meets a bound:
+
+<Snippet file="blanket.rs" />
+
+`impl<T: Display> Shout for T` gave `Shout` to `&str`, `i32` and `Robot` at once. The standard library's [`ToString`](https://doc.rust-lang.org/std/string/trait.ToString.html) reaches every `Display` type this way.
+
+There is a limit. You may write `impl Trait for Type` if the trait **or** the type is defined in your own crate (your package's code). This is the **orphan rule**:
+
+| Trait | Type | Allowed? | Shown by |
+|---|---|---|---|
+| yours | yours | yes | `first-trait.rs` |
+| yours | foreign (`i32`, `Vec<T>`) | yes | `foreign.rs` |
+| foreign (`Display`) | yours | yes | `newtype.rs` below |
+| foreign (`Display`) | foreign (`Vec<i32>`) | no, unless a type of yours is among the trait's own type parameters (next paragraph) | `orphan.fail.rs` below |
+
+<Snippet file="orphan.fail.rs" />
+
+[E0117](/errors/#E0117) is the orphan rule. Traits can take type parameters (`From<T>` does), and `impl From<Meters> for f64` is accepted when `Meters` is your type, because it appears among the trait's parameters. The [Reference](https://doc.rust-lang.org/reference/items/implementations.html) states the full rule.
+
+The way around is a **newtype**: a one-field struct that wraps the foreign type. The wrapper is yours, so the impl is allowed:
+
+<Snippet file="newtype.rs" />
+
+## Supertraits
+
+A trait can require another trait. `Pet: Speaker` reads "to be a `Pet`, a type must also be a `Speaker`", so `Pet`'s methods may call `speak`:
+
+<Snippet file="supertrait.rs" />
+
+A bound on `Pet` gives access to `Speaker`'s methods too, as `loud` shows. This is not inheritance: it is a promise about what else the type implements, and breaking it gives E0277 again:
+
+<Snippet file="supertrait.fail.rs" />
+
+## Associated types and constants
+
+A trait can leave a **type** or a **constant** for each implementing type to choose:
+
+<Snippet file="assoc.rs" />
+
+`C::Item` means "the `Item` of whichever `C` this is", and `C::KIND` reads the constant. `&'static str` is the type of a string literal such as `"names"` ([Lifetimes](/learn/lifetimes/) explains `'static`). `alloc::string::String` is the full path of the standard library's `String`.
+
+`Iterator` has a `type Item` like this ([Iterators](/learn/iterators/) writes one). In Java, `Iterator<T>` lets the user of the interface pick `T`. Here each implementing type writes its `Item` once, so the trait is plain `Iterator`.
+
+## Returning "something that implements a trait"
+
+`impl Speaker` also works as a return type. It hides the type but does not make it vary:
+
+<Snippet file="impl-return.fail.rs" />
+
+`impl Speaker` means one concrete type that the compiler knows and the caller does not name. When the answer depends on run-time data, the compiler suggests a **trait object**: `Box<dyn Speaker>`, a pointer to any value that implements the trait. [`Box<T>`](/learn/ownership/#boxt-one-value-on-the-heap) is an owned pointer to a value on the heap, and `dyn` marks that the method is looked up while the program runs ([Trait objects](/learn/trait-objects/)):
+
+<Snippet file="impl-return.rs" />
+
+A trait is not a type, so its bare name cannot stand where a type goes. Programmers used to interfaces write this first:
+
+<Snippet file="bare-trait.fail.rs" />
+
+[E0782](/errors/#E0782) lists the fixes: a bound, `impl`, or `dyn`. [Trait objects](/learn/trait-objects/) explains why `dyn` is needed.
+
+| Spelling | Where | The type is |
+|---|---|---|
+| `T: Speaker`, `&impl Speaker` | parameter | any one type, chosen by the caller |
+| `-> impl Speaker` | result | one type, chosen by the function |
+| `&dyn Speaker`, `Box<dyn Speaker>` | parameter, result, or inside a collection | any type, looked up at run time |
+
+## Translating from what you know
+
+<ForLang only="go">
+A Go interface and a Rust trait both list methods. They differ in who has to say that a type fits.
+
+| In Go | In Rust |
+|---|---|
+| `type Speaker interface { Speak() string }` | `trait Speaker { fn speak(&self) -> String; }` |
+| `Robot` fits because it has `Speak` | `impl Speaker for Robot { ... }` |
+| `var _ Speaker = Robot{}` (a check that it fits) | not needed: the impl is the check |
+| `func introduce(s Speaker)` | `fn introduce(s: &dyn Speaker)`: a run-time lookup, as in Go |
+| `func Foo[T Speaker](x T)` | `fn foo<T: Speaker>(x: &T)`: one compiled copy per type |
+| `[]Speaker` | `Vec<Box<dyn Speaker>>` (a trait is not a type, so not `Vec<Speaker>`) |
+| no default methods: a helper function (`shout(s Speaker)`) | a default method in the trait |
+| embedding a struct to promote its methods | no equivalent: a field plus forwarding methods |
+| `any`, `s.(Robot)` | see [Trait objects](/learn/trait-objects/) |
+
+<Snippet file="implicit.go" />
+
+Embedding shares code, but it is not a default method: the embedded type cannot call the outer type's `Speak`.
+
+<Snippet file="embedding.go" />
+
+Go has a real strength: `Robot` was written before `Speaker` existed and nobody had to touch it. Rust gets there when the trait or the type is yours (`foreign.rs` did it for `i32`). Go's larger win is when both come from elsewhere:
+
+<Snippet file="third-party.go" />
+
+In Rust that is the orphan rule's "no" row: use a newtype and forward the methods you need.
+
+The explicit impl buys something: `explicit-call.rs` has a `Car` with two `start` methods, one per trait. A Go type has one method per name, so every interface that asks for `Start()` gets the same one:
+
+<Snippet file="duplicate-method.fail.go" />
+
+What Go cannot do is add a method to a type declared in another package, such as `int`:
+
+<Snippet file="foreign-method.fail.go" />
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+| In Java / Kotlin / C# | In Rust |
+|---|---|
+| `interface Speaker` | `trait Speaker` |
+| a `default` method (Java), a method with a body (Kotlin), a default interface method (C# 8) | a default method in the trait |
+| `class Dog implements Speaker` / `: Speaker` | `impl Speaker for Dog { ... }`, a separate block |
+| `void introduce(Speaker s)` | `fn introduce(s: &dyn Speaker)`: the run-time lookup you know |
+| `<T extends Speaker>`, `<T : Speaker>`, `where T : ISpeaker` | `T: Speaker`: a copy per type, no lookup |
+| `List<Speaker>` | `Vec<Box<dyn Speaker>>` (not `Vec<Speaker>`: a trait is not a type) |
+| `Speaker.super.shout()` (Java), `super<Speaker>.shout()` (Kotlin) | none: the `Parrot` example above overflows the stack |
+| two interfaces with the same default: Java and Kotlin refuse the class until it overrides | both impls compile; the error is at a bare call |
+| an `abstract class` that has fields | a struct with the fields, and a trait with getter methods |
+
+A trait is not an abstract class. It holds no fields, so a Kotlin or C# interface property becomes a getter method, and there is no struct inheritance ([Methods](/learn/methods/#no-inheritance)). Shared state lives in a struct your type contains; shared behaviour lives in default methods or a blanket impl.
+
+A class has to be edited to implement an interface, which you cannot do to a library class, so the answer there is a wrapper that holds the library object. Rust has the wrapper too (the newtype above), and when the trait is yours it also lets you implement it on the library type directly.
+</ForLang>
+
+<ForLang only="java">
+<Snippet file="adapter.java" />
+
+Java calls the default through `Speaker.super`, and refuses two clashing defaults at the class:
+
+<Snippet file="super-call.java" />
+
+<Snippet file="same-default.fail.java" />
+</ForLang>
+
+<ForLang only="kotlin">
+Kotlin calls the default with `super<Speaker>`, and refuses two clashing defaults at the class:
+
+<Snippet file="super-call.kt" />
+
+<Snippet file="same-default.fail.kt" />
+
+An extension function on a bounded type parameter is a blanket impl: every `Speaker` gets `shout`.
+
+<Snippet file="extension-bound.kt" />
+
+An extension only adds a name. An `impl` also makes the value usable where the trait is asked for:
+
+<Snippet file="extension.fail.kt" />
+</ForLang>
+
+<ForLang only="csharp">
+An extension method with a `where` bound is a blanket impl: every `ISpeaker` gets `Shout`.
+
+<Snippet file="extension-bound.cs" />
+
+An extension only adds a name. An `impl` also makes the value usable where the trait is asked for:
+
+<Snippet file="extension.fail.cs" />
+
+C# 11 `static abstract` members are Rust's associated functions (`T.Make()` for `T::make()`):
+
+<Snippet file="static-abstract.cs" />
+
+C# default interface methods are visible only through the interface type. Rust's are called on the value (`Dog.shout()` in `first-trait.rs`):
+
+<Snippet file="default-iface.fail.cs" />
+</ForLang>
+
+<ForLang only="python typescript">
+| In Python / TypeScript | In Rust |
+|---|---|
+| `class Speaker(Protocol)`, `interface Speaker` | `trait Speaker` |
+| `class Speaker(ABC)` with `@abstractmethod` | a trait with required methods |
+| `Protocol` and `interface`: any object with the right methods fits | the type must say `impl Speaker for Robot` |
+| `<T extends Speaker>` (TypeScript) | `T: Speaker` |
+| `list[Speaker]`, `Speaker[]` | `Vec<Box<dyn Speaker>>` |
+| a subclass that forgets an abstract method: `TypeError` when the object is created (Python) | E0046 when the program is compiled |
+
+Python checks no `Protocol` at run time unless you ask: `@runtime_checkable` lets `isinstance` look for the method names:
+
+<Snippet file="protocol.py" />
+
+A default body in a `Protocol` reaches only classes that name it as a base. A class that fits by shape alone does not get it:
+
+<Snippet file="protocol-default.fail.py" />
+
+An abstract base class finds the problem late too, when the object is made:
+
+<Snippet file="abc.fail.py" />
+
+A type checker such as mypy can report both earlier; this site does not run one. TypeScript's `interface` is structural: an object with the right shape fits:
+
+<Snippet file="shape.ts" />
+
+For a trait you write, no object literal is a `Speaker` by shape: a value fits only through an `impl` block or a blanket impl.
+</ForLang>
+
+<ForLang only="c cpp">
+| In C / C++ | In Rust |
+|---|---|
+| a struct of function pointers (C) | a trait; `&dyn Speaker` is built for you |
+| an abstract class with `virtual ... = 0` | a trait with required methods |
+| a non-pure `virtual` or plain member function | a default method |
+| `template <typename T> requires Speaker<T>` | `T: Speaker` |
+
+</ForLang>
+
+<ForLang only="c">
+This is the table a trait fills in for you, written by hand:
+
+<Snippet file="vtable.c" />
+</ForLang>
+
+<ForLang only="cpp">
+A C++20 concept checks that the code compiles for the type. It needs no base class, and no declaration from the type:
+
+<Snippet file="concept.cpp" />
+
+For a type with no `speak()`, `g++` reports the failed requirement:
+
+<Snippet file="concept.fail.cpp" />
+
+A Rust bound is stricter: the type must have said `impl Speaker`. Virtual functions also change the object. On this machine (64-bit ARM, `g++`), adding a `virtual` function takes `sizeof` from 1 to 8, room for the hidden pointer to the table of virtual functions:
+
+<Snippet file="virtual-size.cpp" />
+
+Implementing a Rust trait adds no field to the value: the empty `Dog` stays at 0 bytes and `Robot` takes the 4 bytes of its `u32`. With `dyn`, the extra pointer travels in the reference instead ([Trait objects](/learn/trait-objects/)).
+
+<Snippet file="layout.rs" />
+</ForLang>
+
+<p class="lr-layer">Going deeper</p>
+
+## Static and dynamic dispatch in one program
+
+<Snippet file="dispatch.rs" />
+
+- `generic` prints a different `T` for each call. The compiler knows which `speak` to call, because each call is for one type. This is **static dispatch**, and the [generics lesson](/learn/generics/) explains how the compiler produces a version for each type. (The text `type_name` prints is not guaranteed, so use it to look, not to compare.)
+- The `Vec<Box<dyn Speaker>>` holds a `Dog` and a `Robot` side by side, which a `Vec<T>` cannot. The method is looked up while the program runs. This is **dynamic dispatch**, and [Trait objects](/learn/trait-objects/) explains the lookup.
+
+A plain `Vec` of two different types is refused for the same reason (all elements of a `Vec<T>` are one type):
+
+<Snippet file="mixed-vec.fail.rs" />
+
+## Why the orphan rule exists
+
+Without it, two crates could implement the same trait for the same type, and Rust would not know which to use (the property that prevents this is **coherence**). The same reasoning applies in your own crate: two impls that could both apply to one type are refused ([E0119](/errors/#E0119)):
+
+<Snippet file="overlap.fail.rs" />
+
+`i32` implements `Display`, so the blanket impl already covers it. The rule's price is boilerplate: a newtype forwards the methods you need by hand ([advanced traits](https://doc.rust-lang.org/book/ch20-02-advanced-traits.html) covers the pattern).
+
+## `derive` is a trait impl
+
+Each name in `#[derive(Debug, Clone)]` is a trait, and the compiler writes the `impl` block from the fields ([Structs](/learn/structs/)). Write one by hand when the generated one is wrong or no `derive` exists, as for `Display`; [Common traits](/learn/common-traits/) says which to derive. A trait can also have no methods at all, like `Copy`: implementing it is a statement about the type ([`std::marker`](https://doc.rust-lang.org/std/marker/index.html) lists such traits).
+
+## A trait or an enum?
+
+Both answer "this value is one of several kinds"; they differ in who can add a kind.
+
+| | An [enum](/learn/enums/) | A trait |
+|---|---|---|
+| The kinds | listed in one place; adding one means editing the enum | any crate can add a type with an `impl` |
+| `match` over the kinds | the compiler checks that every case is covered | not directly: the code sees the trait's methods, not the concrete type |
+
+When you know every kind (the commands of a protocol), an enum lets the compiler check each place that handles them. When other code should add kinds (plugins, a library that calls your code), use a trait. Neither is better in general.
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Each exercise is a small program with checks in `main`. Open it in the Playground, replace the `todo!()`, and run until it prints `all checks passed`.
+
+<Exercise name="shapes" title="Shapes with a default method">
+Fill in the `Shape` implementations and the default `describe`. `Triangle`'s impl is given and has no `describe`, which must still work, so write it once, in the trait. Then write `biggest` (the position of the largest item, or `None`), which takes a slice of one type, and `total_area`, which takes a mixed list of `&dyn Shape`.
+</Exercise>
+
+<Exercise name="scores-display" title="Display for a list of scores">
+Print a `Vec<u32>` as `scores: 3, 5, 9 (total 17)`. First try `impl Display for Vec<u32>` and read the compiler's answer, then implement `Display` for the `Scores` wrapper instead. An empty list prints `scores: none`.
+</Exercise>
+
+<Exercise name="stats" title="A trait for a type you do not own">
+Implement `Stats` for the slice type `[i32]`, then call it on a `Vec`, an array and a sub-slice (a method call [finds the method](/learn/methods/#how-the-compiler-finds-the-method) by borrowing the `Vec` as a slice). Handle an empty slice, a mean that is not a whole number, and numbers so large that adding them as `i32` would overflow.
+</Exercise>
+
+## Read more
+
+- [The Rust Book, chapter 10.2: Traits](https://doc.rust-lang.org/book/ch10-02-traits.html): defining, default methods, bounds, blanket impls and the orphan rule.
+- [The Rust Book, chapter 20.2: Advanced Traits](https://doc.rust-lang.org/book/ch20-02-advanced-traits.html): associated types, fully qualified syntax, supertraits and the newtype pattern.
+- [Rust by Example: Traits](https://doc.rust-lang.org/rust-by-example/trait.html), with pages on [disambiguating overlapping traits](https://doc.rust-lang.org/rust-by-example/trait/disambiguating.html) and [supertraits](https://doc.rust-lang.org/rust-by-example/trait/supertraits.html).
+- [The Reference: Traits](https://doc.rust-lang.org/reference/items/traits.html) and [Implementations](https://doc.rust-lang.org/reference/items/implementations.html), where the orphan rules are written out.
+- Error pages: [E0117](https://doc.rust-lang.org/error_codes/E0117.html) (orphan rule), [E0119](https://doc.rust-lang.org/error_codes/E0119.html) (conflicting impls) and [E0782](https://doc.rust-lang.org/error_codes/E0782.html) (a trait used as a type).

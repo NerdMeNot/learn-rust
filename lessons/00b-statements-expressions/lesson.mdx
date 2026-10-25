@@ -1,0 +1,320 @@
+<p class="lr-layer">The toolkit</p>
+
+## Statement or expression?
+
+An **expression** is code that produces a value: `7`, `x + 1`, `f(x)`. A **statement** is an instruction that does something and produces no value, such as `let x = 7;`. Many languages keep the two apart. In Rust, `if`, `match`, `loop` and `{ }` blocks are expressions too, so they can sit on the right of a `let` or be the last line of a function. The Reference: "Rust is primarily an expression language."
+
+The last expression of a block, with no `;`, is the block's value. It is called the **tail expression**, a name you will see in compiler errors.
+
+| Code | What it is | Its value | Learn more |
+|---|---|---|---|
+| `x + 1`, `f(x)` | expression | a number, a string, and so on | [Types](/learn/types/) |
+| `{ let w = 3; w * 4 }` | block expression | its tail expression | below |
+| `if c { a } else { b }` | expression | `a` or `b`, which must agree on a type | [If / else](/learn/if-else/) |
+| `match n { 1 => "one", _ => "many" }` | expression | the chosen arm (`_` means "anything else") | [Match](/learn/match/) |
+| `loop { ... break v; }` | expression | the `v` after `break` | [Loops](/learn/loops/) |
+| `while c { }`, `for x in a..b { }` | expression | `()` (`a..b` runs from `a` up to, not including, `b`) | [Loops](/learn/loops/) |
+| `x = 5`, `x += 1` | expression | `()` | [Variables](/learn/variables/) |
+| `return v`, `break`, `continue`, `panic!("...")` | expression | none: they leave, so their type is `!` ("never", not the macro `!`) | [the never type](#when-nothing-comes-back-the-never-type) |
+| `let x = 5;` | statement | none | [Variables](/learn/variables/) |
+| `expr;` | statement | the value is dropped | next section |
+
+Four of these side by side. Each `let` takes the value of a block, an `if`, a `match` and a `loop`. (`{block}` in a string prints the variable. `let mut` makes a variable that can change. The `!` in `println!` marks a macro: see [Rust at a glance](/learn/rust-at-a-glance/).)
+
+<Snippet file="block-values.rs" />
+
+## The semicolon decides
+
+A `;` turns an expression into a statement and drops its value. A block whose last line has no `;` is worth that last line. A block that ends in a `;` is worth `()`. (`{a:?}` prints a value in its debug form.)
+
+<Snippet file="semicolon.rs" />
+
+That is the rule behind "no `return` at the end of a function": the body is a block, and its tail expression is the result. `return` is for leaving early. `return x;` as the last line is legal, but `clippy`, Rust's standard linter, warns about it by default ([`needless_return`](https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#needless_return)).
+
+The gotcha above is this rule in a function. Its code, E0308, means "mismatched types" ([all codes](/errors/)). It appears the other way round too: an `if` with no `else` must be worth `()`, so a value inside it needs a `;`. `main` returns `()`, so this `if` is its last expression:
+
+<Snippet file="statement-if.fail.rs" />
+
+## `()`, the value for "nothing"
+
+`()` is called **unit**: a type with exactly one value, also written `()` (the empty tuple). A function with no `->` returns it, and so do `println!`, assignment, `while` and `for`. `size_of::<()>()` is the size in bytes of the type `()`. (`_` means "I don't need the value".)
+
+<Snippet file="unit.rs" />
+
+It is not a null: a variable of another type cannot hold it. It is a real value you can store, which a `void` result is not in C, C++, Java, C# or Go (an error in each). Python's `None`, Kotlin's `Unit` and TypeScript's `undefined` are the closest relatives.
+
+## Your habits, in Rust
+
+Your own table. Rows that claim a result were run in both languages.
+
+<ForLang only="go">
+
+| You write in Go | In Rust |
+|---|---|
+| `size := "small"` then `if n > 5 { size = "big" }` | `let size = if n > 5 { "big" } else { "small" };` |
+| a `switch` that sets `name` in every `case` | `let name = match n { 1 => "one", 2 => "two", _ => "many" };` |
+| `a, b = b, a` | `(a, b) = (b, a);` |
+| `return x` on the last line | `x`, with no `return` and no `;` (`return x;` still works) |
+| `i++` (a statement in Go) | `i += 1;`. `i++` is an error |
+| `if v := f(); v > 3 { }` (an init statement) | `let v = f(); if v > 3 { }`. `v` stays in scope after the `if` |
+| `struct{}{}` (one value, zero size) | `()` |
+| named results: `func f() (n int) { n = 3; return }` | none: `fn f() -> i32 { 3 }` |
+| `r := f()` where `f` returns nothing: "used as value" error | `let r = f();` works: `r` is `()` |
+| `a = b = c`, `if x = 1`: errors in Go | errors in Rust too (E0308) |
+
+Both fail on `a = b = c`, for different reasons: in Go assignment is a statement, in Rust an expression worth `()`.
+
+</ForLang>
+
+<ForLang only="java">
+
+| You write in Java | In Rust |
+|---|---|
+| `n > 5 ? "big" : "small"` | `if n > 5 { "big" } else { "small" }` |
+| `switch (n) { case 1 -> "one"; default -> "many"; }` (Java 14+) | `match n { 1 => "one", _ => "many" }` |
+| a `switch` arm that is a block ending in `yield w * 4` | an arm `{ let w = 3; w * 4 }` |
+| no block expression: compute into a local variable | `let area = { let w = 3; w * 4 };` |
+| `x -> x + 1`; `x -> { int y = x + 1; return y; }` | closures, see [Closures](/learn/closures/): `\|x\| x + 1`; `\|x\| { let y = x + 1; y }` |
+| `void` (not storable: `var r = log()` is an error) | `()`, a value you can store |
+| `a = b = 5` works | E0308 |
+| `if (flag = true)` compiles | E0308 |
+| `if (cond)` | `if cond`; the parentheses compile but warn |
+
+With an `int`, Java's `if (x = 1)` is already an error, as in Rust: an `int` is not a `bool`. Only a `bool` assignment slips through.
+
+</ForLang>
+
+<ForLang only="kotlin">
+
+`if`, `when`, `run { }` and a lambda's last expression are already values for you. What is new:
+
+| You write in Kotlin | In Rust |
+|---|---|
+| `fun f(x: Int) = x + 1` | `fn f(x: i32) -> i32 { x + 1 }`: braces always, and no `return` at the end |
+| `val area = { 3 * 4 }` is a lambda; `run { 3 * 4 }` is the value | `let area = { 3 * 4 };` is the value: braces are a block, not a lambda |
+| lambda `{ x -> val y = x + 1; y }` | closure `\|x\| { let y = x + 1; y }` |
+| `Unit` | `()` |
+| `Nothing` (`if (ok) 5 else throw ...` is an `Int`) | `!`, see "the never type" below |
+| `a = b = 5`: error, assignment is a statement | error too (E0308): it is worth `()` |
+| `if` without `else` as a value: error | error too (E0317) |
+
+<Snippet file="nothing.kt" />
+
+</ForLang>
+
+<ForLang only="csharp">
+
+| You write in C# | In Rust |
+|---|---|
+| `n > 5 ? "big" : "small"` | `if n > 5 { "big" } else { "small" }` |
+| `n switch { 1 => "one", _ => "many" }` | `match n { 1 => "one", _ => "many" }` |
+| no block expression: compute into a local variable | `let area = { let w = 3; w * 4 };` |
+| `int F(int x) => x + 1;` | `fn f(x: i32) -> i32 { x + 1 }`: braces always, and no `return` at the end |
+| `x => x + 1`; `x => { int y = x + 1; return y; }` | closures, see [Closures](/learn/closures/): `\|x\| x + 1`; `\|x\| { let y = x + 1; y }` |
+| `void` (not storable: `var r = Log()` is an error) | `()`, a value you can store |
+| `a = b = 5` works | E0308 |
+| `if (flag = true)` compiles with warning CS0665 | E0308 |
+
+With an `int`, `if (x = 1)` is already an error in C# (CS0029).
+
+</ForLang>
+
+<ForLang only="python typescript">
+
+| You write | In Rust |
+|---|---|
+| Python `"big" if n > 5 else "small"`; TypeScript `n > 5 ? "big" : "small"` | `if n > 5 { "big" } else { "small" }` |
+| Python `elif`, and `if x:` with an indented body | `else if`, and `if x { ... }` with braces |
+| `if n:` or `if (n)` with a number, string or list | the condition must be a `bool`: `if n != 0` |
+| Python `match` or TypeScript `switch`, setting `name` in each case (statements; TypeScript's `const x = switch ...` is a syntax error) | `let name = match n { ... };` |
+| Python `a, b = b, a`; TypeScript `[a, b] = [b, a]` | `(a, b) = (b, a);` |
+| TypeScript `(() => { ...; return w * h })()` | `{ ...; w * h }` |
+| Python `w` and `h` stay visible after an `if` or `for` body | names made inside `{ }` end at the `}`: E0425 |
+| TypeScript `x => x + 1` and `x => { return x + 1; }`; Python `lambda x: x + 1` (one expression only) | `\|x\| x + 1` and `\|x\| { x + 1 }` |
+| a Python function with no `return` gives `None` | `fn f(x: i32) -> i32 { x + 1; }` is E0308 |
+| `a = b = 5`: in TypeScript `b = 5` is worth 5; in Python it is one chained statement, not an expression | E0308 |
+| `if (x = 1)` compiles in TypeScript; Python raises `SyntaxError` | E0308 |
+| TypeScript `(log(), 2)`, the comma operator (it flags an unused left side, TS2695, when it has no effect) | `{ log(); 2 }`. `(log(), 2)` is valid Rust, but it is a pair, so `let c: i32 = (log(), 2);` is E0308 |
+| Python `if (n := 3) > 2` | `let n = 3;` on the line before, or `if let Some(n) = ...` ([Option](/learn/option/)) |
+
+`if n:` is the habit to unlearn first:
+
+<Snippet file="if-int.fail.rs" />
+
+</ForLang>
+
+<ForLang only="c cpp">
+
+| You write | In Rust |
+|---|---|
+| `n > 5 ? "big" : "small"` | `if n > 5 { "big" } else { "small" }` |
+| `x = (log(), 2)`, the comma operator | `{ log(); 2 }`. `(log(), 2)` is valid Rust, but it is a pair: `let c: i32 = (log(), 2);` is E0308 |
+| `({ int w = 3; w * 4; })` (a GNU extension that gcc accepts; not standard C or C++); standard C++ has `[]{ ... }()` | `{ let w = 3; w * 4 }`, part of the language |
+| `switch` with `break`, setting a variable | `let name = match n { ... };` |
+| `a = b = c;` | E0308: write two statements |
+| `if (x = 1)` compiles (gcc warns only with `-Wall`) | E0308, with a hint to write `==` |
+| `while ((c = *p++) != '\0')`: assignment as a value, on purpose | no assignment value: `while let Some(c) = chars.next()` |
+| `if (n)` with an integer or pointer | the condition must be a `bool`: `if n != 0` |
+| `struct P { int x; };` needs the `;` | `struct P { x: i32 }` rejects it; `struct M(f64);` needs it |
+| `void f()`: `int r = f();` is an error | `let r = f();` works: `r` is `()` |
+
+`while let` in place of the loop idiom:
+
+<Snippet file="while-let.rs" />
+
+</ForLang>
+
+<ForLang only="c">
+
+Real runs of the habits above. gcc warns about `if (x = 1)` only because the runner passes `-Wall`. A C `struct` needs its `;`; a braced Rust `struct` rejects it:
+
+<Snippet file="assign-expr.c" />
+
+<Snippet file="comma-gnu.c" />
+
+<Snippet file="struct-semicolon.fail.c" />
+
+<Snippet file="struct-semicolon.fail.rs" />
+
+A C function that ends without `return` is a problem only if the caller uses the result (C standard, 6.9.1). Here it is ignored and the program runs. Rust rejects the function itself (E0308).
+
+<Snippet file="fall-off-ignored.c" />
+
+</ForLang>
+
+<ForLang only="cpp">
+
+Real runs of the habits above. g++ warns about `if (x = 1)` only because the runner passes `-Wall`. A C++ `struct` needs its `;`; a braced Rust `struct` rejects it:
+
+<Snippet file="assign-expr.cpp" />
+
+<Snippet file="struct-semicolon.fail.cpp" />
+
+<Snippet file="struct-semicolon.fail.rs" />
+
+A C++ function that ends without `return` is undefined behaviour even if the caller ignores the result. The same call as in C crashes before printing `done`:
+
+<Snippet file="fall-off-ignored.crash.cpp" />
+
+One more difference from `()`, which takes no space: `sizeof` of an empty C++ struct is 1.
+
+<Snippet file="sizeof-empty.cpp" />
+
+</ForLang>
+
+## Assignment is worth `()`
+
+In C, Java, C#, C++ and TypeScript, `a = b = 5` works because `b = 5` is worth 5. In Rust `b = 5` is worth `()`, so the chain is a type error:
+
+<Snippet file="chain-assign.fail.rs" />
+
+The same fact catches the typo `if x = 1`: the condition must be a `bool`, and an assignment is `()`.
+
+<Snippet file="if-assign.fail.rs" />
+
+`let` is a statement, so it cannot be used as a value. (It may appear inside the condition of `if` and `while`: that is `if let`, see [Option](/learn/option/).)
+
+<Snippet file="let-expr.fail.rs" />
+
+What works: `(a, b) = (b, a);` swaps two variables, and `x += 1` adds one.
+
+## Smaller slips
+
+Each was compiled; the messages are the compiler's.
+
+| You write | The compiler says | Fix |
+|---|---|---|
+| `if n { }` with a number | E0308 "expected `bool`, found integer" | `if n != 0 { }` |
+| `if (n > 5) { }` | warning "unnecessary parentheses around `if` condition" (an error under `deny(unused_parens)`) | `if n > 5 { }` |
+| `if n > 5 println!("big");` | "expected `{`": braces are required | `if n > 5 { ... }` |
+| `struct S { };` | "expected item, found `;`" | `struct S { }` |
+| `let x = if c { 1 };` | E0317 "`if` may be missing an `else` clause" | add `else` |
+| `x++` | "Rust has no postfix increment operator" | `x += 1;` |
+
+<p class="lr-layer">Going deeper</p>
+
+## Why the language is built this way
+
+The Reference: "statements serve mostly to contain and explicitly sequence expression evaluation". The Book: statements perform an action and return no value; expressions evaluate to one. Two things follow. With `if` giving a value, Rust has no need for `?:`. And a function's result needs no separate mechanism: the body is a block, and a block has a value. The cost is the gotcha's trap: in C or Java the final `;` is punctuation, and in Rust it changes the type.
+
+## A `}` can end a statement
+
+Where a statement is expected, a block-like expression (`if`, `match`, `loop`, `{ }`) ends at its closing brace. When that is ambiguous, the Reference says, "it is parsed as a statement". So a last line of `if ... { } else { } + 1` does not mean what it looks like. Read the first message; the `return` suggestions after it are side effects:
+
+<Snippet file="statement-end.fail.rs" />
+
+After `let t =` there is no ambiguity, so `let t = if n > 0 { 10 } else { 20 } + 1;` works (it gives 11). Elsewhere, wrap the `if` in parentheses, as the compiler suggests, or name it first.
+
+## `if` without `else`, and loops that give a value
+
+An `if` with no `else` has nothing to give when the condition is false, so its value is `()`. That is why it cannot be used for a value:
+
+<Snippet file="if-no-else.fail.rs" />
+
+Of the three loops, only `loop` can hand back a value with `break value`. The Reference says a `while` expression evaluates to `()`, and the compiler allows `break` with a value only in a `loop` (or a labeled block, which this page does not cover):
+
+<Snippet file="while-break.fail.rs" />
+
+## When nothing comes back: the never type
+
+`return`, `break`, `continue` and `panic!` leave the current spot and never produce a value. Their type is `!`, read "never" (a different `!` from the macro mark). Because they cannot produce anything, the compiler accepts them where any type is expected, and that is what makes these lines work:
+
+<Snippet file="never.rs" />
+
+In `let even = if i % 2 == 0 { i } else { continue };` the first branch gives an `i32` and the `else` branch never gives anything, so the whole `if` is an `i32`.
+
+<ForLang only="java">
+
+Java has no such type: `ok ? 5 : throw new ...` is a syntax error. You write an `if` statement instead.
+
+<Snippet file="throw-ternary.fail.java" />
+
+</ForLang>
+
+<ForLang only="kotlin">
+
+This is Kotlin's `Nothing`: `if (ok) 5 else throw ...` has type `Int` for the same reason.
+
+</ForLang>
+
+<ForLang only="csharp cpp">
+
+C# and C++ both let `throw` stand in a `?:` arm (`ok ? 5 : throw ...` compiles in each). That is the same idea.
+
+</ForLang>
+
+## Where this is awkward
+
+- The `;` decides the type, and a last line without one is easy to miss when reading.
+- A function body is always a block, so Kotlin's `= x + 1` and C#'s `=> x + 1` have no counterpart.
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Each exercise is a small program with checks in `main`. Open it in the Playground, replace the `todo!()`, and run it until it prints `all checks passed`. The first one trains reading: it shows a program and asks what its blocks are worth.
+
+<Exercise name="read-blocks" title="Read this: what is each block worth?">
+Work out the value of three blocks and an `if`, for two inputs. One block ends in a `;`, and one `if` takes a different branch for each input.
+</Exercise>
+
+<Exercise name="shipping" title="Shipping price">
+Turn price rules into one `if` / `else if` / `else` expression bound with `let`, then double it for express delivery. The boundary weights (1 and 5) are what people get wrong.
+</Exercise>
+
+<Exercise name="collatz" title="Steps to one">
+Count the steps until a number reaches 1: halve it when even, otherwise triple it and add one. Use a `loop` that ends in `break steps`, with the next number an `if` expression. No one-line formula exists.
+</Exercise>
+
+<Exercise name="percent" title="Early return, then a value">
+Return `0` early when `whole` is `0`, then finish with a plain expression, with no `return` and no `;`. Integer `/` already rounds down, and `//` starts a comment in Rust.
+</Exercise>
+
+## Read more
+
+- [The Rust Reference: Statements and expressions](https://doc.rust-lang.org/reference/statements-and-expressions.html), with [Statements](https://doc.rust-lang.org/reference/statements.html), [Expressions](https://doc.rust-lang.org/reference/expressions.html) and [Block expressions](https://doc.rust-lang.org/reference/expressions/block-expr.html): the exact rules, including the `;` and `}` ones.
+- [The Rust Reference: Functions](https://doc.rust-lang.org/reference/items/functions.html) (the grammar of a function body).
+- [The Rust Reference: Loop expressions](https://doc.rust-lang.org/reference/expressions/loop-expr.html) (`break` with a value) and [Never type](https://doc.rust-lang.org/reference/types/never.html).
+- [The Rust Book, chapter 3.3: Functions](https://doc.rust-lang.org/book/ch03-03-how-functions-work.html), the section "Statements and Expressions", and [chapter 3.5: Control Flow](https://doc.rust-lang.org/book/ch03-05-control-flow.html).
+- [Rust by Example: Expressions](https://doc.rust-lang.org/rust-by-example/expression.html) and [if/else](https://doc.rust-lang.org/rust-by-example/flow_control/if_else.html).
+- [The primitive type `unit`](https://doc.rust-lang.org/std/primitive.unit.html) in the standard library docs.

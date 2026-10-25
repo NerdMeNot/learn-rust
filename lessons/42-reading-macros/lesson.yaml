@@ -1,0 +1,115 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Macros you'll read"
+part: "further"
+intro: >-
+  A macro is code that writes code. The compiler runs it, puts what it produced where the call
+  was, and only then checks types. You met the macros you call every day in
+  [Macros, attributes and naming](/learn/macros-attributes-naming/). This page is for reading
+  the others: a `macro_rules!` block in a dependency, a `#[derive(...)]` that writes code you
+  never see, an attribute such as `#[tokio::main]`. You will read far more macros
+  than you write.
+coming_from:
+  go: >-
+    Go has no macros. `map[string]int{...}` is syntax the language provides. Rust has no map
+    literal, and the `hashmap!` macro below fills the gap. `go generate` is the nearest idea: it runs a
+    program you wrote and leaves source files behind. A Rust macro runs inside the compiler
+    whenever the crate is compiled and leaves nothing in your source tree.
+  kotlin: >-
+    Kotlin has no macros either: `mapOf("a" to 1)` is an ordinary function. Code generators for
+    Kotlin, such as KSP, are compiler plugins. Rust's derive and attribute macros fill that role,
+    and the ones you add yourself (serde's, for example) arrive as a crate in `Cargo.toml`.
+  python: >-
+    Python has no macro stage: ordinary code cannot rewrite other code before it runs. `@dataclass`
+    rewrites a class when the module is imported; `#[derive]` writes its code while the program
+    compiles, so a mistake is reported before anything runs.
+  typescript: >-
+    TypeScript has no macros. A Babel plugin is the nearest mechanism: it rewrites code in a build
+    step, outside the language, for the whole build. Decorators run when the program runs. A Rust
+    macro is part of the compiler's own pipeline and runs only where the code names it.
+  java: >-
+    An annotation is metadata, and an annotation processor reads it inside `javac` while your code
+    compiles and generates code. `#[derive]` and attribute macros are the nearest match, and
+    `macro_rules!` has no Java counterpart at all.
+  csharp: >-
+    A source generator runs inside the C# compiler and adds code, as a derive macro does. A
+    `macro_rules!` macro has no C# counterpart, and `[CallerArgumentExpression]` covers one
+    small job macros do, capturing the text of an argument.
+  c: >-
+    A `#define` substitutes tokens before the compiler parses anything, which is where
+    `SQUARE(x) x*x` goes wrong. `macro_rules!` works on parsed pieces of code
+    (an `expr`, a `ty`), and the variables a macro makes do not collide with yours.
+  cpp: >-
+    Templates and `constexpr` do much of what you would reach for a macro to do, and Rust's
+    generics do the same jobs. What templates cannot do (generate a function whose name you
+    pass in, capture an expression's text) is the work of macros.
+notes:
+  - >-
+    A name followed by `!` is a macro call, and it may use `()`, `[]` or `{}`. The rules of
+    the macro decide what may go inside, so `vec![1, 2]` and `hashmap! { "a" => 1 }` are
+    different grammars.
+  - >-
+    `macro_rules!` is a list of rules, each `(pattern) => { code }`. To read a call, find the
+    first rule whose pattern fits, then swap the pieces the pattern captured into the code.
+  - >-
+    `$x:expr` captures one expression, `$name:ident` a name, `$t:ty` a type, and
+    `$( ... ),*` repeats whatever is inside it, separated by commas.
+  - >-
+    Derives and attributes such as `#[tokio::main]` are macros too. Those from a crate are Rust
+    functions that read and write tokens, in a crate of their own.
+  - >-
+    A function is the right tool until it is not. A macro is for what a function cannot do:
+    take a list of any length, generate items, capture the text of an expression.
+gotcha:
+  title: "A macro call has the syntax its author gave it"
+  verdict: "rust-rule"
+  looks_fine: >-
+    In Python, TypeScript and Go, `"Ada": 36` is how an entry of a map or object is written. A
+    macro that builds a map might be expected to accept the same.
+  rust_sees: >-
+    `hashmap!` is not part of the language. It has one rule, and that rule says each pair is
+    `key => value`. A `:` fits no rule, so the compiler stops at it.
+  why: >-
+    The macro's own patterns decide what a call may look like. The error names the token that
+    fits no rule and points at what the macro was trying to match when it gave up. When you
+    meet a macro you do not know, its documentation or its `macro_rules!` block is where the
+    grammar is written.
+  langs:
+    go:
+      status: "runs"
+      says: >-
+        Go runs this. A map literal is part of the language, and `key: value` is how its
+        entries are written.
+    kotlin:
+      status: "runs"
+      says: >-
+        Kotlin runs this, but the pairs are written `"Ada" to 36`: `mapOf` is a function and
+        `to` makes a pair. There is no colon form.
+    python:
+      status: "runs"
+      says: >-
+        Python runs this. A dict literal is part of the language, with the colon.
+    typescript:
+      status: "runs"
+      says: >-
+        TypeScript runs this. An object literal takes `key: value`. A `Map` has no literal and
+        takes an array of pairs instead.
+    java:
+      status: "runs"
+      says: >-
+        Java runs this, with `Map.of("Ada", 36, ...)`, an ordinary method that takes keys and
+        values in turn. Java has no map literal.
+    csharp:
+      status: "runs"
+      says: >-
+        C# runs this. A collection initializer is part of the language and takes
+        `["Ada"] = 36` entries.
+    c:
+      status: "runs"
+      says: >-
+        C runs this, with an array of structs: the standard library has no map type to write
+        a literal for.
+    cpp:
+      status: "runs"
+      says: >-
+        C++ runs this. A `std::map` takes a list of `{key, value}` pairs through an
+        initializer list.

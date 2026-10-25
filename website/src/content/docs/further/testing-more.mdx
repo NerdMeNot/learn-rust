@@ -1,0 +1,162 @@
+---
+title: "Testing, further"
+description: "What to do once a crate has many tests: table-driven tests, shared helpers and temp folders, tests that share a process, fakes by trait and closure, doc test attributes, property tests, snapshots, coverage and benchmarks, each run in the image."
+---
+
+import { Files, Remember, Session, Tree } from '../../../components/guide'
+
+[Testing](/build/testing/) covers `#[test]`, unit, integration and doc tests, `should_panic`, `Result` tests and `#[ignore]`. This page is for the next stage, when you have many tests. Everything shown with output ran in the image. A section that needs a crate or tool the image lacks says "needs network" and pins the version. Anything I named and did not run says so.
+
+<Remember>Give every test its own data, its own folder and its own clock. Tests that share nothing can run in any order, or at the same time.</Remember>
+
+<Tree guide="further-testing-more" dir="rust" name="timekeep" notes={{"src/lib.rs":"duration parsing, averages, and its unit tests","src/session.rs":"a session with an injected clock","src/cache.rs":"a cache with an injected fetch function","src/store.rs":"notes saved as files","tests/common/mod.rs":"helpers shared by the files in tests/","tests/property.rs":"a property test with no crate","Cargo.toml":"no dependencies: std only"}} />
+
+<Files guide="further-testing-more" dir="rust" files={["src/lib.rs"]} run="test" />
+
+## Table-driven tests
+
+A table-driven test is one loop over a list of cases. `parse_duration_table` above has nine rows of (input, expected result). It collects a message for every wrong row and asserts once at the end, because an assert inside the loop stops at the first wrong row (Try it 1 breaks two). The harness prints one line per `#[test]` function, so the loop is one line. [`rstest`](https://docs.rs/rstest/0.28.0/rstest/) and [`test-case`](https://docs.rs/test-case/3.4.0/test_case/) generate one test per case; I did not run either.
+
+## Helpers, fixtures and the `tests/` folder
+
+Each file in `tests/` is its own crate, so shared helpers go in `tests/common/mod.rs` and each file says `mod common;`. A `tests/common.rs` would be run as a test crate of its own and print `running 0 tests` ([the Book](https://doc.rust-lang.org/book/ch11-03-test-organization.html)).
+
+<Files guide="further-testing-more" dir="rust" files={["tests/common/mod.rs","tests/store.rs"]} />
+
+`TempDir` is a guard: its `Drop` deletes the folder ([Drop](/learn/common-traits/#drop-the-trait-behind-scope-exit)). The name holds the process id and a counter, so two tests do not share a folder. The last test panics inside `catch_unwind` and checks the folder is gone anyway. The [`tempfile`](https://docs.rs/tempfile/3.27.0/tempfile/) crate does this job; I did not run it.
+
+A unit test sits inside the module it tests, so `use super::*` gives it private functions such as `unit_seconds` ([Modules](/learn/modules/#tests-live-in-a-child-module)). A file in `tests/` is an outside user:
+
+<Files guide="further-testing-more" dir="fail" files={["private.rs"]} run="private" title="tests/private.rs" />
+
+Make the function `pub`, or test it through a public function.
+
+## Tests share a process
+
+The tests of one file run as threads of one process, in parallel by default ([the Book](https://doc.rust-lang.org/book/ch11-02-running-tests.html)). Anything global is shared: statics, environment variables, a file name. Here two tests each take "the first id" from one process-wide counter:
+
+<Files guide="further-testing-more" dir="flaky" files={["tests/ids.rs"]} run="flaky" />
+
+With one thread, `creates_bob` ran second and failed. With the default thread count (8 cores here) the loser is whichever thread reaches the counter second; the counts are one batch of 100 runs and change from batch to batch. `--test-threads=1` makes a failure repeatable but does not fix the cause. The fix is `tests/isolation.rs`: each test builds its own `Ids` ([Threads](/learn/threads/), [Shared State](/learn/shared-state/)).
+
+<Files guide="further-testing-more" dir="rust" files={["tests/isolation.rs"]} />
+
+Other flaky tests have the same cure, a value the test owns: a fake clock, a `TempDir`, a seed.
+
+The environment is shared too. In edition 2024, `std::env::set_var` is `unsafe`: the docs say that in a multi-threaded program on systems other than Windows "the only sound option is to not use `set_var` or `remove_var` at all" ([docs](https://doc.rust-lang.org/std/env/fn.set_var.html), [why](/learn/env-time-process/#why-set_var-is-unsafe)), and a test program is multi-threaded by default:
+
+<Files guide="further-testing-more" dir="fail" files={["env.rs"]} run="env-unsafe" title="tests/env.rs" />
+
+So pass the setting in: `ttl_from` in `src/session.rs` takes a lookup function. Its test gives it a `HashMap`; a program would give it `|key| std::env::var(key).ok()`.
+
+## Fakes: a trait or a closure
+
+To fake a dependency without a library, pass in the part that varies. `Session` asks a `Clock` for the time; the test's clock is a `Cell<u64>` the test sets, so nothing sleeps. `Cache` takes a fetch closure that records what it was asked for.
+
+<Files guide="further-testing-more" dir="rust" files={["src/session.rs","src/cache.rs"]} />
+
+Use a closure for one function, a trait for several methods ([Traits](/learn/traits/), [Closures](/learn/closures/), [Generics](/learn/generics/)). The cost is code that is generic only so a test can replace a part. [`mockall`](https://docs.rs/mockall/0.15.0/mockall/) generates fakes from traits; I did not run it.
+
+## Doc tests for a library
+
+`cargo test` runs the `///` examples of a library. This crate uses three things beyond a plain block ([rustdoc book](https://doc.rust-lang.org/rustdoc/write-documentation/documentation-tests.html)). Lines that start with `# ` are compiled but hidden from the rendered docs; the second `parse_duration` example uses them to get a `main` that returns a `Result`, so it can use `?`. `no_run` compiles an example without running it, here for the real clock. `compile_fail` passes only if the example does not compile, and the rustdoc book warns that code failing today may compile later.
+
+<Session guide="further-testing-more" run="doctests" />
+
+## Property tests: a loop, a seed and a shrink
+
+An example test checks the inputs you thought of. A property test states something that should hold for any input and tries many generated ones. The property: an average lies between the smallest and largest sample. `average_naive` adds up in an `i32`, so the example test with `[1, 2, 3]` passes but large samples overflow. `Iterator::sum` panics on overflow when overflow checks are on ([docs](https://doc.rust-lang.org/std/iter/trait.Iterator.html)); the report below shows `attempt to add with overflow`, so they were on in this test build. I did not run a release build.
+
+`tests/property.rs` needs no crate: a seeded generator, 1,000 cases, and `shrink`, which keeps dropping or halving samples while the input still fails. The same seed gives the same inputs.
+
+<Files guide="further-testing-more" dir="rust" files={["tests/property.rs"]} run="property" />
+
+Seed 42 failed at case 0 and four samples shrank to two. Try it 3 uses seed 7 and ends at three. Each is a dead end for the two moves `shrink` has, not necessarily the smallest input.
+
+The `proptest` crate (1.12.0, needs network) generates, runs and shrinks for you, over a copy of the two functions. I fixed the seed and turned off the regression file so this page repeats; by default proptest saves a failing case under `proptest-regressions` and replays it ([failure persistence](https://proptest-rs.github.io/proptest/proptest/failure-persistence.html)), and runs 256 cases ([`Config::cases`](https://docs.rs/proptest/1.12.0/proptest/test_runner/struct.Config.html)).
+
+<Files guide="further-testing-more" dir="prop" files={["tests/prop.rs","Cargo.toml"]} run="proptest" />
+
+A failing property fails the test, and the report gives the minimal failing input. Its two samples add up to 2,147,483,648, one more than `i32::MAX`.
+
+<Session guide="further-testing-more" run="proptest-fail" />
+
+**Fuzzing** gives the software pseudo-random data as input ([Fuzz Book](https://rust-fuzz.github.io/book/introduction.html)). `cargo-fuzz` requires the nightly compiler ([setup](https://rust-fuzz.github.io/book/cargo-fuzz/setup.html)); I did not run it.
+
+## Snapshot tests with insta
+
+A snapshot test compares output with a file saved earlier, which helps when the output is long, like this report. With `insta` 1.49.0 (needs network) the first run has no snapshot, so it stores a `.snap.new` file and fails. `INSTA_UPDATE=always` accepts what the code prints now. After a change the test fails with a diff of old against new. `cargo insta review` is the interactive way to accept ([docs](https://insta.rs/docs/quickstart/)); I did not run it. Read a snapshot diff like a code diff: `always` accepts a wrong output as readily as a right one. The same docs say insta does not write new snapshot files in CI, which they say is enabled by the `CI` environment variable; I did not run that.
+
+<Files guide="further-testing-more" dir="snap" files={["tests/snapshot.rs","src/lib.rs"]} run="snapshot" />
+
+## Coverage
+
+`cargo-llvm-cov` is not in the image, so this session installs the `llvm-tools-preview` component and then the tool at 0.9.1 (needs network). It runs the tests and reports the lines nothing ran:
+
+<Session guide="further-testing-more" run="coverage" />
+
+The uncovered lines: `lib.rs` line 94 is the `None` return in `average`, reached only by a doc test, and the tool's README says doc-test coverage needs nightly. Lines 122 and 128-129 are the table test's failure branch. `session.rs` lines 15-20 are `SystemClock::now`: with a fake clock no test calls the real one. `store.rs` line 24 is a `continue` for a file with no name. Coverage says which lines ran, not whether a test checked the result.
+
+## Benchmarks
+
+`#[bench]` belongs to the `test` crate, which the [Unstable Book](https://doc.rust-lang.org/unstable-book/library-features/test.html) lists as an unstable feature. On stable it does not build:
+
+<Session guide="further-testing-more" run="bench-builtin" />
+
+The `criterion` crate (0.8.2, needs network) runs on stable; its bench target sets `harness = false`. `std::hint::black_box` asks the compiler to assume the worst about the value; its [docs](https://doc.rust-lang.org/std/hint/fn.black_box.html) say this is best-effort. The output is one run on this VM, 8 cores, and varies; this page claims nothing from it. [Performance](/further/performance/) covers measuring honestly.
+
+<Files guide="further-testing-more" dir="bench" files={["benches/parse.rs","Cargo.toml"]} run="criterion" />
+
+## Try it yourself
+
+1. **Break two rows.** Change two expected values in the table. One run lists both wrong rows, with the input, what you expected and what the code returned:
+
+   <Session guide="further-testing-more" run="table-fail" />
+
+2. **Find the boundary.** In `expires_after_the_ttl`, change `now.set(1_059)` to `now.set(1_060)`. The `assert!(!session.expired())` fails, because `expired` uses `>=`: at `started + ttl` the session is over, and nothing slept:
+
+   <Session guide="further-testing-more" run="clock-fail" />
+
+3. **Change the seed.** Set `SEED` in `tests/property.rs` to 7. The same bug turns up with another input:
+
+   <Session guide="further-testing-more" run="seed" />
+
+## The same job in your language
+
+| Language | Table-driven | Property tests, fuzzing | Fakes | Run here |
+| --- | --- | --- | --- | --- |
+| Rust | a loop (above); `rstest` | `proptest`; `cargo-fuzz` | traits, closures; `mockall` | loop, `proptest` |
+| Go | [`t.Run` subtests](https://pkg.go.dev/testing#hdr-Subtests_and_Sub_benchmarks) | [built-in fuzzing](https://go.dev/doc/fuzz/) | [testify](https://github.com/stretchr/testify#mock-package) | table test |
+| Python | [`unittest` `subTest`](https://docs.python.org/3/library/unittest.html) | [Hypothesis](https://hypothesis.readthedocs.io/en/latest/) | [`unittest.mock`](https://docs.python.org/3/library/unittest.mock.html) | `subTest`, Hypothesis |
+| TypeScript | `test()` in a loop (`node:test`) | [fast-check](https://fast-check.dev/) | [`node:test` mocking](https://nodejs.org/docs/latest-v24.x/api/test.html#mocking) | loop, fast-check |
+| Java | [JUnit `@ParameterizedTest`](https://docs.junit.org/current/writing-tests/parameterized-classes-and-tests.html) | [jqwik](https://jqwik.net/) | [Mockito](https://site.mockito.org/) | no |
+| Kotlin | JUnit (parameterized tests, not run) | [Kotest](https://kotest.io/docs/proptest/property-based-testing.html) | [MockK](https://mockk.io/) | no |
+| C# | [xUnit `[Theory]`](https://xunit.net/docs/getting-started/v2/getting-started) | [FsCheck](https://fscheck.github.io/FsCheck/) | [NSubstitute](https://nsubstitute.github.io/) | no |
+| C | a loop (frameworks: [Unity](https://www.throwtheswitch.org/unity), [CMocka](https://cmocka.org/)) | none named here | CMocka | no |
+| C++ | [GoogleTest parameterized tests](https://google.github.io/googletest/advanced.html) | [RapidCheck](https://github.com/emil-e/rapidcheck) | [GoogleMock](https://google.github.io/googletest/gmock_for_dummies.html) | no |
+
+The image has no test runner or library for Java, C#, C or C++, and for Kotlin only the `kotlin.test` API without JUnit, so those cells only name a library. Below are the runs for Go, Python and Node; the timings vary:
+
+<details>
+<summary>Table-driven tests in Go, Python and TypeScript</summary>
+
+<Files guide="further-testing-more" dir="langs" files={["go/parse_test.go","py/test_parse.py","ts/parse.test.ts"]} run="langs" lang="go" title="Go, Python, TypeScript" />
+
+</details>
+
+The same bug as the Rust one, for two languages whose numbers do not overflow by themselves: Python wraps the sum to 32 bits by hand, TypeScript with `| 0`. The first step installs pinned Hypothesis and fast-check (needs network).
+
+<details>
+<summary>Property tests in Python and TypeScript</summary>
+
+<Files guide="further-testing-more" dir="langprop" files={["py/prop.py","ts/prop.ts"]} run="langprop" lang="python" title="Python, TypeScript" />
+
+</details>
+
+## Read more
+
+- The Rust Book: [test organization](https://doc.rust-lang.org/book/ch11-03-test-organization.html) and [controlling how tests run](https://doc.rust-lang.org/book/ch11-02-running-tests.html).
+- [The proptest book](https://proptest-rs.github.io/proptest/intro.html), the [insta docs](https://insta.rs/docs/), the [Rust Fuzz Book](https://rust-fuzz.github.io/book/introduction.html), [`cargo-llvm-cov`](https://github.com/taiki-e/cargo-llvm-cov) and the [Criterion.rs book](https://bheisler.github.io/criterion.rs/book/).
+- In this course: [Testing](/build/testing/), [Threads](/learn/threads/), [Modules](/learn/modules/), [Performance](/further/performance/).
+
+<p class="lr-fine">Versions this page is about: proptest 1.12.0, insta 1.49.0, criterion 0.8.2 and cargo-llvm-cov 0.9.1, as pinned in the <code>Cargo.lock</code> files and the session commands.</p>

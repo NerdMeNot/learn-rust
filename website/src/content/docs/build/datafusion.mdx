@@ -1,0 +1,94 @@
+---
+title: "Data: Parquet and SQL with DataFusion"
+description: "DataFusion is a query engine you embed in your own program. Register Parquet or CSV files as tables, then ask questions in SQL or with the DataFrame API."
+---
+
+import { Files, Remember, Session, Tree } from '../../../components/guide'
+
+DataFusion is a query engine you embed in your own program: you give it Parquet or CSV files, and it answers SQL. The [crate docs](https://docs.rs/datafusion/55.2.0/datafusion/) call it "an extensible query engine written in Rust that uses Apache Arrow as its in-memory format". Its [FAQ](https://datafusion.apache.org/user-guide/faq.html) says how its authors see the neighbours: DuckDB is mostly used directly as a database, while DataFusion is "designed to be embedded"; Polars is also written in Rust and uses the Arrow memory model, but has fewer extension points. That is the project describing itself, not a comparison I ran. Polars' own [docs](https://docs.pola.rs/user-guide/concepts/data-types-and-structures/) say it uses the Arrow columnar format too, and the [DataFusion introduction page](https://datafusion.apache.org/user-guide/introduction.html) lists InfluxDB among its known users.
+
+<Remember>Register a file as a table, then ask questions in SQL or with the DataFrame API.</Remember>
+
+<Tree guide="datafusion" dir="rust" name="sales-report" title="Project layout" notes={{"src/main.rs":"the program on this page","examples/":"two more programs, further down","Cargo.lock":"created by Cargo","Cargo.toml":"dependencies go here"}} />
+
+<Files guide="datafusion" dir="rust" files={["Cargo.toml"]} />
+
+<Files guide="datafusion" dir="rust" files={["src/main.rs"]} run="run" />
+
+Both queries end in a sort, so the rows come out in the same order on every run. This page is about DataFusion 55.2.0, as pinned in `Cargo.lock`.
+
+- **Arrow** is the in-memory format. The arrow-rs docs describe a `RecordBatch` as "a two-dimensional batch of column-oriented data with a defined schema". The program builds one from three arrays.
+- **Parquet** is the file format. Its [project page](https://parquet.apache.org/docs/overview/) calls it "an open source, column-oriented data file format designed for efficient data storage and retrieval". `ArrowWriter` wrote the file and `register_parquet` made it a table named `sales`.
+- **Two ways to ask:** a SQL string, or DataFrame calls (`filter`, `select`, `sort`). The [`DataFrame` docs](https://docs.rs/datafusion/55.2.0/datafusion/dataframe/struct.DataFrame.html) say most DataFrame methods only build up a plan (the steps DataFusion will take; [What the plan says](#what-the-plan-says) shows one), and that `collect` runs it "using the same DataFusion planning and execution process used to execute SQL".
+- **It is async, and runs on Tokio.** That is why `main` is `#[tokio::main]` and the calls that do the work (`register_parquet`, `sql`, `show`) end in `.await`; `filter`, `select` and `sort` only build the plan, so they do not. The crate docs say DataFusion runs each plan on multiple cores "using a Tokio Runtime as a thread pool", with the number of partitions (pieces of the data that can be processed side by side) set by `target_partitions`, which "defaults to the number of CPU cores". For Tokio itself see the [Tokio guide](/build/tokio/); for the idea of a future see [Async Basics](/learn/async-basics/).
+- **Use DataFusion's copies of Arrow and Parquet** (`datafusion::arrow`, `datafusion::parquet`), as the program does. The crate docs list both as re-exports. The section on adding your own `arrow` crate shows what goes wrong otherwise.
+- **The first build is big.** The lock file lists 286 packages, including this program:
+
+<Session guide="datafusion" run="tree" />
+
+I did not time the build. After the examples on this page were built, the debug build folder for this project measured 6.8 GB with `du` on this VM (once, so read it as "several gigabytes").
+
+## What the plan says
+
+A plan is the list of steps the engine will run; the *logical* plan says what to compute, the *physical* plan says how, and the *optimizer* rewrites the first before the second is made ([Reading explain plans](https://datafusion.apache.org/user-guide/explain-usage.html) describes the lines). Whether DataFusion skips the columns and row groups a query does not need is something you can check. `examples/explain.rs` writes the same five rows with two rows per row group, asks the same question in SQL and with DataFrame calls, and prints the plans. A row group is, in the words of the [Parquet concepts page](https://parquet.apache.org/docs/concepts/), "a logical horizontal partitioning of the data into rows".
+
+<Files guide="datafusion" dir="rust" files={["examples/explain.rs"]} run="plans" />
+
+What the run showed:
+
+- The two queries start as different plans (`Int64(200)` against `Float64(200)`), and after the optimizer rewrites them the plans are equal. That is for this query only; I did not test others.
+- `TableScan` says `projection=[city, sales]`: the `month` column is not in the scan's projection.
+- The scan carries a `pruning_predicate` that compares `sales_max`, a statistic of the column, with 200, and the metric printed `row_groups_pruned_statistics = 3 total → 1 matched`: two of the three row groups were ruled out by their statistics.
+- The example sets `with_target_partitions(1)` so the plan does not depend on how many cores the machine has. When I ran it by hand without that line on this 8-core VM, the physical plan had an extra `RepartitionExec` step with 8 partitions (that run is not one of the sessions on this page).
+- The physical plan names the file by its temp folder, which differs per machine, so the example replaces that part with `<temp dir>` before printing.
+- The file is five rows, so this shows the mechanism and says nothing about speed. I measured no times.
+
+## Results as data, and mistakes
+
+`examples/results.rs` reads a CSV file instead, with `register_csv`. A CSV file has no column types, so DataFusion inferred them from the data; the first lines of the output show what it chose. `collect` returns the answer as Arrow arrays you can read from code, and mistakes in SQL come back as `Err` values:
+
+<Files guide="datafusion" dir="rust" files={["examples/results.rs"]} run="results" />
+
+## Adding your own `arrow` crate
+
+`cargo add arrow` is a natural thing to type. On 25 October 2026 the newest release on crates.io was 60.0.0, while DataFusion 55.2.0 depends on `arrow ^59.2.0` ([docs.rs dependency list](https://docs.rs/datafusion/55.2.0/datafusion/)) and the lock file has 59.3.1 (the `tree` output above prints `arrow v59.3.1`). Those are Arrow's version numbers, not DataFusion's: DataFusion is 55.2.0. Two versions of a crate are two different crates to the compiler, so a `RecordBatch` from one is not a `RecordBatch` from the other. The session below builds a shorter program than the one above, not the main program: it has `arrow = "=60.0.0"` added to `Cargo.toml`, takes its imports from `arrow` instead of `datafusion::arrow`, and hands one column to `register_batch`:
+
+<Files guide="datafusion" dir="fixes" files={["two-arrows.Cargo.toml", "two-arrows.rs"]} run="two-arrows" />
+
+When I ran `cargo build` by hand, the full message also had a note saying "there are multiple different versions of crate `arrow_array` in the dependency graph". The page trims notes that point into library sources. The fix is the one the program already uses: import from `datafusion::arrow`, or choose the `arrow` version DataFusion uses (`cargo tree -i arrow --depth 0` above shows it).
+
+## The same job in your language
+
+Only Python ran for this page. The other rows only name tools, and I did not run them. A name here is not a recommendation or a popularity claim, and I did not check that each tool does both Parquet and SQL: the notes say only what the linked page says.
+
+| Language | Tools named, and what the linked page says | Ran here |
+| --- | --- | --- |
+| Go | [DuckDB's Go client](https://duckdb.org/docs/2.0/clients/go/overview.html) (uses cgo and needs a C compiler, per DuckDB's docs); [arrow-go](https://github.com/apache/arrow-go), the Go implementation of Arrow, which also has Parquet | no |
+| Python | pandas, Polars, DuckDB, PyArrow, [DataFusion's own Python bindings](https://datafusion.apache.org/python/) | yes, below |
+| TypeScript | [DuckDB-Wasm and DuckDB's Node.js client](https://duckdb.org/docs/2.0/clients/overview.html), both in DuckDB's client list; [Apache Arrow JS](https://arrow.apache.org/docs/js/), for Arrow data (its page does not mention Parquet or SQL) | no |
+| Java | [DuckDB's JDBC driver](https://duckdb.org/docs/2.0/clients/overview.html), in DuckDB's client list; [Apache Spark](https://spark.apache.org/) (named only) | no |
+| Kotlin | [Kotlin DataFrame](https://kotlin.github.io/dataframe/concepts.html) (its page lists SQL databases as a data source and does not mention Parquet) | no |
+| C# | [DuckDB.NET](https://github.com/Giorgi/DuckDB.NET), a .NET client listed in DuckDB's [client overview](https://duckdb.org/docs/2.0/clients/overview.html); [Microsoft.Data.Analysis](https://learn.microsoft.com/en-us/dotnet/api/microsoft.data.analysis.dataframe), a DataFrame type (its page mentions neither Parquet nor SQL) | no |
+| C | [the DuckDB C API](https://duckdb.org/docs/2.0/clients/c/overview.html) | no |
+| C++ | [Arrow C++](https://arrow.apache.org/docs/cpp/) (with its Acero engine); [DuckDB's C++ API](https://duckdb.org/docs/2.0/clients/cpp.html) | no |
+
+The runner image has Python but no pip, so `setup.sh` downloads pip and installs the packages from `requirements.txt` into a scratch folder. **This session needs internet access and cannot be reproduced offline**: with the network switched off, `setup.sh` failed at its first step (`curl` could not resolve `bootstrap.pypa.io`). Only the five packages in `requirements.txt` are pinned; `get-pip.py` is fetched unpinned and run as downloaded, and the packages' own dependencies are not pinned either, so a later run may install different versions (the script prints the five it got). On your own machine, a virtual environment and `pip install -r requirements.txt` do the same job. `compare.py` writes the same five rows to Parquet and asks each library for the total per city:
+
+<Files guide="datafusion" dir="py" files={["compare.py", "setup.sh", "requirements.txt"]} lang="python" run="python" />
+
+All four gave the same three rows. The Python `datafusion` package is DataFusion's own engine behind a Python API; its version number (55.0.0) matches the Rust crate's major version here, but I did not check that the two builds contain the same code. Nothing in this run measures speed.
+
+## Try it yourself
+
+1. **Change the filter.** `cargo run --example explain -- 100` uses `sales > 100`. The second command in the plan panel above ran it (with `tail -2` to keep only the end): 4 rows come back, and the Parquet metric line now reads `3 total → 2 matched -> 2 fully matched` (the line also reports how many row groups matched fully), because the third row group's largest value is 99.
+2. **Make three mistakes in SQL.** The `results` session sent a misspelled table, a misspelled column and a misspelled keyword. The column error suggested `sales.city`; the keyword error is a `ParserError`. All three were `Err` values and the program kept going.
+3. **Add `arrow` to the main program.** Add `arrow = "=60.0.0"` to `Cargo.toml` and change the three `use datafusion::arrow::...` lines of `src/main.rs` to `use arrow::...`. This is the whole program, not the shorter one above, so it does not give the single error shown there: Cargo reported three errors, two `mismatched types` (E0308, where the schema goes to `ArrowWriter::try_new` and where `&batch` goes to `writer.write`) and one E0277, because `?` cannot turn the new `arrow::error::ArrowError` into a `DataFusionError`:
+
+   <Session guide="datafusion" run="main-with-arrow" />
+
+## Read more
+
+- [DataFusion user guide](https://datafusion.apache.org/user-guide/introduction.html) and its [FAQ](https://datafusion.apache.org/user-guide/faq.html), and [Reading explain plans](https://datafusion.apache.org/user-guide/explain-usage.html) for what the plan lines mean.
+- [`datafusion` 55.2.0 on docs.rs](https://docs.rs/datafusion/55.2.0/datafusion/): the architecture notes, including the Tokio section quoted above.
+- [Apache Arrow](https://arrow.apache.org/) and [Apache Parquet](https://parquet.apache.org/docs/overview/).
+- In this course: [Async Basics](/learn/async-basics/) and the [Tokio guide](/build/tokio/).

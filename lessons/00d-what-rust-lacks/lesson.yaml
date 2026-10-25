@@ -1,0 +1,105 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "What Rust doesn't have"
+part: "syntax"
+intro: >-
+  Some things you reach for by habit do not exist in Rust: `x++`, `a ? b : c`, `null`,
+  C-style `for`, default arguments, classes, exceptions, `goto`. Each one fails with a
+  compiler message, and each has a Rust way. This page lists them, with the real error and
+  what to write instead.
+coming_from:
+  go: >-
+    `i++` is a statement in Go, and Rust has no `++` at all. Much else matches: Go has no ternary operator,
+    no function overloading by type, no default arguments and no mixing of typed number types either. What
+    you give up is `nil`, `goto`, `defer`, `for cond {}` and the `if err != nil` boilerplate: Rust has `Option`, labeled `break`,
+    `Drop`, `while` and `?`. Watch the `break` inside a `switch`: in Rust it leaves the loop.
+  kotlin: >-
+    You are used to a lot of this already: `if` is an expression, there is no ternary operator, and `T?` is a
+    checked null. What Rust takes away is `++`, `?.`, `?:` and `!!` (`Option` has `map`, `unwrap_or` and `unwrap`), default
+    and named arguments, `open` classes with inheritance, and exceptions (`Result` and `?` replace `try`/`catch`).
+  python: >-
+    Python has no `x++` either, so `x += 1` is already your habit. What is new is that an `if` needs a `bool` (an empty
+    list or a `0` is not false), a call has no keyword arguments and a definition has no default values, `//` starts a comment, `and`/`or`/`not`/`elif` are
+    `&&`/`||`/`!`/`else if`, a name has one type, and braces replace the indentation.
+  typescript: >-
+    `x++`, `a ? b : c`, `null` and `undefined`, `??`, truthiness (`if (name)`), `throw` and optional parameters
+    all have a different Rust form: `x += 1`, `if a { b } else { c }`, `Option`, `unwrap_or`, an explicit test, `Result`
+    and `?`, and a struct. Careful: `u?.name` is valid Rust, and it is not a safe call but an early return. Rust also does not turn a number into another number type for you.
+  java: >-
+    `i++`, `?:`, `null`, `new`, `this`, `extends`, function overloading, `switch` that falls through, `finally` and
+    checked or unchecked exceptions all have a different Rust form. Java widens `int` to `long` on
+    its own; Rust makes you write the conversion. A `break` in a `switch` inside a loop leaves the `switch` in Java; in Rust it leaves the loop.
+  csharp: >-
+    `i++`, `?:`, `?.`, `new`, `this`, `: BaseClass`, function overloads, optional and named arguments, and `try`/`catch` have
+    a different Rust form, and `null` becomes `Option`. C# widens `int` to `long` on its own; Rust makes
+    you write the conversion. A `break` in a `switch` inside a loop leaves the `switch` in C#; in Rust it leaves the loop.
+  c: >-
+    `i++`, `?:`, `for (i = 0; i < n; i++)`, `NULL`, a `switch` that falls through, `goto`, `(double)n`, `->` and `#define` do not
+    exist or fail in Rust, as does `if (n)` on a number. A global you assign without `unsafe` fails to compile too, and C's silent number conversions
+    (`int n = 3.9;`) need an explicit `as`. A `break;` at the end of a ported `case` compiles and leaves the loop.
+  cpp: >-
+    Everything in the C list, plus classes with inheritance, function overloads, default arguments, constructors and
+    exceptions: Rust has none of them. A `struct` holds data, an `impl` block holds methods, a
+    trait shares behaviour (and `impl Add` is your `operator+`), a `Drop` runs where a destructor would, and a `Result` carries a failure. `auto` is `let`.
+notes:
+  - >-
+    Rust has no `x++` and no `a ? b : c`. Write `x += 1`, and `if a { b } else { c }`, which is an
+    expression.
+  - >-
+    There is no `null`. A value that may be missing has the type `Option<T>`, and the compiler
+    makes you handle `None`.
+  - >-
+    Numbers do not convert on their own: `i32` plus `i64` is an error. Write `as`, `From` or
+    `try_from`.
+  - >-
+    No `switch` fallthrough, no exceptions for ordinary errors, no default or named arguments, no function overloading by
+    parameter type, no classes and no `goto`. Each has a Rust form, shown on this page. A `break` in a `match` inside a loop
+    leaves the loop.
+gotcha:
+  title: "Writing x++"
+  verdict: "rust-rule"
+  looks_fine: >-
+    In Go, Java, C, C++, C#, Kotlin and JavaScript, `count++` adds one, and it reads the same in all of them.
+  rust_sees: >-
+    Rust has no `++` or `--` operator. `count++` is not a statement the parser knows, and the
+    compiler stops with a message that says so and shows `count += 1`.
+  why: >-
+    The compiler recognises the habit and names it: "Rust has no postfix increment operator". The
+    fix is `count += 1`. Python is the other language here with no `++` operator. Elsewhere `++` is part of the
+    language: Go allows it only as a statement, and the others also allow it inside larger expressions.
+  langs:
+    go:
+      status: "runs"
+      says: >-
+        Go prints 3. `count++` is a statement, not an expression, so `x := count++` is an error
+        in Go. `++count` does not exist.
+    kotlin:
+      status: "runs"
+      says: >-
+        Kotlin prints 3. `count++` and `++count` both work, and can sit inside a larger expression.
+    python:
+      status: "refuses"
+      says: >-
+        Python refuses with a `SyntaxError`: it has no `++` operator, so write `count += 1`. It is
+        the one language here with no `++`. Note that `++count` and `--count` are legal in Python and do
+        nothing: they read as `+(+count)` and `-(-count)`.
+    typescript:
+      status: "runs"
+      says: >-
+        TypeScript prints 3. `count++` and `++count` work, as in JavaScript, and `--count` decrements.
+        In Rust `--count` compiles and negates twice.
+    java:
+      status: "runs"
+      says: >-
+        Java prints 3. `count++` and `++count` work, also inside expressions such as `a[i++]`.
+    csharp:
+      status: "runs"
+      says: >-
+        C# prints 3. `count++` and `++count` work, also inside expressions.
+    c:
+      status: "runs"
+      says: >-
+        C prints 3. `count++` works, also inside expressions such as `a[i++]`.
+    cpp:
+      status: "runs"
+      says: >-
+        C++ prints 3. `count++` and `++count` work, and they can be overloaded for your own types.

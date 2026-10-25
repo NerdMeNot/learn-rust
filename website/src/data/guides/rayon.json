@@ -1,0 +1,352 @@
+{
+ "id": "rayon",
+ "files": {
+  "go": {
+   "go.mod": "module parallel-sums\n\ngo 1.27\n",
+   "main.go": "package main\n\nimport (\n\t\"fmt\"\n\t\"runtime\"\n\t\"sort\"\n\t\"sync\"\n)\n\n// chunks splits 0..n into one range per CPU and runs fn on each range in its own goroutine.\nfunc chunks(n int, fn func(part, lo, hi int)) {\n\tparts := runtime.NumCPU()\n\tvar wg sync.WaitGroup\n\tfor p := 0; p < parts; p++ {\n\t\tlo, hi := n*p/parts, n*(p+1)/parts\n\t\twg.Add(1)\n\t\tgo func() {\n\t\t\tdefer wg.Done()\n\t\t\tfn(p, lo, hi)\n\t\t}()\n\t}\n\twg.Wait()\n}\n\nfunc main() {\n\tnumbers := make([]uint64, 1_000_000)\n\tfor i := range numbers {\n\t\tnumbers[i] = uint64(i + 1)\n\t}\n\n\t// Sum of squares: each goroutine fills its own slot, then we add the slots.\n\tpartial := make([]uint64, runtime.NumCPU())\n\tchunks(len(numbers), func(part, lo, hi int) {\n\t\tfor _, n := range numbers[lo:hi] {\n\t\t\tpartial[part] += n * n\n\t\t}\n\t})\n\tvar total uint64\n\tfor _, s := range partial {\n\t\ttotal += s\n\t}\n\tfmt.Println(\"sum of squares:\", total)\n\n\t// Squares in input order: each goroutine writes only its own indexes.\n\tsquares := make([]uint64, len(numbers))\n\tchunks(len(numbers), func(_, lo, hi int) {\n\t\tfor i := lo; i < hi; i++ {\n\t\t\tsquares[i] = numbers[i] * numbers[i]\n\t\t}\n\t})\n\tinOrder := true\n\tfor i, s := range squares {\n\t\tinOrder = inOrder && s == uint64(i+1)*uint64(i+1)\n\t}\n\tfmt.Println(\"collected squares in input order:\", inOrder)\n\n\t// Multiples of 7: one counter per chunk again.\n\tcounts := make([]int, runtime.NumCPU())\n\tchunks(len(numbers), func(part, lo, hi int) {\n\t\tfor _, n := range numbers[lo:hi] {\n\t\t\tif n%7 == 0 {\n\t\t\t\tcounts[part]++\n\t\t\t}\n\t\t}\n\t})\n\tsevens := 0\n\tfor _, c := range counts {\n\t\tsevens += c\n\t}\n\tfmt.Println(\"multiples of 7:\", sevens)\n\n\t// In place.\n\tdata := []int{3, 1, 2}\n\tchunks(len(data), func(_, lo, hi int) {\n\t\tfor i := lo; i < hi; i++ {\n\t\t\tdata[i] *= 10\n\t\t}\n\t})\n\tfmt.Println(\"times ten, in place:\", data)\n\n\t// sort.Ints is an ordinary sequential sort.\n\tsort.Ints(data)\n\tfmt.Println(\"sorted:\", data)\n}\n"
+  },
+  "gotcha": {
+   "fixed.rs": "use rayon::prelude::*;\n\nfn main() {\n    let total: u64 = (1..=1_000_000u64).into_par_iter().sum();\n    println!(\"{total}\");\n}\n",
+   "main.rs": "use rayon::prelude::*;\nuse std::cell::RefCell;\nuse std::rc::Rc;\n\nfn main() {\n    let total = Rc::new(RefCell::new(0u64));\n    (1..=1_000_000u64).into_par_iter().for_each(|n| {\n        *total.borrow_mut() += n;\n    });\n    println!(\"{}\", total.borrow());\n}\n"
+  },
+  "gotcha-langs": {
+   "Race.java": "import java.util.stream.LongStream;\n\npublic class Race {\n    public static void main(String[] args) {\n        long[] total = {0}; // shared by every worker thread\n        LongStream.rangeClosed(1, 1_000_000).parallel().forEach(n -> total[0] += n);\n        System.out.println(\"total: \" + total[0] + \" expected: 500000500000\");\n    }\n}\n",
+   "cs.sh": "#!/bin/bash\n# build one C# file the way the lessons do: inside the image's restored project\nset -e\nrm -rf /tmp/cs && cp -r /opt/templates/csharp /tmp/cs && cp \"$1\" /tmp/cs/Program.cs\ncd /tmp/cs && dotnet build --no-restore -v q -nologo -clp:NoSummary\ndotnet bin/Debug/net10.0/Program.dll\n",
+   "race.c": "#include <stdio.h>\n\nint main(void) {\n    long long total = 0; /* shared by every thread */\n    #pragma omp parallel for\n    for (long long i = 1; i <= 1000000; i++) {\n        total += i;\n    }\n    printf(\"total: %lld expected: 500000500000\\n\", total);\n    return 0;\n}\n",
+   "race.cpp": "#include <iostream>\n\nint main() {\n    long long total = 0; // shared by every thread\n    #pragma omp parallel for\n    for (long long i = 1; i <= 1000000; i++) {\n        total += i;\n    }\n    std::cout << \"total: \" << total << \" expected: 500000500000\\n\";\n}\n",
+   "race.cs": "using System;\nusing System.Threading.Tasks;\n\nclass Race\n{\n    static void Main()\n    {\n        long total = 0; // shared by every worker thread\n        Parallel.For(1, 1_000_001, n => { total += n; });\n        Console.WriteLine($\"total: {total} expected: 500000500000\");\n    }\n}\n",
+   "race.go": "package main\n\nimport (\n\t\"fmt\"\n\t\"runtime\"\n\t\"sync\"\n)\n\nfunc main() {\n\tconst n = 1_000_000\n\tparts := runtime.NumCPU()\n\ttotal := 0 // shared by every goroutine\n\tvar wg sync.WaitGroup\n\tfor p := 0; p < parts; p++ {\n\t\tlo, hi := n*p/parts+1, n*(p+1)/parts\n\t\twg.Add(1)\n\t\tgo func() {\n\t\t\tdefer wg.Done()\n\t\t\tfor i := lo; i <= hi; i++ {\n\t\t\t\ttotal += i\n\t\t\t}\n\t\t}()\n\t}\n\twg.Wait()\n\tfmt.Println(\"total:\", total, \"expected: 500000500000\")\n}\n",
+   "race.kt": "import java.util.stream.LongStream\n\nfun main() {\n    val total = LongArray(1) // shared by every worker thread\n    LongStream.rangeClosed(1, 1_000_000).parallel().forEach { n -> total[0] += n }\n    println(\"total: ${total[0]} expected: 500000500000\")\n}\n",
+   "race.py": "import threading\n\nN, THREADS = 8_000_000, 8  # many numbers, so each thread runs long enough to be interrupted\ntotal = 0  # shared by every thread\n\n\ndef term(i):\n    return i\n\n\ndef add(lo, hi):\n    global total\n    for i in range(lo, hi):\n        total = total + term(i)  # read total, call a function, write total\n\n\nstep = N // THREADS\nthreads = [threading.Thread(target=add, args=(p * step + 1, (p + 1) * step + 1)) for p in range(THREADS)]\nfor t in threads:\n    t.start()\nfor t in threads:\n    t.join()\nprint(\"total:\", total, \"expected:\", N * (N + 1) // 2)\n",
+   "race.ts": "import { Worker, isMainThread, workerData, parentPort } from \"node:worker_threads\";\n\nlet total = 0; // each worker thread gets its own copy of this variable\n\nif (isMainThread) {\n  const workers = [];\n  for (let p = 0; p < 8; p++) {\n    const lo = p * 125_000 + 1;\n    workers.push(new Promise<void>((done) => {\n      const w = new Worker(new URL(import.meta.url), { workerData: { lo, hi: lo + 125_000 } });\n      w.on(\"exit\", () => done());\n    }));\n  }\n  await Promise.all(workers);\n  console.log(\"total:\", total, \"expected: 500000500000\");\n} else {\n  for (let i = workerData.lo; i < workerData.hi; i++) total += i;\n  parentPort!.postMessage(\"done\");\n}\n",
+   "race_n.py": "import sys\nimport threading\n\nN, THREADS = int(sys.argv[1]), 8\ntotal = 0  # shared by every thread\n\n\ndef term(i):\n    return i\n\n\ndef add(lo, hi):\n    global total\n    for i in range(lo, hi):\n        total = total + term(i)  # read total, call a function, write total\n\n\nstep = N // THREADS\nthreads = [threading.Thread(target=add, args=(p * step + 1, (p + 1) * step + 1)) for p in range(THREADS)]\nfor t in threads:\n    t.start()\nfor t in threads:\n    t.join()\nprint(\"exact\" if total == N * (N + 1) // 2 else \"lost\", end=\" \")\n"
+  },
+  "languages": {
+   "Sum.java": "import java.util.stream.LongStream;\n\npublic class Sum {\n    public static void main(String[] args) {\n        long total = LongStream.rangeClosed(1, 1_000_000).parallel().map(n -> n * n).sum();\n        System.out.println(total);\n    }\n}\n",
+   "cs.sh": "#!/bin/bash\n# build one C# file the way the lessons do: inside the image's restored project\nset -e\nrm -rf /tmp/cs && cp -r /opt/templates/csharp /tmp/cs && cp \"$1\" /tmp/cs/Program.cs\ncd /tmp/cs && dotnet build --no-restore -v q -nologo -clp:NoSummary\ndotnet bin/Debug/net10.0/Program.dll\n",
+   "par.cpp": "#include <algorithm>\n#include <execution>\n#include <iostream>\n#include <mutex>\n#include <numeric>\n#include <set>\n#include <thread>\n#include <vector>\n\nint main() {\n    std::vector<long long> numbers(1'000'000);\n    std::iota(numbers.begin(), numbers.end(), 1);\n\n    std::set<std::thread::id> threads; // which threads ran the lambda\n    std::mutex m;\n    long long total = std::transform_reduce(\n        std::execution::par, numbers.begin(), numbers.end(), 0LL, std::plus<>(),\n        [&](long long n) {\n            std::lock_guard<std::mutex> lock(m);\n            threads.insert(std::this_thread::get_id());\n            return n * n;\n        });\n    std::cout << total << \", threads that ran the lambda: \" << threads.size() << \"\\n\";\n}\n",
+   "sum.c": "#include <stdio.h>\n\nint main(void) {\n    long long total = 0;\n    #pragma omp parallel for reduction(+ : total)\n    for (long long i = 1; i <= 1000000; i++) {\n        total += i * i;\n    }\n    printf(\"%lld\\n\", total);\n    return 0;\n}\n",
+   "sum.cpp": "#include <iostream>\n\nint main() {\n    long long total = 0;\n    #pragma omp parallel for reduction(+ : total)\n    for (long long i = 1; i <= 1000000; i++) {\n        total += i * i;\n    }\n    std::cout << total << \"\\n\";\n}\n",
+   "sum.cs": "using System;\nusing System.Linq;\n\nclass Sum\n{\n    static void Main()\n    {\n        long total = Enumerable.Range(1, 1_000_000).AsParallel().Select(n => (long)n * n).Sum();\n        Console.WriteLine(total);\n    }\n}\n",
+   "sum.go": "package main\n\nimport (\n\t\"fmt\"\n\t\"runtime\"\n\t\"sync\"\n)\n\nfunc main() {\n\tconst n = 1_000_000\n\tparts := runtime.NumCPU()\n\tpartial := make([]uint64, parts) // one slot per goroutine, so no sharing\n\tvar wg sync.WaitGroup\n\tfor p := 0; p < parts; p++ {\n\t\tlo, hi := n*p/parts+1, n*(p+1)/parts\n\t\twg.Add(1)\n\t\tgo func() {\n\t\t\tdefer wg.Done()\n\t\t\tfor i := lo; i <= hi; i++ {\n\t\t\t\tpartial[p] += uint64(i) * uint64(i)\n\t\t\t}\n\t\t}()\n\t}\n\twg.Wait()\n\tvar total uint64\n\tfor _, s := range partial {\n\t\ttotal += s\n\t}\n\tfmt.Println(total)\n}\n",
+   "sum.kt": "import java.util.stream.LongStream\n\nfun main() {\n    val total = LongStream.rangeClosed(1, 1_000_000).parallel().map { n -> n * n }.sum()\n    println(total)\n}\n",
+   "sum.py": "from concurrent.futures import ProcessPoolExecutor\n\n\ndef square_sum(bounds):\n    lo, hi = bounds\n    return sum(i * i for i in range(lo, hi))\n\n\nif __name__ == \"__main__\":\n    n, parts = 1_000_000, 8\n    chunks = [(n * p // parts + 1, n * (p + 1) // parts + 1) for p in range(parts)]\n    with ProcessPoolExecutor(max_workers=parts) as pool:\n        print(sum(pool.map(square_sum, chunks)))\n",
+   "sum.ts": "import { Worker, isMainThread, workerData, parentPort } from \"node:worker_threads\";\n\n// BigInt: the total is larger than 2**53, which a JavaScript number cannot hold exactly.\nconst N = 1_000_000n;\nconst PARTS = 8n;\n\nif (isMainThread) {\n  const sums = Array.from({ length: Number(PARTS) }, (_, p) => new Promise<bigint>((resolve) => {\n    const part = BigInt(p);\n    const lo = N * part / PARTS + 1n;\n    const hi = N * (part + 1n) / PARTS;\n    const worker = new Worker(new URL(import.meta.url), { workerData: { lo, hi } });\n    worker.on(\"message\", resolve);\n  }));\n  const total = (await Promise.all(sums)).reduce((a, b) => a + b, 0n);\n  console.log(total.toString());\n} else {\n  let sum = 0n;\n  for (let i = workerData.lo; i <= workerData.hi; i++) sum += i * i;\n  parentPort!.postMessage(sum);\n}\n"
+  },
+  "rust": {
+   "Cargo.lock": "# This file is automatically @generated by Cargo.\n# It is not intended for manual editing.\nversion = 4\n\n[[package]]\nname = \"crossbeam-deque\"\nversion = \"0.8.8\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"622f3fc73690be383c7214310406f28a90e6edeadc3cea882f9d71e495b9711a\"\ndependencies = [\n \"crossbeam-epoch\",\n \"crossbeam-utils\",\n]\n\n[[package]]\nname = \"crossbeam-epoch\"\nversion = \"0.9.21\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"dc74980687109a3b14c72fd458107bf0baa1da1a1a805e178d15501ba9b86d9d\"\ndependencies = [\n \"crossbeam-utils\",\n]\n\n[[package]]\nname = \"crossbeam-utils\"\nversion = \"0.8.23\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"a31eee39dddec8330830986fcd7625edb5a24ec90ea038215273bbc3adb08ac6\"\n\n[[package]]\nname = \"either\"\nversion = \"1.19.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"0e9c71c2167ca323c882b99918929403426e2373ea17242ff5653e0d5e1058be\"\n\n[[package]]\nname = \"parallel-sums\"\nversion = \"0.1.0\"\ndependencies = [\n \"rayon\",\n]\n\n[[package]]\nname = \"rayon\"\nversion = \"1.12.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"fb39b166781f92d482534ef4b4b1b2568f42613b53e5b6c160e24cfbfa30926d\"\ndependencies = [\n \"either\",\n \"rayon-core\",\n]\n\n[[package]]\nname = \"rayon-core\"\nversion = \"1.13.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"22e18b0f0062d30d4230b2e85ff77fdfe4326feb054b9783a3460d8435c8ab91\"\ndependencies = [\n \"crossbeam-deque\",\n \"crossbeam-utils\",\n]\n",
+   "Cargo.toml": "[package]\nname = \"parallel-sums\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\nrayon = \"1.12.0\"\n",
+   "src/main.rs": "use rayon::prelude::*;\n\nfn main() {\n    let numbers: Vec<u64> = (1..=1_000_000).collect();\n\n    // The same pipeline twice: only `iter` became `par_iter`.\n    let sequential: u64 = numbers.iter().map(|n| n * n).sum();\n    let parallel: u64 = numbers.par_iter().map(|n| n * n).sum();\n    println!(\"sum of squares: {sequential} and {parallel}\");\n    assert_eq!(sequential, parallel);\n\n    // `collect` into a Vec keeps the input order, even for a million items.\n    let squares: Vec<u64> = numbers.par_iter().map(|n| n * n).collect();\n    let expected: Vec<u64> = numbers.iter().map(|n| n * n).collect();\n    println!(\"collected squares in input order: {}\", squares == expected);\n\n    // `filter` then `count`.\n    let sevens = numbers.par_iter().filter(|n| **n % 7 == 0).count();\n    println!(\"multiples of 7: {sevens}\");\n\n    // `par_iter_mut` changes the items in place.\n    let mut data = vec![3, 1, 2];\n    data.par_iter_mut().for_each(|n| *n *= 10);\n    println!(\"times ten, in place: {data:?}\");\n\n    // `par_sort` sorts a slice or Vec using several threads.\n    data.par_sort();\n    println!(\"sorted: {data:?}\");\n}\n"
+  },
+  "snippet-builder": {
+   "src/main.rs": "use rayon::prelude::*;\n\nfn main() {\n    // Configure the global pool once, before anything uses it.\n    let first = rayon::ThreadPoolBuilder::new().num_threads(2).build_global();\n    println!(\"first build_global: {first:?}\");\n    println!(\"global pool threads: {}\", rayon::current_num_threads());\n    match rayon::ThreadPoolBuilder::new().num_threads(4).build_global() {\n        Ok(()) => println!(\"second build_global worked\"),\n        Err(e) => println!(\"second build_global: {e}\"),\n    }\n\n    // A pool of your own: `install` runs the closure inside it.\n    let pool = rayon::ThreadPoolBuilder::new().num_threads(3).build().unwrap();\n    let inside = pool.install(|| rayon::current_num_threads());\n    let total: u64 = pool.install(|| (1..=1_000u64).into_par_iter().sum());\n    println!(\"inside install: {inside} threads, sum {total}\");\n    println!(\"outside install: still {} threads\", rayon::current_num_threads());\n}\n"
+  },
+  "snippet-grouping": {
+   "src/main.rs": "use rayon::prelude::*;\n\nfn main() {\n    // The same operator, grouped two ways, by hand.\n    println!(\"(10 - 3) - 2 = {}\", (10 - 3) - 2);\n    println!(\"10 - (3 - 2) = {}\", 10 - (3 - 2));\n    println!(\"(0.1 + 0.2) + 0.3 = {}\", (0.1 + 0.2) + 0.3);\n    println!(\"0.1 + (0.2 + 0.3) = {}\", 0.1 + (0.2 + 0.3));\n\n    // `-` is not associative, so how rayon groups the items changes the answer.\n    let numbers: Vec<i64> = (1..=1_000).collect();\n    let sequential = numbers.iter().fold(0, |a, b| a - b);\n    let parallel = numbers.par_iter().cloned().reduce(|| 0, |a, b| a - b);\n    println!(\"sequential {sequential}, parallel {parallel}\");\n}\n"
+  },
+  "snippet-join": {
+   "src/main.rs": "use rayon::prelude::*;\n\n// Split the slice in two and let `join` run both halves, possibly on two threads.\n// Below a cutoff, just add: a task per element would likely cost more than the addition.\nfn sum(numbers: &[u64]) -> u64 {\n    if numbers.len() <= 1_000 {\n        return numbers.iter().sum();\n    }\n    let (left, right) = numbers.split_at(numbers.len() / 2);\n    let (a, b) = rayon::join(|| sum(left), || sum(right));\n    a + b\n}\n\nfn main() {\n    let numbers: Vec<u64> = (1..=100_000).collect();\n    println!(\"join: {}\", sum(&numbers));\n    println!(\"par_iter: {}\", numbers.par_iter().sum::<u64>());\n\n    // `scope` lets tasks borrow local variables, like `thread::scope`.\n    // Each task gets its own slot of `results`.\n    let mut results = vec![0u64; 4];\n    rayon::scope(|s| {\n        for (i, slot) in results.iter_mut().enumerate() {\n            s.spawn(move |_| *slot = (i as u64 + 1) * 100);\n        }\n    });\n    println!(\"scope: {results:?}\");\n}\n"
+  },
+  "snippet-panic": {
+   "src/main.rs": "use rayon::prelude::*;\nuse std::panic::catch_unwind;\n\nfn main() {\n    // Keep stderr quiet so the output is the same on every run.\n    std::panic::set_hook(Box::new(|_| {}));\n\n    let result = catch_unwind(|| {\n        (1..=1_000).into_par_iter().for_each(|n| {\n            if n == 500 {\n                panic!(\"bad item {n}\");\n            }\n        });\n    });\n    match result {\n        Ok(()) => println!(\"no panic reached the caller\"),\n        Err(payload) => {\n            let message = payload.downcast_ref::<String>().unwrap();\n            println!(\"the caller got the panic: {message}\");\n        }\n    }\n\n    // The pool is still usable afterwards.\n    let total: u32 = (1..=10).into_par_iter().sum();\n    println!(\"a later par_iter: {total}\");\n}\n"
+  },
+  "snippet-pool": {
+   "src/main.rs": "fn main() {\n    let threads = rayon::current_num_threads();\n    match std::env::var(\"RAYON_NUM_THREADS\") {\n        Ok(v) => println!(\"RAYON_NUM_THREADS={v}, the pool has {threads} threads\"),\n        Err(_) => {\n            let cpus = std::thread::available_parallelism().unwrap().get();\n            println!(\"the pool has at least one thread: {}\", threads >= 1);\n            println!(\"the pool has one thread per CPU: {}\", threads == cpus);\n        }\n    }\n}\n"
+  },
+  "snippet-shared": {
+   "src/main.rs": "use rayon::prelude::*;\nuse std::sync::Mutex;\nuse std::sync::atomic::{AtomicU64, Ordering};\n\nfn main() {\n    let numbers: Vec<u64> = (1..=100_000).collect();\n\n    // 1. No shared state: each piece returns a value and rayon combines them.\n    let by_sum: u64 = numbers.par_iter().sum();\n\n    // 2. One atomic counter that every closure adds to.\n    let atomic = AtomicU64::new(0);\n    numbers.par_iter().for_each(|n| {\n        atomic.fetch_add(*n, Ordering::Relaxed);\n    });\n\n    // 3. A mutex: correct, but only one closure at a time can be inside it.\n    let locked = Mutex::new(0u64);\n    numbers.par_iter().for_each(|n| *locked.lock().unwrap() += n);\n\n    println!(\"sum {by_sum}, atomic {}, mutex {}\", atomic.into_inner(), locked.into_inner().unwrap());\n\n    // 4. Pushing into a shared Vec: all items arrive, but in no promised order.\n    let pushed = Mutex::new(Vec::new());\n    numbers.par_iter().for_each(|n| pushed.lock().unwrap().push(*n));\n    let mut pushed = pushed.into_inner().unwrap();\n    pushed.sort();\n    println!(\"same items after sorting: {}\", pushed == numbers);\n\n    // 5. Per-piece state: `fold` gives each piece its own counts, `reduce` merges them.\n    let by_remainder = numbers\n        .par_iter()\n        .fold(\n            || [0u64; 3],\n            |mut counts, n| {\n                counts[(*n % 3) as usize] += 1;\n                counts\n            },\n        )\n        .reduce(\n            || [0u64; 3],\n            |a, b| [a[0] + b[0], a[1] + b[1], a[2] + b[2]],\n        );\n    println!(\"remainders 0, 1, 2: {by_remainder:?}\");\n}\n"
+  },
+  "snippet-timing": {
+   "src/main.rs": "use rayon::prelude::*;\nuse std::time::Instant;\n\n// The number of steps the Collatz process takes to reach 1: different work for every n.\nfn collatz_steps(mut n: u64) -> u64 {\n    let mut steps = 0;\n    while n != 1 {\n        n = if n % 2 == 0 { n / 2 } else { 3 * n + 1 };\n        steps += 1;\n    }\n    steps\n}\n\nfn compare(label: &str, count: u64) {\n    let start = Instant::now();\n    let a: u64 = (1..=count).map(collatz_steps).sum();\n    let sequential = start.elapsed();\n\n    let start = Instant::now();\n    let b: u64 = (1..=count).into_par_iter().map(collatz_steps).sum();\n    let parallel = start.elapsed();\n\n    assert_eq!(a, b);\n    println!(\"{label}: {count} items, sequential {sequential:?}, parallel {parallel:?}\");\n}\n\nfn main() {\n    // Start the pool first, so its start-up is not inside the first measurement.\n    let warm: u64 = (0..1_000u64).into_par_iter().sum();\n    assert_eq!(warm, 499_500);\n    let cpus = std::thread::available_parallelism().unwrap().get();\n    println!(\"CPUs reported: {cpus}, rayon threads: {}\", rayon::current_num_threads());\n    compare(\"small\", 10);\n    compare(\"large\", 1_000_000);\n}\n"
+  }
+ },
+ "sessions": {
+  "run": [
+   {
+    "show": "$ cargo run",
+    "out": "sum of squares: 333333833333500000 and 333333833333500000\ncollected squares in input order: true\nmultiples of 7: 142857\ntimes ten, in place: [30, 10, 20]\nsorted: [10, 20, 30]\n",
+    "exit": 0
+   }
+  ],
+  "go": [
+   {
+    "show": "$ go run .",
+    "out": "sum of squares: 333333833333500000\ncollected squares in input order: true\nmultiples of 7: 142857\ntimes ten, in place: [30 10 20]\nsorted: [10 20 30]\n",
+    "exit": 0
+   }
+  ],
+  "join": [
+   {
+    "show": "$ cargo run",
+    "out": "join: 5000050000\npar_iter: 5000050000\nscope: [100, 200, 300, 400]\n",
+    "exit": 0
+   }
+  ],
+  "shared": [
+   {
+    "show": "$ cargo run",
+    "out": "sum 5000050000, atomic 5000050000, mutex 5000050000\nsame items after sorting: true\nremainders 0, 1, 2: [33333, 33334, 33333]\n",
+    "exit": 0
+   }
+  ],
+  "pool": [
+   {
+    "show": "$ cargo run",
+    "out": "the pool has at least one thread: true\nthe pool has one thread per CPU: true\n",
+    "exit": 0
+   },
+   {
+    "show": "$ RAYON_NUM_THREADS=2 cargo run",
+    "out": "RAYON_NUM_THREADS=2, the pool has 2 threads\n",
+    "exit": 0
+   }
+  ],
+  "builder": [
+   {
+    "show": "$ cargo run",
+    "out": "first build_global: Ok(())\nglobal pool threads: 2\nsecond build_global: The global thread pool has already been initialized.\ninside install: 3 threads, sum 500500\noutside install: still 2 threads\n",
+    "exit": 0
+   }
+  ],
+  "panic": [
+   {
+    "show": "$ cargo run",
+    "out": "the caller got the panic: bad item 500\na later par_iter: 55\n",
+    "exit": 0
+   }
+  ],
+  "grouping": [
+   {
+    "show": "$ cargo run",
+    "out": "(10 - 3) - 2 = 5\n10 - (3 - 2) = 9\n(0.1 + 0.2) + 0.3 = 0.6000000000000001\n0.1 + (0.2 + 0.3) = 0.6\nsequential -500500, parallel -994\n",
+    "exit": 0,
+    "varies": true
+   }
+  ],
+  "timing": [
+   {
+    "show": "$ cargo run --release   # one run on this VM, 8 cores (colima), varies",
+    "out": "CPUs reported: 8, rayon threads: 8\nsmall: 10 items, sequential 209ns, parallel 107.968µs\nlarge: 1000000 items, sequential 91.046434ms, parallel 12.998489ms\n",
+    "exit": 0,
+    "varies": true
+   }
+  ],
+  "rc-in-par-iter": [
+   {
+    "show": "$ cargo build",
+    "out": "error[E0277]: `Rc<RefCell<u64>>` cannot be shared between threads safely\n   --> src/main.rs:7:49\n    |\n  7 |       (1..=1_000_000u64).into_par_iter().for_each(|n| {\n    |                                          -------- ^--\n    |                                          |        |\n    |  ________________________________________|________within this `{closure@src/main.rs:7:49: 7:52}`\n    | |                                        |\n    | |                                        required by a bound introduced by this call\n  8 | |         *total.borrow_mut() += n;\n  9 | |     });\n    | |_____^ `Rc<RefCell<u64>>` cannot be shared between threads safely\n    |\n    = help: within `{closure@src/main.rs:7:49: 7:52}`, the trait `Sync` is not implemented for `Rc<RefCell<u64>>`\n    = note: required because it appears within the type `&Rc<RefCell<u64>>`\nnote: required because it's used within this closure\n   --> src/main.rs:7:49\n    |\n  7 |     (1..=1_000_000u64).into_par_iter().for_each(|n| {\n    |                                                 ^^^\n  ... (notes pointing into library source code trimmed)\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "sum-instead": [
+   {
+    "show": "$ cargo run",
+    "out": "500000500000\n",
+    "exit": 0
+   }
+  ],
+  "go-race": [
+   {
+    "show": "$ go run race.go",
+    "out": "total: 252799198644 expected: 500000500000\n",
+    "exit": 0,
+    "varies": true
+   }
+  ],
+  "java-race": [
+   {
+    "show": "$ java Race",
+    "out": "total: 76116216758 expected: 500000500000\n",
+    "exit": 0,
+    "varies": true
+   }
+  ],
+  "kotlin-race": [
+   {
+    "show": "$ java -jar race.jar",
+    "out": "total: 61748989258 expected: 500000500000\n",
+    "exit": 0,
+    "varies": true
+   }
+  ],
+  "csharp-race": [
+   {
+    "show": "$ dotnet run",
+    "out": "total: 97375425938 expected: 500000500000\n",
+    "exit": 0,
+    "varies": true
+   }
+  ],
+  "c-race": [
+   {
+    "show": "$ ./race_c",
+    "out": "total: 100845465344 expected: 500000500000\n",
+    "exit": 0,
+    "varies": true
+   }
+  ],
+  "cpp-race": [
+   {
+    "show": "$ ./race_cpp",
+    "out": "total: 64842989217 expected: 500000500000\n",
+    "exit": 0,
+    "varies": true
+   }
+  ],
+  "go-race-detector": [
+   {
+    "show": "$ go run -race race.go 2>&1 | grep -c \"WARNING: DATA RACE\"",
+    "out": "2\n",
+    "exit": 0
+   }
+  ],
+  "python-race": [
+   {
+    "show": "$ python3 race.py",
+    "out": "total: 25424181629492 expected: 32000004000000\n",
+    "exit": 0,
+    "varies": true
+   }
+  ],
+  "python-sizes": [
+   {
+    "show": "$ for n in 1000000 2000000 8000000; do ...; done   # race.py with N from the command line, 5 runs each",
+    "out": "1000000 numbers: exact exact exact exact exact \n2000000 numbers: exact lost lost exact lost \n8000000 numbers: lost lost lost lost lost \n",
+    "exit": 0,
+    "varies": true
+   }
+  ],
+  "ts-race": [
+   {
+    "show": "$ node race.ts",
+    "out": "total: 0 expected: 500000500000\n",
+    "exit": 0
+   }
+  ],
+  "langs": [
+   {
+    "show": "$ go run sum.go   # Go, goroutines and a WaitGroup",
+    "out": "333333833333500000\n",
+    "exit": 0
+   },
+   {
+    "show": "$ java Sum   # Java, parallel stream",
+    "out": "333333833333500000\n",
+    "exit": 0
+   },
+   {
+    "show": "$ java -jar sum.jar   # Kotlin, the same Java stream",
+    "out": "333333833333500000\n",
+    "exit": 0
+   },
+   {
+    "show": "$ dotnet run   # C#, PLINQ",
+    "out": "333333833333500000\n",
+    "exit": 0
+   },
+   {
+    "show": "$ python3 sum.py   # Python, ProcessPoolExecutor",
+    "out": "333333833333500000\n",
+    "exit": 0
+   },
+   {
+    "show": "$ node sum.ts   # TypeScript, worker_threads",
+    "out": "333333833333500000\n",
+    "exit": 0
+   },
+   {
+    "show": "$ ./sum_c   # C, OpenMP",
+    "out": "333333833333500000\n",
+    "exit": 0
+   },
+   {
+    "show": "$ ./sum_cpp   # C++, OpenMP",
+    "out": "333333833333500000\n",
+    "exit": 0
+   },
+   {
+    "show": "$ ./par_cpp   # C++17, std::execution::par",
+    "out": "333333833333500000, threads that ran the lambda: 1\n",
+    "exit": 0
+   }
+  ]
+ },
+ "gotcha": {
+  "kind": "compile",
+  "title": "Sharing a counter between parallel closures",
+  "verdict": "broken-elsewhere",
+  "looks_fine": "Adding every number into one shared variable from several workers is a short, natural way to total a list.",
+  "rust_sees": "`for_each` calls your closure from several threads at once, so the closure has to be `Sync` and `Send`. This one borrows an `Rc<RefCell<u64>>`, and the error says `Sync` is not implemented for it: `Rc` counts its owners without atomics, and `RefCell` checks borrows without any locking.",
+  "why": "The compiler is refusing a data race before it can happen. This is the check from [Send and Sync](/learn/send-sync/) applied to rayon's closures. The fix is usually to stop sharing: let each piece return a value and let rayon combine them (`sum`, `reduce`). If you do need shared state, use an atomic or an `Arc<Mutex<T>>` ([Shared State](/learn/shared-state/)).",
+  "code": "use rayon::prelude::*;\nuse std::cell::RefCell;\nuse std::rc::Rc;\n\nfn main() {\n    let total = Rc::new(RefCell::new(0u64));\n    (1..=1_000_000u64).into_par_iter().for_each(|n| {\n        *total.borrow_mut() += n;\n    });\n    println!(\"{}\", total.borrow());\n}\n",
+  "session": "rc-in-par-iter",
+  "fixed": {
+   "code": "use rayon::prelude::*;\n\nfn main() {\n    let total: u64 = (1..=1_000_000u64).into_par_iter().sum();\n    println!(\"{total}\");\n}\n",
+   "name": "src/main.rs",
+   "out": "500000500000\n",
+   "cmd": "$ cargo run"
+  },
+  "langs": {
+   "go": {
+    "status": "race",
+    "says": "Go compiles and runs this. One goroutine per CPU (eight on this VM) adds into one `int` with no lock, and `total += i` is a read, an add and a write, so updates get lost. The run printed a total below the expected one, and `go run -race` reports a data race in this program.",
+    "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"runtime\"\n\t\"sync\"\n)\n\nfunc main() {\n\tconst n = 1_000_000\n\tparts := runtime.NumCPU()\n\ttotal := 0 // shared by every goroutine\n\tvar wg sync.WaitGroup\n\tfor p := 0; p < parts; p++ {\n\t\tlo, hi := n*p/parts+1, n*(p+1)/parts\n\t\twg.Add(1)\n\t\tgo func() {\n\t\t\tdefer wg.Done()\n\t\t\tfor i := lo; i <= hi; i++ {\n\t\t\t\ttotal += i\n\t\t\t}\n\t\t}()\n\t}\n\twg.Wait()\n\tfmt.Println(\"total:\", total, \"expected: 500000500000\")\n}\n",
+    "out": "total: 252799198644 expected: 500000500000\n",
+    "varies": true
+   },
+   "java": {
+    "status": "race",
+    "says": "Java compiles and runs this. A parallel stream calls the lambda on several threads, and `total[0] += n` is a read, an add and a write, so updates get lost. The run printed a total below the expected one.",
+    "code": "import java.util.stream.LongStream;\n\npublic class Race {\n    public static void main(String[] args) {\n        long[] total = {0}; // shared by every worker thread\n        LongStream.rangeClosed(1, 1_000_000).parallel().forEach(n -> total[0] += n);\n        System.out.println(\"total: \" + total[0] + \" expected: 500000500000\");\n    }\n}\n",
+    "out": "total: 76116216758 expected: 500000500000\n",
+    "varies": true
+   },
+   "kotlin": {
+    "status": "race",
+    "says": "This uses the same Java stream as the Java version and fails the same way (`kotlinx.coroutines` was not run). The run printed a total below the expected one.",
+    "code": "import java.util.stream.LongStream\n\nfun main() {\n    val total = LongArray(1) // shared by every worker thread\n    LongStream.rangeClosed(1, 1_000_000).parallel().forEach { n -> total[0] += n }\n    println(\"total: ${total[0]} expected: 500000500000\")\n}\n",
+    "out": "total: 61748989258 expected: 500000500000\n",
+    "varies": true
+   },
+   "csharp": {
+    "status": "race",
+    "says": "C# compiles and runs this. `Parallel.For` runs the body on several threads and `total += n` is not atomic (`Interlocked.Add` exists for this). The run printed a total below the expected one.",
+    "code": "using System;\nusing System.Threading.Tasks;\n\nclass Race\n{\n    static void Main()\n    {\n        long total = 0; // shared by every worker thread\n        Parallel.For(1, 1_000_001, n => { total += n; });\n        Console.WriteLine($\"total: {total} expected: 500000500000\");\n    }\n}\n",
+    "out": "total: 97375425938 expected: 500000500000\n",
+    "varies": true
+   },
+   "c": {
+    "status": "race",
+    "says": "gcc compiles this with `-fopenmp`. Every thread updates `total`. Two sources apply, and they say different things. The OpenMP 5.2 memory model ([section 1.4.1](https://www.openmp.org/spec-html/5.2/openmpsu9.html)) says \"If a data race occurs then the result of the program is unspecified\". The C11 standard (section 5.1.2.4), for threads as the C standard defines them, says a data race is undefined behavior. Either way nothing promises the result. The run printed a total below the expected one. A `reduction(+ : total)` clause is the fix, as in the table below.",
+    "code": "#include <stdio.h>\n\nint main(void) {\n    long long total = 0; /* shared by every thread */\n    #pragma omp parallel for\n    for (long long i = 1; i <= 1000000; i++) {\n        total += i;\n    }\n    printf(\"total: %lld expected: 500000500000\\n\", total);\n    return 0;\n}\n",
+    "out": "total: 100845465344 expected: 500000500000\n",
+    "varies": true
+   },
+   "cpp": {
+    "status": "race",
+    "says": "g++ compiles this with `-fopenmp`. Every thread updates `total`. Two sources apply, and they say different things. The OpenMP 5.2 memory model ([section 1.4.1](https://www.openmp.org/spec-html/5.2/openmpsu9.html)) says \"If a data race occurs then the result of the program is unspecified\". The C++ standard ([intro.races](https://eel.is/c++draft/intro.races)) says a data race is undefined behavior, for the threads it defines. Either way nothing promises the result. The run printed a total below the expected one.",
+    "code": "#include <iostream>\n\nint main() {\n    long long total = 0; // shared by every thread\n    #pragma omp parallel for\n    for (long long i = 1; i <= 1000000; i++) {\n        total += i;\n    }\n    std::cout << \"total: \" << total << \" expected: 500000500000\\n\";\n}\n",
+    "out": "total: 64842989217 expected: 500000500000\n",
+    "varies": true
+   },
+   "python": {
+    "status": "race",
+    "says": "Python runs this. The global interpreter lock keeps the interpreter's own data consistent, but `total = total + term(i)` is still a read, a call and a write, so updates get lost. Whether it loses updates depends on how long each thread runs before the interpreter switches threads, so it depends on the size: the session under the gotcha runs this loop five times at each of three sizes. This tab uses 8,000,000 numbers, and its run printed a total below the expected one. Not guaranteed either way ([Shared State](/learn/shared-state/) has the details).",
+    "code": "import threading\n\nN, THREADS = 8_000_000, 8  # many numbers, so each thread runs long enough to be interrupted\ntotal = 0  # shared by every thread\n\n\ndef term(i):\n    return i\n\n\ndef add(lo, hi):\n    global total\n    for i in range(lo, hi):\n        total = total + term(i)  # read total, call a function, write total\n\n\nstep = N // THREADS\nthreads = [threading.Thread(target=add, args=(p * step + 1, (p + 1) * step + 1)) for p in range(THREADS)]\nfor t in threads:\n    t.start()\nfor t in threads:\n    t.join()\nprint(\"total:\", total, \"expected:\", N * (N + 1) // 2)\n",
+    "out": "total: 25424181629492 expected: 32000004000000\n",
+    "varies": true
+   },
+   "typescript": {
+    "status": "wrong",
+    "says": "Node runs this, and there is no race and no sum either. Each worker thread gets its own copy of `total`, so the main thread printed 0. Workers can share memory by sharing a `SharedArrayBuffer` or by transferring an `ArrayBuffer`, as the [Node docs](https://nodejs.org/docs/latest-v24.x/api/worker_threads.html) say. A plain variable like `total` is not shared.",
+    "code": "import { Worker, isMainThread, workerData, parentPort } from \"node:worker_threads\";\n\nlet total = 0; // each worker thread gets its own copy of this variable\n\nif (isMainThread) {\n  const workers = [];\n  for (let p = 0; p < 8; p++) {\n    const lo = p * 125_000 + 1;\n    workers.push(new Promise<void>((done) => {\n      const w = new Worker(new URL(import.meta.url), { workerData: { lo, hi: lo + 125_000 } });\n      w.on(\"exit\", () => done());\n    }));\n  }\n  await Promise.all(workers);\n  console.log(\"total:\", total, \"expected: 500000500000\");\n} else {\n  for (let i = workerData.lo; i < workerData.hi; i++) total += i;\n  parentPort!.postMessage(\"done\");\n}\n",
+    "out": "total: 0 expected: 500000500000\n"
+   }
+  },
+  "code_name": "src/main.rs",
+  "error": "error[E0277]: `Rc<RefCell<u64>>` cannot be shared between threads safely\n   --> src/main.rs:7:49\n    |\n  7 |       (1..=1_000_000u64).into_par_iter().for_each(|n| {\n    |                                          -------- ^--\n    |                                          |        |\n    |  ________________________________________|________within this `{closure@src/main.rs:7:49: 7:52}`\n    | |                                        |\n    | |                                        required by a bound introduced by this call\n  8 | |         *total.borrow_mut() += n;\n  9 | |     });\n    | |_____^ `Rc<RefCell<u64>>` cannot be shared between threads safely\n    |\n    = help: within `{closure@src/main.rs:7:49: 7:52}`, the trait `Sync` is not implemented for `Rc<RefCell<u64>>`\n    = note: required because it appears within the type `&Rc<RefCell<u64>>`\nnote: required because it's used within this closure\n   --> src/main.rs:7:49\n    |\n  7 |     (1..=1_000_000u64).into_par_iter().for_each(|n| {\n    |                                                 ^^^\n  ... (notes pointing into library source code trimmed)",
+  "error_cmd": "$ cargo build",
+  "error_code": "E0277"
+ }
+}

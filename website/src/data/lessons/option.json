@@ -1,0 +1,357 @@
+{
+ "id": "option",
+ "title": "Option (instead of null)",
+ "part": "data",
+ "intro": "Rust has no nil or null. A value that might be missing has the type `Option<T>`, which is either `Some(value)` or `None`.",
+ "coming_from": {
+  "go": "`Option<User>` replaces a `*User` that might be nil, and also the `(value, ok)` pair from a map lookup: one value carries both. You can't reach `.name` until you've checked for `Some`, so you can't dereference a missing value by accident.",
+  "kotlin": "`Option<User>` is your `User?`, and for Kotlin code the compiler checks it just as strictly. The operators become methods: `?.` is `.map(...)` or `.and_then(...)`, `?:` is `.unwrap_or_else(...)` (both are lazy), and `!!` is `.unwrap()`. `Option` is an ordinary type rather than a mark on a type, so it nests (`Option<Option<T>>`) and has methods, and no value arrives from Java with unknown nullness.",
+  "python": "`Option<User>` is your `Optional[User]`, but the check isn't left to a tool you may forget to run: the compiler won't let you touch `.name` until you've matched `Some`. That removes the unchecked AttributeError on `None`.",
+  "typescript": "`Option<User>` is `User | undefined` with `strictNullChecks` always on. Rust has one \"nothing\", `None`, not both `null` and `undefined`. There is no `?.` or `??`: you use methods like `.map(...)` and `.unwrap_or(...)`, or `match` and `if let`.",
+  "java": "`Option<T>` is `Optional<T>`, but in Rust it is the standard way to say a value may be missing, and there is no `null` for an `Option` itself to be. Java still has `null` for every reference, including an `Optional` variable. `match` or `if let` do what `ifPresentOrElse` and `map(...).orElse(...)` do.",
+  "csharp": "`Option<User>` is what `User?` means, but Rust enforces it: you cannot touch `.name` until you've checked for `Some`. With nullable reference types, C# reports the same mistake (CS8602) as a warning by default, and the program still builds.",
+  "c": "`Option<&User>` replaces a pointer that might be `NULL`, and it is stored as just that pointer, with `None` as the null address. The difference is that you must check for `None` before using it; you can't forget and read address 0.",
+  "cpp": "`Option<T>` is `std::optional<T>`. `if (auto u = f())` tests the optional, but `u` is still an optional and `u->name` skips the test; Rust has no such shortcut, and `unwrap()` panics with a message on `None` instead of being undefined behaviour. `Option<&T>` is what `std::optional<T&>` is in C++26, and what a raw pointer was before."
+ },
+ "notes": [
+  "`Option<User>` is either `Some(user)` or `None`. In safe Rust a reference is never null, so \"might be missing\" is spelled out as a type you can see.",
+  "Handy shortcuts: `opt.unwrap_or(default)` gives a fallback value, `opt.map(|u| u.name)` changes the value inside if there is one (`|u| u.name` is a closure, a small function written inline; [Closures](/learn/closures/) come later), and `opt?` inside a function that returns Option hands back None early.",
+  "`opt.unwrap()` takes the value out and crashes if it is None. Use it only where None really cannot happen.",
+  "Missing for a reason, not by accident: if a function can fail with a reason, return a `Result` instead (next lesson). `Option` says \"nothing\"; `Result` says why."
+ ],
+ "gotcha": {
+  "title": "Using the value without checking",
+  "verdict": "broken-elsewhere",
+  "looks_fine": "In Go, `u := findUser(2); fmt.Println(u.Name)` compiles fine. At runtime `u` is nil, and the program crashes with a nil pointer dereference. Kotlin refuses at compile time, like Rust.",
+  "rust_sees": "`u` is an `Option<User>`, not a `User`. An Option has no `name` field. You have to open it first.",
+  "why": "Rust moves the nil check from \"remember to do it\" to \"can't compile without it\". Every place that might get nothing has to say what happens then. The compiler's `help:` suggests `u.unwrap().name`. That compiles, but `unwrap` on None crashes, which is the classic null crash all over again. Use `match` or `if let` instead.",
+  "langs": {
+   "go": {
+    "status": "crash",
+    "says": "Go compiles this, then crashes with a nil pointer panic when it reads `u.Name`.",
+    "code": "package main\n\nimport \"fmt\"\n\ntype User struct{ Name string }\n\nfunc findUser(id int) *User {\n\tif id == 1 {\n\t\treturn &User{Name: \"ana\"}\n\t}\n\treturn nil\n}\n\nfunc main() {\n\tu := findUser(2)\n\tfmt.Println(u.Name)\n}\n",
+    "out": "panic: runtime error: invalid memory address or nil pointer dereference\n[signal SIGSEGV: segmentation violation code=0x1 addr=0x0 pc=0xa1ff0]\n\ngoroutine 1 [running]:\nmain.main()\n\tmain.go:16 +0x20\n"
+   },
+   "kotlin": {
+    "status": "refuses",
+    "says": "Kotlin refuses this too: `findUser` returns `User?`, so `u.name` needs `u?.name` or a null check first.",
+    "code": "class User(val name: String)\n\nfun findUser(id: Int): User? =\n    if (id == 1) User(\"ana\") else null\n\nfun main() {\n    val u = findUser(2)\n    println(u.name)\n}\n",
+    "error": "Main.kt:8:14: error: only safe (?.) or non-null asserted (!!.) calls are allowed on a nullable receiver of type 'User?'.\n    println(u.name)\n             ^"
+   },
+   "python": {
+    "status": "crash",
+    "says": "Python runs until `u.name`, then raises AttributeError because `u` is None. This is the same crash as `None.name` anywhere. A type checker such as mypy or pyright flags it first, but only if you run one, and `# type: ignore`, `cast` and `Any` can switch the check off.",
+    "code": "from dataclasses import dataclass\n\n\n@dataclass\nclass User:\n    name: str\n\n\ndef find_user(id: int) -> User | None:\n    return User(\"ana\") if id == 1 else None\n\n\nu = find_user(2)\nprint(u.name)\n",
+    "out": "Traceback (most recent call last):\n  File \"main.py\", line 14, in <module>\n    print(u.name)\n          ^^^^^^\nAttributeError: 'NoneType' object has no attribute 'name'\n"
+   },
+   "typescript": {
+    "status": "refuses",
+    "says": "TypeScript refuses this too with `strict` on: `u` is possibly `undefined`, so you must check it before reading `u.name`.",
+    "code": "interface User {\n  name: string;\n}\n\nfunction findUser(id: number): User | undefined {\n  return id === 1 ? { name: \"ana\" } : undefined;\n}\n\nconst u = findUser(2);\nconsole.log(u.name);\n",
+    "error": "main.ts(10,13): error TS18048: 'u' is possibly 'undefined'."
+   },
+   "java": {
+    "status": "crash",
+    "says": "It compiles, then throws a NullPointerException because `findUser(2)` returned null. Nothing made you check first.",
+    "code": "public class Main {\n    record User(String name) {}\n\n    static User findUser(int id) {\n        return id == 1 ? new User(\"ana\") : null;\n    }\n\n    public static void main(String[] args) {\n        var u = findUser(2);\n        System.out.println(u.name());\n    }\n}\n",
+    "out": "Exception in thread \"main\" java.lang.NullPointerException: Cannot invoke \"Main$User.name()\" because \"<local1>\" is null\n\tat Main.main(Main.java:10)\n"
+   },
+   "csharp": {
+    "status": "crash",
+    "says": "With nullable references on, the compiler warns about the possible null (CS8602). It is only a warning by default, so the program builds and then throws a NullReferenceException.",
+    "code": "var u = FindUser(2);\nConsole.WriteLine(u.Name);\n\nstatic User? FindUser(uint id) => id == 1 ? new User(\"ana\") : null;\n\nrecord User(string Name);\n",
+    "warnings": "Program.cs(2,19): warning CS8602: Dereference of a possibly null reference.",
+    "out": "Unhandled exception. System.NullReferenceException: Object reference not set to an instance of an object.\n   at Program.<Main>$(String[] args) in Program.cs:line 2\n"
+   },
+   "c": {
+    "status": "crash",
+    "mode": "asan",
+    "says": "C compiles this without a word. `find_user(2)` returns NULL, and AddressSanitizer reports a crash reading address 0.",
+    "code": "#include <stdio.h>\n\nstruct User {\n    const char *name;\n};\n\nstatic struct User ana = {\"ana\"};\n\nstruct User *find_user(unsigned id) {\n    if (id == 1) return &ana;\n    return NULL;\n}\n\nint main(void) {\n    struct User *u = find_user(2);\n    printf(\"%s\\n\", u->name);\n    return 0;\n}\n",
+    "out": "AddressSanitizer:DEADLYSIGNAL\n=================================================================\n==1==ERROR: AddressSanitizer: SEGV on unknown address 0x············ (pc 0x············ bp 0x············ sp 0x············ T0)\n==1==The signal is caused by a READ memory access.\n==1==Hint: address points to the zero page.\n    #0 0x············ in main main.c:16\n    #1 0x············  (/lib/aarch64-linux-gnu/libc.so.6+0x22258)\n    #2 0x············ in __libc_start_main (/lib/aarch64-linux-gnu/libc.so.6+0x22338)\n    #3 0x············ in _start (main+0xa2c)\n\nAddressSanitizer can not provide additional info.\nSUMMARY: AddressSanitizer: SEGV main.c:16 in main\n==1==ABORTING\n"
+   },
+   "cpp": {
+    "status": "refuses",
+    "says": "C++ refuses this too: `std::optional<User>` has no member `name`. Be careful though, because `u->name` would compile and skip the check, which is undefined behaviour when `u` is empty.",
+    "code": "#include <iostream>\n#include <optional>\n#include <string>\n\nstruct User {\n    std::string name;\n};\n\nstd::optional<User> find_user(int id) {\n    if (id == 1) return User{\"ana\"};\n    return std::nullopt;\n}\n\nint main() {\n    auto u = find_user(2);\n    std::cout << u.name << \"\\n\";\n}\n",
+    "error": "main.cpp: In function ‘int main()’:\nmain.cpp:16:20: error: ‘class std::optional<User>’ has no member named ‘name’\n   16 |     std::cout << u.name << \"\\n\";\n      |                    ^~~~"
+   }
+  },
+  "code": "struct User {\n    name: String,\n}\n\nfn find_user(id: u32) -> Option<User> {\n    if id == 1 {\n        Some(User {\n            name: String::from(\"ana\"),\n        })\n    } else {\n        None\n    }\n}\n\nfn main() {\n    let u = find_user(2);\n    println!(\"{}\", u.name);\n}\n",
+  "error": "error[E0609]: no field `name` on type `Option<User>`\n  --> src/main.rs:17:22\n   |\n17 |     println!(\"{}\", u.name);\n   |                      ^^^^ unknown field\n   |\nhelp: one of the expressions' fields has a field of the same name\n   |\n17 |     println!(\"{}\", u.unwrap().name);\n   |                      +++++++++\n",
+  "error_code": "E0609",
+  "fixed": {
+   "code": "struct User {\n    name: String,\n}\n\nfn find_user(id: u32) -> Option<User> {\n    if id == 1 {\n        Some(User {\n            name: String::from(\"ana\"),\n        })\n    } else {\n        None\n    }\n}\n\nfn main() {\n    let u = find_user(2);\n    match u {\n        Some(user) => println!(\"{}\", user.name),\n        None => println!(\"no user\"),\n    }\n}\n",
+   "out": "no user\n"
+  }
+ },
+ "order": 23,
+ "program": {
+  "rust": {
+   "code": "struct User {\n    name: String,\n}\n\nfn find_user(id: u32) -> Option<User> {\n    if id == 1 {\n        Some(User {\n            name: String::from(\"ana\"),\n        })\n    } else {\n        None\n    }\n}\n\nfn main() {\n    match find_user(1) {\n        Some(u) => println!(\"found {}\", u.name),\n        None => println!(\"no user\"),\n    }\n\n    // if let: the short form when you only care about Some\n    if let Some(u) = find_user(2) {\n        println!(\"found {}\", u.name);\n    } else {\n        println!(\"no user\");\n    }\n}\n",
+   "out": "found ana\nno user\n"
+  },
+  "go": {
+   "code": "package main\n\nimport \"fmt\"\n\ntype User struct {\n\tName string\n}\n\nfunc findUser(id int) *User {\n\tif id == 1 {\n\t\treturn &User{Name: \"ana\"}\n\t}\n\treturn nil\n}\n\nfunc main() {\n\tif u := findUser(1); u != nil {\n\t\tfmt.Println(\"found\", u.Name)\n\t} else {\n\t\tfmt.Println(\"no user\")\n\t}\n\n\tif u := findUser(2); u != nil {\n\t\tfmt.Println(\"found\", u.Name)\n\t} else {\n\t\tfmt.Println(\"no user\")\n\t}\n}\n",
+   "out": "found ana\nno user\n"
+  },
+  "kotlin": {
+   "code": "class User(val name: String)\n\nfun findUser(id: Int): User? =\n    if (id == 1) User(\"ana\") else null\n\nfun main() {\n    val a = findUser(1)\n    if (a != null) println(\"found ${a.name}\") else println(\"no user\")\n\n    val b = findUser(2)\n    println(if (b != null) \"found ${b.name}\" else \"no user\")\n}\n",
+   "out": "found ana\nno user\n"
+  },
+  "python": {
+   "code": "from dataclasses import dataclass\n\n\n@dataclass\nclass User:\n    name: str\n\n\ndef find_user(id: int) -> User | None:  # None plays the role of Option's None\n    if id == 1:\n        return User(\"ana\")\n    return None\n\n\nu = find_user(1)\nif u is not None:\n    print(f\"found {u.name}\")\nelse:\n    print(\"no user\")\n\nif (u := find_user(2)) is not None:\n    print(f\"found {u.name}\")\nelse:\n    print(\"no user\")\n",
+   "out": "found ana\nno user\n"
+  },
+  "typescript": {
+   "code": "interface User {\n  name: string;\n}\n\n// with strictNullChecks, `undefined` must be part of the type to be returned\nfunction findUser(id: number): User | undefined {\n  return id === 1 ? { name: \"ana\" } : undefined;\n}\n\nconst u = findUser(1);\nif (u !== undefined) {\n  console.log(`found ${u.name}`);\n} else {\n  console.log(\"no user\");\n}\n\n// the short form: ?. gives undefined when there is no user\nconst found = findUser(2)?.name;\nconsole.log(found ? `found ${found}` : \"no user\");\n",
+   "out": "found ana\nno user\n"
+  },
+  "java": {
+   "code": "import java.util.Optional;\n\npublic class Main {\n    record User(String name) {}\n\n    static Optional<User> findUser(int id) {\n        return id == 1 ? Optional.of(new User(\"ana\")) : Optional.empty();\n    }\n\n    public static void main(String[] args) {\n        findUser(1).ifPresentOrElse(\n            u -> System.out.println(\"found \" + u.name()),\n            () -> System.out.println(\"no user\"));\n\n        // map + orElse: the short form\n        System.out.println(findUser(2).map(u -> \"found \" + u.name()).orElse(\"no user\"));\n    }\n}\n",
+   "out": "found ana\nno user\n"
+  },
+  "csharp": {
+   "code": "var found = FindUser(1);\nif (found is not null)\n{\n    Console.WriteLine($\"found {found.Name}\");\n}\nelse\n{\n    Console.WriteLine(\"no user\");\n}\n\n// pattern matching does the check and the unwrap in one step\nif (FindUser(2) is { } u)\n{\n    Console.WriteLine($\"found {u.Name}\");\n}\nelse\n{\n    Console.WriteLine(\"no user\");\n}\n\n// User? means \"a User, or null\"\nstatic User? FindUser(uint id) => id == 1 ? new User(\"ana\") : null;\n\nrecord User(string Name);\n",
+   "out": "found ana\nno user\n"
+  },
+  "c": {
+   "code": "#include <stdio.h>\n\nstruct User {\n    const char *name;\n};\n\nstatic struct User ana = {\"ana\"};\n\n// C has no Option: return a pointer, and NULL means \"none\"\nconst struct User *find_user(unsigned id) {\n    if (id == 1) {\n        return &ana;\n    }\n    return NULL;\n}\n\nint main(void) {\n    const struct User *u = find_user(1);\n    if (u != NULL) {\n        printf(\"found %s\\n\", u->name);\n    } else {\n        printf(\"no user\\n\");\n    }\n\n    u = find_user(2);\n    if (u != NULL) {\n        printf(\"found %s\\n\", u->name);\n    } else {\n        printf(\"no user\\n\");\n    }\n    return 0;\n}\n",
+   "out": "found ana\nno user\n"
+  },
+  "cpp": {
+   "code": "#include <iostream>\n#include <optional>\n#include <string>\n\nstruct User {\n    std::string name;\n};\n\nstd::optional<User> find_user(int id) {\n    if (id == 1) {\n        return User{\"ana\"};\n    }\n    return std::nullopt;\n}\n\nint main() {\n    if (auto u = find_user(1)) {     // true only when it holds a value\n        std::cout << \"found \" << u->name << \"\\n\";\n    } else {\n        std::cout << \"no user\\n\";\n    }\n\n    if (auto u = find_user(2)) {\n        std::cout << \"found \" << u->name << \"\\n\";\n    } else {\n        std::cout << \"no user\\n\";\n    }\n}\n",
+   "out": "found ana\nno user\n"
+  }
+ },
+ "faq": [],
+ "snippets": {
+  "ask.rs": {
+   "code": "fn find_age(id: u32) -> Option<u32> {\n    match id {\n        1 => Some(31),\n        2 => Some(15),\n        _ => None,\n    }\n}\n\nfn main() {\n    for id in [1, 2, 3] {\n        let age = find_age(id);\n        println!(\n            \"id {id}: is_some {}, is_none {}, is_some_and(adult) {}\",\n            age.is_some(),\n            age.is_none(),\n            age.is_some_and(|a| a >= 18),\n        );\n    }\n\n    // is_some_and takes the Option by value, like map. For a String, borrow first.\n    let name: Option<String> = Some(String::from(\"ana\"));\n    println!(\"long name: {}\", name.as_ref().is_some_and(|n| n.len() > 5));\n    println!(\"name still there: {name:?}\");\n}\n",
+   "out": "id 1: is_some true, is_none false, is_some_and(adult) true\nid 2: is_some true, is_none false, is_some_and(adult) false\nid 3: is_some false, is_none true, is_some_and(adult) false\nlong name: false\nname still there: Some(\"ana\")\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "borrow-inside.rs": {
+   "code": "fn main() {\n    let mut nickname: Option<String> = Some(String::from(\"bo\"));\n\n    // as_ref: Option<&String>, so the String stays where it is.\n    let length = nickname.as_ref().map(|n| n.len());\n    println!(\"length: {length:?}\");\n    println!(\"nickname still there: {nickname:?}\");\n\n    // as_mut: Option<&mut String>, to change it in place.\n    if let Some(n) = nickname.as_mut() {\n        n.push_str(\"bby\");\n    }\n    println!(\"after as_mut: {nickname:?}\");\n\n    // as_deref: Option<String> becomes Option<&str>, handy for a fallback.\n    let shown: &str = nickname.as_deref().unwrap_or(\"anonymous\");\n    let none: Option<String> = None;\n    let shown_none: &str = none.as_deref().unwrap_or(\"anonymous\");\n    println!(\"as_deref: {shown} and {shown_none}\");\n\n    // get and first return Option<&T>. copied and cloned make an owned value.\n    let scores = [10, 20, 30];\n    println!(\"get(1): {:?}\", scores.get(1));\n    println!(\"get(1).copied(): {:?}\", scores.get(1).copied());\n    println!(\"get(7).copied(): {:?}\", scores.get(7).copied());\n    let names = [String::from(\"ana\"), String::from(\"bo\")];\n    let first: Option<String> = names.first().cloned();\n    println!(\"first().cloned(): {first:?}\");\n}\n",
+   "out": "length: Some(2)\nnickname still there: Some(\"bo\")\nafter as_mut: Some(\"bobby\")\nas_deref: bobby and anonymous\nget(1): Some(20)\nget(1).copied(): Some(20)\nget(7).copied(): None\nfirst().cloned(): Some(\"ana\")\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-methods.rs": {
+   "code": "// Backs the table in the lesson: every \"call -> result\" cell is asserted here.\nfn main() {\n    let some = Some(4);\n    let none: Option<i32> = None;\n    let words = Some(\"hi\");\n\n    assert_eq!(some.map(|n| n * 2), Some(8));\n    assert_eq!(none.map(|n| n * 2), None);\n    assert_eq!(\n        some.and_then(|n| if n > 3 { Some(n * 10) } else { None }),\n        Some(40)\n    );\n    assert_eq!(\n        some.and_then(|n| if n > 5 { Some(n * 10) } else { None }),\n        None\n    );\n    assert_eq!(some.filter(|n| n % 2 == 1), None);\n    assert_eq!(some.filter(|n| n % 2 == 0), Some(4));\n    assert_eq!(some.zip(words), Some((4, \"hi\")));\n    assert_eq!(none.zip(words), None);\n    assert_eq!(some.unwrap_or(0), 4);\n    assert_eq!(Some(0).unwrap_or(5), 0);\n    assert_eq!(none.unwrap_or(0), 0);\n    assert_eq!(none.unwrap_or_else(|| 1 + 1), 2);\n    assert_eq!(none.unwrap_or_default(), 0);\n    assert_eq!(some.ok_or(\"missing\"), Ok(4));\n    assert_eq!(none.ok_or(\"missing\"), Err(\"missing\"));\n    assert_eq!(none.or(Some(9)), Some(9));\n    assert_eq!(some.or(Some(9)), Some(4));\n    assert_eq!(some.xor(none), Some(4));\n    assert_eq!(some.xor(Some(1)), None);\n    assert!(some.is_some() && !some.is_none());\n    assert!(some.is_some_and(|n| n > 3));\n    assert!(!none.is_some_and(|n| n > 3));\n    assert!(none.is_none_or(|n| n > 3));\n    assert_eq!(Some(Some(3)).flatten(), Some(3));\n    assert_eq!(some.map_or(0, |n| n + 1), 5);\n    assert_eq!(none.map_or(0, |n| n + 1), 0);\n    assert_eq!(some.iter().count(), 1);\n    assert!(none < some);\n    assert!(Some(1) < Some(2));\n    println!(\"all table cells hold\");\n}\n",
+   "out": "all table cells hold\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-rows.rs": {
+   "code": "// Backs the \"what you write today\" tables: each Rust cell is compiled and run here.\nuse std::collections::HashMap;\n\nstruct User {\n    name: String,\n    email: Option<String>,\n}\n\nfn main() {\n    // The ?. / ?: rows. `map` takes the Option by value, so `user` is used up.\n    let user = Some(User {\n        name: String::from(\"ana\"),\n        email: None,\n    });\n    let shown = user.map(|u| u.name).unwrap_or_else(|| \"anon\".to_string());\n    assert_eq!(shown, \"ana\");\n\n    // Borrow first and `user` stays usable.\n    let user = Some(User {\n        name: String::from(\"ana\"),\n        email: Some(String::from(\"a@b.c\")),\n    });\n    let shown = user.as_ref().map(|u| u.name.as_str()).unwrap_or(\"anon\");\n    assert_eq!(shown, \"ana\");\n    assert_eq!(\n        user.as_ref().and_then(|u| u.email.as_deref()),\n        Some(\"a@b.c\")\n    );\n    assert!(user.is_some());\n\n    // if let on a reference does not move.\n    if let Some(u) = &user {\n        assert_eq!(u.name, \"ana\");\n    }\n    assert!(user.is_some());\n\n    // Maps: Go's m[k] gives the zero value on a miss, and so does unwrap_or_default.\n    let mut ages: HashMap<&str, i32> = HashMap::new();\n    ages.insert(\"ana\", 31);\n    assert_eq!(ages.get(\"bo\").copied().unwrap_or_default(), 0);\n    assert_eq!(ages.get(\"bo\").copied().unwrap_or(10), 10);\n    assert_eq!(ages.get(\"ana\").copied().unwrap_or(10), 31);\n\n    // Lists: get is the checked index.\n    let list = vec![5, 6];\n    assert_eq!(list.get(1).copied().unwrap_or(0), 6);\n    assert_eq!(list.get(9).copied().unwrap_or(0), 0);\n    assert_eq!(list.first(), Some(&5));\n\n    // parse(...).ok() drops the reason, like int.TryParse, toIntOrNull or Atoi with _.\n    assert_eq!(\"12\".parse::<i32>().ok(), Some(12));\n    assert_eq!(\"x\".parse::<i32>().ok(), None);\n\n    // `x or 5` in Python replaces 0; unwrap_or only replaces None.\n    assert_eq!(Some(0).unwrap_or(5), 0);\n\n    // Option<i32> is Copy, so it can be used again after a method call that takes it by value.\n    let n = Some(4);\n    let doubled = n.map(|v| v * 2);\n    let kept = n.filter(|v| *v > 3);\n    assert_eq!((doubled, kept), (Some(8), Some(4)));\n\n    // is_some_and takes self by value: borrow first for a String.\n    let name = Some(String::from(\"anabelle\"));\n    assert!(name.as_ref().is_some_and(|n| n.len() > 5));\n    assert!(name.is_some());\n\n    // Lazy default, like Kotlin's ?: and C#'s ??.\n    let mut calls = 0;\n    let _ = Some(1).unwrap_or_else(|| {\n        calls += 1;\n        0\n    });\n    assert_eq!(calls, 0);\n\n    // The \"early return\" rows.\n    fn len_of(x: Option<&str>) -> Option<usize> {\n        let s = x?;\n        Some(s.len())\n    }\n    assert_eq!(len_of(Some(\"abc\")), Some(3));\n    assert_eq!(len_of(None), None);\n    fn first_or(x: Option<&str>) -> &str {\n        let Some(s) = x else {\n            return \"none\";\n        };\n        s\n    }\n    assert_eq!(first_or(None), \"none\");\n    println!(\"all table cells hold\");\n}\n",
+   "out": "all table cells hold\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "convert.rs": {
+   "code": "struct User {\n    name: &'static str,\n    email: Option<&'static str>,\n}\n\nfn find_user(id: u32) -> Option<User> {\n    match id {\n        1 => Some(User {\n            name: \"ana\",\n            email: Some(\"ana@example.com\"),\n        }),\n        2 => Some(User {\n            name: \"bo\",\n            email: None,\n        }),\n        _ => None,\n    }\n}\n\nfn main() {\n    // ok_or: turn None into an error value, so the caller gets a reason.\n    let found: Result<User, &str> = find_user(1).ok_or(\"no such user\");\n    let lost: Result<User, &str> = find_user(3).ok_or(\"no such user\");\n    println!(\"ok_or, user 1: {:?}\", found.map(|u| u.name));\n    println!(\"ok_or, user 3: {:?}\", lost.map(|u| u.name));\n\n    // ok_or_else builds the error only if it is needed.\n    let id = 9;\n    let err = find_user(id)\n        .map(|u| u.name)\n        .ok_or_else(|| format!(\"no user with id {id}\"));\n    println!(\"ok_or_else, user 9: {err:?}\");\n\n    // or: use this Option, else that one. or_else only builds the other when needed.\n    let fallback = Some(\"noreply@example.com\");\n    let own = |id: u32| find_user(id).and_then(|u| u.email);\n    println!(\"or, user 1: {:?}\", own(1).or(fallback));\n    println!(\"or, user 2: {:?}\", own(2).or(fallback));\n    println!(\n        \"or_else, user 2: {:?}\",\n        own(2).or_else(|| Some(\"noreply@example.com\"))\n    );\n}\n",
+   "out": "ok_or, user 1: Ok(\"ana\")\nok_or, user 3: Err(\"no such user\")\nok_or_else, user 9: Err(\"no user with id 9\")\nor, user 1: Some(\"ana@example.com\")\nor, user 2: Some(\"noreply@example.com\")\nor_else, user 2: Some(\"noreply@example.com\")\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "defaults.rs": {
+   "code": "fn slow_default(who: &str) -> u32 {\n    println!(\"  ({who} ran the default code)\");\n    18\n}\n\nfn main() {\n    let known: Option<u32> = Some(40);\n    let missing: Option<u32> = None;\n\n    println!(\"unwrap_or on Some:\");\n    let a = known.unwrap_or(slow_default(\"unwrap_or\"));\n    println!(\"  result: {a}\");\n\n    println!(\"unwrap_or_else on Some:\");\n    let b = known.unwrap_or_else(|| slow_default(\"unwrap_or_else\"));\n    println!(\"  result: {b}\");\n\n    println!(\"unwrap_or_else on None:\");\n    let c = missing.unwrap_or_else(|| slow_default(\"unwrap_or_else\"));\n    println!(\"  result: {c}\");\n\n    // unwrap_or_default uses the type's own default: 0, \"\", false, an empty list...\n    let name: Option<String> = None;\n    let nums: Option<Vec<i32>> = None;\n    println!(\"number default: {}\", missing.unwrap_or_default());\n    println!(\"text default: {:?}\", name.unwrap_or_default());\n    println!(\"list default: {:?}\", nums.unwrap_or_default());\n}\n",
+   "out": "unwrap_or on Some:\n  (unwrap_or ran the default code)\n  result: 40\nunwrap_or_else on Some:\n  result: 40\nunwrap_or_else on None:\n  (unwrap_or_else ran the default code)\n  result: 18\nnumber default: 0\ntext default: \"\"\nlist default: []\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "filter-zip.rs": {
+   "code": "struct User {\n    email: Option<&'static str>,\n    age: Option<u32>,\n}\n\nfn find_user(id: u32) -> Option<User> {\n    match id {\n        1 => Some(User {\n            email: Some(\"ana@example.com\"),\n            age: Some(31),\n        }),\n        2 => Some(User {\n            email: None,\n            age: Some(15),\n        }),\n        _ => None,\n    }\n}\n\nfn main() {\n    // filter: keep the value only if the test says yes.\n    let adult_1 = find_user(1).and_then(|u| u.age).filter(|age| *age >= 18);\n    let adult_2 = find_user(2).and_then(|u| u.age).filter(|age| *age >= 18);\n    println!(\"adult age, user 1: {adult_1:?}\");\n    println!(\"adult age, user 2: {adult_2:?}\");\n\n    // zip: Some of both, or None if either is missing.\n    println!(\"zip, 1 and 'a': {:?}\", Some(1).zip(Some(\"a\")));\n    println!(\"zip, 1 and nothing: {:?}\", Some(1).zip(None::<&str>));\n    if let Some(user) = find_user(1) {\n        println!(\"age and email, user 1: {:?}\", user.age.zip(user.email));\n    }\n    if let Some(user) = find_user(2) {\n        println!(\"age and email, user 2: {:?}\", user.age.zip(user.email));\n    }\n}\n",
+   "out": "adult age, user 1: Some(31)\nadult age, user 2: None\nzip, 1 and 'a': Some((1, \"a\"))\nzip, 1 and nothing: None\nage and email, user 1: Some((31, \"ana@example.com\"))\nage and email, user 2: None\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "map-and-then.rs": {
+   "code": "struct User {\n    name: &'static str,\n    email: Option<&'static str>,\n}\n\nfn find_user(id: u32) -> Option<User> {\n    match id {\n        1 => Some(User {\n            name: \"ana\",\n            email: Some(\"ana@example.com\"),\n        }),\n        2 => Some(User {\n            name: \"bo\",\n            email: None,\n        }),\n        _ => None,\n    }\n}\n\nfn main() {\n    // map: change the value inside Some. None stays None.\n    println!(\n        \"name length, user 1: {:?}\",\n        find_user(1).map(|u| u.name.len())\n    );\n    println!(\n        \"name length, user 3: {:?}\",\n        find_user(3).map(|u| u.name.len())\n    );\n\n    // map with a function that itself returns an Option nests them.\n    println!(\"map to email, user 1: {:?}\", find_user(1).map(|u| u.email));\n    println!(\"map to email, user 2: {:?}\", find_user(2).map(|u| u.email));\n\n    // and_then flattens: one Option out, not two.\n    println!(\n        \"and_then email, user 1: {:?}\",\n        find_user(1).and_then(|u| u.email)\n    );\n    println!(\n        \"and_then email, user 2: {:?}\",\n        find_user(2).and_then(|u| u.email)\n    );\n\n    // A chain of lookups: any step that gives None ends it with None.\n    for id in [1, 2, 3] {\n        let domain = find_user(id)\n            .and_then(|u| u.email)\n            .and_then(|email| email.split_once('@'))\n            .map(|(_, domain)| domain);\n        println!(\"domain, user {id}: {domain:?}\");\n    }\n}\n",
+   "out": "name length, user 1: Some(3)\nname length, user 3: None\nmap to email, user 1: Some(Some(\"ana@example.com\"))\nmap to email, user 2: Some(None)\nand_then email, user 1: Some(\"ana@example.com\")\nand_then email, user 2: None\ndomain, user 1: Some(\"example.com\")\ndomain, user 2: None\ndomain, user 3: None\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "map-moves.fail.rs": {
+   "code": "fn main() {\n    let nickname: Option<String> = Some(String::from(\"bo\"));\n    let length = nickname.map(|n| n.len());\n    println!(\"length: {length:?}\");\n    println!(\"nickname: {nickname:?}\");\n}\n",
+   "error": "error[E0382]: borrow of moved value: `nickname`\n --> src/main.rs:5:26\n  |\n2 |     let nickname: Option<String> = Some(String::from(\"bo\"));\n  |         -------- move occurs because `nickname` has type `Option<String>`, which does not implement the `Copy` trait\n3 |     let length = nickname.map(|n| n.len());\n  |                           ---------------- `nickname` moved due to this method call\n4 |     println!(\"length: {length:?}\");\n5 |     println!(\"nickname: {nickname:?}\");\n  |                          ^^^^^^^^ value borrowed here after move\n  |\nhelp: consider calling `.as_ref()` to borrow the value's contents\n  |\n3 |     let length = nickname.as_ref().map(|n| n.len());\n  |                          +++++++++\nhelp: consider calling `.as_mut()` to mutably borrow the value's contents\n  |\n3 |     let length = nickname.as_mut().map(|n| n.len());\n  |                          +++++++++\nhelp: you can `clone` the value and consume it, but this might not be your desired behavior\n  |\n3 |     let length = nickname.clone().map(|n| n.len());\n  |                          ++++++++\n\n  ... (notes pointing into the standard library trimmed)",
+   "lang": "rust"
+  },
+  "matching.rs": {
+   "code": "struct User {\n    name: &'static str,\n    email: Option<&'static str>,\n    age: Option<u32>,\n}\n\nfn find_user(id: u32) -> Option<User> {\n    match id {\n        1 => Some(User {\n            name: \"ana\",\n            email: Some(\"ana@example.com\"),\n            age: Some(31),\n        }),\n        2 => Some(User {\n            name: \"bo\",\n            email: None,\n            age: None,\n        }),\n        _ => None,\n    }\n}\n\nfn main() {\n    for id in [1, 2, 3] {\n        match find_user(id) {\n            Some(User {\n                name,\n                email: Some(email),\n                age,\n            }) => {\n                println!(\"id {id}: {name}, email {email}, age {age:?}\");\n            }\n            Some(User {\n                name,\n                email: None,\n                age,\n            }) => {\n                println!(\"id {id}: {name}, no email, age {age:?}\");\n            }\n            None => println!(\"id {id}: no such user\"),\n        }\n    }\n}\n",
+   "out": "id 1: ana, email ana@example.com, age Some(31)\nid 2: bo, no email, age None\nid 3: no such user\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "missing-none.fail.rs": {
+   "code": "fn first_even(numbers: [i32; 3]) -> Option<i32> {\n    for n in numbers {\n        if n % 2 == 0 {\n            return Some(n);\n        }\n    }\n    None\n}\n\nfn main() {\n    match first_even([1, 3, 5]) {\n        Some(n) => println!(\"first even: {n}\"),\n    }\n}\n",
+   "error": "error[E0004]: non-exhaustive patterns: `None` not covered\n  --> src/main.rs:11:11\n   |\n11 |     match first_even([1, 3, 5]) {\n   |           ^^^^^^^^^^^^^^^^^^^^^ pattern `None` not covered\n   |\nhelp: ensure that all possible cases are being handled by adding a match arm with a wildcard pattern or an explicit pattern as shown\n   |\n12 ~         Some(n) => println!(\"first even: {n}\"),\n13 ~         None => todo!(),\n  ... (notes pointing into the standard library trimmed)",
+   "lang": "rust"
+  },
+  "nested.rs": {
+   "code": "use std::collections::HashMap;\n\nfn main() {\n    // A map from item name to a count that may itself be unknown.\n    let mut stock: HashMap<&str, Option<u32>> = HashMap::new();\n    stock.insert(\"apple\", Some(3));\n    stock.insert(\"pear\", None);\n\n    // One lookup keeps \"the key holds None\" apart from \"no such key\".\n    println!(\"get apple: {:?}\", stock.get(\"apple\"));\n    println!(\"get pear: {:?}\", stock.get(\"pear\"));\n    println!(\"get plum: {:?}\", stock.get(\"plum\"));\n}\n",
+   "out": "get apple: Some(Some(3))\nget pear: Some(None)\nget plum: None\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "niche.rs": {
+   "code": "use std::mem::size_of;\nuse std::num::NonZeroU32;\n\nfn main() {\n    // A reference is never null, so None can use the all-zero address and no tag is needed.\n    println!(\"size of &i32: {}\", size_of::<&i32>());\n    println!(\"size of Option<&i32>: {}\", size_of::<Option<&i32>>());\n    println!(\"size of Box<i32>: {}\", size_of::<Box<i32>>());\n    println!(\n        \"size of Option<Box<i32>>: {}\",\n        size_of::<Option<Box<i32>>>()\n    );\n    println!(\"size of NonZeroU32: {}\", size_of::<NonZeroU32>());\n    println!(\n        \"size of Option<NonZeroU32>: {}\",\n        size_of::<Option<NonZeroU32>>()\n    );\n\n    // Every bit pattern of an i32 is a number, so Option<i32> needs room for a tag.\n    println!(\"size of i32: {}\", size_of::<i32>());\n    println!(\"size of Option<i32>: {}\", size_of::<Option<i32>>());\n    println!(\"size of *const i32: {}\", size_of::<*const i32>());\n    println!(\n        \"size of Option<*const i32>: {}\",\n        size_of::<Option<*const i32>>()\n    );\n}\n",
+   "out": "size of &i32: 8\nsize of Option<&i32>: 8\nsize of Box<i32>: 8\nsize of Option<Box<i32>>: 8\nsize of NonZeroU32: 4\nsize of Option<NonZeroU32>: 4\nsize of i32: 4\nsize of Option<i32>: 8\nsize of *const i32: 8\nsize of Option<*const i32>: 16\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "option-as-arg.fail.rs": {
+   "code": "fn find_age(id: u32) -> Option<u32> {\n    if id == 1 { Some(31) } else { None }\n}\n\nfn main() {\n    let age: u32 = find_age(1);\n    println!(\"age: {age}\");\n}\n",
+   "error": "error[E0308]: mismatched types\n --> src/main.rs:6:20\n  |\n6 |     let age: u32 = find_age(1);\n  |              ---   ^^^^^^^^^^^ expected `u32`, found `Option<u32>`\n  |              |\n  |              expected due to this\n  |\n  = note: expected type `u32`\n             found enum `Option<u32>`\nhelp: consider using `Option::expect` to unwrap the `Option<u32>` value, panicking if the value is an `Option::None`\n  |\n6 |     let age: u32 = find_age(1).expect(\"REASON\");\n  |                               +++++++++++++++++\n",
+   "lang": "rust"
+  },
+  "option-as-int.fail.rs": {
+   "code": "fn main() {\n    let age: Option<u32> = Some(30);\n    let next_year = age + 1;\n    println!(\"next year: {next_year}\");\n}\n",
+   "error": "error[E0369]: cannot add `{integer}` to `Option<u32>`\n --> src/main.rs:3:25\n  |\n3 |     let next_year = age + 1;\n  |                     --- ^ - {integer}\n  |                     |\n  |                     Option<u32>\n  ... (notes pointing into the standard library trimmed)",
+   "lang": "rust"
+  },
+  "option-vs-result.rs": {
+   "code": "fn main() {\n    // Result keeps the reason a parse failed. Option has no room for one.\n    println!(\"parse '42': {:?}\", \"42\".parse::<u32>());\n    println!(\"parse '4x2': {:?}\", \"4x2\".parse::<u32>());\n\n    // .ok() turns a Result into an Option and drops the reason.\n    println!(\"parse '42', then ok(): {:?}\", \"42\".parse::<u32>().ok());\n    println!(\"parse '4x2', then ok(): {:?}\", \"4x2\".parse::<u32>().ok());\n\n    // ok_or goes the other way: it gives a None a reason.\n    println!(\"None.ok_or(...): {:?}\", None::<u32>.ok_or(\"no value given\"));\n}\n",
+   "out": "parse '42': Ok(42)\nparse '4x2': Err(ParseIntError { kind: InvalidDigit })\nparse '42', then ok(): Some(42)\nparse '4x2', then ok(): None\nNone.ok_or(...): Err(\"no value given\")\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "question-mark-main.fail.rs": {
+   "code": "fn first_even(numbers: [i32; 3]) -> Option<i32> {\n    numbers.into_iter().find(|n| n % 2 == 0)\n}\n\nfn main() {\n    let n = first_even([1, 2, 3])?;\n    println!(\"first even: {n}\");\n}\n",
+   "error": "error[E0277]: the `?` operator can only be used in a function that returns `Result` or `Option` (or another type that implements `FromResidual`)\n --> src/main.rs:6:34\n  |\n5 | fn main() {\n  | --------- this function should return `Result` or `Option` to accept `?`\n6 |     let n = first_even([1, 2, 3])?;\n  |                                  ^ cannot use the `?` operator in a function that returns `()`\n",
+   "lang": "rust"
+  },
+  "question-mark.rs": {
+   "code": "struct User {\n    email: Option<&'static str>,\n}\n\nfn find_user(id: u32) -> Option<User> {\n    match id {\n        1 => Some(User {\n            email: Some(\"ana@example.com\"),\n        }),\n        2 => Some(User { email: None }),\n        _ => None,\n    }\n}\n\n// Each ? means: if this is None, return None from the whole function now.\nfn email_domain(id: u32) -> Option<&'static str> {\n    let user = find_user(id)?;\n    let email = user.email?;\n    let (_, domain) = email.split_once('@')?;\n    Some(domain)\n}\n\nfn main() {\n    for id in [1, 2, 3] {\n        println!(\"domain, user {id}: {:?}\", email_domain(id));\n    }\n}\n",
+   "out": "domain, user 1: Some(\"example.com\")\ndomain, user 2: None\ndomain, user 3: None\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "take-replace.rs": {
+   "code": "struct Mailbox {\n    letter: Option<String>,\n}\n\nimpl Mailbox {\n    // take: hand the letter over and leave None behind.\n    fn collect(&mut self) -> Option<String> {\n        self.letter.take()\n    }\n\n    // replace: put a new letter in and get the old one back.\n    fn deliver(&mut self, text: &str) -> Option<String> {\n        self.letter.replace(String::from(text))\n    }\n}\n\nfn main() {\n    let mut mailbox = Mailbox { letter: None };\n    println!(\"deliver 'hi': old = {:?}\", mailbox.deliver(\"hi\"));\n    println!(\"deliver 'again': old = {:?}\", mailbox.deliver(\"again\"));\n    println!(\"collect: {:?}\", mailbox.collect());\n    println!(\"collect again: {:?}\", mailbox.collect());\n    println!(\"now: {:?}\", mailbox.letter);\n}\n",
+   "out": "deliver 'hi': old = None\ndeliver 'again': old = Some(\"hi\")\ncollect: Some(\"again\")\ncollect again: None\nnow: None\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "unpack.rs": {
+   "code": "struct User {\n    name: &'static str,\n    age: Option<u32>,\n}\n\nfn find_user(id: u32) -> Option<User> {\n    match id {\n        1 => Some(User {\n            name: \"ana\",\n            age: Some(31),\n        }),\n        2 => Some(User {\n            name: \"bo\",\n            age: None,\n        }),\n        _ => None,\n    }\n}\n\n// if let: run some code only for Some, and ignore None.\nfn print_age(id: u32) {\n    if let Some(User { age: Some(age), .. }) = find_user(id) {\n        println!(\"id {id}: age {age}\");\n    } else {\n        println!(\"id {id}: age unknown\");\n    }\n}\n\n// let else: unwrap or leave. The happy path stays unindented.\nfn greeting(id: u32) -> String {\n    let Some(user) = find_user(id) else {\n        return format!(\"id {id}: nobody home\");\n    };\n    format!(\"id {id}: hello, {}\", user.name)\n}\n\nfn main() {\n    print_age(1);\n    print_age(2);\n    print_age(3);\n    println!(\"{}\", greeting(1));\n    println!(\"{}\", greeting(3));\n}\n",
+   "out": "id 1: age 31\nid 2: age unknown\nid 3: age unknown\nid 1: hello, ana\nid 3: nobody home\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "unwrap-fine.rs": {
+   "code": "fn main() {\n    // The text is a literal in this file, and it has a colon. Checking it by hand\n    // proves split_once cannot return None, so expect states why.\n    let setting = \"mode: fast\";\n    let (key, value) = setting.split_once(\": \").expect(\"the literal contains ': '\");\n    println!(\"key: {key}, value: {value}\");\n\n    // The list is built just above and is never empty.\n    let scores = vec![72, 95, 88];\n    let first = scores.first().expect(\"scores has three items\");\n    println!(\"first score: {first}\");\n}\n",
+   "out": "key: mode, value: fast\nfirst score: 72\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "unwrap-none.panic.rs": {
+   "code": "fn find_age(id: u32) -> Option<u32> {\n    if id == 1 { Some(31) } else { None }\n}\n\nfn main() {\n    println!(\"user 1: {}\", find_age(1).unwrap());\n    println!(\"user 2: {}\", find_age(2).unwrap());\n}\n",
+   "out": "user 1: 31\n\nthread 'main' (1) panicked at src/main.rs:7:40:\ncalled `Option::unwrap()` on a `None` value\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+   "lang": "rust",
+   "exit": 101
+  },
+  "while-let.rs": {
+   "code": "fn main() {\n    let mut stack = vec![1, 2, 3];\n\n    // pop() returns Some(last item), or None once the list is empty.\n    while let Some(top) = stack.pop() {\n        println!(\"popped {top}\");\n    }\n    println!(\"left over: {stack:?}\");\n    println!(\"pop on empty: {:?}\", stack.pop());\n}\n",
+   "out": "popped 3\npopped 2\npopped 1\nleft over: []\npop on empty: None\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "forgiving.crash.cs": {
+   "code": "string? name = Find(2);\n\n// The ! says \"trust me, not null\". The compiler stays quiet, and nothing is checked here.\nstring shown = name!;\nConsole.WriteLine(\"assigned without a crash\");\n\n// The null surfaces later, away from the ! that hid it.\nConsole.WriteLine(shown.Length);\n\nstatic string? Find(int id) => id == 1 ? \"ana\" : null;\n",
+   "out": "assigned without a crash\nUnhandled exception. System.NullReferenceException: Object reference not set to an instance of an object.\n   at Program.<Main>$(String[] args) in Program.cs:line 8\n",
+   "lang": "csharp",
+   "exit": -6
+  },
+  "lifted.cs": {
+   "code": "int? age = null;\n\n// The operators are \"lifted\": they compile, and a null gives null (or false).\nint? next = age + 1;\nConsole.WriteLine($\"age + 1 is null: {next is null}\");\nConsole.WriteLine($\"age > 3: {age > 3}\");\nConsole.WriteLine($\"age == 3: {age == 3}\");\nConsole.WriteLine($\"age < 3: {age < 3}\");\n",
+   "out": "age + 1 is null: True\nage > 3: False\nage == 3: False\nage < 3: False\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "lookup.go": {
+   "code": "package main\n\nimport \"fmt\"\n\ntype User struct{ Name string }\n\nfunc main() {\n\tages := map[string]int{\"ana\": 31, \"zed\": 0}\n\n\t// The (value, ok) idiom: ok says whether the key was there.\n\tv, ok := ages[\"zed\"]\n\tfmt.Println(\"zed:\", v, ok)\n\tv, ok = ages[\"bo\"]\n\tfmt.Println(\"bo:\", v, ok)\n\n\t// Drop the ok and a missing key looks like a stored 0.\n\tfmt.Println(\"zed without ok:\", ages[\"zed\"])\n\tfmt.Println(\"bo without ok:\", ages[\"bo\"])\n\n\t// A pointer's zero value is nil, and the compiler lets you use it.\n\tvar u *User\n\tfmt.Println(\"u == nil:\", u == nil)\n}\n",
+   "out": "zed: 0 true\nbo: 0 false\nzed without ok: 0\nbo without ok: 0\nu == nil: true\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "none.py": {
+   "code": "ages = {\"ana\": 31, \"zed\": None}\n\n# dict.get gives None for a missing key, and for a key that holds None.\nprint(\"ana:\", ages.get(\"ana\"))\nprint(\"zed (holds None):\", ages.get(\"zed\"))\nprint(\"bo (missing):\", ages.get(\"bo\"))\nprint(\"zed in ages:\", \"zed\" in ages)\n\n# Nothing stops you using the result as if it were there.\ntry:\n    ages.get(\"bo\").bit_length()\nexcept AttributeError as e:\n    print(\"AttributeError:\", e)\n",
+   "out": "ana: 31\nzed (holds None): None\nbo (missing): None\nzed in ages: True\nAttributeError: 'NoneType' object has no attribute 'bit_length'\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "nullable-int.fail.cs": {
+   "code": "int? age = null;\nint years = age;\nConsole.WriteLine(years);\n",
+   "error": "Program.cs(2,13): error CS0266: Cannot implicitly convert type 'int?' to 'int'. An explicit conversion exists (are you missing a cast?)\nProgram.cs(2,13): warning CS8629: Nullable value type may be null.",
+   "lang": "csharp"
+  },
+  "nullable-map.kt": {
+   "code": "fun main() {\n    val stock: Map<String, Int?> = mapOf(\"apple\" to 3, \"pear\" to null)\n\n    // T? is T-or-null, so \"key holds null\" and \"no such key\" look the same.\n    println(\"stock[apple]: ${stock[\"apple\"]}\")\n    println(\"stock[pear]: ${stock[\"pear\"]}\")\n    println(\"stock[plum]: ${stock[\"plum\"]}\")\n    println(\"pear in stock: ${\"pear\" in stock}\")\n}\n",
+   "out": "stock[apple]: 3\nstock[pear]: null\nstock[plum]: null\npear in stock: true\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "nullish.ts": {
+   "code": "function withOr(x: number | undefined): number {\n  return x || 5;\n}\n\nfunction withNullish(x: number | undefined): number {\n  return x ?? 5;\n}\n\nfunction textOr(x: string | undefined): string {\n  return x || \"none\";\n}\n\nconsole.log(\"0 || 5:\", withOr(0));\nconsole.log(\"0 ?? 5:\", withNullish(0));\nconsole.log(\"undefined ?? 5:\", withNullish(undefined));\nconsole.log('\"\" || \"none\":', textOr(\"\"));\nconsole.log(\"NaN || 5:\", withOr(NaN));\nconsole.log(\"null == undefined:\", null == undefined);\nconsole.log(\"null === undefined:\", null === undefined);\nconsole.log(\"typeof null:\", typeof null);\nconsole.log(\"typeof undefined:\", typeof undefined);\n",
+   "out": "0 || 5: 5\n0 ?? 5: 0\nundefined ?? 5: 5\n\"\" || \"none\": none\nNaN || 5: 5\nnull == undefined: true\nnull === undefined: false\ntypeof null: object\ntypeof undefined: undefined\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "optional-null.crash.java": {
+   "code": "import java.util.Optional;\n\npublic class Main {\n    public static void main(String[] args) {\n        // Optional is a class like any other, so a variable of that type can be null.\n        Optional<String> nickname = null;\n        System.out.println(\"compiled and started\");\n        System.out.println(nickname.isPresent());\n    }\n}\n",
+   "out": "compiled and started\nException in thread \"main\" java.lang.NullPointerException: Cannot invoke \"java.util.Optional.isPresent()\" because \"<local1>\" is null\n\tat Main.main(Main.java:8)\n",
+   "lang": "java",
+   "exit": 1
+  },
+  "optional.cpp": {
+   "code": "#include <iostream>\n#include <optional>\n\nint main() {\n    std::optional<int> none;\n\n    std::cout << \"none.has_value(): \" << none.has_value() << \"\\n\";\n    std::cout << \"none.value_or(-1): \" << none.value_or(-1) << \"\\n\";\n\n    // value() checks. (*none and none-> do not, and are undefined on an empty optional.)\n    try {\n        std::cout << none.value() << \"\\n\";\n    } catch (const std::bad_optional_access& e) {\n        std::cout << \"none.value() threw: \" << e.what() << \"\\n\";\n    }\n\n    // A pointer that may be null is not smaller than a plain pointer. An optional of one is.\n    std::cout << \"sizeof(int*): \" << sizeof(int *) << \"\\n\";\n    std::cout << \"sizeof(std::optional<int*>): \" << sizeof(std::optional<int *>) << \"\\n\";\n    std::cout << \"sizeof(int): \" << sizeof(int) << \"\\n\";\n    std::cout << \"sizeof(std::optional<int>): \" << sizeof(std::optional<int>) << \"\\n\";\n}\n",
+   "out": "none.has_value(): 0\nnone.value_or(-1): -1\nnone.value() threw: bad optional access\nsizeof(int*): 8\nsizeof(std::optional<int*>): 16\nsizeof(int): 4\nsizeof(std::optional<int>): 8\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "platform.kt": {
+   "code": "fun main() {\n    // Java's System.getProperty has no null information, so Kotlin sees a platform type.\n    val asNullable: String? = System.getProperty(\"no.such.property\")\n    println(\"as String?: $asNullable\")\n\n    try {\n        val asString: String = System.getProperty(\"no.such.property\")\n        println(\"not reached: $asString\")\n    } catch (e: Exception) {\n        println(\"as String: ${e::class.simpleName}\")\n    }\n\n    val value: String? = null\n    try {\n        println(value!!.length)\n    } catch (e: Exception) {\n        println(\"value!!.length: ${e::class.simpleName}\")\n    }\n}\n",
+   "out": "as String?: null\nas String: NullPointerException\nvalue!!.length: NullPointerException\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "sentinels.c": {
+   "code": "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n\nint main(void) {\n    // \"No result\" is a different convention in every function.\n    printf(\"atoi(\\\"0\\\"): %d\\n\", atoi(\"0\"));\n    printf(\"atoi(\\\"zero\\\"): %d\\n\", atoi(\"zero\"));\n    printf(\"strchr(\\\"hello\\\", 'z') is NULL: %d\\n\", strchr(\"hello\", 'z') == NULL);\n    printf(\"strcmp(\\\"a\\\", \\\"a\\\"): %d\\n\", strcmp(\"a\", \"a\"));\n    printf(\"getenv(\\\"NO_SUCH_VAR\\\") is NULL: %d\\n\", getenv(\"NO_SUCH_VAR\") == NULL);\n    return 0;\n}\n",
+   "out": "atoi(\"0\"): 0\natoi(\"zero\"): 0\nstrchr(\"hello\", 'z') is NULL: 1\nstrcmp(\"a\", \"a\"): 0\ngetenv(\"NO_SUCH_VAR\") is NULL: 1\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "strict.fail.ts": {
+   "code": "function lengthOf(name: string | undefined): number {\n  return name.length;\n}\n\nconsole.log(lengthOf(\"ana\"));\n",
+   "error": "main.ts(2,10): error TS18048: 'name' is possibly 'undefined'.",
+   "lang": "typescript"
+  }
+ },
+ "exercises": {
+  "display-name": {
+   "starter": "/// The nickname if there is one that is not empty, otherwise the real name.\nfn display_name(nickname: &Option<String>, real: &str) -> String {\n    todo!(\"as_deref turns &Option<String> into Option<&str>; then filter, then unwrap_or\")\n}\n\nfn main() {\n    assert_eq!(display_name(&Some(String::from(\"bo\")), \"Robert\"), \"bo\");\n    assert_eq!(display_name(&None, \"Robert\"), \"Robert\");\n    // An empty nickname counts as no nickname.\n    assert_eq!(display_name(&Some(String::new()), \"Robert\"), \"Robert\");\n    // The input is only borrowed, so it is still usable afterwards.\n    let kept = Some(String::from(\"bo\"));\n    assert_eq!(display_name(&kept, \"\"), \"bo\");\n    assert_eq!(kept, Some(String::from(\"bo\")));\n\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "/// The nickname if there is one that is not empty, otherwise the real name.\nfn display_name(nickname: &Option<String>, real: &str) -> String {\n    nickname\n        .as_deref()\n        .filter(|n| !n.is_empty())\n        .unwrap_or(real)\n        .to_string()\n}\n\nfn main() {\n    assert_eq!(display_name(&Some(String::from(\"bo\")), \"Robert\"), \"bo\");\n    assert_eq!(display_name(&None, \"Robert\"), \"Robert\");\n    // An empty nickname counts as no nickname.\n    assert_eq!(display_name(&Some(String::new()), \"Robert\"), \"Robert\");\n    // The input is only borrowed, so it is still usable afterwards.\n    let kept = Some(String::from(\"bo\"));\n    assert_eq!(display_name(&kept, \"\"), \"bo\");\n    assert_eq!(kept, Some(String::from(\"bo\")));\n\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "lookup-chain": {
+   "starter": "/// The owner of a pet, if we know one.\nfn owner(pet: &str) -> Option<&'static str> {\n    match pet {\n        \"rex\" => Some(\"ana\"),\n        \"tom\" => Some(\"bo\"),\n        \"fido\" => Some(\"cy\"),\n        _ => None,\n    }\n}\n\n/// The city a person lives in, if we know it.\nfn city(person: &str) -> Option<&'static str> {\n    match person {\n        \"ana\" => Some(\"Lisbon\"),\n        \"bo\" => Some(\"Oslo\"),\n        _ => None,\n    }\n}\n\n/// \"rex lives in Lisbon\" when the pet's owner and the owner's city are both known,\n/// and \"rex: unknown\" when either is missing.\nfn pet_location(pet: &str) -> String {\n    todo!(\"owner(pet), then city(...), then format the answer, with a fallback for None\")\n}\n\nfn main() {\n    assert_eq!(pet_location(\"rex\"), \"rex lives in Lisbon\");\n    assert_eq!(pet_location(\"tom\"), \"tom lives in Oslo\");\n    // fido has an owner, but the owner has no known city.\n    assert_eq!(pet_location(\"fido\"), \"fido: unknown\");\n    // ghost has no owner at all.\n    assert_eq!(pet_location(\"ghost\"), \"ghost: unknown\");\n    assert_eq!(pet_location(\"\"), \": unknown\");\n\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "/// The owner of a pet, if we know one.\nfn owner(pet: &str) -> Option<&'static str> {\n    match pet {\n        \"rex\" => Some(\"ana\"),\n        \"tom\" => Some(\"bo\"),\n        \"fido\" => Some(\"cy\"),\n        _ => None,\n    }\n}\n\n/// The city a person lives in, if we know it.\nfn city(person: &str) -> Option<&'static str> {\n    match person {\n        \"ana\" => Some(\"Lisbon\"),\n        \"bo\" => Some(\"Oslo\"),\n        _ => None,\n    }\n}\n\n/// \"rex lives in Lisbon\" when the pet's owner and the owner's city are both known,\n/// and \"rex: unknown\" when either is missing.\nfn pet_location(pet: &str) -> String {\n    owner(pet)\n        .and_then(city)\n        .map(|city| format!(\"{pet} lives in {city}\"))\n        .unwrap_or_else(|| format!(\"{pet}: unknown\"))\n}\n\nfn main() {\n    assert_eq!(pet_location(\"rex\"), \"rex lives in Lisbon\");\n    assert_eq!(pet_location(\"tom\"), \"tom lives in Oslo\");\n    // fido has an owner, but the owner has no known city.\n    assert_eq!(pet_location(\"fido\"), \"fido: unknown\");\n    // ghost has no owner at all.\n    assert_eq!(pet_location(\"ghost\"), \"ghost: unknown\");\n    assert_eq!(pet_location(\"\"), \": unknown\");\n\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "parse-point": {
+   "starter": "/// Turn \"3,4\" into Some((3, 4)). Anything that is not two whole numbers\n/// separated by a comma gives None.\nfn parse_point(text: &str) -> Option<(i32, i32)> {\n    todo!(\"split_once(',')? then parse each side: .parse().ok()?\")\n}\n\nfn main() {\n    assert_eq!(parse_point(\"3,4\"), Some((3, 4)));\n    assert_eq!(parse_point(\"-3,40\"), Some((-3, 40)));\n    // No comma.\n    assert_eq!(parse_point(\"34\"), None);\n    // Empty input.\n    assert_eq!(parse_point(\"\"), None);\n    // A side that is not a number, or is missing.\n    assert_eq!(parse_point(\"3,x\"), None);\n    assert_eq!(parse_point(\"x,4\"), None);\n    assert_eq!(parse_point(\"3,\"), None);\n    // Three parts: \"4,5\" is not a number.\n    assert_eq!(parse_point(\"3,4,5\"), None);\n\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "/// Turn \"3,4\" into Some((3, 4)). Anything that is not two whole numbers\n/// separated by a comma gives None.\nfn parse_point(text: &str) -> Option<(i32, i32)> {\n    let (x, y) = text.split_once(',')?;\n    let x = x.parse().ok()?;\n    let y = y.parse().ok()?;\n    Some((x, y))\n}\n\nfn main() {\n    assert_eq!(parse_point(\"3,4\"), Some((3, 4)));\n    assert_eq!(parse_point(\"-3,40\"), Some((-3, 40)));\n    // No comma.\n    assert_eq!(parse_point(\"34\"), None);\n    // Empty input.\n    assert_eq!(parse_point(\"\"), None);\n    // A side that is not a number, or is missing.\n    assert_eq!(parse_point(\"3,x\"), None);\n    assert_eq!(parse_point(\"x,4\"), None);\n    assert_eq!(parse_point(\"3,\"), None);\n    // Three parts: \"4,5\" is not a number.\n    assert_eq!(parse_point(\"3,4,5\"), None);\n\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}

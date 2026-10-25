@@ -1,0 +1,465 @@
+{
+ "id": "vectors",
+ "title": "Vectors and Slices",
+ "part": "data",
+ "intro": "`Vec<T>` is a list that can grow. `&[T]`, called a slice, is a borrowed window into part of one.",
+ "coming_from": {
+  "go": "`Vec<T>` is a slice that you own: `v.push(x)` replaces `v = append(v, x)` and changes the `Vec` in place. `&w[1..3]` is the same no-copy window as `w[1:3]`, but it is read-only unless you ask for `&mut`, it has no capacity to append into, and the compiler refuses to `push` to `w` while the window is in use. That rules out the `append` aliasing surprise.",
+  "kotlin": "`Vec<T>` is your `MutableList`, and `&w[1..3]` is a view like `subList(1, 3)`. While the view is in use, the compiler refuses to add to `w`, where on the JVM `subList` can throw `ConcurrentModificationException` later. A `Vec` without `mut` is a list you cannot push to or assign into, which a Kotlin `List` does not promise.",
+  "python": "`Vec<T>` is your `list`, but every item has the same type and there are no negative indexes. `&w[1..3]` is a borrowed view, not a copy like Python's slicing, and an index past the end panics (Python raises `IndexError`).",
+  "typescript": "`Vec<T>` is your `T[]` and `push` adds to the end the same way. `&w[1..3]` is a borrowed view rather than a copy like `slice`, and an index past the end panics instead of giving `undefined`.",
+  "java": "`Vec<i32>` is an `ArrayList<Integer>` whose items are plain numbers stored side by side (Java's `List<int>` does not compile). `&w[1..3]` is like `subList(1, 3)`, but Rust refuses to compile code that changes the `Vec` while a slice of it is in use, where Java can throw `ConcurrentModificationException` at run time.",
+  "csharp": "`Vec<T>` is `List<T>`, and `&w[1..3]` is a borrowed view like a `Span<T>`, not a copy like `GetRange`. While that view is alive, Rust won't let you `push` to the list.",
+  "c": "`Vec<T>` is your pointer, length and capacity struct with `push` and `realloc` built in, and `&[T]` is a pointer plus a length. The compiler won't let you keep a pointer into a `Vec` across a `push` that might move it, and `v[i]` is bounds-checked.",
+  "cpp": "`Vec<T>` is `std::vector<T>`, and `&[T]` is `std::span<const T>`. The difference is that holding a reference or span into a vector, calling `push` and then using the reference is a compile error, not undefined behaviour. `v[i]` checks its bounds where `std::vector`'s `operator[]` does not by default."
+ },
+ "notes": [
+  "`{:?}` prints a whole Vec. Normal `{}` printing is not defined for lists.",
+  "`v[10]` on a short Vec crashes the program with a panic. `v.get(10)` returns an Option instead.",
+  "A Vec is three numbers on the stack (pointer, length, capacity) plus the items on the heap. A slice `&[T]` is two numbers: a pointer and a length.",
+  "`let x = v[0];` copies a number out of a `Vec<i32>`, but for a `Vec<String>` it is a compile error: borrow with `&v[0]` or copy with `v[0].clone()`.",
+  "`v.sort()` needs items that can always be ranked, and `f64` cannot (`NaN`). For floats, write `v.sort_by(|a, b| a.total_cmp(b))`."
+ ],
+ "gotcha": {
+  "title": "Taking a String out of a list by index",
+  "verdict": "rust-rule",
+  "looks_fine": "In most languages `names[0]` hands you the item, and the list keeps it too.",
+  "rust_sees": "`names[0]` is a slot inside the list's buffer, and the list owns the `String` that lives there. `let first = names[0]` would move the `String` out and leave a hole in the list. The list would still free every slot when it is dropped, so that `String` would be freed twice.",
+  "why": "Nothing is wrong with wanting the first name. The other languages quietly choose for you: share a reference, copy a pointer, or copy the whole text. Rust asks which one you mean. `&names[0]` borrows it, `names[0].clone()` makes a second copy, `names.remove(0)` takes it out of the list, and `std::mem::take(&mut names[0])` takes it and leaves an empty `String` behind. A `Vec<i32>` has no such error, because an `i32` is copied, not moved. Any item that is not `Copy` behaves like the `String`, a struct or a row of a `Vec<Vec<T>>` included.",
+  "langs": {
+   "go": {
+    "status": "runs",
+    "says": "Go prints `ana of 2`. A Go string is a small header (pointer and length) and its bytes never change, so `first := names[0]` copies the header and both names share the text safely.",
+    "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tnames := []string{\"ana\", \"bo\"}\n\tfirst := names[0]\n\tfmt.Println(first, \"of\", len(names))\n}\n",
+    "out": "ana of 2\n"
+   },
+   "kotlin": {
+    "status": "runs",
+    "says": "Kotlin prints `ana of 2`. `first` and the list slot refer to the same `String` object. Strings can't be changed, so sharing is harmless, and the garbage collector keeps the object alive while either refers to it.",
+    "code": "fun main() {\n    val names = mutableListOf(\"ana\", \"bo\")\n    val first = names[0]\n    println(\"$first of ${names.size}\")\n}\n",
+    "out": "ana of 2\n"
+   },
+   "python": {
+    "status": "runs",
+    "says": "Python prints `ana of 2`. `first` and the list slot are two names for the same string object, which can't be changed, so sharing is harmless.",
+    "code": "names = [\"ana\", \"bo\"]\nfirst = names[0]\nprint(f\"{first} of {len(names)}\")\n",
+    "out": "ana of 2\n"
+   },
+   "typescript": {
+    "status": "runs",
+    "says": "Prints `ana of 2`. `first` is a string value. Strings never change in place, so it makes no visible difference whether the engine copies or shares the characters.",
+    "code": "const names = [\"ana\", \"bo\"];\nconst first = names[0];\nconsole.log(`${first} of ${names.length}`);\n",
+    "out": "ana of 2\n"
+   },
+   "java": {
+    "status": "runs",
+    "says": "Java prints `ana of 2`. `first` and the list slot refer to the same `String` object. A `String` can't be changed, and the garbage collector keeps it alive while either refers to it.",
+    "code": "import java.util.ArrayList;\nimport java.util.List;\n\npublic class Main {\n    public static void main(String[] args) {\n        List<String> names = new ArrayList<>(List.of(\"ana\", \"bo\"));\n        String first = names.get(0);\n        System.out.println(first + \" of \" + names.size());\n    }\n}\n",
+    "out": "ana of 2\n"
+   },
+   "csharp": {
+    "status": "runs",
+    "says": "C# prints `ana of 2`. `first` and the list slot refer to the same `string` object, which can't be changed, and the garbage collector keeps it alive.",
+    "code": "List<string> names = [\"ana\", \"bo\"];\nvar first = names[0];\nConsole.WriteLine($\"{first} of {names.Count}\");\n",
+    "out": "ana of 2\n"
+   },
+   "c": {
+    "status": "runs",
+    "says": "C prints `ana of 2`. `first` copies the pointer, so both point at the same text. Here the text is a string literal. With heap text, nothing in the code says which of the two pointers must `free` it, and freeing it through one leaves the other dangling.",
+    "code": "#include <stdio.h>\n\nint main(void) {\n    const char *names[] = {\"ana\", \"bo\"};\n    const char *first = names[0];   // copies the pointer, not the text\n    printf(\"%s of %d\\n\", first, (int)(sizeof names / sizeof names[0]));\n    return 0;\n}\n",
+    "out": "ana of 2\n"
+   },
+   "cpp": {
+    "status": "runs",
+    "says": "C++ prints `ana of 2`. `std::string first = names[0]` copies the whole string, so the two are independent. To take it without copying you write `std::move(names[0])`, which leaves `names[0]` valid but unspecified.",
+    "code": "#include <iostream>\n#include <string>\n#include <vector>\n\nint main() {\n    std::vector<std::string> names{\"ana\", \"bo\"};\n    std::string first = names[0];   // copies the whole string\n    std::cout << first << \" of \" << names.size() << \"\\n\";\n}\n",
+    "out": "ana of 2\n"
+   }
+  },
+  "code": "fn main() {\n    let names = vec![String::from(\"ana\"), String::from(\"bo\")];\n    let first = names[0];\n    println!(\"{first} of {}\", names.len());\n}\n",
+  "error": "error[E0507]: cannot move out of index of `Vec<String>`\n --> src/main.rs:3:17\n  |\n3 |     let first = names[0];\n  |                 ^^^^^^^^ move occurs because value has type `String`, which does not implement the `Copy` trait\n  |\nhelp: consider borrowing here\n  |\n3 |     let first = &names[0];\n  |                 +\nhelp: consider cloning the value if the performance cost is acceptable\n  |\n3 |     let first = names[0].clone();\n  |                         ++++++++\n",
+  "error_code": "E0507",
+  "fixed": {
+   "code": "fn main() {\n    let names = vec![String::from(\"ana\"), String::from(\"bo\")];\n    let first = &names[0]; // borrow it; `names[0].clone()` would copy it\n    println!(\"{first} of {}\", names.len());\n}\n",
+   "out": "ana of 2\n"
+  }
+ },
+ "order": 26,
+ "program": {
+  "rust": {
+   "code": "fn main() {\n    let mut v: Vec<i32> = Vec::new();\n    v.push(10);\n    v.push(20);\n\n    let mut w = vec![1, 2, 3]; // vec! makes a Vec with these values\n    w.push(4);\n\n    let part: &[i32] = &w[1..3]; // a slice: a borrowed window, no copy\n    println!(\"{v:?} {w:?} {part:?} len={}\", w.len());\n}\n",
+   "out": "[10, 20] [1, 2, 3, 4] [2, 3] len=4\n"
+  },
+  "go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tvar v []int\n\tv = append(v, 10)\n\tv = append(v, 20)\n\n\tw := []int{1, 2, 3}\n\tw = append(w, 4)\n\n\tpart := w[1:3] // a window onto w's array, no copy\n\tfmt.Printf(\"%v %v %v len=%d\\n\", v, w, part, len(w))\n}\n",
+   "out": "[10 20] [1 2 3 4] [2 3] len=4\n"
+  },
+  "kotlin": {
+   "code": "fun main() {\n    val v = mutableListOf<Int>()\n    v.add(10)\n    v.add(20)\n\n    val w = mutableListOf(1, 2, 3)\n    w.add(4)\n\n    val part = w.subList(1, 3)\n    println(\"$v $w $part len=${w.size}\")\n}\n",
+   "out": "[10, 20] [1, 2, 3, 4] [2, 3] len=4\n"
+  },
+  "python": {
+   "code": "v: list[int] = []\nv.append(10)\nv.append(20)\n\nw = [1, 2, 3]\nw.append(4)\n\npart = w[1:3]  # a slice of a list is a new list (a copy)\nprint(f\"{v} {w} {part} len={len(w)}\")\n",
+   "out": "[10, 20] [1, 2, 3, 4] [2, 3] len=4\n"
+  },
+  "typescript": {
+   "code": "const v: number[] = [];\nv.push(10);\nv.push(20);\n\nconst w = [1, 2, 3];\nw.push(4);           // const stops reassigning w, not changing it\n\nconst part = w.slice(1, 3); // slice makes a copy, not a view\nconsole.log(v, w, part, `len=${w.length}`);\n",
+   "out": "[ 10, 20 ] [ 1, 2, 3, 4 ] [ 2, 3 ] len=4\n"
+  },
+  "java": {
+   "code": "import java.util.ArrayList;\nimport java.util.List;\n\npublic class Main {\n    public static void main(String[] args) {\n        List<Integer> v = new ArrayList<>();\n        v.add(10);\n        v.add(20);\n\n        var w = new ArrayList<>(List.of(1, 2, 3));\n        w.add(4);\n\n        List<Integer> part = w.subList(1, 3);   // a view into w, no copy\n        System.out.println(v + \" \" + w + \" \" + part + \" len=\" + w.size());\n    }\n}\n",
+   "out": "[10, 20] [1, 2, 3, 4] [2, 3] len=4\n"
+  },
+  "csharp": {
+   "code": "var v = new List<int>();\nv.Add(10);\nv.Add(20);\n\nList<int> w = [1, 2, 3];      // collection expression\nw.Add(4);\n\nvar part = w.GetRange(1, 2);  // items 1 and 2 (a copy)\nConsole.WriteLine($\"[{string.Join(\", \", v)}] [{string.Join(\", \", w)}] [{string.Join(\", \", part)}] len={w.Count}\");\n",
+   "out": "[10, 20] [1, 2, 3, 4] [2, 3] len=4\n"
+  },
+  "c": {
+   "code": "#include <stdio.h>\n#include <stdlib.h>\n\n// C has no Vec: a growable array is a pointer, a length and a capacity\nstruct IntVec {\n    int *data;\n    size_t len, cap;\n};\n\nvoid push(struct IntVec *v, int x) {\n    if (v->len == v->cap) {\n        v->cap = v->cap ? v->cap * 2 : 4;\n        v->data = realloc(v->data, v->cap * sizeof(int));\n    }\n    v->data[v->len++] = x;\n}\n\nvoid print_ints(const int *xs, size_t len) {\n    printf(\"[\");\n    for (size_t i = 0; i < len; i++) {\n        printf(i ? \", %d\" : \"%d\", xs[i]);\n    }\n    printf(\"]\");\n}\n\nint main(void) {\n    struct IntVec v = {0};\n    push(&v, 10);\n    push(&v, 20);\n\n    struct IntVec w = {0};\n    for (int i = 1; i <= 4; i++) push(&w, i);\n\n    const int *part = &w.data[1];   // a \"slice\": pointer + length, no copy\n    size_t part_len = 2;\n\n    print_ints(v.data, v.len);\n    printf(\" \");\n    print_ints(w.data, w.len);\n    printf(\" \");\n    print_ints(part, part_len);\n    printf(\" len=%zu\\n\", w.len);\n\n    free(v.data);\n    free(w.data);\n    return 0;\n}\n",
+   "out": "[10, 20] [1, 2, 3, 4] [2, 3] len=4\n"
+  },
+  "cpp": {
+   "code": "#include <iostream>\n#include <span>\n#include <vector>\n\nvoid print(std::span<const int> xs) {\n    std::cout << \"[\";\n    for (std::size_t i = 0; i < xs.size(); ++i) {\n        std::cout << (i ? \", \" : \"\") << xs[i];\n    }\n    std::cout << \"]\";\n}\n\nint main() {\n    std::vector<int> v;\n    v.push_back(10);\n    v.push_back(20);\n\n    std::vector<int> w{1, 2, 3};\n    w.push_back(4);\n\n    std::span<const int> part = std::span(w).subspan(1, 2);   // a view, no copy\n    print(v);\n    std::cout << \" \";\n    print(w);\n    std::cout << \" \";\n    print(part);\n    std::cout << \" len=\" << w.size() << \"\\n\";\n}\n",
+   "out": "[10, 20] [1, 2, 3, 4] [2, 3] len=4\n"
+  }
+ },
+ "faq": [],
+ "snippets": {
+  "array-index.fail.rs": {
+   "code": "fn main() {\n    let a = [10, 20, 30];\n    println!(\"{}\", a[5]);\n}\n",
+   "error": "error: this operation will panic at runtime\n --> src/main.rs:3:20\n  |\n3 |     println!(\"{}\", a[5]);\n  |                    ^^^^ index out of bounds: the length is 3 but the index is 5\n  |\n  = note: `#[deny(unconditional_panic)]` on by default",
+   "lang": "rust"
+  },
+  "array-index.panic.rs": {
+   "code": "fn main() {\n    let a = [10, 20, 30];\n    let i = a.len() + 2;\n    println!(\"a[{i}] = {}\", a[i]);\n}\n",
+   "out": "\nthread 'main' (1) panicked at src/main.rs:4:29:\nindex out of bounds: the len is 3 but the index is 5\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+   "lang": "rust",
+   "exit": 101
+  },
+  "array-move.fail.rs": {
+   "code": "fn main() {\n    let names = [String::from(\"ana\"), String::from(\"bo\")];\n    let other = names;\n    println!(\"{names:?} {other:?}\");\n}\n",
+   "error": "error[E0382]: borrow of moved value: `names`\n --> src/main.rs:4:16\n  |\n2 |     let names = [String::from(\"ana\"), String::from(\"bo\")];\n  |         ----- move occurs because `names` has type `[String; 2]`, which does not implement the `Copy` trait\n3 |     let other = names;\n  |                 ----- value moved here\n4 |     println!(\"{names:?} {other:?}\");\n  |                ^^^^^ value borrowed here after move\n  |\nhelp: consider cloning the value if the performance cost is acceptable\n  |\n3 |     let other = names.clone();\n  |                      ++++++++\n",
+   "lang": "rust"
+  },
+  "arrays.rs": {
+   "code": "use std::mem::size_of;\n\nfn main() {\n    println!(\"size_of::<[i32; 4]>():   {}\", size_of::<[i32; 4]>());\n    println!(\"size_of::<[i32; 100]>(): {}\", size_of::<[i32; 100]>());\n    println!(\"size_of::<Vec<i32>>():   {}\", size_of::<Vec<i32>>());\n    println!(\"size_of::<&[i32]>():     {}\", size_of::<&[i32]>());\n\n    let a = [1, 2, 3];\n    let b = a; // an array of Copy items is Copy\n    println!(\"a: {a:?}, b: {b:?}\");\n\n    let zeros = [0u8; 6];\n    println!(\"[0u8; 6]: {zeros:?}, len {}\", zeros.len());\n\n    let v: Vec<i32> = a.to_vec();\n    println!(\"a.to_vec(): {v:?}\");\n}\n",
+   "out": "size_of::<[i32; 4]>():   16\nsize_of::<[i32; 100]>(): 400\nsize_of::<Vec<i32>>():   24\nsize_of::<&[i32]>():     16\na: [1, 2, 3], b: [1, 2, 3]\n[0u8; 6]: [0, 0, 0, 0, 0, 0], len 6\na.to_vec(): [1, 2, 3]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "basics.rs": {
+   "code": "fn main() {\n    let mut v = vec![10, 20, 30];\n\n    v.push(40);\n    println!(\"after push(40): {v:?}\");\n    println!(\"pop(): {:?}\", v.pop());\n    println!(\"len: {}, is_empty: {}\", v.len(), v.is_empty());\n\n    println!(\"v[1]: {}\", v[1]);\n    v[1] = 25;\n    println!(\"after v[1] = 25: {v:?}\");\n\n    println!(\"get(1): {:?}\", v.get(1));\n    println!(\"get(10): {:?}\", v.get(10));\n    println!(\"first(): {:?}, last(): {:?}\", v.first(), v.last());\n\n    let mut empty: Vec<i32> = Vec::new();\n    println!(\n        \"empty.pop(): {:?}, empty.last(): {:?}\",\n        empty.pop(),\n        empty.last()\n    );\n}\n",
+   "out": "after push(40): [10, 20, 30, 40]\npop(): Some(40)\nlen: 3, is_empty: false\nv[1]: 20\nafter v[1] = 25: [10, 25, 30]\nget(1): Some(25)\nget(10): None\nfirst(): Some(10), last(): Some(30)\nempty.pop(): None, empty.last(): None\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-vec.rs": {
+   "code": "// Backs the \"in Rust\" cells of the tables in lesson.mdx. Never shown.\nfn main() {\n    let mut v = vec![3, 1, 2];\n\n    v.push(4);\n    assert_eq!(v, [3, 1, 2, 4]);\n    assert_eq!(v.pop(), Some(4));\n    assert_eq!(Vec::<i32>::new().pop(), None);\n\n    v.extend(vec![7, 8]);\n    v.extend_from_slice(&[9]);\n    assert_eq!(v, [3, 1, 2, 7, 8, 9]);\n\n    assert_eq!(vec![0; 3], [0, 0, 0]);\n    assert_eq!(Vec::<i32>::with_capacity(5).capacity(), 5);\n    assert_eq!(v.last(), Some(&9));\n    assert_eq!(v.first(), Some(&3));\n    assert_eq!(v.get(99), None);\n\n    v.insert(1, 5);\n    assert_eq!(v, [3, 5, 1, 2, 7, 8, 9]);\n    assert_eq!(v.remove(1), 5);\n    assert_eq!(&v[1..3], [1, 2]);\n    assert_eq!(v[1..3].to_vec(), vec![1, 2]);\n\n    assert_eq!(v.contains(&7), true);\n    assert_eq!(v.iter().position(|&e| e == 7), Some(3));\n    assert_eq!(v.iter().position(|&e| e == 99), None);\n\n    let mut sorted_copy = v.clone();\n    sorted_copy.sort();\n    assert_eq!(sorted_copy, [1, 2, 3, 7, 8, 9]);\n    assert_eq!(v, [3, 1, 2, 7, 8, 9]); // the original is unchanged\n    assert_eq!(sorted_copy.binary_search(&7), Ok(3));\n    assert_eq!(sorted_copy.binary_search(&5), Err(3));\n\n    sorted_copy.sort_by(|a, b| b.cmp(a));\n    assert_eq!(sorted_copy, [9, 8, 7, 3, 2, 1]);\n    sorted_copy.reverse();\n    assert_eq!(sorted_copy, [1, 2, 3, 7, 8, 9]);\n\n    let mut words = vec![\"kiwi\", \"fig\", \"banana\"];\n    words.sort_by_key(|w| w.len());\n    assert_eq!(words, [\"fig\", \"kiwi\", \"banana\"]);\n\n    v.retain(|x| *x != 7);\n    assert_eq!(v, [3, 1, 2, 8, 9]);\n    v.truncate(2);\n    assert_eq!(v, [3, 1]);\n\n    let mut runs = vec![1, 1, 2, 2, 1];\n    runs.dedup();\n    assert_eq!(runs, [1, 2, 1]);\n\n    assert_eq!([vec![1], vec![2, 3]].concat(), [1, 2, 3]);\n    assert_eq!([\"a\", \"b\"].join(\"-\"), \"a-b\");\n\n    let (left, right) = [1, 2, 3, 4].split_at(1);\n    assert_eq!((left, right), (&[1][..], &[2, 3, 4][..]));\n\n    let mut seen = 0;\n    for (i, x) in v.iter().enumerate() {\n        seen += i as i32 + x;\n    }\n    assert_eq!(seen, 5);\n\n    let copy = v.clone();\n    assert_eq!(copy, v);\n    // Rows added in the second pass.\n    let mut x = vec![1, 2, 3, 4, 5];\n    let drained: Vec<i32> = x.drain(1..3).collect();\n    assert_eq!((drained, x.clone()), (vec![2, 3], vec![1, 4, 5]));\n    x.resize(5, 0);\n    assert_eq!(x, [1, 4, 5, 0, 0]);\n    x.resize(2, 0);\n    assert_eq!(x, [1, 4]);\n    let w = vec![8, 9];\n    x.extend(&w);\n    x.extend_from_slice(&w);\n    assert_eq!((x.len(), w.len()), (6, 2));\n    let (a, b) = (vec![1], vec![2]);\n    assert_eq!([a.as_slice(), b.as_slice()].concat(), [1, 2]);\n    assert_eq!((a.len(), b.len()), (1, 1));\n    let mut dst = [0; 3];\n    dst.copy_from_slice(&[7, 8, 9]);\n    assert_eq!(dst, [7, 8, 9]);\n    assert_eq!(x.iter().sum::<i32>(), 1 + 4 + 8 + 9 + 8 + 9);\n    assert_eq!(x.iter().max(), Some(&9));\n    let mut r = vec![1, 2, 3];\n    r.reverse();\n    assert_eq!(r, [3, 2, 1]);\n    let mut reserved = vec![1, 2, 3];\n    reserved.reserve(5);\n    assert!(reserved.capacity() >= 8);\n\n    // Calls the lesson says panic. (The panic messages go to stderr.)\n    use std::panic::catch_unwind;\n    assert!(catch_unwind(|| vec![1, 2, 3][1..9].len()).is_err());\n    assert!(catch_unwind(|| vec![1, 2, 3].windows(0).count()).is_err());\n    assert!(catch_unwind(|| vec![1, 2, 3].chunks(0).count()).is_err());\n    assert!(catch_unwind(|| vec![1, 2, 3].insert(4, 0)).is_err());\n    assert!(catch_unwind(|| vec![1, 2, 3].remove(30)).is_err());\n    assert!(\n        catch_unwind(|| {\n            let v: Vec<i32> = Vec::new();\n            v[v.len() - 1]\n        })\n        .is_err()\n    );\n    assert!(\n        catch_unwind(|| {\n            let mut d = [0; 2];\n            d.copy_from_slice(&[1, 2, 3]);\n        })\n        .is_err()\n    );\n    assert!(\n        catch_unwind(|| {\n            let mut v = vec![1, 2, 3];\n            v[6] = 70;\n        })\n        .is_err()\n    );\n    println!(\"all checks passed\");\n}\n",
+   "out": "\nthread 'main' (1) panicked at src/main.rs:98:42:\nrange end index 9 out of range for slice of length 3\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\nthread 'main' (1) panicked at src/main.rs:99:43:\nwindow size must be non-zero\n\nthread 'main' (1) panicked at src/main.rs:100:43:\nchunk size must be non-zero\n\nthread 'main' (1) panicked at src/main.rs:101:43:\ninsertion index (is 4) should be <= len (is 3)\n\nthread 'main' (1) panicked at src/main.rs:102:43:\nremoval index (is 30) should be < len (is 3)\n\nthread 'main' (1) panicked at src/main.rs:106:15:\nattempt to subtract with overflow\n\nthread 'main' (1) panicked at src/main.rs:113:15:\ncopy_from_slice: source slice length (3) does not match destination slice length (2)\n\nthread 'main' (1) panicked at src/main.rs:120:14:\nindex out of bounds: the len is 3 but the index is 6\nall checks passed\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "create.rs": {
+   "code": "fn main() {\n    let a = vec![10, 20, 30];\n    let b: Vec<i32> = Vec::new();\n    let c = vec![0; 4];\n    let d = Vec::from([1, 2, 3]);\n    let e = Vec::<f64>::with_capacity(10);\n    let f: Vec<u32> = (1..=5).collect();\n\n    println!(\"vec![10, 20, 30]:  {a:?}\");\n    println!(\"Vec::new():        {b:?}\");\n    println!(\"vec![0; 4]:        {c:?}\");\n    println!(\"Vec::from([1, 2, 3]): {d:?}\");\n    println!(\n        \"with_capacity(10): len {}, capacity {}\",\n        e.len(),\n        e.capacity()\n    );\n    println!(\"(1..=5).collect(): {f:?}\");\n}\n",
+   "out": "vec![10, 20, 30]:  [10, 20, 30]\nVec::new():        []\nvec![0; 4]:        [0, 0, 0, 0]\nVec::from([1, 2, 3]): [1, 2, 3]\nwith_capacity(10): len 0, capacity 10\n(1..=5).collect(): [1, 2, 3, 4, 5]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "editing.rs": {
+   "code": "fn main() {\n    let mut v = vec![10, 20, 30, 40, 50];\n\n    v.insert(1, 15);\n    println!(\"insert(1, 15):    {v:?}\");\n    let removed = v.remove(0);\n    println!(\"remove(0):        {v:?}, returned {removed}\");\n    let swapped = v.swap_remove(0);\n    println!(\"swap_remove(0):   {v:?}, returned {swapped}\");\n\n    v.extend([60, 70]);\n    println!(\"extend([60, 70]): {v:?}\");\n    let mut more = vec![80, 90];\n    v.append(&mut more);\n    println!(\"append(&mut more): {v:?}, more is now {more:?}\");\n\n    v.truncate(4);\n    println!(\"truncate(4):      {v:?}\");\n    v.retain(|x| *x != 30);\n    println!(\"retain(*x != 30): {v:?}\");\n    v.clear();\n    println!(\"clear():          {v:?}, capacity still {}\", v.capacity());\n\n    let mut runs = vec![1, 1, 2, 2, 2, 1, 3, 3];\n    runs.dedup();\n    println!(\"dedup():          {runs:?}\");\n}\n",
+   "out": "insert(1, 15):    [10, 15, 20, 30, 40, 50]\nremove(0):        [15, 20, 30, 40, 50], returned 10\nswap_remove(0):   [50, 20, 30, 40], returned 15\nextend([60, 70]): [50, 20, 30, 40, 60, 70]\nappend(&mut more): [50, 20, 30, 40, 60, 70, 80, 90], more is now []\ntruncate(4):      [50, 20, 30, 40]\nretain(*x != 30): [50, 20, 40]\nclear():          [], capacity still 10\ndedup():          [1, 2, 1, 3]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "extend-moves.fail.rs": {
+   "code": "fn main() {\n    let mut v = vec![1, 2];\n    let w = vec![3, 4];\n    v.extend(w);\n    println!(\"{v:?} {w:?}\");\n}\n",
+   "error": "error[E0382]: borrow of moved value: `w`\n --> src/main.rs:5:22\n  |\n3 |     let w = vec![3, 4];\n  |         - move occurs because `w` has type `Vec<i32>`, which does not implement the `Copy` trait\n4 |     v.extend(w);\n  |              - value moved here\n5 |     println!(\"{v:?} {w:?}\");\n  |                      ^ value borrowed here after move\n  |\nhelp: consider cloning the value if the performance cost is acceptable\n  |\n4 |     v.extend(w.clone());\n  |               ++++++++\n",
+   "lang": "rust"
+  },
+  "first-push.rs": {
+   "code": "fn main() {\n    let mut words: Vec<u32> = Vec::new();\n    words.push(1);\n    println!(\"first push, Vec<u32>:        capacity {}\", words.capacity());\n\n    let mut bytes: Vec<u8> = Vec::new();\n    bytes.push(1);\n    println!(\"first push, Vec<u8>:         capacity {}\", bytes.capacity());\n\n    let mut blocks: Vec<[u8; 2000]> = Vec::new();\n    blocks.push([0; 2000]);\n    println!(\n        \"first push, Vec<[u8; 2000]>: capacity {}\",\n        blocks.capacity()\n    );\n}\n",
+   "out": "first push, Vec<u32>:        capacity 4\nfirst push, Vec<u8>:         capacity 8\nfirst push, Vec<[u8; 2000]>: capacity 1\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "grid-row.fail.rs": {
+   "code": "fn main() {\n    let grid = vec![vec![1, 2], vec![3, 4]];\n    let row = grid[0];\n    println!(\"{row:?} of {}\", grid.len());\n}\n",
+   "error": "error[E0507]: cannot move out of index of `Vec<Vec<i32>>`\n --> src/main.rs:3:15\n  |\n3 |     let row = grid[0];\n  |               ^^^^^^^ move occurs because value has type `Vec<i32>`, which does not implement the `Copy` trait\n  |\nhelp: consider borrowing here\n  |\n3 |     let row = &grid[0];\n  |               +\nhelp: consider cloning the value if the performance cost is acceptable\n  |\n3 |     let row = grid[0].clone();\n  |                      ++++++++\n",
+   "lang": "rust"
+  },
+  "grid.rs": {
+   "code": "fn main() {\n    let mut grid = vec![vec![0; 3]; 2];\n    grid[1][2] = 7;\n    println!(\"grid: {grid:?}\");\n    println!(\"rows: {}, columns: {}\", grid.len(), grid[0].len());\n    println!(\n        \"each row has its own buffer: {}\",\n        grid[0].as_ptr() != grid[1].as_ptr()\n    );\n\n    // One flat Vec and some arithmetic: a single buffer.\n    let (rows, cols) = (2, 3);\n    let (row, col) = (1, 2);\n    let mut flat = vec![0; rows * cols];\n    flat[row * cols + col] = 7;\n    println!(\"flat: {flat:?}\");\n\n    // Rows may have different lengths.\n    let ragged = vec![vec![1], vec![2, 3], vec![]];\n    for (i, r) in ragged.iter().enumerate() {\n        println!(\"row {i} has {} items\", r.len());\n    }\n}\n",
+   "out": "grid: [[0, 0, 0], [0, 0, 7]]\nrows: 2, columns: 3\neach row has its own buffer: true\nflat: [0, 0, 0, 0, 0, 7]\nrow 0 has 1 items\nrow 1 has 2 items\nrow 2 has 0 items\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "growth.rs": {
+   "code": "fn main() {\n    let mut v: Vec<u32> = Vec::new();\n    println!(\"start: len {}, capacity {}\", v.len(), v.capacity());\n\n    let mut last_ptr = v.as_ptr();\n    let mut last_cap = v.capacity();\n    for i in 1..=40 {\n        v.push(i);\n        if v.capacity() != last_cap {\n            let what = if last_cap == 0 {\n                \"first buffer\"\n            } else if v.as_ptr() != last_ptr {\n                \"buffer moved\"\n            } else {\n                \"same address\"\n            };\n            println!(\"push #{i}: capacity {last_cap} -> {}, {what}\", v.capacity());\n            last_cap = v.capacity();\n            last_ptr = v.as_ptr();\n        }\n    }\n    println!(\"end: len {}, capacity {}\", v.len(), v.capacity());\n\n    let mut w: Vec<u32> = Vec::with_capacity(40);\n    let before = w.as_ptr();\n    for i in 1..=40 {\n        w.push(i);\n    }\n    println!(\n        \"with_capacity(40): after 40 pushes capacity {}, buffer moved: {}\",\n        w.capacity(),\n        w.as_ptr() != before\n    );\n\n    w.truncate(3);\n    println!(\n        \"after truncate(3): len {}, capacity {}\",\n        w.len(),\n        w.capacity()\n    );\n    w.shrink_to_fit();\n    println!(\n        \"after shrink_to_fit: len {}, capacity {}\",\n        w.len(),\n        w.capacity()\n    );\n\n    let mut r = vec![1, 2, 3];\n    println!(\"vec![1, 2, 3]: capacity {}\", r.capacity());\n    r.reserve(5);\n    println!(\"after reserve(5): capacity {}\", r.capacity());\n}\n",
+   "out": "start: len 0, capacity 0\npush #1: capacity 0 -> 4, first buffer\npush #5: capacity 4 -> 8, same address\npush #9: capacity 8 -> 16, same address\npush #17: capacity 16 -> 32, same address\npush #33: capacity 32 -> 64, same address\nend: len 40, capacity 64\nwith_capacity(40): after 40 pushes capacity 40, buffer moved: false\nafter truncate(3): len 3, capacity 40\nafter shrink_to_fit: len 3, capacity 3\nvec![1, 2, 3]: capacity 3\nafter reserve(5): capacity 8\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "index-i32.fail.rs": {
+   "code": "fn main() {\n    let v = vec![10, 20, 30];\n    let i: i32 = 1;\n    println!(\"{}\", v[i]);\n}\n",
+   "error": "error[E0277]: the type `[{integer}]` cannot be indexed by `i32`\n --> src/main.rs:4:22\n  |\n4 |     println!(\"{}\", v[i]);\n  |                      ^ slice indices are of type `usize` or ranges of `usize`\n  |\n  = help: the trait `SliceIndex<[{integer}]>` is not implemented for `i32`\n  ... (notes pointing into the standard library trimmed)",
+   "lang": "rust"
+  },
+  "looping.rs": {
+   "code": "fn main() {\n    let mut scores = vec![70, 85, 90];\n\n    for s in &scores {\n        println!(\"read: {s}\");\n    }\n\n    for s in &mut scores {\n        *s += 5;\n    }\n    println!(\"after +5: {scores:?}\");\n\n    for (i, s) in scores.iter().enumerate() {\n        println!(\"score {i} is {s}\");\n    }\n\n    let mut total = 0;\n    for s in scores {\n        total += s;\n    }\n    println!(\"total: {total}\");\n    // `scores` was moved into the loop, so it cannot be used here.\n}\n",
+   "out": "read: 70\nread: 85\nread: 90\nafter +5: [75, 90, 95]\nscore 0 is 75\nscore 1 is 90\nscore 2 is 95\ntotal: 260\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "memory-kinds.rs": {
+   "code": "use std::mem::size_of_val;\n\nfn main() {\n    let arr = [10, 20, 30, 40];\n    let v = vec![10, 20, 30, 40];\n    let from_arr: &[i32] = &arr[1..3];\n    let from_vec: &[i32] = &v[1..3];\n\n    println!(\n        \"arr:      {} bytes, the items themselves\",\n        size_of_val(&arr)\n    );\n    println!(\n        \"v:        {} bytes, a header; items: {} bytes\",\n        size_of_val(&v),\n        size_of_val(&v[..])\n    );\n    println!(\n        \"from_arr: {} bytes, len {}\",\n        size_of_val(&from_arr),\n        from_arr.len()\n    );\n    println!(\n        \"from_vec: {} bytes, len {}\",\n        size_of_val(&from_vec),\n        from_vec.len()\n    );\n    println!(\n        \"from_arr points {} bytes into arr\",\n        from_arr.as_ptr() as usize - arr.as_ptr() as usize\n    );\n    println!(\n        \"from_vec points {} bytes into v's buffer\",\n        from_vec.as_ptr() as usize - v.as_ptr() as usize\n    );\n}\n",
+   "out": "arr:      16 bytes, the items themselves\nv:        24 bytes, a header; items: 16 bytes\nfrom_arr: 16 bytes, len 2\nfrom_vec: 16 bytes, len 2\nfrom_arr points 4 bytes into arr\nfrom_vec points 4 bytes into v's buffer\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "memory-strings.rs": {
+   "code": "use std::mem::size_of;\n\nfn main() {\n    let names = vec![String::from(\"ana\"), String::from(\"bo\")];\n\n    println!(\"size_of::<String>(): {}\", size_of::<String>());\n    println!(\"names: len {}, capacity {}\", names.len(), names.capacity());\n    for (i, s) in names.iter().enumerate() {\n        println!(\n            \"names[{i}]: \\\"{s}\\\" len {}, capacity {}\",\n            s.len(),\n            s.capacity()\n        );\n    }\n    println!(\n        \"the items are {} bytes apart in the list's buffer\",\n        names[1..].as_ptr() as usize - names.as_ptr() as usize\n    );\n    println!(\n        \"the first text is in a different block: {}\",\n        names[0].as_ptr() as usize != names.as_ptr() as usize\n    );\n}\n",
+   "out": "size_of::<String>(): 24\nnames: len 2, capacity 2\nnames[0]: \"ana\" len 3, capacity 3\nnames[1]: \"bo\" len 2, capacity 2\nthe items are 24 bytes apart in the list's buffer\nthe first text is in a different block: true\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "out-of-bounds.panic.rs": {
+   "code": "fn main() {\n    let v = vec![10, 20, 30];\n    println!(\"v has {} items\", v.len());\n    let i = 10;\n    println!(\"v[{i}] is {}\", v[i]);\n}\n",
+   "out": "v has 3 items\n\nthread 'main' (1) panicked at src/main.rs:5:31:\nindex out of bounds: the len is 3 but the index is 10\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+   "lang": "rust",
+   "exit": 101
+  },
+  "owning.rs": {
+   "code": "use std::mem;\n\nfn main() {\n    let mut names = vec![\n        String::from(\"ana\"),\n        String::from(\"bo\"),\n        String::from(\"cy\"),\n        String::from(\"di\"),\n    ];\n\n    let looked_at: &String = &names[0];\n    println!(\"borrow:      {looked_at}, list still has {}\", names.len());\n\n    let copy = names[0].clone();\n    println!(\"clone:       {copy}, list still has {}\", names.len());\n\n    let taken = mem::take(&mut names[1]);\n    println!(\"mem::take:   {taken:?} out, {:?} left behind\", names[1]);\n\n    names.swap(0, 3);\n    println!(\"swap(0, 3):  {names:?}\");\n\n    let removed = names.remove(0);\n    println!(\"remove(0):   {removed}, list is now {names:?}\");\n\n    let swapped = names.swap_remove(1);\n    println!(\"swap_remove: {swapped}, list is now {names:?}\");\n}\n",
+   "out": "borrow:      ana, list still has 4\nclone:       ana, list still has 4\nmem::take:   \"bo\" out, \"\" left behind\nswap(0, 3):  [\"di\", \"\", \"cy\", \"ana\"]\nremove(0):   di, list is now [\"\", \"cy\", \"ana\"]\nswap_remove: cy, list is now [\"\", \"ana\"]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "reserve-borrowed.fail.rs": {
+   "code": "fn main() {\n    let mut v = Vec::with_capacity(10);\n    v.push(1);\n    let first = &v[0];\n    v.push(2); // there is room, so nothing would move\n    println!(\"first: {first}\");\n}\n",
+   "error": "error[E0502]: cannot borrow `v` as mutable because it is also borrowed as immutable\n --> src/main.rs:5:5\n  |\n4 |     let first = &v[0];\n  |                  - immutable borrow occurs here\n5 |     v.push(2); // there is room, so nothing would move\n  |     ^^^^^^^^^ mutable borrow occurs here\n6 |     println!(\"first: {first}\");\n  |                       ----- immutable borrow later used here\n",
+   "lang": "rust"
+  },
+  "slice-params.rs": {
+   "code": "fn total(xs: &[i32]) -> i32 {\n    let mut sum = 0;\n    for x in xs {\n        sum += x;\n    }\n    sum\n}\n\nfn double_all(xs: &mut [i32]) {\n    for x in xs {\n        *x *= 2;\n    }\n}\n\nfn main() {\n    let mut v = vec![1, 2, 3, 4, 5];\n    let arr = [10, 20, 30];\n\n    println!(\"total(&v):        {}\", total(&v));\n    println!(\"total(&arr):      {}\", total(&arr));\n    println!(\"total(&v[1..3]):  {}\", total(&v[1..3]));\n\n    double_all(&mut v[3..]);\n    println!(\"after double_all(&mut v[3..]): {v:?}\");\n    double_all(&mut v);\n    println!(\"after double_all(&mut v):      {v:?}\");\n}\n",
+   "out": "total(&v):        15\ntotal(&arr):      60\ntotal(&v[1..3]):  5\nafter double_all(&mut v[3..]): [1, 2, 3, 8, 10]\nafter double_all(&mut v):      [2, 4, 6, 16, 20]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "slice-then-clear.fail.rs": {
+   "code": "fn main() {\n    let mut v = vec![3, 9, 4];\n    let tail = &v[1..];\n    v.clear();\n    println!(\"tail is {tail:?}\");\n}\n",
+   "error": "error[E0502]: cannot borrow `v` as mutable because it is also borrowed as immutable\n --> src/main.rs:4:5\n  |\n3 |     let tail = &v[1..];\n  |                 - immutable borrow occurs here\n4 |     v.clear();\n  |     ^^^^^^^^^ mutable borrow occurs here\n5 |     println!(\"tail is {tail:?}\");\n  |                        ---- immutable borrow later used here\n",
+   "lang": "rust"
+  },
+  "slices.rs": {
+   "code": "fn main() {\n    let v = vec![10, 20, 30, 40, 50];\n\n    println!(\"&v[1..3]: {:?}\", &v[1..3]);\n    println!(\"&v[..2]:  {:?}\", &v[..2]);\n    println!(\"&v[3..]:  {:?}\", &v[3..]);\n    println!(\"&v[..]:   {:?}\", &v[..]);\n    println!(\"get(3..9): {:?}\", v.get(3..9));\n\n    let (left, right) = v.split_at(2);\n    println!(\"split_at(2): {left:?} and {right:?}\");\n\n    for pair in v.windows(2) {\n        println!(\"window: {pair:?}\");\n    }\n    for chunk in v.chunks(2) {\n        println!(\"chunk:  {chunk:?}\");\n    }\n\n    let rows = vec![vec![1, 2], vec![3], vec![4, 5]];\n    println!(\"concat: {:?}\", rows.concat());\n    let words = vec![\"a\", \"b\", \"c\"];\n    println!(\"join:   {}\", words.join(\"-\"));\n\n    let copy: Vec<i32> = v[1..3].to_vec();\n    println!(\"to_vec: {copy:?}\");\n}\n",
+   "out": "&v[1..3]: [20, 30]\n&v[..2]:  [10, 20]\n&v[3..]:  [40, 50]\n&v[..]:   [10, 20, 30, 40, 50]\nget(3..9): None\nsplit_at(2): [10, 20] and [30, 40, 50]\nwindow: [10, 20]\nwindow: [20, 30]\nwindow: [30, 40]\nwindow: [40, 50]\nchunk:  [10, 20]\nchunk:  [30, 40]\nchunk:  [50]\nconcat: [1, 2, 3, 4, 5]\njoin:   a-b-c\nto_vec: [20, 30]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "sort-floats.fail.rs": {
+   "code": "fn main() {\n    let mut temps = vec![21.5, 19.0, 23.25];\n    temps.sort();\n    println!(\"{temps:?}\");\n}\n",
+   "error": "error[E0277]: the trait bound `{float}: Ord` is not satisfied\n --> src/main.rs:3:11\n  |\n3 |     temps.sort();\n  |           ^^^^ the trait `Ord` is not implemented for `{float}`\n  |\n  = help: the following other types implement trait `Ord`:\n            i128\n            i16\n            i32\n            i64\n            i8\n            isize\n            u128\n            u16\n          and 4 others\n  ... (notes pointing into the standard library trimmed)",
+   "lang": "rust"
+  },
+  "sort-floats.rs": {
+   "code": "fn main() {\n    let nan = f64::NAN;\n    println!(\"NaN < 1.0:  {}\", nan < 1.0);\n    println!(\"NaN > 1.0:  {}\", nan > 1.0);\n    println!(\"NaN == NaN: {}\", nan == nan);\n    println!(\"partial_cmp: {:?}\", nan.partial_cmp(&1.0));\n\n    let mut temps = vec![21.5, f64::NAN, 19.0, -0.0, 0.0, 23.25];\n    temps.sort_by(|a, b| a.total_cmp(b));\n    println!(\"total_cmp: {temps:?}\");\n}\n",
+   "out": "NaN < 1.0:  false\nNaN > 1.0:  false\nNaN == NaN: false\npartial_cmp: None\ntotal_cmp: [-0.0, 0.0, 19.0, 21.5, 23.25, NaN]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "sorting.rs": {
+   "code": "fn main() {\n    let mut nums = vec![30, 5, 12, 5, 99];\n    nums.sort();\n    println!(\"sort:              {nums:?}\");\n    nums.sort_by(|a, b| b.cmp(a));\n    println!(\"sort_by (reverse): {nums:?}\");\n\n    let mut words = vec![\"pear\", \"fig\", \"banana\", \"kiwi\"];\n    words.sort_by_key(|w| w.len());\n    println!(\"sort_by_key(len):  {words:?}\");\n\n    let mut ranked = vec![(\"ana\", 90), (\"bo\", 75), (\"cy\", 90), (\"di\", 75)];\n    ranked.sort_by_key(|p| p.1);\n    println!(\"sort_by_key(score): {ranked:?}\");\n\n    let mut quick = vec![3, 1, 2];\n    quick.sort_unstable();\n    println!(\"sort_unstable:     {quick:?}\");\n\n    let sorted = vec![5, 5, 12, 30, 99];\n    println!(\"contains(&12):     {}\", sorted.contains(&12));\n    println!(\"binary_search(&12): {:?}\", sorted.binary_search(&12));\n    println!(\"binary_search(&13): {:?}\", sorted.binary_search(&13));\n    println!(\"binary_search(&0):  {:?}\", sorted.binary_search(&0));\n}\n",
+   "out": "sort:              [5, 5, 12, 30, 99]\nsort_by (reverse): [99, 30, 12, 5, 5]\nsort_by_key(len):  [\"fig\", \"pear\", \"kiwi\", \"banana\"]\nsort_by_key(score): [(\"bo\", 75), (\"di\", 75), (\"ana\", 90), (\"cy\", 90)]\nsort_unstable:     [1, 2, 3]\ncontains(&12):     true\nbinary_search(&12): Ok(2)\nbinary_search(&13): Err(3)\nbinary_search(&0):  Err(0)\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "array-range.cs": {
+   "code": "int[] array = { 10, 20, 30, 40 };\n\nint[] copy = array[1..3];          // a range on an array makes a new array\ncopy[0] = 99;\nConsole.WriteLine($\"after copy[0] = 99:  array = [{string.Join(\", \", array)}]\");\n\nSpan<int> view = array.AsSpan(1, 2); // a view of the same memory\nview[0] = 99;\nConsole.WriteLine($\"after view[0] = 99:  array = [{string.Join(\", \", array)}]\");\n",
+   "out": "after copy[0] = 99:  array = [10, 20, 30, 40]\nafter view[0] = 99:  array = [10, 99, 30, 40]\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "at.cpp": {
+   "code": "#include <iostream>\n#include <stdexcept>\n#include <vector>\n\nint main() {\n    std::vector<int> v{10, 20, 30};\n    try {\n        std::cout << v.at(10) << \"\\n\";\n    } catch (const std::out_of_range&) {\n        std::cout << \"v.at(10) threw std::out_of_range\\n\";\n    }\n}\n",
+   "out": "v.at(10) threw std::out_of_range\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "check-cpp.cpp": {
+   "code": "#include <algorithm>\n#include <array>\n#include <cassert>\n#include <iostream>\n#include <span>\n#include <vector>\n\nint main() {\n    std::vector<int> v{3, 1, 2};\n    v.push_back(4);\n    v.pop_back();\n    assert(v.back() == 2 && v.front() == 3 && v.size() == 3 && !v.empty());\n    v.insert(v.begin() + 1, 5);\n    v.erase(v.begin());\n    assert((v == std::vector<int>{5, 1, 2}));\n\n    v.erase(std::remove_if(v.begin(), v.end(), [](int x) { return x == 1; }), v.end());\n    assert((v == std::vector<int>{5, 2}));\n\n    std::sort(v.begin(), v.end());\n    assert(std::binary_search(v.begin(), v.end(), 5));\n\n    std::vector<int> runs{1, 1, 2, 2, 1};\n    runs.erase(std::unique(runs.begin(), runs.end()), runs.end());\n    assert((runs == std::vector<int>{1, 2, 1}));\n\n    v.reserve(100);\n    assert(v.capacity() >= 100);\n\n    std::array<int, 4> a{1, 2, 3, 4};\n    std::span<const int> s = std::span(a).subspan(1, 2);\n    assert(s.size() == 2 && s[0] == 2);\n    std::vector<int> filled(3, 0);\n    filled.resize(5, 7);\n    assert((filled == std::vector<int>{0, 0, 0, 7, 7}));\n    filled.erase(filled.begin() + 1, filled.begin() + 3);\n    assert((filled == std::vector<int>{0, 7, 7}));\n    std::cout << \"all checks passed\\n\";\n}\n",
+   "out": "all checks passed\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "check-cs.cs": {
+   "code": "using System.Runtime.InteropServices;\n\nvoid Must(bool ok, string what)\n{\n    if (!ok) throw new Exception(what);\n}\n\nvar v = new List<int> { 3, 1, 2 };\nv.Add(4);\nv.Insert(1, 5);\nv.AddRange(new[] { 7, 8 });\nMust(v.Count == 7 && v.Contains(7), \"add insert count contains\");\nv.RemoveAt(1);\nMust(v[^1] == 8, \"index from end\");\nv.RemoveAll(x => x == 7);\nMust(v.SequenceEqual(new[] { 3, 1, 2, 4, 8 }), \"RemoveAll\");\n\nv.Sort();\nMust(v.SequenceEqual(new[] { 1, 2, 3, 4, 8 }), \"Sort\");\nMust(v.BinarySearch(3) == 2, \"BinarySearch hit\");\nMust(v.BinarySearch(5) == ~4, \"BinarySearch miss is a negative number\");\nv.Sort((a, b) => b - a);\nMust(v.SequenceEqual(new[] { 8, 4, 3, 2, 1 }), \"Sort with comparison\");\n\nvar copy = v.GetRange(1, 2);\ncopy[0] = 99;\nMust(v[1] == 4, \"GetRange copies\");\nvar view = CollectionsMarshal.AsSpan(v)[1..3];\nview[0] = 77;\nMust(v[1] == 77, \"AsSpan is a view\");\nConsole.WriteLine(\"all checks passed\");\n",
+   "out": "all checks passed\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "check-go.go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"slices\"\n\t\"sort\"\n)\n\nfunc must(ok bool, what string) {\n\tif !ok {\n\t\tpanic(what)\n\t}\n}\n\nfunc main() {\n\tv := []int{3, 1, 2}\n\tv = append(v, 4)\n\tw := []int{7, 8}\n\tv = append(v, w...)\n\tmust(slices.Equal(v, []int{3, 1, 2, 4, 7, 8}), \"append\")\n\tmust(len(v) == 6 && cap(v) >= 6, \"len cap\")\n\n\tz := make([]int, 3)\n\tmust(slices.Equal(z, []int{0, 0, 0}), \"make n\")\n\tmust(len(make([]int, 0, 10)) == 0 && cap(make([]int, 0, 10)) == 10, \"make cap\")\n\n\tmust(v[len(v)-1] == 8, \"last\")\n\tv = v[:len(v)-1]\n\tmust(len(v) == 5, \"pop\")\n\n\tv = append(v[:1], v[2:]...)\n\tmust(slices.Equal(v, []int{3, 2, 4, 7}), \"remove\")\n\tv = slices.Insert(v, 1, 5)\n\tmust(slices.Equal(v, []int{3, 5, 2, 4, 7}), \"insert\")\n\n\ts := slices.Clone(v)\n\tslices.Sort(s)\n\tmust(slices.Equal(s, []int{2, 3, 4, 5, 7}), \"sort\")\n\tpos, found := slices.BinarySearch(s, 4)\n\tmust(pos == 2 && found, \"binary search\")\n\tpos, found = slices.BinarySearch(s, 6)\n\tmust(pos == 4 && !found, \"binary search miss\")\n\tmust(slices.Contains(s, 5) && slices.Index(s, 5) == 3 && slices.Index(s, 99) == -1, \"contains index\")\n\n\tnames := []string{\"kiwi\", \"fig\", \"banana\"}\n\tsort.Slice(names, func(i, j int) bool { return len(names[i]) < len(names[j]) })\n\tmust(slices.Equal(names, []string{\"fig\", \"kiwi\", \"banana\"}), \"sort.Slice\")\n\n\tslices.Reverse(s)\n\tmust(slices.Equal(s, []int{7, 5, 4, 3, 2}), \"reverse\")\n\truns := slices.Compact([]int{1, 1, 2, 2, 1})\n\tmust(slices.Equal(runs, []int{1, 2, 1}), \"compact\")\n\n\twindow := s[1:3]\n\twindow[0] = 99\n\tmust(s[1] == 99, \"a subslice shares the array\")\n\tdst := make([]int, 2)\n\tmust(copy(dst, []int{1, 2, 3}) == 2 && slices.Equal(dst, []int{1, 2}), \"copy copies the shorter length\")\n\tcl := slices.Clone(dst)\n\tcl[0] = 9\n\tmust(dst[0] == 1, \"Clone is independent\")\n\tdst = dst[:0]\n\tmust(len(dst) == 0, \"s[:0] empties\")\n\tarr := [3]int{1, 2, 3}\n\tarr2 := arr\n\tarr2[0] = 9\n\tmust(arr[0] == 1, \"arrays copy on assignment\")\n\tfmt.Println(\"all checks passed\")\n}\n",
+   "out": "all checks passed\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "check-java.java": {
+   "code": "import java.util.ArrayList;\nimport java.util.Collections;\nimport java.util.List;\n\npublic class Main {\n    static void must(boolean ok, String what) {\n        if (!ok) throw new AssertionError(what);\n    }\n\n    public static void main(String[] args) {\n        List<Integer> v = new ArrayList<>(List.of(3, 1, 2));\n        v.add(4);\n        v.add(1, 5);\n        must(v.equals(List.of(3, 5, 1, 2, 4)), \"add\");\n        v.remove(1);\n        must(v.equals(List.of(3, 1, 2, 4)), \"remove(int) removes by index\");\n        v.addAll(List.of(7, 8));\n        must(v.size() == 6 && !v.isEmpty() && v.contains(7), \"size contains\");\n        v.removeIf(x -> x == 7);\n        must(v.equals(List.of(3, 1, 2, 4, 8)), \"removeIf\");\n\n        List<Integer> view = v.subList(1, 3);\n        must(view.equals(List.of(1, 2)), \"subList\");\n        v.set(1, 10);\n        must(view.get(0) == 10, \"subList is a view\");\n        view.set(0, 11);\n        must(v.get(1) == 11, \"writes through a subList reach the parent\");\n\n        Collections.sort(v);\n        must(v.equals(List.of(2, 3, 4, 8, 11)), \"sort\");\n        v.sort((a, b) -> b - a);\n        must(v.equals(List.of(11, 8, 4, 3, 2)), \"sort with comparator\");\n        List<Integer> w = new ArrayList<>(List.of(1, 2, 3, 4));\n        w.subList(1, 3).clear();\n        must(w.equals(List.of(1, 4)), \"subList(...).clear() deletes a range\");\n        w.subList(0, 1).add(99);\n        must(w.equals(List.of(1, 99, 4)), \"subList can add to the parent\");\n        must(w.indexOf(4) == 2 && w.indexOf(5) == -1, \"indexOf\");\n        must(Collections.binarySearch(List.of(1, 3, 5), 4) == -3, \"binarySearch miss is -(insertion point) - 1\");\n        Collections.reverse(w);\n        must(w.equals(List.of(4, 99, 1)), \"reverse\");\n        int[] x = {1, 2};\n        int[] y = x;\n        y[0] = 9;\n        must(x[0] == 9, \"arrays are shared\");\n        ArrayList<Integer> sized = new ArrayList<>(10);\n        sized.ensureCapacity(20);\n        sized.trimToSize();\n        System.out.println(\"all checks passed\");\n    }\n}\n",
+   "out": "all checks passed\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "check-kt.kt": {
+   "code": "fun must(ok: Boolean, what: String) {\n    if (!ok) throw AssertionError(what)\n}\n\nfun main() {\n    val v = mutableListOf(3, 1, 2)\n    v.add(4)\n    must(v.removeLastOrNull() == 4, \"removeLastOrNull\")\n    must(mutableListOf<Int>().removeLastOrNull() == null, \"removeLastOrNull on empty\")\n    must(v.removeAt(1) == 1 && v == listOf(3, 2), \"removeAt\")\n    v.add(1, 5)\n    must(v == listOf(3, 5, 2) && v.last() == 2 && v.lastOrNull() == 2, \"add last\")\n    must(v.getOrNull(99) == null && v.size == 3 && 5 in v, \"getOrNull size in\")\n    v.addAll(listOf(7, 8))\n    v.removeAll { it == 7 }\n    must(v == listOf(3, 5, 2, 8), \"removeAll\")\n    must(v.subList(1, 3) == listOf(5, 2), \"subList\")\n    v.sort()\n    must(v == listOf(2, 3, 5, 8), \"sort\")\n    v.sortBy { -it }\n    must(v == listOf(8, 5, 3, 2), \"sortBy\")\n    val words = mutableListOf(\"kiwi\", \"fig\", \"banana\")\n    words.sortWith(compareBy { it.length })\n    must(words == listOf(\"fig\", \"kiwi\", \"banana\"), \"sortWith\")\n    val ro: List<Int> = v\n    must(ro.toMutableList() == v && ro.sorted() == listOf(2, 3, 5, 8), \"toMutableList sorted\")\n    val sub = v.subList(1, 3)\n    v[1] = 42\n    must(sub[0] == 42, \"subList is a view\")\n    println(\"all checks passed\")\n}\n",
+   "out": "all checks passed\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "check-py.py": {
+   "code": "v = [3, 1, 2]\nv.append(4)\nassert v.pop() == 4\ntry:\n    [].pop()\n    raise SystemExit(\"pop on empty list did not raise\")\nexcept IndexError:\n    pass\n\nv.extend([7, 8])\nassert v == [3, 1, 2, 7, 8]\nassert v.pop(1) == 1 and v == [3, 2, 7, 8]\ndel v[0]\nassert v == [2, 7, 8]\nv.insert(1, 5)\nassert v == [2, 5, 7, 8]\nassert v[-1] == 8 and v[1:3] == [5, 7]\n\nassert 5 in v and v.index(7) == 2\ntry:\n    v.index(99)\n    raise SystemExit(\"index did not raise\")\nexcept ValueError:\n    pass\n\ns = sorted(v, reverse=True)\nassert s == [8, 7, 5, 2] and v == [2, 5, 7, 8]\nwords = [\"kiwi\", \"fig\", \"banana\"]\nwords.sort(key=len)\nassert words == [\"fig\", \"kiwi\", \"banana\"]\nv.reverse()\nassert v == [8, 7, 5, 2]\nc = v.copy()\nc.clear()\nassert c == [] and v == [8, 7, 5, 2] and v[:] == v and len(v) == 4\nassert [0] * 3 == [0, 0, 0]\nz = [1, 2, 3, 2]\nz.remove(2)\nassert z == [1, 3, 2], \"remove(x) removes the first item EQUAL to x\"\ne1, e2 = [1], [5]\ne1.extend(e2)\nassert e2 == [5] and e1 == [1, 5]\nassert sum(v) == 22 and min(v) == 2 and max(v) == 8\npart = v[1:3]\npart[0] = 99\nassert v[1] == 7, \"slicing a list copies\"\nprint(\"all checks passed\")\n",
+   "out": "all checks passed\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "check-ts.ts": {
+   "code": "function must(ok: boolean, what: string): void {\n  if (!ok) throw new Error(what);\n}\nconst same = (a: unknown[], b: unknown[]) => JSON.stringify(a) === JSON.stringify(b);\n\nconst a = [3, 1, 2];\na.push(4);\nmust(a.pop() === 4, \"pop\");\nmust([].pop() === undefined, \"pop empty\");\n\nconst removed = a.splice(1, 1);\nmust(removed[0] === 1 && same(a, [3, 2]), \"splice remove\");\na.splice(1, 0, 5);\nmust(same(a, [3, 5, 2]), \"splice insert\");\nmust(a.at(-1) === 2 && a.length === 3, \"at length\");\nmust(a.includes(5) && a.indexOf(2) === 2 && a.indexOf(99) === -1, \"includes indexOf\");\n\nconst part = a.slice(1, 3);\npart[0] = 99;\nmust(same(a, [3, 5, 2]), \"slice copies\");\nmust(same([1].concat([2, 3]), [1, 2, 3]) && same([...[1], ...[2]], [1, 2]), \"concat\");\n\nmust(same([10, 9, 1].sort(), [1, 10, 9]), \"default sort is by string\");\nmust(same([10, 9, 1].sort((x, y) => x - y), [1, 9, 10]), \"numeric sort\");\nmust(same(new Array(3).fill(0), [0, 0, 0]), \"fill\");\na.length = 1;\nmust(same(a, [3]), \"set length truncates\");\nconst base = [3, 1, 2];\nconst joined = base.concat([9]);\nmust(same(base, [3, 1, 2]) && same(joined, [3, 1, 2, 9]), \"concat returns a new array\");\nmust(base.at(10) === undefined && base.at(1) === 1, \"at\");\nconsole.log(\"all checks passed\");\n",
+   "out": "all checks passed\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "decay.c": {
+   "code": "#include <stdio.h>\n\nvoid show(int *p) {   // an array argument arrives as a plain pointer\n    printf(\"inside show: sizeof p = %zu\\n\", sizeof p);\n}\n\nint main(void) {\n    int a[4] = {10, 20, 30, 40};\n    printf(\"in main: sizeof a = %zu bytes\\n\", sizeof a);\n    show(a);\n    return 0;\n}\n",
+   "out": "in main: sizeof a = 16 bytes\ninside show: sizeof p = 8\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "grid-alias.py": {
+   "code": "shared = [[0] * 3] * 2           # two names for ONE row\nshared[1][2] = 7\nprint(\"[[0] * 3] * 2:         \", shared)\n\nseparate = [[0] * 3 for _ in range(2)]\nseparate[1][2] = 7\nprint(\"list comprehension:    \", separate)\n",
+   "out": "[[0] * 3] * 2:          [[0, 0, 7], [0, 0, 7]]\nlist comprehension:     [[0, 0, 0], [0, 0, 7]]\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "growth.cpp": {
+   "code": "#include <iostream>\n#include <vector>\n\nint main() {\n    std::vector<int> v;\n    std::size_t last = v.capacity();\n    std::cout << \"start: capacity \" << last << \"\\n\";\n    for (int i = 1; i <= 40; i++) {\n        v.push_back(i);\n        if (v.capacity() != last) {\n            std::cout << \"push_back #\" << i << \": capacity \" << last << \" -> \" << v.capacity() << \"\\n\";\n            last = v.capacity();\n        }\n    }\n\n    std::vector<int> w{1, 2, 3};\n    w.reserve(5);\n    std::cout << \"{1, 2, 3}.reserve(5): capacity \" << w.capacity() << \"\\n\";\n}\n",
+   "out": "start: capacity 0\npush_back #1: capacity 0 -> 1\npush_back #2: capacity 1 -> 2\npush_back #3: capacity 2 -> 4\npush_back #5: capacity 4 -> 8\npush_back #9: capacity 8 -> 16\npush_back #17: capacity 16 -> 32\npush_back #33: capacity 32 -> 64\n{1, 2, 3}.reserve(5): capacity 5\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "growth.go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"runtime\"\n\t\"unsafe\"\n)\n\nfunc firstAppend[T any](name string) {\n\tvar s []T\n\ts = append(s, *new(T))\n\tfmt.Printf(\"first append to a []%s: cap %d\\n\", name, cap(s))\n}\n\nfunc main() {\n\tfmt.Println(runtime.Version())\n\tvar v []int\n\tfmt.Println(\"size of a slice header:\", unsafe.Sizeof(v), \"bytes\")\n\tfmt.Printf(\"start: len %d, cap %d\\n\", len(v), cap(v))\n\tlast := cap(v)\n\tfor i := 1; i <= 40; i++ {\n\t\tv = append(v, i)\n\t\tif cap(v) != last {\n\t\t\tfmt.Printf(\"append #%d: cap %d -> %d\\n\", i, last, cap(v))\n\t\t\tlast = cap(v)\n\t\t}\n\t}\n\tfirstAppend[string](\"string\")\n\tfirstAppend[byte](\"byte\")\n}\n",
+   "out": "go1.27.3\nsize of a slice header: 24 bytes\nstart: len 0, cap 0\nappend #1: cap 0 -> 4\nappend #5: cap 4 -> 8\nappend #9: cap 8 -> 16\nappend #17: cap 16 -> 32\nappend #33: cap 32 -> 64\nfirst append to a []string: cap 2\nfirst append to a []byte: cap 32\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "list-of-int.fail.java": {
+   "code": "import java.util.ArrayList;\nimport java.util.List;\n\npublic class Main {\n    public static void main(String[] args) {\n        List<int> numbers = new ArrayList<>();\n        numbers.add(1);\n        System.out.println(numbers);\n    }\n}\n",
+   "error": "Main.java:6: error: unexpected type\n        List<int> numbers = new ArrayList<>();\n             ^\n  required: reference\n  found:    int\n1 error",
+   "lang": "java"
+  },
+  "mixed.py": {
+   "code": "mixed = [1, \"two\", 3.0, None, [4, 5]]\nprint(mixed)\nprint([type(x).__name__ for x in mixed])\n",
+   "out": "[1, 'two', 3.0, None, [4, 5]]\n['int', 'str', 'float', 'NoneType', 'list']\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "oob.crash.asan.c": {
+   "code": "#include <stdio.h>\n#include <stdlib.h>\n\nint main(void) {\n    int *v = malloc(3 * sizeof(int));\n    v[0] = 10; v[1] = 20; v[2] = 30;\n    int i = 10;\n    printf(\"v[%d] is %d\\n\", i, v[i]);   // no check: reads past the end\n    free(v);\n    return 0;\n}\n",
+   "out": "=================================================================\n==1==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x············ at pc 0x············ bp 0x············ sp 0x············\nREAD of size 4 at 0x············ thread T0\n    #0 0x············ in main main.c:8\n    #1 0x············  (/lib/aarch64-linux-gnu/libc.so.6+0x22258)\n    #2 0x············ in __libc_start_main (/lib/aarch64-linux-gnu/libc.so.6+0x22338)\n    #3 0x············ in _start (main+0xaac)\n\n0x············ is located 28 bytes after 12-byte region [0x············,0x············)\nallocated by thread T0 here:\n    #0 0x············ in malloc ../../../../src/libsanitizer/asan/asan_malloc_linux.cpp:69\n    #1 0x············ in main main.c:5\n    #2 0x············  (/lib/aarch64-linux-gnu/libc.so.6+0x22258)\n    #3 0x············ in __libc_start_main (/lib/aarch64-linux-gnu/libc.so.6+0x22338)\n    #4 0x············ in _start (main+0xaac)\n\nSUMMARY: AddressSanitizer: heap-buffer-overflow main.c:8 in main\nShadow bytes around the buggy address:\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n=>0x············: fa fa 00 04 fa fa fa[fa]fa fa fa fa fa fa fa fa\n  0x············: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\n  0x············: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\n  0x············: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\n  0x············: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\n  0x············: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\nShadow byte legend (one shadow byte represents 8 application bytes):\n  Addressable:           00\n  Partially addressable: 01 02 03 04 05 06 07 \n  Heap left redzone:       fa\n  Freed heap region:       fd\n  Stack left redzone:      f1\n  Stack mid redzone:       f2\n  Stack right redzone:     f3\n  Stack after return:      f5\n  Stack use after scope:   f8\n  Global redzone:          f9\n  Global init order:       f6\n  Poisoned by user:        f7\n  Container overflow:      fc\n  Array cookie:            ac\n  Intra object redzone:    bb\n  ASan internal:           fe\n  Left alloca redzone:     ca\n  Right alloca redzone:    cb\n==1==ABORTING\n",
+   "lang": "c",
+   "mode": "asan",
+   "exit": 1
+  },
+  "oob.crash.asan.cpp": {
+   "code": "#include <iostream>\n#include <vector>\n\nint main() {\n    std::vector<int> v{10, 20, 30};\n    int i = 10;\n    std::cout << \"v[\" << i << \"] is \" << v[i] << \"\\n\";   // no check\n}\n",
+   "out": "=================================================================\n==1==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x············ at pc 0x············ bp 0x············ sp 0x············\nREAD of size 4 at 0x············ thread T0\n    #0 0x············ in main main.cpp:7\n    #1 0x············  (/lib/aarch64-linux-gnu/libc.so.6+0x22258)\n    #2 0x············ in __libc_start_main (/lib/aarch64-linux-gnu/libc.so.6+0x22338)\n    #3 0x············ in _start (main+0x156c)\n\n0x············ is located 28 bytes after 12-byte region [0x············,0x············)\nallocated by thread T0 here:\n    #0 0x············ in operator new(unsigned long) ../../../../src/libsanitizer/asan/asan_new_delete.cpp:95\n    #1 0x············ in std::__new_allocator<int>::allocate(unsigned long, void const*) /usr/include/c++/14/bits/new_allocator.h:151\n    #2 0x············ in std::allocator<int>::allocate(unsigned long) /usr/include/c++/14/bits/allocator.h:196\n    #3 0x············ in std::allocator_traits<std::allocator<int> >::allocate(std::allocator<int>&, unsigned long) /usr/include/c++/14/bits/alloc_traits.h:515\n    #4 0x············ in std::_Vector_base<int, std::allocator<int> >::_M_allocate(unsigned long) /usr/include/c++/14/bits/stl_vector.h:380\n    #5 0x············ in void std::vector<int, std::allocator<int> >::_M_range_initialize<int const*>(int const*, int const*, std::forward_iterator_tag) /usr/include/c++/14/bits/stl_vector.h:1694\n    #6 0x············ in std::vector<int, std::allocator<int> >::vector(std::initializer_list<int>, std::allocator<int> const&) /usr/include/c++/14/bits/stl_vector.h:682\n    #7 0x············ in main main.cpp:5\n    #8 0x············  (/lib/aarch64-linux-gnu/libc.so.6+0x22258)\n    #9 0x············ in __libc_start_main (/lib/aarch64-linux-gnu/libc.so.6+0x22338)\n    #10 0x············ in _start (main+0x156c)\n\nSUMMARY: AddressSanitizer: heap-buffer-overflow main.cpp:7 in main\nShadow bytes around the buggy address:\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n=>0x············: fa fa 00 04 fa fa fa[fa]fa fa fa fa fa fa fa fa\n  0x············: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\n  0x············: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\n  0x············: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\n  0x············: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\n  0x············: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\nShadow byte legend (one shadow byte represents 8 application bytes):\n  Addressable:           00\n  Partially addressable: 01 02 03 04 05 06 07 \n  Heap left redzone:       fa\n  Freed heap region:       fd\n  Stack left redzone:      f1\n  Stack mid redzone:       f2\n  Stack right redzone:     f3\n  Stack after return:      f5\n  Stack use after scope:   f8\n  Global redzone:          f9\n  Global init order:       f6\n  Poisoned by user:        f7\n  Container overflow:      fc\n  Array cookie:            ac\n  Intra object redzone:    bb\n  ASan internal:           fe\n  Left alloca redzone:     ca\n  Right alloca redzone:    cb\n==1==ABORTING\n",
+   "lang": "cpp",
+   "mode": "asan",
+   "exit": 1
+  },
+  "oob.crash.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tv := []int{10, 20, 30}\n\ti := 10\n\tfmt.Println(\"v has\", len(v), \"items\")\n\tfmt.Println(\"v[10] is\", v[i])\n}\n",
+   "out": "v has 3 items\npanic: runtime error: index out of range [10] with length 3\n\ngoroutine 1 [running]:\nmain.main()\n\tmain.go:9 +0x88\n",
+   "lang": "go",
+   "exit": 2
+  },
+  "oob.cs": {
+   "code": "var list = new List<int> { 10, 20, 30 };\nint[] array = { 10, 20, 30 };\n\ntry\n{\n    Console.WriteLine(list[10]);\n}\ncatch (Exception e)\n{\n    Console.WriteLine($\"List[10]: {e.GetType().Name}\");\n}\n\ntry\n{\n    Console.WriteLine(array[10]);\n}\ncatch (Exception e)\n{\n    Console.WriteLine($\"array[10]: {e.GetType().Name}\");\n}\n\nConsole.WriteLine($\"ElementAtOrDefault(10): {list.ElementAtOrDefault(10)}\");\n",
+   "out": "List[10]: ArgumentOutOfRangeException\narray[10]: IndexOutOfRangeException\nElementAtOrDefault(10): 0\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "oob.java": {
+   "code": "import java.util.ArrayList;\nimport java.util.List;\n\npublic class Main {\n    public static void main(String[] args) {\n        List<Integer> list = new ArrayList<>(List.of(10, 20, 30));\n        int[] array = {10, 20, 30};\n        try {\n            list.get(10);\n        } catch (Exception e) {\n            System.out.println(\"ArrayList.get(10): \" + e);\n        }\n        try {\n            System.out.println(array[10]);\n        } catch (Exception e) {\n            System.out.println(\"int[10]: \" + e);\n        }\n    }\n}\n",
+   "out": "ArrayList.get(10): java.lang.IndexOutOfBoundsException: Index 10 out of bounds for length 3\nint[10]: java.lang.ArrayIndexOutOfBoundsException: Index 10 out of bounds for length 3\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "oob.kt": {
+   "code": "fun main() {\n    val list = mutableListOf(10, 20, 30)\n    try {\n        list[10]\n    } catch (e: IndexOutOfBoundsException) {\n        println(\"list[10]: $e\")\n    }\n    println(\"list.getOrNull(10): ${list.getOrNull(10)}\")\n}\n",
+   "out": "list[10]: java.lang.IndexOutOfBoundsException: Index 10 out of bounds for length 3\nlist.getOrNull(10): null\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "oob.py": {
+   "code": "v = [10, 20, 30]\n\ntry:\n    v[10]\nexcept IndexError as e:\n    print(f\"v[10]: IndexError: {e}\")\n\nprint(f\"v[-1]: {v[-1]}\")\nprint(f\"v[1:99]: {v[1:99]}\")\nprint(f\"v[10:20]: {v[10:20]}\")\n",
+   "out": "v[10]: IndexError: list index out of range\nv[-1]: 30\nv[1:99]: [20, 30]\nv[10:20]: []\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "quirks.ts": {
+   "code": "const v: number[] = [10, 20, 30];\n\nconsole.log(\"v[10]:\", v[10]);\nconsole.log(\"v.at(-1):\", v.at(-1));\n\nconst nums = [10, 9, 1];\nnums.sort();\nconsole.log(\"[10, 9, 1].sort():\", nums);\n\nconst holes = [10, 20, 30];\nholes[6] = 70;\nconsole.log(\"holes:\", holes, \"length\", holes.length);\nconsole.log(\"3 in holes:\", 3 in holes);\n",
+   "out": "v[10]: undefined\nv.at(-1): 30\n[10, 9, 1].sort(): [ 1, 10, 9 ]\nholes: [ 10, 20, 30, <3 empty items>, 70 ] length 7\n3 in holes: false\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "slice-copy.py": {
+   "code": "w = [1, 2, 3, 4]\npart = w[1:3]\npart[0] = 99\nprint(\"part:\", part)\nprint(\"w:   \", w)\n",
+   "out": "part: [99, 3]\nw:    [1, 2, 3, 4]\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "sublist-stale.crash.java": {
+   "code": "import java.util.ArrayList;\nimport java.util.List;\n\npublic class Main {\n    public static void main(String[] args) {\n        List<Integer> v = new ArrayList<>(List.of(1, 2, 3));\n        List<Integer> view = v.subList(0, 2); // a live view of v\n        v.add(4);                             // changes v's size\n        System.out.println(view);             // using the view now throws\n    }\n}\n",
+   "out": "Exception in thread \"main\" java.util.ConcurrentModificationException\n\tat java.base/java.util.ArrayList$SubList.checkForComodification(ArrayList.java:1498)\n\tat java.base/java.util.ArrayList$SubList.listIterator(ArrayList.java:1367)\n\tat java.base/java.util.AbstractList.listIterator(AbstractList.java:313)\n\tat java.base/java.util.ArrayList$SubList.iterator(ArrayList.java:1363)\n\tat java.base/java.util.AbstractCollection.toString(AbstractCollection.java:451)\n\tat java.base/java.lang.String.valueOf(String.java:4530)\n\tat java.base/java.io.PrintStream.println(PrintStream.java:1023)\n\tat Main.main(Main.java:9)\n",
+   "lang": "java",
+   "exit": 1
+  },
+  "subslice-append.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tw := make([]int, 4, 8) // len 4, room for 8\n\tcopy(w, []int{1, 2, 3, 4})\n\n\tpart := w[1:3]\n\tpart = append(part, 99) // there is spare room, so this writes into w\n\tfmt.Println(\"w:\", w, \"part:\", part)\n\n\tfmt.Println(\"w[1:6]:\", w[1:6]) // reslicing past len, up to cap, is allowed\n}\n",
+   "out": "w: [1 2 3 99] part: [2 3 99]\nw[1:6]: [2 3 99 0 0]\n",
+   "lang": "go",
+   "exit": 0
+  }
+ },
+ "exercises": {
+  "reverse-in-place": {
+   "starter": "// Reverse the items of `xs` in place, without making a new Vec.\n// (Do not call `xs.reverse()`: the point is to write it with `swap`.)\nfn reverse_in_place(xs: &mut [i32]) {\n    todo!(\"swap item i with item len - 1 - i, for the first half of the positions\")\n}\n\nfn main() {\n    let mut even = vec![1, 2, 3, 4];\n    reverse_in_place(&mut even);\n    assert_eq!(even, vec![4, 3, 2, 1]);\n\n    let mut odd = vec![1, 2, 3];\n    reverse_in_place(&mut odd);\n    assert_eq!(odd, vec![3, 2, 1]);\n\n    let mut empty: Vec<i32> = Vec::new();\n    reverse_in_place(&mut empty);\n    assert!(empty.is_empty());\n\n    let mut one = [9];\n    reverse_in_place(&mut one);\n    assert_eq!(one, [9]);\n\n    // Only the middle of the list is a slice here; the ends must not move.\n    let mut part = vec![1, 2, 3, 4, 5];\n    reverse_in_place(&mut part[1..4]);\n    assert_eq!(part, vec![1, 4, 3, 2, 5]);\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "// Reverse the items of `xs` in place, without making a new Vec.\n// (Do not call `xs.reverse()`: the point is to write it with `swap`.)\nfn reverse_in_place(xs: &mut [i32]) {\n    let len = xs.len();\n    for i in 0..len / 2 {\n        xs.swap(i, len - 1 - i);\n    }\n}\n\nfn main() {\n    let mut even = vec![1, 2, 3, 4];\n    reverse_in_place(&mut even);\n    assert_eq!(even, vec![4, 3, 2, 1]);\n\n    let mut odd = vec![1, 2, 3];\n    reverse_in_place(&mut odd);\n    assert_eq!(odd, vec![3, 2, 1]);\n\n    let mut empty: Vec<i32> = Vec::new();\n    reverse_in_place(&mut empty);\n    assert!(empty.is_empty());\n\n    let mut one = [9];\n    reverse_in_place(&mut one);\n    assert_eq!(one, [9]);\n\n    // Only the middle of the list is a slice here; the ends must not move.\n    let mut part = vec![1, 2, 3, 4, 5];\n    reverse_in_place(&mut part[1..4]);\n    assert_eq!(part, vec![1, 4, 3, 2, 5]);\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "take-longest": {
+   "starter": "// Remove the longest name from the list and return it (the first one, if two\n// are equally long). Return None, and change nothing, if the list is empty.\n// The returned String must be the one that was in the list: no cloning.\nfn take_longest(names: &mut Vec<String>) -> Option<String> {\n    todo!(\"find the position of the longest name, then take that one out of the list\")\n}\n\nfn main() {\n    let mut names = vec![\n        String::from(\"ana\"),\n        String::from(\"beatrice\"),\n        String::from(\"bo\"),\n        String::from(\"cordelia\"),\n    ];\n    assert_eq!(take_longest(&mut names), Some(String::from(\"beatrice\")));\n    assert_eq!(names, [\"ana\", \"bo\", \"cordelia\"]); // gone from the list, not copied\n    assert_eq!(take_longest(&mut names), Some(String::from(\"cordelia\")));\n    assert_eq!(names, [\"ana\", \"bo\"]);\n    assert_eq!(take_longest(&mut names), Some(String::from(\"ana\")));\n    assert_eq!(take_longest(&mut names), Some(String::from(\"bo\")));\n    assert!(names.is_empty());\n    assert_eq!(take_longest(&mut names), None);\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "// Remove the longest name from the list and return it (the first one, if two\n// are equally long). Return None, and change nothing, if the list is empty.\n// The returned String must be the one that was in the list: no cloning.\nfn take_longest(names: &mut Vec<String>) -> Option<String> {\n    let mut longest: Option<usize> = None;\n    for (i, name) in names.iter().enumerate() {\n        match longest {\n            Some(best) if names[best].len() >= name.len() => {}\n            _ => longest = Some(i),\n        }\n    }\n    Some(names.remove(longest?))\n}\n\nfn main() {\n    let mut names = vec![\n        String::from(\"ana\"),\n        String::from(\"beatrice\"),\n        String::from(\"bo\"),\n        String::from(\"cordelia\"),\n    ];\n    assert_eq!(take_longest(&mut names), Some(String::from(\"beatrice\")));\n    assert_eq!(names, [\"ana\", \"bo\", \"cordelia\"]); // gone from the list, not copied\n    assert_eq!(take_longest(&mut names), Some(String::from(\"cordelia\")));\n    assert_eq!(names, [\"ana\", \"bo\"]);\n    assert_eq!(take_longest(&mut names), Some(String::from(\"ana\")));\n    assert_eq!(take_longest(&mut names), Some(String::from(\"bo\")));\n    assert!(names.is_empty());\n    assert_eq!(take_longest(&mut names), None);\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "unique": {
+   "starter": "// Return the items of `items` with repeats removed, keeping the first of each\n// and the original order.\nfn unique(items: &[i32]) -> Vec<i32> {\n    todo!(\"build a new Vec; push an item only if `contains` says it is not in it yet\")\n}\n\nfn main() {\n    assert_eq!(unique(&[3, 1, 3, 2, 1]), vec![3, 1, 2]);\n    assert_eq!(unique(&[2, 1, 2]), vec![2, 1]); // repeats that are not next to each other\n    assert_eq!(unique(&[7, 7, 7]), vec![7]);\n    assert_eq!(unique(&[1, 2, 3]), vec![1, 2, 3]);\n    assert_eq!(unique(&[]), Vec::<i32>::new());\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "// Return the items of `items` with repeats removed, keeping the first of each\n// and the original order.\nfn unique(items: &[i32]) -> Vec<i32> {\n    let mut seen = Vec::new();\n    for item in items {\n        if !seen.contains(item) {\n            seen.push(*item);\n        }\n    }\n    seen\n}\n\nfn main() {\n    assert_eq!(unique(&[3, 1, 3, 2, 1]), vec![3, 1, 2]);\n    assert_eq!(unique(&[2, 1, 2]), vec![2, 1]); // repeats that are not next to each other\n    assert_eq!(unique(&[7, 7, 7]), vec![7]);\n    assert_eq!(unique(&[1, 2, 3]), vec![1, 2, 3]);\n    assert_eq!(unique(&[]), Vec::<i32>::new());\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "window-sums": {
+   "starter": "// The sum of every run of `size` neighbouring numbers, left to right.\n// If `size` is 0 or longer than the slice, there are no runs: return an empty Vec.\nfn window_sums(xs: &[i32], size: usize) -> Vec<i32> {\n    todo!(\"`xs.windows(size)` gives each run as a slice, but it panics when size is 0\")\n}\n\nfn main() {\n    assert_eq!(window_sums(&[1, 2, 3, 4, 5], 3), vec![6, 9, 12]);\n    assert_eq!(window_sums(&[4, 5], 1), vec![4, 5]);\n    assert_eq!(window_sums(&[1, 2, 3], 3), vec![6]);\n    assert_eq!(window_sums(&[1, 2], 3), Vec::<i32>::new());\n    assert_eq!(window_sums(&[], 2), Vec::<i32>::new());\n    assert_eq!(window_sums(&[5, 6], 0), Vec::<i32>::new());\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "// The sum of every run of `size` neighbouring numbers, left to right.\n// If `size` is 0 or longer than the slice, there are no runs: return an empty Vec.\nfn window_sums(xs: &[i32], size: usize) -> Vec<i32> {\n    let mut sums = Vec::new();\n    if size == 0 {\n        return sums;\n    }\n    for run in xs.windows(size) {\n        let mut total = 0;\n        for x in run {\n            total += *x;\n        }\n        sums.push(total);\n    }\n    sums\n}\n\nfn main() {\n    assert_eq!(window_sums(&[1, 2, 3, 4, 5], 3), vec![6, 9, 12]);\n    assert_eq!(window_sums(&[4, 5], 1), vec![4, 5]);\n    assert_eq!(window_sums(&[1, 2, 3], 3), vec![6]);\n    assert_eq!(window_sums(&[1, 2], 3), Vec::<i32>::new());\n    assert_eq!(window_sums(&[], 2), Vec::<i32>::new());\n    assert_eq!(window_sums(&[5, 6], 0), Vec::<i32>::new());\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}

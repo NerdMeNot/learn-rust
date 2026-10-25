@@ -1,0 +1,55 @@
+# Checkpoint: Abstractions
+#
+# One binary per question (rust/src/bin/qN.rs); a session runs one of them. The questions that
+# are compile errors are expect: fail. The fix-it question (q8) has a fixed twin (q8_fixed.rs).
+name: checkpoint-abstractions
+sessions:
+  q1:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin q1
+  q2:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin q2
+  q3:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin q3
+  q4:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin q4
+  q5:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin q5
+        expect: fail
+  q6:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin q6
+        expect: fail
+  q7:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin q7
+        expect: fail
+  q8:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin q8
+        expect: fail
+  q8-fixed:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin q8_fixed
+  q8-clone:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin q8_clone
+  q8-copy:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin q8_copy
+        expect: fail

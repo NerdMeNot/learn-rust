@@ -1,0 +1,51 @@
+---
+// One program: a header (language, file name, an optional status chip, Run, Copy),
+// the highlighted code, and what running it printed.
+import { Code } from '@astrojs/starlight/components'
+import { LANG, type Lang } from '../../lib/langs'
+import { playground as playgroundUrl } from './lessonData'
+
+interface Props {
+  lang: Lang
+  code: string
+  out?: string
+  cmd?: string
+  title?: string
+  file?: string | null
+  status?: { cls: string; chip: string }
+  varies?: boolean
+  warnings?: string
+  hl?: string
+  /** Lines to highlight, 1-based. */
+  mark?: number[]
+  /** Show a "Run" link that opens this code in the Rust Playground. */
+  playground?: boolean
+}
+const { lang, code, out, cmd, title, file, status, varies, warnings, hl, mark, playground } = Astro.props
+const L = LANG[lang]
+const trim = (s: string) => s.replace(/\n+$/, '')
+// The Playground runs one file with no crates beyond its top 100, so only plain
+// programs get the button.
+const runnable = playground && lang === 'rust' && /fn main\(/.test(code)
+---
+<div class="lr-panel not-content">
+  <div class="lr-panel-head">
+    <span class="lr-lang" style={`--c:${L.color}`}>{title ?? L.name}</span>
+    {file !== null && <span class="lr-file">{file ?? L.file}</span>}
+    <span class="lr-grow" />
+    {status && <span class={`lr-st ${status.cls}`}>{status.chip}</span>}
+    {runnable && <a class="lr-run" href={playgroundUrl(trim(code))} target="_blank" rel="noopener" title="Open in the Rust Playground">Run ↗</a>}
+    <button class="lr-copy" type="button" data-copy>Copy</button>
+  </div>
+  <div class="lr-code" data-code>
+    <Code code={trim(code)} lang={hl ?? L.hl} frame="none" mark={mark} />
+  </div>
+  {out !== undefined && (
+    <div class="lr-out">
+      <span class="lr-cmd">{cmd ?? L.cmd}</span>
+      {warnings && <pre class="lr-warnings">{warnings}</pre>}
+      <pre>{trim(out)}</pre>
+      {varies && <p class="lr-varies">This program prints something slightly different each run. This is one real run.</p>}
+    </div>
+  )}
+</div>

@@ -1,0 +1,135 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Files and I/O"
+part: "std"
+intro: >-
+  Reading and writing files lives in `std::fs` (whole files at once) and `std::io`
+  (streams, buffers, line by line). Almost every call that touches the disk returns an
+  `io::Result`, and `?` passes the error up to the caller.
+coming_from:
+  go: >-
+    `fs::write` is `os.WriteFile`, and `fs::read_to_string` is `os.ReadFile` plus
+    `string()` plus a UTF-8 check that can fail. `BufReader::lines()` takes the place of
+    `bufio.Scanner`, and `?` replaces each `if err != nil`. A `File` closes at the end of
+    its scope, but unlike `f.Close()` that cannot return an error.
+  kotlin: >-
+    `fs::write` and `fs::read_to_string` are `writeText` and `readText`. Failures come
+    back as `io::Result` instead of exceptions, and a file closes when it goes out of
+    scope, as if every use were wrapped in `use { }`, except that a failed close is
+    not reported.
+  python: >-
+    `fs::read_to_string` is `path.read_text()` and `fs::write` is `path.write_text()`. A
+    file closes when its variable goes out of scope, like the end of a `with` block, and
+    errors come back as a `Result` instead of a raised `OSError`. Bad UTF-8 is an
+    `io::Error` too, not a `UnicodeDecodeError`.
+  typescript: >-
+    `std::fs` is like the `*Sync` functions in `node:fs`: plain blocking calls, and
+    reading line by line needs no `async`. Errors come back as a `Result`, and
+    `e.kind()` plays the role of `err.code`.
+  java: >-
+    `fs::write` and `fs::read_to_string` are `Files.writeString` and `Files.readString`,
+    and a call that can fail returns `io::Result` instead of throwing `IOException`.
+    Files close when they go out of scope, like try-with-resources but automatic, except
+    that a failed close is not reported. You do need `use std::io::Read` to get methods
+    like `read_to_string` on a `File`.
+  csharp: >-
+    `fs::write` and `fs::read_to_string` are `File.WriteAllText` and `File.ReadAllText`,
+    but errors come back as `io::Result` for `?`, not as exceptions. A `File` closes
+    when it goes out of scope, like `using` without the keyword (and without an
+    exception from a failed close), and trait methods like `read_to_string` need a
+    `use std::io::Read`.
+  c: >-
+    `File` is closer to a file descriptor than to a `FILE *`: it has no buffer
+    (`BufReader` and `BufWriter` add one), and it closes itself at the end of its scope,
+    so there's no `fclose` to forget. A failing call returns a `Result` with the error
+    kind inside, instead of `NULL` plus `errno`.
+  cpp: >-
+    `File` is RAII like `std::fstream`, closed at the end of its scope, but it has no
+    buffer where an `fstream` has one. Every read and write returns an `io::Result`
+    that you must handle, instead of a stream fail bit that's easy to ignore.
+notes:
+  - >-
+    `fs::write`, `fs::read_to_string` and `fs::read` (bytes) are the one-liners. Reach
+    for `File` plus `BufReader` or `BufWriter` when the file is big or you want it line
+    by line.
+  - >-
+    `reader.lines()` gives you `Result<String>` items, not plain Strings. That's why
+    there's a `let line = line?;` inside the loop. Each read can fail, and you get that
+    error on the line where it happened. Ignoring a `Result` draws a compiler warning.
+  - >-
+    A `File` has no buffer of its own: `lines()` needs a `BufReader`, and many small
+    writes want a `BufWriter`. Dropping a `File` closes it but cannot report a failed
+    close, so call `sync_all` or `flush` where you must know.
+  - >-
+    Paths are their own type, `Path` (borrowed) and `PathBuf` (owned), like `&str` and
+    `String`. File names on Linux don't have to be valid UTF-8, so a path isn't just a
+    string. `.join()` is `filepath.Join`, except that an absolute second part replaces
+    the first.
+  - >-
+    `fs::write(&path, ...)` borrows the path. Functions like this take `impl
+    AsRef<Path>`, which means "anything that can be read as a path": a `&str`, a
+    `String`, a `PathBuf`. [Reading signatures](/learn/reading-signatures/) explains
+    that bound.
+  - >-
+    Writing with `writeln!` needs `use std::io::Write`, and `.lines()` needs `use
+    std::io::BufRead`. Those methods come from traits, and a trait has to be imported
+    before its methods show up. That's the gotcha below.
+gotcha:
+  title: "Calling a method that's \"right there\" on a File"
+  verdict: "rust-rule"
+  looks_fine: >-
+    In Go, Java, Python, TypeScript and C# a method belongs to its type: if the file
+    has `Read`, you can call it anywhere you have a file. Nothing else to import.
+  rust_sees: >-
+    `read_to_string` isn't a method of `File` itself. It comes from the `Read` trait,
+    and trait methods only exist where the trait is imported with `use`.
+  why: >-
+    Many std types get most of their methods from traits: `Read`, `Write`, `BufRead`,
+    `Iterator`, `FromStr`. Rust only looks at traits you've brought into scope, so two
+    crates can add methods with the same name without clashing. The compiler error tells
+    you exactly which `use` line to add. Copy it and move on.
+  langs:
+    go:
+      status: "runs"
+      says: >-
+        Go runs this and prints hello. `Read` is a method on the file itself, so there
+        is nothing extra to import.
+    kotlin:
+      status: "runs"
+      says: >-
+        Kotlin runs this and prints hello, because `reader()` and `readText()` come from
+        `kotlin.io`, which is imported by default. Kotlin has the Rust rule too: the
+        same `readText()` on a `java.nio.file.Path` does not compile until you add
+        `import kotlin.io.path.readText`.
+    python:
+      status: "runs"
+      says: >-
+        Python prints hello. `read` is a method of the file object itself, so there is
+        nothing extra to import before you can call it.
+    typescript:
+      status: "runs"
+      says: >-
+        Prints hello. Node's file functions are plain functions in the `fs` module, so
+        once it's imported every one of them is there.
+    java:
+      status: "runs"
+      says: >-
+        In Java a method belongs to its class, so `readAllBytes` is right there on the
+        stream with no extra import, and this prints hello.
+    csharp:
+      status: "runs"
+      says: >-
+        `ReadToEnd` is a method of StreamReader itself, so it's there with no extra
+        `using`, and this prints hello. Extension methods like LINQ's do need a `using`,
+        but the project's implicit usings already bring in the common ones.
+    c:
+      status: "refuses"
+      says: >-
+        C has a cousin of this mistake: forget `#include <string.h>` and GCC 14 refuses
+        `strcspn` and `strlen`, and even suggests the header, much like rustc suggests
+        `use std::io::Read`.
+    cpp:
+      status: "refuses"
+      says: >-
+        C++ refuses this too: without `#include <fstream>`, `std::ofstream` and
+        `std::ifstream` are only declared, so g++ calls them incomplete types. For
+        `std::ifstream` it also names the header to add, `<fstream>`.

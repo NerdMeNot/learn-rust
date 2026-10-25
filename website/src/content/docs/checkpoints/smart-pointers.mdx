@@ -1,0 +1,126 @@
+---
+title: "Checkpoint: Smart pointers"
+description: "Seven questions on Rc, Weak, Drop, Send and the borrow checker's errors. Predict the output or the error code, then open the answer to see the real run."
+---
+
+import { Files, Session } from '../../../components/guide'
+
+Seven short programs on the Smart pointers part: `Rc` and `Weak`, `Drop`, interior mutability, `Rc` across threads, and the errors the compiler gives, [borrow checker](/learn/borrow-checker/) ones among them. Question 4 uses `thread::spawn`, which the Smart pointers lesson previews at the end; nothing else here comes from a later part.
+
+How to use it: read the program, write down your answer (the output, or the error code), then open the answer. Every answer is a real run with Rust 1.99.1, edition 2024. The programs that do not compile are kept apart in the project, so the others build.
+
+## 1. Counting owners
+
+<Files guide="checkpoint-smart-pointers" dir="rust" files={["src/bin/q1.rs"]} />
+
+What does it print?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-smart-pointers" run="q1" />
+
+`Rc::clone` made two owners. `Rc::downgrade` adds a weak count, which does not keep the value alive. After `drop(a)` one owner (`b`) was left, so `upgrade` found the value; after `drop(b)` none was, so it found nothing. Taught in [Cycles and `Weak<T>`](/learn/smart-pointers/#cycles-and-weakt).
+
+</details>
+
+## 2. When does the message print?
+
+<Files guide="checkpoint-smart-pointers" dir="rust" files={["src/bin/q2.rs"]} />
+
+Which lines appear, and in which order?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-smart-pointers" run="q2" />
+
+`drop(first)` gave up one of two owners, so nothing printed there. The value is dropped when the last owner goes, and `extra` was that owner. At the closing brace, locals are dropped in the reverse of the order they were declared: `boxed`, then `extra`, then `second`. Taught in [`Rc<T>`](/learn/smart-pointers/#rct-several-owners) and [`Drop`](/learn/common-traits/#drop-the-trait-behind-scope-exit).
+
+</details>
+
+## 3. One owner changes, the other does not
+
+<Files guide="checkpoint-smart-pointers" dir="rust" files={["src/bin/q3.rs"]} />
+
+What does it print?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-smart-pointers" run="q3" />
+
+`Rc::make_mut` saw a second owner, so it copied the `Vec` for `mine` before the push. `theirs` kept the old one, and each count dropped to 1. Now `mine` is alone, so the second push changes it in place (the lesson's `make-mut` program checks that the allocation did not move). Taught in [`Rc<T>`](/learn/smart-pointers/#rct-several-owners).
+
+</details>
+
+## 4. Which error code?
+
+<Files guide="checkpoint-smart-pointers" dir="fails" files={["q4.rs"]} />
+
+Does it compile? If not, which error code, and which trait is missing?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-smart-pointers" run="q4" />
+
+E0277: `Rc<Vec<i32>>` is not `Send`. An `Rc` changes its count without protection, so `thread::spawn` refuses a closure that owns one. `Arc` is the same API with an atomic count. Taught in [Across threads: `Arc<T>`](/learn/smart-pointers/#across-threads-arct) and [Send and Sync](/learn/send-sync/).
+
+</details>
+
+## 5. Which error code?
+
+<Files guide="checkpoint-smart-pointers" dir="fails" files={["q5.rs"]} />
+
+Both closures only add or subtract one. Does it compile? If not, which error code?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-smart-pointers" run="q5" />
+
+E0499. Each closure holds a `&mut count` for as long as it is used, and `up` is still used after `down` was made. Calling `up()` before creating `down` ends the first borrow in time. Taught in [Two borrows at once](/learn/borrow-checker/#two-borrows-at-once-e0499-e0502) and [What a closure captures](/learn/closures/#what-a-closure-captures).
+
+</details>
+
+## 6. Which error code?
+
+<Files guide="checkpoint-smart-pointers" dir="fails" files={["q6.rs"]} />
+
+Does it compile? If not, which error code, and what does the compiler suggest?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-smart-pointers" run="q6" />
+
+E0507. Indexing borrows the `Vec`, and a `String` cannot be moved out of a borrow. The two suggestions are a reference (`&names[0]`) or a copy of the text (`.clone()`). Taught in [Moving out of a borrow](/learn/borrow-checker/#moving-out-of-a-borrow-e0507).
+
+</details>
+
+## 7. Fix it: the nodes that never drop
+
+<Files guide="checkpoint-smart-pointers" dir="rust" files={["src/bin/q7.rs"]} />
+
+First predict the output. Then keep `children` as it is (the parent owns its children) and change the `parent` field, so that `drop root` and `drop leaf` both print.
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-smart-pointers" run="q7" />
+
+`root` and `leaf` own each other, so each count is 2. At the closing brace the variables go and the counts fall to 1, never 0, so no `drop` runs. Keep `children` as an owner and make `parent` the `Weak`. That means the field's type, its starting value and the line that sets it:
+
+<Files guide="checkpoint-smart-pointers" dir="fixes" files={["q7.rs"]} run="q7-fixed" />
+
+A `Weak` is not an owner, so `root` has one. The `leaf` variable goes first (2 to 1). Then `root` reaches 0 and prints, and dropping its `children` takes `leaf` to 0. Taught in [Cycles and `Weak<T>`](/learn/smart-pointers/#cycles-and-weakt).
+
+</details>
+
+## If you missed one
+
+- Questions 1 to 3 and 7: [Smart pointers](/learn/smart-pointers/), then [Common traits](/learn/common-traits/#drop-the-trait-behind-scope-exit) for `Drop`.
+- Question 4: [Across threads](/learn/smart-pointers/#across-threads-arct), then [Send and Sync](/learn/send-sync/) in the next part.
+- Questions 5 and 6: [Borrow checker](/learn/borrow-checker/) and [Closures](/learn/closures/).
+- Next: [Checkpoint: Concurrency](/checkpoints/concurrency/).

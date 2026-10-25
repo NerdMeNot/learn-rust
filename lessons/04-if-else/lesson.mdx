@@ -1,0 +1,235 @@
+<p class="lr-layer">The toolkit</p>
+
+[Statements and expressions](/learn/statements-expressions/) showed how `if` looks, as a value, with the stray `;` and the `if x = 1` typo. This page is about how it behaves. Outputs come from Linux on 64-bit ARM with Rust 1.99.1.
+
+## `if` is an expression, and both arms agree
+
+An `if`/`else` has a value, so it can sit wherever a value can ([Statements and expressions](/learn/statements-expressions/#statement-or-expression) has the rules). A branch may be a whole block; its last expression, with no `;`, is the value.
+
+<Snippet file="as-value.rs" />
+
+Every branch must give the same type, because `limit` gets exactly one. Rust will not widen an integer to a float to match:
+
+<Snippet file="arms-differ.fail.rs" />
+
+The fix is `1.0`: an integer and a float are different types, not one `number`. A branch that ends in `return`, `continue` or `panic!` is exempt, because it never gives a value (the [never type](/learn/statements-expressions/#when-nothing-comes-back-the-never-type)). An `if` with no `else` gives `()`, so it cannot supply a value (E0317, in [Smaller slips](/learn/statements-expressions/#smaller-slips)).
+
+## Only a `bool` is a condition
+
+There is no truthiness: a number, a string, a list or an `Option` is not a condition (E0308, "expected `bool`"). The number case is in [Smaller slips](/learn/statements-expressions/#smaller-slips) and the others are on [What Rust lacks](/learn/what-rust-lacks/). Write the comparison you mean: `n != 0`, `!name.is_empty()`, `found.is_some()`.
+
+## Comparing and combining
+
+<Snippet file="ops.rs" />
+
+`==` and `!=` compare contents (numbers, text, tuples, arrays and many other types); `<`, `>`, `<=` and `>=` need a type with an order. Two numbers must have the same type, with no implicit widening ([Numbers and types](/learn/types/#no-implicit-widening)). A few mixed pairs, such as `String` and `&str`, are written to be comparable.
+
+<Snippet file="mixed-eq.fail.rs" />
+
+Comparisons do not chain:
+
+<Snippet file="chained-compare.fail.rs" />
+
+`&&` and `||` take `bool`s. `!` is "not" on a `bool`; on an integer it flips every bit instead, so write `n == 0`, not `!n` (Go spells the bit flip `^n`). `&&` and `||` **short-circuit**: the right side runs only if the left has not already decided the answer, which makes `!items.is_empty() && items[0] > 5` safe. `&` and `|` also work on `bool` but run both sides:
+
+<Snippet file="short-circuit.rs" />
+
+(`&[]` and `&[9, 1]` are borrowed arrays: [Borrowing](/learn/borrowing/).)
+
+## `else if`, and when to use `match` instead
+
+`if`/`else if`/`else` tests in order and takes the first branch that is true. When the chain is the function's value, as here, the last `else` is required, or the chain fails with the E0317 named in the first section (message in [Smaller slips](/learn/statements-expressions/#smaller-slips)).
+
+<Snippet file="chain.rs" />
+
+(`&'static str` is the type of a string literal: [Reading signatures](/learn/reading-signatures/).)
+
+When the branches compare one value with fixed cases or ranges, [`match`](/learn/match/) is more direct and the compiler checks that no case is missing. A chain of `if`s does not; use it when the tests are different questions.
+
+## `if let` and `let ... else`
+
+`if let` asks "does this value have this shape?" and unpacks it in one step. The pattern goes left of the `=`. Here the value is the `Result` that `parse` gives back: `Ok(number)` or `Err(reason)` ([Errors](/learn/errors/) covers it). `parse` also rejects a number that does not fit the type, as `"99999999999"` shows for `i32`. `Option` ([Option](/learn/option/)) and any enum ([Enums](/learn/enums/)) work the same way.
+
+<Snippet file="if-let.rs" />
+
+The names a pattern binds exist only inside the `if let` block:
+
+<Snippet file="scope.fail.rs" />
+
+`let ... else` is for the other case: the value must have the shape, or the code leaves this spot. The binding stays in scope after the statement, so the happy path stays unindented. The `else` block must leave (for example `return`, `break`, `continue` or `panic!`):
+
+<Snippet file="let-else.rs" />
+
+<Snippet file="let-else-falls.fail.rs" />
+
+([Declarations and types](/learn/declarations-types/#patterns-in-let-and-shadowing) shows the syntax.) Use `if let` when a mismatch means "do nothing", `let ... else` when it means "stop here". Both throw away the `Err` payload; to keep it, use `match` ([Errors](/learn/errors/)).
+
+## Comparing floats
+
+Floats follow IEEE 754, as in most languages: results are not exact, and NaN ("not a number") is neither smaller, equal nor larger than anything. Rust's own point is the `else`.
+
+<Snippet file="floats.rs" />
+
+Test closeness with a tolerance you choose, not `==`, and remember that the `else` of `x < 0.0` is not "x is zero or more" when `x` might be NaN. [Numbers and types](/learn/types/) covers the rest of float behaviour.
+
+## Your language, in Rust
+
+<ForLang only="go">
+
+| In Go | In Rust |
+|---|---|
+| `if v, err := f(); err != nil { … } else { … }` | `if let Ok(v) = f() { … } else { … }`. The blocks swap places: Go's first block is the error, Rust's is the success, and Rust's `v` exists only there (the `else` never sees the `Err`; use `match` for that). |
+| `v, err := f(); if err != nil { return err }` | `let Ok(v) = f() else { return … };` is the same guard, and `?` shortens the common case ([Errors](/learn/errors/)). |
+| `if x := g(); x > 3 { … }` | A block `{ let x = g(); if x > 3 { … } }`, or compute `x` before the `if`. Rust has no init statement. |
+| `switch { case n < 0: … case n == 0: … default: … }` | an `if`/`else if`/`else` chain, or [`match`](/learn/match/) |
+| `var s string; if c { s = "a" } else { s = "b" }` | `let s = if c { "a" } else { "b" };` |
+| `v, ok := m[k]; if ok { … }` | `if let Some(v) = m.get(&k) { … }` ([Maps](/learn/maps/); `&k` is a borrow, not a copy) |
+| `if v, ok := x.(T); ok { … }`, type `switch` | `match` on an enum ([Enums](/learn/enums/)) |
+
+Same as Go: a `bool` condition, no `int32 == int64`, NaN != NaN, `&` above `==`. New: `if` as a value, `&` and `|` that do not short-circuit, `!` on integers.
+
+Go's init statement, then its closest Rust counterpart and the block that stands in for it:
+
+<Snippet file="init-stmt.go" />
+
+<Snippet file="init-stmt.rs" />
+
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+
+| You write | In Rust |
+|---|---|
+| `c ? a : b` (Java, C#), `if (c) a else b` (Kotlin) | `if c { a } else { b }`. Braces are required. |
+| `when` (Kotlin), `switch` expression (Java, C#) | [`match`](/learn/match/) |
+| `if (x != null) { … x … }`, `x?.let { … }` | `if let Some(x) = x { … }` ([Option](/learn/option/)) |
+| `if (x is String) { x.length }`, `if (x is string s)` | `if let` on an enum or `Option`. Rust has no `instanceof` on arbitrary values; the usual tool is an [enum](/learn/enums/) variant. |
+| `a.equals(b)`, `Objects.equals(a, b)` | `a == b`, for types that implement `PartialEq` (derive it for your own structs) |
+
+</ForLang>
+
+<ForLang only="java">
+
+In Java, `==` on two `String` objects compares references. In Rust `==` compares the text:
+
+<Snippet file="string-eq.java" />
+
+<Snippet file="string-eq.rs" />
+
+</ForLang>
+
+<ForLang only="kotlin">
+
+Kotlin's `if` is already an expression and a successful `is` check changes the type of the variable. Rust's version names a new variable instead ([Option](/learn/option/)).
+
+<Snippet file="smart-cast.kt" />
+
+</ForLang>
+
+<ForLang only="csharp">
+
+C#'s `is` pattern is the closest relative of `if let`: it tests and binds in one step.
+
+<Snippet file="is-pattern.cs" />
+
+</ForLang>
+
+<ForLang only="python typescript">
+
+| You write | In Rust |
+|---|---|
+| `if n:` / `if (n)`; `if s:`, `if items:` | `if n != 0`; `if !s.is_empty()`, `if !items.is_empty()` |
+| `if x is None:` / `if (x == null)` | `if x.is_none()` ([Option](/learn/option/)) |
+| `a if c else b`, `c ? a : b` | `if c { a } else { b }` |
+| `elif` | `else if` |
+| `1 < x < 5` (Python) | `1 < x && x < 5` (the chained form is the error shown above) |
+| `x or d` (Python), `x \|\| d` (TypeScript) | `if x != 0 { x } else { d }` for a number. `&&` and `\|\|` give a `bool`. |
+| `x ?? d` (TypeScript), `x if x is not None else d` (Python) | `x.unwrap_or(d)` on an `Option` ([Option](/learn/option/)) |
+| `if (m := d.get(k)) is not None:` (Python), `if (x !== undefined) { …x… }` (TypeScript) | `if let Some(x) = x { … }`. Rust makes a new name; it does not narrow the old one, so `if x.is_some() { x.foo() }` fails. |
+| `not x`, `!x`, `!!x` | `!` works on a `bool`; on an integer it flips bits. Write the comparison. |
+| `switch` (TypeScript), `match` (Python 3.10) | [`match`](/learn/match/) |
+| `===` (TypeScript), `==` (Python) | `==`, which compares contents, also for arrays and `Vec`s (TypeScript `===` compares identity there) |
+
+</ForLang>
+
+<ForLang only="python">
+
+In Python, `and`/`or` return one of their operands and an empty list is false. `or` also replaces a stored `0`, which `get` with a default does not:
+
+<Snippet file="truthy.py" />
+
+</ForLang>
+
+<ForLang only="typescript">
+
+In TypeScript, `||` returns an operand and replaces every falsy value, `0` included; `??` replaces only `null` and `undefined`:
+
+<Snippet file="truthy.ts" />
+
+</ForLang>
+
+<ForLang only="c cpp">
+
+| You write | In Rust |
+|---|---|
+| `if (n)`; `if (p)`, `if (p != NULL)` | `if n != 0`; `if let Some(p) = p { … }`, or `p.is_some()` ([Option](/learn/option/)) |
+| `if (auto it = m.find(k); it != m.end())` (C++17) | `if let Some(v) = m.get(&k) { … }` ([Maps](/learn/maps/)) |
+| `switch`; `c ? a : b` | [`match`](/learn/match/); `if c { a } else { b }` |
+
+Operator precedence differs too. In C and C++, `==` binds tighter than `&`, so `x & 1 == 0` means `x & (1 == 0)`, and the usual "is it even?" test is wrong. GCC 14 warns about it with `-Wall` (the runner passes it), as the output below shows, but compiles it. In Rust `&` binds tighter than `==`:
+
+<Snippet file="precedence.c" />
+
+<Snippet file="precedence.cpp" />
+
+<Snippet file="precedence.rs" />
+
+</ForLang>
+
+<ForLang only="cpp">
+
+C++17 has the same `if` with an initialiser as Go:
+
+<Snippet file="if-init.cpp" />
+
+</ForLang>
+
+<p class="lr-layer">Going deeper</p>
+
+## Let chains
+
+An `if let` can be joined with more tests by `&&`, and later tests can use names bound earlier. Let chains need edition 2024 (this course uses it): the [Rust 1.88 release post](https://blog.rust-lang.org/2025/06/26/Rust-1.88.0/) says they are available only there.
+
+<Snippet file="let-chain.rs" />
+
+The pieces are joined with `&&`. A `let` cannot be joined with `||`:
+
+<Snippet file="let-or.fail.rs" />
+
+## A `bool` as an `Option`
+
+`bool::then_some(value)` gives `Some(value)` when the `bool` is true and `None` when it is false. It is close to `if c { Some(v) } else { None }` ([Option](/learn/option/)), except that `then_some` evaluates its argument either way. Its sibling `then` takes a closure and runs it only when true ([closures](/learn/closures/)).
+
+<Snippet file="then-some.rs" />
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Each exercise has checks in `main`. Open it in the Playground, replace the `todo!()`, and run it until it prints `all checks passed`.
+
+<Exercise name="classify" title="Classify a temperature">
+Write `band` (it returns `&'static str`, a string literal): below 0 is `"freezing"`, 0 to 15 `"cold"`, 16 to 25 `"mild"`, 26 and above `"hot"`. Make one `if`/`else if`/`else` chain the function's value. The checks include the boundary values and the smallest and largest `i32`.
+</Exercise>
+
+<Exercise name="valid-age" title="Validate an age with let else">
+Write `valid_age`: text with optional whitespace around a whole number from 0 to 120 gives `Some(number)`, anything else gives `None`. Use `let ... else` for the parse and a plain `if` for the range. The checks include `"-5"`, `"121"`, `"4 2"`, an empty string and a number too big for an `i32`.
+</Exercise>
+
+## Read more
+
+- [The Rust Book, chapter 3.5: Control Flow](https://doc.rust-lang.org/book/ch03-05-control-flow.html): `if`, `else if`, and `if` in a `let`.
+- [The Rust Book, chapter 6.3: Concise Control Flow with `if let` and `let...else`](https://doc.rust-lang.org/book/ch06-03-if-let.html)
+- Rust by Example: [if/else](https://doc.rust-lang.org/rust-by-example/flow_control/if_else.html), [if let](https://doc.rust-lang.org/rust-by-example/flow_control/if_let.html) and [let-else](https://doc.rust-lang.org/rust-by-example/flow_control/let_else.html)
+- [The Reference: `if` and `if let` expressions](https://doc.rust-lang.org/reference/expressions/if-expr.html), including the chains of conditions section.
+- Standard library: [`bool`](https://doc.rust-lang.org/std/primitive.bool.html) (with [`then_some`](https://doc.rust-lang.org/std/primitive.bool.html#method.then_some)) and [`f64`](https://doc.rust-lang.org/std/primitive.f64.html).

@@ -1,0 +1,378 @@
+{
+ "id": "mutable-borrows",
+ "title": "Mutable Borrows",
+ "part": "ownership",
+ "intro": "`&mut` lends a value so it can be changed. The rule: while something holds a `&mut`, nothing else can use that value at all. Many readers, or one writer, never both.",
+ "coming_from": {
+  "go": "`&mut Vec<i32>` is like your `*[]int`, except you don't write `(*scores)[i]`: indexing and loops look through the reference. What Go has no version of is the exclusivity: while a `&mut` exists, nothing else can read or write that value.",
+  "kotlin": "A `&mut Vec<i32>` parameter is like a `MutableList<Int>` parameter, but the caller has to write `&mut scores`, so the call shows what may change. A Kotlin `List` is a read-only view that another reference can still change under you. While a `&mut` is lent out, no other reference exists at all, not even to read.",
+  "python": "Python lets any reference change a list. Rust only allows it through `&mut`, which must be written on both the parameter and the call. Only one `&mut` can exist at a time, and nothing else can even read the list while it does.",
+  "typescript": "Any reference to an array can change it in TypeScript, unless that reference is typed `readonly`, which restricts only that one reference. In Rust only a `&mut` can change it, you write it at the call (`&mut scores`), and while it exists nothing else can read or write the value.",
+  "java": "`&mut Vec<i32>` is like passing a `List<Integer>` that the method may change, except the signature says so, and Rust allows only one such writer at a time with no readers alongside it. (A read-only view such as `Collections.unmodifiableList` exists, but it only restricts the reference you hold.) Java has references to element objects but not to a list slot, so the Rust fix for changing two elements looks like yours: `scores[i] += 1`, where you'd write `scores.set(i, scores.get(i) + 1)`.",
+  "csharp": "`&mut` is like a `ref` parameter or `ref` local, but exclusive: while one `&mut` exists, nothing else can read or write that value. C# lets two `ref` locals point at the same array slot; Rust doesn't, so use indexes or `split_at_mut`.",
+  "c": "`&mut T` is `restrict` made universal and checked. In C, `restrict` is a promise you keep yourself; Rust refuses `&mut arr[i]` and `&mut arr[j]` at once, even for different elements. (`split_at_mut` and slice patterns are the way to get two.)",
+  "cpp": "`&mut T` is a non-`const` `T&`, with one extra rule: only one can be alive at a time, and no `const` references alongside it. Two `int&` into one vector are fine in C++ (until it grows), but rejected in Rust; use indexes or `split_at_mut`."
+ },
+ "notes": [
+  "`&mut x` lends `x` out to be changed. A plain `&` only looks. Because `&mut` is written at the call, you can see which calls change your data.",
+  "`*r` means \"the value `r` points at\". Method calls and printing look through a reference for you, so you mostly see `*` when assigning: `*r += 1`.",
+  "You need `mut` in two places: the variable (`let mut scores`) and the borrow (`&mut scores`). The first is at the declaration, the second at the call.",
+  "This one-writer rule is the main rule that prevents data races in safe Rust, together with the `Send` and `Sync` rules for threads ([Send and Sync](/learn/send-sync/)). It is the rule of a read-write lock (many readers or one writer), but checked while compiling."
+ ],
+ "gotcha": {
+  "title": "Two writers into the same list",
+  "verdict": "fine-elsewhere",
+  "looks_fine": "In Go, `first := &scores[0]; last := &scores[2]` is fine. They point at different elements, so nothing overlaps.",
+  "rust_sees": "`&mut scores[0]` lends element 0 out to be changed (see the notes above). The borrow checker does not look at index values. It sees two `&mut` borrows of `scores`, both alive at the same time. (It doesn't track indexes in an array either: there the error names `scores[_]`.)",
+  "why": "This code is safe, but Rust can't prove it. Change 0 and 2 to variables `i` and `j`. When `i == j`, you have two writers to the same number. The compiler cannot tell that case from this one, so it refuses both. When you really need two parts at once, ask for pieces that cannot overlap.",
+  "langs": {
+   "go": {
+    "status": "runs",
+    "says": "Go runs this and prints [11 20 31]. Two pointers into the same slice are fine in Go, even when both write. (If two goroutines wrote through them without coordination, that would be a data race.)",
+    "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tscores := []int{10, 20, 30}\n\tfirst := &scores[0]\n\tlast := &scores[2]\n\t*first += 1\n\t*last += 1\n\tfmt.Println(scores)\n}\n",
+    "out": "[11 20 31]\n"
+   },
+   "kotlin": {
+    "status": "none",
+    "says": "Kotlin has no reference to a list slot (and an `Int` can't be changed), so you would write `scores[0] += 1` and `scores[2] += 1`. That is also the simplest Rust fix."
+   },
+   "python": {
+    "status": "none",
+    "says": "Python has no reference to a list slot, only to the objects in it, so you would write `scores[0] += 1` and `scores[2] += 1`. That is also the simplest Rust fix."
+   },
+   "typescript": {
+    "status": "none",
+    "says": "TypeScript has no reference to an array element. `let first = scores[0]; first += 1` changes a copy of the number and leaves the array alone. You would write `scores[0] += 1`, which is also the simplest Rust fix."
+   },
+   "java": {
+    "status": "none",
+    "says": "Java has references to element objects but not to a list slot, and an `Integer` can't be changed, so you would write `scores.set(0, scores.get(0) + 1)`. In Rust, `scores[0] += 1` is the simplest fix."
+   },
+   "csharp": {
+    "status": "runs",
+    "says": "C# allows two `ref` locals into the same array and prints [11, 20, 31]. Nothing checks whether two refs point at the same slot.",
+    "code": "int[] scores = [10, 20, 30];\nref int first = ref scores[0];\nref int last = ref scores[2];\nfirst += 1;\nlast += 1;\nConsole.WriteLine($\"[{string.Join(\", \", scores)}]\");\n",
+    "out": "[11, 20, 31]\n"
+   },
+   "c": {
+    "status": "runs",
+    "says": "C allows any number of pointers that write into the same array. This prints [11, 20, 31].",
+    "code": "#include <stdio.h>\n\nint main(void) {\n    int scores[] = {10, 20, 30};\n    int *first = &scores[0];\n    int *last = &scores[2];\n    *first += 1;\n    *last += 1;\n    printf(\"[%d, %d, %d]\\n\", scores[0], scores[1], scores[2]);\n    return 0;\n}\n",
+    "out": "[11, 20, 31]\n"
+   },
+   "cpp": {
+    "status": "runs",
+    "says": "Two `int&` into the same vector are fine in C++, so this prints `[11, 20, 31]`. (They would dangle if the vector grew.) Rust allows only one `&mut` at a time, and you would use `split_at_mut` or indexes.",
+    "code": "#include <iostream>\n#include <vector>\n\nint main() {\n    std::vector<int> scores{10, 20, 30};\n    int& first = scores[0];\n    int& last = scores[2];\n    first += 1;\n    last += 1;\n    std::cout << \"[\" << scores[0] << \", \" << scores[1] << \", \" << scores[2] << \"]\\n\";\n}\n",
+    "out": "[11, 20, 31]\n"
+   }
+  },
+  "code": "fn main() {\n    let mut scores = vec![10, 20, 30];\n    let first = &mut scores[0];\n    let last = &mut scores[2];\n    *first += 1;\n    *last += 1;\n    println!(\"{scores:?}\");\n}\n",
+  "error": "error[E0499]: cannot borrow `scores` as mutable more than once at a time\n --> src/main.rs:4:21\n  |\n3 |     let first = &mut scores[0];\n  |                      ------ first mutable borrow occurs here\n4 |     let last = &mut scores[2];\n  |                     ^^^^^^ second mutable borrow occurs here\n5 |     *first += 1;\n  |     ----------- first borrow later used here\n  |\n  = help: use `.split_at_mut(position)` to obtain two mutable non-overlapping sub-slices\n",
+  "error_code": "E0499",
+  "fixed": {
+   "code": "fn main() {\n    let mut scores = vec![10, 20, 30];\n    scores[0] += 1; // simplest: one change at a time\n    scores[2] += 1;\n\n    // two at once: split into halves that can't overlap\n    let (left, right) = scores.split_at_mut(2);\n    left[0] += 1;\n    right[0] += 1;\n    println!(\"{scores:?}\");\n}\n",
+   "out": "[12, 20, 32]\n"
+  }
+ },
+ "order": 19,
+ "program": {
+  "rust": {
+   "code": "fn add_bonus(scores: &mut Vec<i32>, bonus: i32) {\n    // iter_mut() visits each number as a &mut, a reference that can change it\n    for s in scores.iter_mut() {\n        *s += bonus; // *s is the number that s points at\n    }\n    scores.push(0);\n}\n\nfn main() {\n    let mut scores = vec![10, 20]; // vec![...] makes a growable list\n    add_bonus(&mut scores, 5);\n    println!(\"{scores:?}\");\n}\n",
+   "out": "[15, 25, 0]\n"
+  },
+  "go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc addBonus(scores *[]int, bonus int) {\n\tfor i := range *scores {\n\t\t(*scores)[i] += bonus\n\t}\n\t*scores = append(*scores, 0)\n}\n\nfunc main() {\n\tscores := []int{10, 20}\n\taddBonus(&scores, 5)\n\tfmt.Println(scores)\n}\n",
+   "out": "[15 25 0]\n"
+  },
+  "kotlin": {
+   "code": "fun addBonus(scores: MutableList<Int>, bonus: Int) {\n    for (i in scores.indices) {\n        scores[i] += bonus\n    }\n    scores.add(0)\n}\n\nfun main() {\n    val scores = mutableListOf(10, 20)\n    addBonus(scores, 5)\n    println(scores)\n}\n",
+   "out": "[15, 25, 0]\n"
+  },
+  "python": {
+   "code": "def add_bonus(scores: list[int], bonus: int) -> None:\n    for i in range(len(scores)):\n        scores[i] += bonus  # lists are passed by reference, so this changes the caller's list\n    scores.append(0)\n\n\nscores = [10, 20]\nadd_bonus(scores, 5)\nprint(scores)\n",
+   "out": "[15, 25, 0]\n"
+  },
+  "typescript": {
+   "code": "// arrays are passed by reference, so the function can change the caller's array\nfunction addBonus(scores: number[], bonus: number): void {\n  for (let i = 0; i < scores.length; i++) {\n    scores[i] += bonus;\n  }\n  scores.push(0);\n}\n\nconst scores = [10, 20];\naddBonus(scores, 5);\nconsole.log(scores);\n",
+   "out": "[ 15, 25, 0 ]\n"
+  },
+  "java": {
+   "code": "import java.util.ArrayList;\nimport java.util.List;\n\npublic class Main {\n    static void addBonus(List<Integer> scores, int bonus) {\n        scores.replaceAll(s -> s + bonus);\n        scores.add(0);\n    }\n\n    public static void main(String[] args) {\n        var scores = new ArrayList<>(List.of(10, 20));\n        addBonus(scores, 5);\n        System.out.println(scores);\n    }\n}\n",
+   "out": "[15, 25, 0]\n"
+  },
+  "csharp": {
+   "code": "List<int> scores = [10, 20];\nAddBonus(scores, 5);\nConsole.WriteLine($\"[{string.Join(\", \", scores)}]\");\n\nstatic void AddBonus(List<int> scores, int bonus)\n{\n    for (var i = 0; i < scores.Count; i++)\n    {\n        scores[i] += bonus;\n    }\n    scores.Add(0);\n}\n",
+   "out": "[15, 25, 0]\n"
+  },
+  "c": {
+   "code": "#include <stdio.h>\n#include <stdlib.h>\n\nstruct IntVec {\n    int *data;\n    size_t len, cap;\n};\n\nvoid push(struct IntVec *v, int x) {\n    if (v->len == v->cap) {\n        v->cap = v->cap ? v->cap * 2 : 4;\n        v->data = realloc(v->data, v->cap * sizeof(int));\n    }\n    v->data[v->len++] = x;\n}\n\n// a non-const pointer: this function may change the list\nvoid add_bonus(struct IntVec *scores, int bonus) {\n    for (size_t i = 0; i < scores->len; i++) {\n        scores->data[i] += bonus;\n    }\n    push(scores, 0);\n}\n\nint main(void) {\n    struct IntVec scores = {0};\n    push(&scores, 10);\n    push(&scores, 20);\n    add_bonus(&scores, 5);\n\n    printf(\"[\");\n    for (size_t i = 0; i < scores.len; i++) {\n        printf(i ? \", %d\" : \"%d\", scores.data[i]);\n    }\n    printf(\"]\\n\");\n    free(scores.data);\n    return 0;\n}\n",
+   "out": "[15, 25, 0]\n"
+  },
+  "cpp": {
+   "code": "#include <iostream>\n#include <vector>\n\nvoid add_bonus(std::vector<int>& scores, int bonus) {   // non-const reference: may change it\n    for (int& s : scores) {\n        s += bonus;\n    }\n    scores.push_back(0);\n}\n\nint main() {\n    std::vector<int> scores{10, 20};\n    add_bonus(scores, 5);\n    std::cout << \"[\";\n    for (std::size_t i = 0; i < scores.size(); ++i) {\n        std::cout << (i ? \", \" : \"\") << scores[i];\n    }\n    std::cout << \"]\\n\";\n}\n",
+   "out": "[15, 25, 0]\n"
+  }
+ },
+ "faq": [],
+ "snippets": {
+  "add-one.rs": {
+   "code": "fn add_one(x: &mut i32) {\n    *x += 1;\n    println!(\"inside add_one: x = {x}\");\n}\n\nfn add_one_to_copy(mut x: i32) -> i32 {\n    x += 1;\n    x\n}\n\nfn main() {\n    let mut n = 5;\n    add_one(&mut n);\n    println!(\"n after add_one: {n}\");\n\n    let copy_result = add_one_to_copy(n);\n    println!(\"add_one_to_copy returned {copy_result}, n is still {n}\");\n}\n",
+   "out": "inside add_one: x = 6\nn after add_one: 6\nadd_one_to_copy returned 7, n is still 6\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "alias-args.fail.rs": {
+   "code": "fn add_twice(total: &mut i32, amount: &i32) {\n    *total += *amount;\n    *total += *amount;\n}\n\nfn main() {\n    let mut x = 1;\n    add_twice(&mut x, &x);\n    println!(\"x: {x}\");\n}\n",
+   "error": "error[E0502]: cannot borrow `x` as immutable because it is also borrowed as mutable\n --> src/main.rs:8:23\n  |\n8 |     add_twice(&mut x, &x);\n  |     --------- ------  ^^ immutable borrow occurs here\n  |     |         |\n  |     |         mutable borrow occurs here\n  |     mutable borrow later used by call\n",
+   "lang": "rust"
+  },
+  "behind-shared.fail.rs": {
+   "code": "fn add_item(items: &Vec<i32>) {\n    items.push(0);\n}\n\nfn main() {\n    let mut items = vec![1, 2, 3];\n    add_item(&items);\n    println!(\"items: {items:?}\");\n}\n",
+   "error": "error[E0596]: cannot borrow `*items` as mutable, as it is behind a `&` reference\n --> src/main.rs:2:5\n  |\n2 |     items.push(0);\n  |     ^^^^^ `items` is a `&` reference, so it cannot be borrowed as mutable\n  |\nhelp: consider changing this to be a mutable reference\n  |\n1 | fn add_item(items: &mut Vec<i32>) {\n  |                     +++",
+   "lang": "rust"
+  },
+  "check-reborrow-generic.fail.rs": {
+   "code": "fn take<T>(_value: T) {}\n\nfn main() {\n    let mut n = 0;\n    let r = &mut n;\n    take(r); // a generic parameter has no known `&mut` target: this moves `r`\n    *r += 1;\n    println!(\"n: {n}\");\n}\n",
+   "error": "error[E0382]: use of moved value: `r`\n --> src/main.rs:7:5\n  |\n5 |     let r = &mut n;\n  |         - move occurs because `r` has type `&mut i32`, which does not implement the `Copy` trait\n6 |     take(r); // a generic parameter has no known `&mut` target: this moves `r`\n  |          - value moved here\n7 |     *r += 1;\n  |     ^^^^^^^ value used here after move\n  |\nhelp: consider creating a fresh reborrow of `r` here\n  |\n6 |     take(&mut *r); // a generic parameter has no known `&mut` target: this moves `r`\n  |          ++++++\n",
+   "lang": "rust"
+  },
+  "check-swap-same.fail.rs": {
+   "code": "fn main() {\n    let mut x = 1;\n    std::mem::swap(&mut x, &mut x);\n    println!(\"x: {x}\");\n}\n",
+   "error": "error[E0499]: cannot borrow `x` as mutable more than once at a time\n --> src/main.rs:3:28\n  |\n3 |     std::mem::swap(&mut x, &mut x);\n  |     -------------- ------  ^^^^^^ second mutable borrow occurs here\n  |     |              |\n  |     |              first mutable borrow occurs here\n  |     first borrow later used by call\n",
+   "lang": "rust"
+  },
+  "grow.rs": {
+   "code": "fn push_and_report(label: &str, mut v: Vec<i32>) {\n    let before = v.as_ptr();\n    let capacity_before = v.capacity();\n    v.push(5);\n    println!(\n        \"{label} capacity {capacity_before} -> {}, buffer moved: {}\",\n        v.capacity(),\n        v.as_ptr() != before\n    );\n}\n\nfn main() {\n    let alone = vec![1, 2, 3, 4];\n    push_and_report(\"no neighbour:\", alone);\n\n    let crowded = vec![1, 2, 3, 4];\n    let _neighbour = vec![0u8; 16]; // another allocation, probably right after `crowded`'s\n    push_and_report(\"a neighbour: \", crowded);\n}\n",
+   "out": "no neighbour: capacity 4 -> 8, buffer moved: false\na neighbour:  capacity 4 -> 8, buffer moved: true\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "last-use.fail.rs": {
+   "code": "fn main() {\n    let mut scores = vec![10, 20];\n    let writer = &mut scores;\n    println!(\"scores: {scores:?}\");\n    writer.push(30); // `writer` is used again, so its borrow was still alive above\n}\n",
+   "error": "error[E0502]: cannot borrow `scores` as immutable because it is also borrowed as mutable\n --> src/main.rs:4:24\n  |\n3 |     let writer = &mut scores;\n  |                  ----------- mutable borrow occurs here\n4 |     println!(\"scores: {scores:?}\");\n  |                        ^^^^^^ immutable borrow occurs here\n5 |     writer.push(30); // `writer` is used again, so its borrow was still alive above\n  |     ------ mutable borrow later used here\n",
+   "lang": "rust"
+  },
+  "last-use.rs": {
+   "code": "fn main() {\n    let mut scores = vec![10, 20];\n    let writer = &mut scores;\n    writer.push(30); // the last use of `writer`: its borrow ends here\n    println!(\"scores: {scores:?}\");\n\n    scores.push(40); // this borrows `scores` mutably for the call\n    println!(\"scores: {scores:?}\");\n}\n",
+   "out": "scores: [10, 20, 30]\nscores: [10, 20, 30, 40]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "loop-mut.rs": {
+   "code": "fn main() {\n    let mut prices = vec![100, 250, 80];\n\n    for p in &mut prices {\n        *p += 5;\n    }\n    println!(\"after for p in &mut prices: {prices:?}\");\n\n    for i in 0..prices.len() {\n        prices[i] *= 2;\n    }\n    println!(\"after prices[i] *= 2: {prices:?}\");\n\n    prices[1] -= 50;\n    println!(\"after prices[1] -= 50: {prices:?}\");\n}\n",
+   "out": "after for p in &mut prices: [105, 255, 85]\nafter prices[i] *= 2: [210, 510, 170]\nafter prices[1] -= 50: [210, 460, 170]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "loop-push-fixes.rs": {
+   "code": "fn main() {\n    // Fix 1: loop over the positions that exist now, and look each one up.\n    let mut v = vec![1, 2, 3];\n    let count = v.len();\n    for i in 0..count {\n        if v[i] == 2 {\n            v.push(20);\n        }\n    }\n    println!(\"index loop: {v:?}\");\n\n    // Fix 2: collect what to add in a second list, then add it after the loop.\n    let mut w = vec![1, 2, 3];\n    let mut extra = Vec::new();\n    for x in &w {\n        if *x == 2 {\n            extra.push(20);\n        }\n    }\n    w.extend(extra);\n    println!(\"second list: {w:?}\");\n}\n",
+   "out": "index loop: [1, 2, 3, 20]\nsecond list: [1, 2, 3, 20]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "loop-push.fail.rs": {
+   "code": "fn main() {\n    let mut v = vec![1, 2, 3];\n    for x in &v {\n        if *x == 2 {\n            v.push(20);\n        }\n    }\n    println!(\"v: {v:?}\");\n}\n",
+   "error": "error[E0502]: cannot borrow `v` as mutable because it is also borrowed as immutable\n --> src/main.rs:5:13\n  |\n3 |       for x in &v {\n  |       -        --\n  |       |        |\n  |       |        immutable borrow occurs here\n  |  _____|        immutable borrow later used here\n  | |\n4 | |         if *x == 2 {\n5 | |             v.push(20);\n  | |             ^^^^^^^^^^ mutable borrow occurs here\n6 | |         }\n7 | |     }\n  | |_____- this for loop borrows `v` immutably, preventing mutation within its body\n  |\n  = help: consider using an index-based loop instead, or collecting modifications into a separate collection\n",
+   "lang": "rust"
+  },
+  "mem-in-fn.rs": {
+   "code": "use std::mem;\n\n// `log` is only borrowed, so we can't move it out, but we can leave an empty Vec behind.\nfn drain_log(log: &mut Vec<String>) -> Vec<String> {\n    mem::take(log)\n}\n\nfn main() {\n    let mut log = vec![String::from(\"started\"), String::from(\"stopped\")];\n    let text_before = log[0].as_ptr();\n\n    let all = drain_log(&mut log);\n    println!(\"all: {all:?}\");\n    println!(\"log now: {log:?}, length {}\", log.len());\n    println!(\"same text, not a copy: {}\", all[0].as_ptr() == text_before);\n\n    log.push(String::from(\"started again\")); // the emptied Vec still works\n    println!(\"log after push: {log:?}\");\n}\n",
+   "out": "all: [\"started\", \"stopped\"]\nlog now: [], length 0\nsame text, not a copy: true\nlog after push: [\"started again\"]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "mem-tools.rs": {
+   "code": "use std::mem;\n\nfn main() {\n    let mut a = String::from(\"left\");\n    let mut b = String::from(\"right\");\n    mem::swap(&mut a, &mut b);\n    println!(\"swap:    a = {a}, b = {b}\");\n\n    let mut title = String::from(\"draft\");\n    let old = mem::replace(&mut title, String::from(\"final\"));\n    println!(\"replace: old = {old}, title = {title}\");\n\n    let mut log = vec![1, 2, 3];\n    let taken = mem::take(&mut log);\n    println!(\"take:    taken = {taken:?}, log = {log:?}\");\n}\n",
+   "out": "swap:    a = right, b = left\nreplace: old = draft, title = final\ntake:    taken = [1, 2, 3], log = []\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "move-out-of-mut.fail.rs": {
+   "code": "fn take_name(name: &mut String) -> String {\n    *name\n}\n\nfn main() {\n    let mut name = String::from(\"Ada\");\n    let taken = take_name(&mut name);\n    println!(\"taken: {taken}\");\n}\n",
+   "error": "error[E0507]: cannot move out of `*name` which is behind a mutable reference\n --> src/main.rs:2:5\n  |\n2 |     *name\n  |     ^^^^^ move occurs because `*name` has type `String`, which does not implement the `Copy` trait\n  |\nhelp: consider cloning the value if the performance cost is acceptable\n  |\n2 -     *name\n2 +     name.clone()",
+   "lang": "rust"
+  },
+  "needs-mut.fail.rs": {
+   "code": "fn add_one(x: &mut i32) {\n    *x += 1;\n}\n\nfn main() {\n    let n = 5;\n    add_one(&mut n);\n    println!(\"n: {n}\");\n}\n",
+   "error": "error[E0596]: cannot borrow `n` as mutable, as it is not declared as mutable\n --> src/main.rs:7:13\n  |\n7 |     add_one(&mut n);\n  |             ^^^^^^ cannot borrow as mutable\n  |\nhelp: consider changing this to be mutable\n  |\n6 |     let mut n = 5;\n  |         +++\n",
+   "lang": "rust"
+  },
+  "not-copy.fail.rs": {
+   "code": "fn main() {\n    let mut n = 0;\n    let first = &mut n;\n    let second = first; // moves the `&mut`, like moving a String\n    *first += 1;\n    *second += 1;\n    println!(\"n: {n}\");\n}\n",
+   "error": "error[E0382]: use of moved value: `first`\n --> src/main.rs:5:5\n  |\n3 |     let first = &mut n;\n  |         ----- move occurs because `first` has type `&mut i32`, which does not implement the `Copy` trait\n4 |     let second = first; // moves the `&mut`, like moving a String\n  |                  ----- value moved here\n5 |     *first += 1;\n  |     ^^^^^^^^^^^ value used here after move\n",
+   "lang": "rust"
+  },
+  "owner-uses.fail.rs": {
+   "code": "fn assign_while_read() {\n    let mut n = 10;\n    let reader = &n;\n    n = 20; // the owner assigns while a reader is alive\n    println!(\"reader sees {reader}\");\n}\n\nfn assign_while_written() {\n    let mut n = 10;\n    let writer = &mut n;\n    n = 20; // the owner assigns while a writer is alive\n    *writer += 1;\n}\n\nfn read_while_written() {\n    let mut n = 10;\n    let writer = &mut n;\n    let copy = n; // the owner reads while a writer is alive\n    *writer += 1;\n    println!(\"copy: {copy}\");\n}\n\nfn main() {\n    assign_while_read();\n    assign_while_written();\n    read_while_written();\n}\n",
+   "error": "error[E0506]: cannot assign to `n` because it is borrowed\n --> src/main.rs:4:5\n  |\n3 |     let reader = &n;\n  |                  -- `n` is borrowed here\n4 |     n = 20; // the owner assigns while a reader is alive\n  |     ^^^^^^ `n` is assigned to here but it was already borrowed\n5 |     println!(\"reader sees {reader}\");\n  |                            ------ borrow later used here\n\nerror[E0506]: cannot assign to `n` because it is borrowed\n  --> src/main.rs:11:5\n   |\n10 |     let writer = &mut n;\n   |                  ------ `n` is borrowed here\n11 |     n = 20; // the owner assigns while a writer is alive\n   |     ^^^^^^ `n` is assigned to here but it was already borrowed\n12 |     *writer += 1;\n   |     ------------ borrow later used here\n\nerror[E0503]: cannot use `n` because it was mutably borrowed\n  --> src/main.rs:18:16\n   |\n17 |     let writer = &mut n;\n   |                  ------ `n` is borrowed here\n18 |     let copy = n; // the owner reads while a writer is alive\n   |                ^ use of borrowed `n`\n19 |     *writer += 1;\n   |     ------------ borrow later used here\n\nSome errors have detailed explanations: E0503, E0506.",
+   "lang": "rust"
+  },
+  "push-len-fn.fail.rs": {
+   "code": "fn add(v: &mut Vec<usize>, n: usize) {\n    v.push(n);\n}\n\nfn bump(v: &mut Vec<usize>) -> usize {\n    v[0] += 1;\n    v[0]\n}\n\nfn explicit_borrow_first() {\n    let mut v = vec![1];\n    add(&mut v, v.len()); // the `&mut v` you write is taken first\n    println!(\"v: {v:?}\");\n}\n\nfn argument_changes_the_list() {\n    let mut v = vec![1];\n    v.push(bump(&mut v)); // an argument that changes `v` is not just a read\n    println!(\"v: {v:?}\");\n}\n\nfn main() {\n    explicit_borrow_first();\n    argument_changes_the_list();\n}\n",
+   "error": "error[E0502]: cannot borrow `v` as immutable because it is also borrowed as mutable\n  --> src/main.rs:12:17\n   |\n12 |     add(&mut v, v.len()); // the `&mut v` you write is taken first\n   |     --- ------  ^ immutable borrow occurs here\n   |     |   |\n   |     |   mutable borrow occurs here\n   |     mutable borrow later used by call\n\nerror[E0499]: cannot borrow `v` as mutable more than once at a time\n  --> src/main.rs:18:17\n   |\n18 |     v.push(bump(&mut v)); // an argument that changes `v` is not just a read\n   |     - ----      ^^^^^^ second mutable borrow occurs here\n   |     | |\n   |     | first borrow later used by call\n   |     first mutable borrow occurs here\n\nSome errors have detailed explanations: E0499, E0502.",
+   "lang": "rust"
+  },
+  "push-len.rs": {
+   "code": "fn main() {\n    let mut v = vec![1, 2];\n    v.push(v.len()); // reads v while the push is on its way\n    println!(\"after v.push(v.len()): {v:?}\");\n\n    let mut w = vec![5, 6];\n    w.push(w[0]);\n    println!(\"after w.push(w[0]):    {w:?}\");\n}\n",
+   "out": "after v.push(v.len()): [1, 2, 2]\nafter w.push(w[0]):    [5, 6, 5]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "reader-and-writer.fail.rs": {
+   "code": "fn main() {\n    let mut n = 10;\n    let reader = &n;\n    let writer = &mut n;\n    *writer += 1;\n    println!(\"reader sees {reader}\");\n}\n",
+   "error": "error[E0502]: cannot borrow `n` as mutable because it is also borrowed as immutable\n --> src/main.rs:4:18\n  |\n3 |     let reader = &n;\n  |                  -- immutable borrow occurs here\n4 |     let writer = &mut n;\n  |                  ^^^^^^ mutable borrow occurs here\n5 |     *writer += 1;\n6 |     println!(\"reader sees {reader}\");\n  |                            ------ immutable borrow later used here\n",
+   "lang": "rust"
+  },
+  "readers.rs": {
+   "code": "fn main() {\n    let n = 10;\n    let a = &n;\n    let b = &n;\n    let c = a; // a shared reference can be copied\n    println!(\"a: {a}, b: {b}, c: {c}, n: {n}\");\n}\n",
+   "out": "a: 10, b: 10, c: 10, n: 10\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "reborrow.rs": {
+   "code": "fn add_one(x: &mut i32) {\n    *x += 1;\n}\n\nfn main() {\n    let mut n = 0;\n    let r = &mut n;\n    add_one(r); // `r` is lent for the call, not used up\n    add_one(&mut *r); // the same thing, written out\n    *r += 10;\n    println!(\"n: {n}\");\n}\n",
+   "out": "n: 12\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "two-at-once.rs": {
+   "code": "fn main() {\n    let mut v = vec![10, 20, 30, 40];\n\n    // 1. Swap two elements: the Vec does it for you.\n    v.swap(0, 3);\n    println!(\"after v.swap(0, 3): {v:?}\");\n\n    // 2. Numbers are copied out of the Vec, so read first and write after.\n    let (i, j) = (1, 2);\n    let moved = v[i];\n    v[i] = 0;\n    v[j] += moved;\n    println!(\"after moving v[1] into v[2]: {v:?}\");\n\n    // 3. split_at_mut gives two halves that cannot overlap.\n    let (left, right) = v.split_at_mut(2);\n    left[0] += right[1];\n    right[0] += 1;\n    println!(\"after split_at_mut(2): {v:?}\");\n}\n",
+   "out": "after v.swap(0, 3): [40, 20, 30, 10]\nafter moving v[1] into v[2]: [40, 0, 50, 10]\nafter split_at_mut(2): [50, 0, 51, 10]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "two-elements.fail.rs": {
+   "code": "fn main() {\n    let mut v = vec![10, 20, 30];\n    let (i, j) = (0, 2);\n\n    let a = &mut v[i];\n    let b = &mut v[j];\n    std::mem::swap(a, b);\n\n    println!(\"v: {v:?}\");\n}\n",
+   "error": "error[E0499]: cannot borrow `v` as mutable more than once at a time\n --> src/main.rs:6:18\n  |\n5 |     let a = &mut v[i];\n  |                  - first mutable borrow occurs here\n6 |     let b = &mut v[j];\n  |                  ^ second mutable borrow occurs here\n7 |     std::mem::swap(a, b);\n  |                    - first borrow later used here\n  |\n  = help: use `.split_at_mut(position)` to obtain two mutable non-overlapping sub-slices\n",
+   "lang": "rust"
+  },
+  "two-fields.rs": {
+   "code": "struct Stats {\n    wins: u32,\n    losses: u32,\n}\n\nfn main() {\n    let mut s = Stats { wins: 3, losses: 1 };\n\n    let w = &mut s.wins;\n    let l = &mut s.losses; // a different field: no overlap\n    *w += 1;\n    *l += 1;\n\n    println!(\"wins: {}, losses: {}\", s.wins, s.losses);\n}\n",
+   "out": "wins: 4, losses: 2\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "two-writers.fail.rs": {
+   "code": "fn main() {\n    let mut n = 10;\n    let a = &mut n;\n    let b = &mut n;\n    *a += 1;\n    *b += 1;\n    println!(\"n: {n}\");\n}\n",
+   "error": "error[E0499]: cannot borrow `n` as mutable more than once at a time\n --> src/main.rs:4:13\n  |\n3 |     let a = &mut n;\n  |             ------ first mutable borrow occurs here\n4 |     let b = &mut n;\n  |             ^^^^^^ second mutable borrow occurs here\n5 |     *a += 1;\n  |     ------- first borrow later used here\n",
+   "lang": "rust"
+  },
+  "whole-and-part.fail.rs": {
+   "code": "struct Stats {\n    wins: u32,\n    losses: u32,\n}\n\nfn reset(s: &mut Stats) {\n    s.wins = 0;\n    s.losses = 0;\n}\n\nfn main() {\n    let mut s = Stats { wins: 3, losses: 1 };\n\n    let w = &mut s.wins;\n    reset(&mut s); // `reset` could touch any field, including `wins`\n    *w += 1;\n\n    println!(\"wins: {}, losses: {}\", s.wins, s.losses);\n}\n",
+   "error": "error[E0499]: cannot borrow `s` as mutable more than once at a time\n  --> src/main.rs:15:11\n   |\n14 |     let w = &mut s.wins;\n   |             ----------- first mutable borrow occurs here\n15 |     reset(&mut s); // `reset` could touch any field, including `wins`\n   |           ^^^^^^ second mutable borrow occurs here\n16 |     *w += 1;\n   |     ------- first borrow later used here\n",
+   "lang": "rust"
+  },
+  "cme-add.crash.java": {
+   "code": "import java.util.ArrayList;\nimport java.util.List;\n\npublic class Main {\n    public static void main(String[] args) {\n        List<Integer> list = new ArrayList<>(List.of(1, 2, 3, 4));\n        for (int x : list) {\n            System.out.println(\"saw \" + x);\n            if (x == 2) list.add(99); // changes the list the loop is walking\n        }\n    }\n}\n",
+   "out": "saw 1\nsaw 2\nException in thread \"main\" java.util.ConcurrentModificationException\n\tat java.base/java.util.ArrayList$Itr.checkForComodification(ArrayList.java:1096)\n\tat java.base/java.util.ArrayList$Itr.next(ArrayList.java:1050)\n\tat Main.main(Main.java:7)\n",
+   "lang": "java",
+   "exit": 1
+  },
+  "data-race.crash.race.go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"time\"\n)\n\nfunc main() {\n\ts := []int{0}\n\tgo func() {\n\t\ts[0] = 1 // one goroutine writes the element...\n\t}()\n\ttime.Sleep(100 * time.Millisecond) // (no lock or channel: only a delay)\n\ts[0] = 2                           // ...and main writes it, with nothing in between\n\tfmt.Println(\"s:\", s)\n}\n",
+   "out": "==================\nWARNING: DATA RACE\nWrite at 0x············ by main goroutine:\n  main.main()\n      main.go:14 +0xb0\n\nPrevious write at 0x············ by goroutine 8:\n  main.main.func1()\n      main.go:11 +0x38\n\nGoroutine 8 (finished) created at:\n  main.main()\n      main.go:10 +0x9c\n==================\ns: [2]\nFound 1 data race(s)\n",
+   "lang": "go",
+   "mode": "race",
+   "exit": 66
+  },
+  "foreach-modified.crash.cs": {
+   "code": "var list = new List<int> { 1, 2, 3, 4 };\nforeach (var x in list)\n{\n    Console.WriteLine($\"saw {x}\");\n    if (x == 2) list.Add(99); // changes the list the loop is walking\n}\n",
+   "out": "saw 1\nsaw 2\nUnhandled exception. System.InvalidOperationException: Collection was modified; enumeration operation may not execute.\n   at System.Collections.Generic.List`1.Enumerator.MoveNext()\n   at Program.<Main>$(String[] args) in Program.cs:line 2\n",
+   "lang": "csharp",
+   "exit": -6
+  },
+  "list-modified.py": {
+   "code": "# Remove 3 (the second-to-last item) while looping: no error, and 4 is skipped.\nitems = [1, 2, 3, 4]\nseen = []\nfor x in items:\n    seen.append(x)\n    if x == 3:\n        items.remove(3)\nprint(\"remove in a loop: saw\", seen, \"list is\", items)\n\n# Add 99 when the loop sees 2: no error, and the loop reaches 99 too.\nitems = [1, 2, 3, 4]\nseen = []\nfor x in items:\n    seen.append(x)\n    if x == 2:\n        items.append(99)\nprint(\"add in a loop:    saw\", seen, \"list is\", items)\n\n# A dict does notice.\nd = {\"a\": 1, \"b\": 2}\ntry:\n    for key in d:\n        d[\"c\"] = 3\nexcept RuntimeError as e:\n    print(\"dict:\", e)\n",
+   "out": "remove in a loop: saw [1, 2, 3] list is [1, 2, 4]\nadd in a loop:    saw [1, 2, 3, 4, 99] list is [1, 2, 3, 4, 99]\ndict: dictionary changed size during iteration\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "loop-fixes.java": {
+   "code": "import java.util.ArrayList;\nimport java.util.Iterator;\nimport java.util.List;\nimport java.util.concurrent.CopyOnWriteArrayList;\n\npublic class Main {\n    public static void main(String[] args) {\n        // 1. Remove 3 (the second-to-last) while looping: no exception, and 4 is never visited.\n        List<Integer> list = new ArrayList<>(List.of(1, 2, 3, 4));\n        List<Integer> seen = new ArrayList<>();\n        for (int x : list) {\n            seen.add(x);\n            if (x == 3) list.remove(Integer.valueOf(3));\n        }\n        System.out.println(\"remove in a for-each: saw \" + seen + \", list is \" + list);\n\n        // 2. Iterator.remove() is the supported way to remove while looping.\n        list = new ArrayList<>(List.of(1, 2, 3, 4));\n        seen.clear();\n        for (Iterator<Integer> it = list.iterator(); it.hasNext(); ) {\n            int x = it.next();\n            seen.add(x);\n            if (x == 3) it.remove();\n        }\n        System.out.println(\"Iterator.remove():    saw \" + seen + \", list is \" + list);\n\n        // 3. CopyOnWriteArrayList: the loop walks a snapshot, so there is no exception.\n        List<Integer> cow = new CopyOnWriteArrayList<>(List.of(1, 2, 3, 4));\n        seen.clear();\n        for (int x : cow) {\n            seen.add(x);\n            if (x == 2) cow.add(99);\n        }\n        System.out.println(\"CopyOnWriteArrayList: saw \" + seen + \", list is \" + cow);\n    }\n}\n",
+   "out": "remove in a for-each: saw [1, 2, 3], list is [1, 2, 4]\nIterator.remove():    saw [1, 2, 3, 4], list is [1, 2, 4]\nCopyOnWriteArrayList: saw [1, 2, 3, 4], list is [1, 2, 3, 4, 99]\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "loop-modified.ts": {
+   "code": "// Remove 3 (the second-to-last item) while looping: no error, and 4 is skipped.\nlet items = [1, 2, 3, 4];\nlet seen: number[] = [];\nfor (const x of items) {\n  seen.push(x);\n  if (x === 3) items.splice(items.indexOf(3), 1);\n}\nconsole.log(\"remove in a loop: saw\", seen, \"list is\", items);\n\n// Add 99 when the loop sees 2: no error, and the loop reaches 99 too.\nitems = [1, 2, 3, 4];\nseen = [];\nfor (const x of items) {\n  seen.push(x);\n  if (x === 2) items.push(99);\n}\nconsole.log(\"add in a loop:    saw\", seen, \"list is\", items);\n",
+   "out": "remove in a loop: saw [ 1, 2, 3 ] list is [ 1, 2, 4 ]\nadd in a loop:    saw [ 1, 2, 3, 4, 99 ] list is [ 1, 2, 3, 4, 99 ]\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "push-back-self.cpp": {
+   "code": "#include <iostream>\n#include <vector>\n\nint main() {\n    std::vector<int> v{1, 2, 3, 4};\n    const int* before = v.data();\n    v.push_back(v[0]);   // v[0] lives in the buffer that push_back is about to move\n    std::cout << \"buffer moved: \" << std::boolalpha << (v.data() != before) << \"\\n\";\n    std::cout << \"last element: \" << v.back() << \"\\n\";\n}\n",
+   "out": "buffer moved: true\nlast element: 1\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "push-back.crash.asan.cpp": {
+   "code": "#include <iostream>\n#include <vector>\n\nint main() {\n    std::vector<int> v{1, 2, 3, 4};    // capacity 4: full\n    for (int x : v) {                   // the loop walks the buffer it saw first\n        if (x == 2) v.push_back(99);    // the push moves the elements to a new buffer\n        std::cout << \"saw \" << x << \"\\n\";\n    }\n}\n",
+   "out": "saw 1\nsaw 2\n=================================================================\n==1==ERROR: AddressSanitizer: heap-use-after-free on address 0x············ at pc 0x············ bp 0x············ sp 0x············\nREAD of size 4 at 0x············ thread T0\n    #0 0x············ in main main.cpp:6\n    #1 0x············  (/lib/aarch64-linux-gnu/libc.so.6+0x22258)\n    #2 0x············ in __libc_start_main (/lib/aarch64-linux-gnu/libc.so.6+0x22338)\n    #3 0x············ in _start (main+0x15ec)\n\n0x············ is located 8 bytes inside of 16-byte region [0x············,0x············)\nfreed by thread T0 here:\n    #0 0x············ in operator delete(void*, unsigned long) ../../../../src/libsanitizer/asan/asan_new_delete.cpp:164\n    #1 0x············ in std::__new_allocator<int>::deallocate(int*, unsigned long) /usr/include/c++/14/bits/new_allocator.h:172\n    #2 0x············ in std::allocator<int>::deallocate(int*, unsigned long) /usr/include/c++/14/bits/allocator.h:208\n    #3 0x············ in std::allocator_traits<std::allocator<int> >::deallocate(std::allocator<int>&, int*, unsigned long) /usr/include/c++/14/bits/alloc_traits.h:550\n    #4 0x············ in std::vector<int, std::allocator<int> >::_M_realloc_append<int>(int&&)::_Guard::~_Guard() /usr/include/c++/14/bits/vector.tcc:616\n    #5 0x············ in void std::vector<int, std::allocator<int> >::_M_realloc_append<int>(int&&) /usr/include/c++/14/bits/vector.tcc:688\n    #6 0x············ in int& std::vector<int, std::allocator<int> >::emplace_back<int>(int&&) /usr/include/c++/14/bits/vector.tcc:123\n    #7 0x············ in std::vector<int, std::allocator<int> >::push_back(int&&) /usr/include/c++/14/bits/stl_vector.h:1301\n    #8 0x············ in main main.cpp:7\n    #9 0x············  (/lib/aarch64-linux-gnu/libc.so.6+0x22258)\n    #10 0x············ in __libc_start_main (/lib/aarch64-linux-gnu/libc.so.6+0x22338)\n    #11 0x············ in _start (main+0x15ec)\n\npreviously allocated by thread T0 here:\n    #0 0x············ in operator new(unsigned long) ../../../../src/libsanitizer/asan/asan_new_delete.cpp:95\n    #1 0x············ in std::__new_allocator<int>::allocate(unsigned long, void const*) /usr/include/c++/14/bits/new_allocator.h:151\n    #2 0x············ in std::allocator<int>::allocate(unsigned long) /usr/include/c++/14/bits/allocator.h:196\n    #3 0x············ in std::allocator_traits<std::allocator<int> >::allocate(std::allocator<int>&, unsigned long) /usr/include/c++/14/bits/alloc_traits.h:515\n    #4 0x············ in std::_Vector_base<int, std::allocator<int> >::_M_allocate(unsigned long) /usr/include/c++/14/bits/stl_vector.h:380\n    #5 0x············ in void std::vector<int, std::allocator<int> >::_M_range_initialize<int const*>(int const*, int const*, std::forward_iterator_tag) /usr/include/c++/14/bits/stl_vector.h:1694\n    #6 0x············ in std::vector<int, std::allocator<int> >::vector(std::initializer_list<int>, std::allocator<int> const&) /usr/include/c++/14/bits/stl_vector.h:682\n    #7 0x············ in main main.cpp:5\n    #8 0x············  (/lib/aarch64-linux-gnu/libc.so.6+0x22258)\n    #9 0x············ in __libc_start_main (/lib/aarch64-linux-gnu/libc.so.6+0x22338)\n    #10 0x············ in _start (main+0x15ec)\n\nSUMMARY: AddressSanitizer: heap-use-after-free main.cpp:6 in main\nShadow bytes around the buggy address:\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n=>0x············: fa fa fd[fd]fa fa fa fa fa fa fa fa fa fa fa fa\n  0x············: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\n  0x············: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\n  0x············: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\n  0x············: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\n  0x············: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\nShadow byte legend (one shadow byte represents 8 application bytes):\n  Addressable:           00\n  Partially addressable: 01 02 03 04 05 06 07 \n  Heap left redzone:       fa\n  Freed heap region:       fd\n  Stack left redzone:      f1\n  Stack mid redzone:       f2\n  Stack right redzone:     f3\n  Stack after return:      f5\n  Stack use after scope:   f8\n  Global redzone:          f9\n  Global init order:       f6\n  Poisoned by user:        f7\n  Container overflow:      fc\n  Array cookie:            ac\n  Intra object redzone:    bb\n  ASan internal:           fe\n  Left alloca redzone:     ca\n  Right alloca redzone:    cb\n==1==ABORTING\n",
+   "lang": "cpp",
+   "mode": "asan",
+   "exit": 1
+  },
+  "range-append.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\ts := []int{1, 2, 3, 4}\n\tvar seen []int\n\tfor _, x := range s { // range reads the slice once, before the loop starts\n\t\tseen = append(seen, x)\n\t\tif x == 2 {\n\t\t\ts = append(s, 99)\n\t\t}\n\t}\n\tfmt.Println(\"saw\", seen, \"slice is\", s)\n}\n",
+   "out": "saw [1 2 3 4] slice is [1 2 3 4 99]\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "read-only-view.cs": {
+   "code": "var list = new List<int> { 1, 2, 3 };\nIReadOnlyList<int> view = list; // no Add on this type: read-only through `view`\n\nlist.Add(4); // the other reference can still change it\nConsole.WriteLine($\"view after list.Add(4): [{string.Join(\", \", view)}]\");\n\nvar items = new List<int> { 1, 2, 3, 4 };\ntry\n{\n    foreach (var x in items)\n    {\n        if (x == 3) items.Remove(3); // the second-to-last item\n    }\n}\ncatch (InvalidOperationException e)\n{\n    Console.WriteLine($\"remove in a foreach: {e.Message}\");\n}\n",
+   "out": "view after list.Add(4): [1, 2, 3, 4]\nremove in a foreach: Collection was modified; enumeration operation may not execute.\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "read-only-view.java": {
+   "code": "import java.util.ArrayList;\nimport java.util.Collections;\nimport java.util.List;\n\npublic class Main {\n    public static void main(String[] args) {\n        List<Integer> list = new ArrayList<>(List.of(1, 2, 3));\n        List<Integer> view = Collections.unmodifiableList(list); // read-only through `view`\n\n        try {\n            view.add(4);\n        } catch (UnsupportedOperationException e) {\n            System.out.println(\"view.add(4): \" + e);\n        }\n\n        list.add(5); // the other reference can still change it\n        System.out.println(\"view after list.add(5): \" + view);\n\n        List<Integer> fixed = List.of(1, 2, 3); // a list that nobody can change\n        try {\n            fixed.add(4);\n        } catch (UnsupportedOperationException e) {\n            System.out.println(\"List.of(...).add(4): \" + e);\n        }\n    }\n}\n",
+   "out": "view.add(4): java.lang.UnsupportedOperationException\nview after list.add(5): [1, 2, 3, 5]\nList.of(...).add(4): java.lang.UnsupportedOperationException\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "read-only-view.kt": {
+   "code": "fun main() {\n    val items = mutableListOf(1, 2, 3)\n    val view: List<Int> = items // a List has no add(): read-only through `view`\n\n    items.add(4) // the other reference can still change it\n    println(\"view after items.add(4): $view\")\n\n    (view as MutableList<Int>).add(5) // a cast gets the write access back\n    println(\"view after the cast:     $view\")\n\n    try {\n        for (x in items) {\n            if (x == 2) items.add(99)\n        }\n    } catch (e: ConcurrentModificationException) {\n        println(\"add in a for loop: ${e::class.simpleName}\")\n    }\n}\n",
+   "out": "view after items.add(4): [1, 2, 3, 4]\nview after the cast:     [1, 2, 3, 4, 5]\nadd in a for loop: ConcurrentModificationException\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "readonly-view.ts": {
+   "code": "const items: number[] = [1, 2, 3];\nconst view: readonly number[] = items; // `view` has no push(): read-only through this name\n\nitems.push(4); // the other name can still change it\nconsole.log(\"view after items.push(4):\", view);\n",
+   "out": "view after items.push(4): [ 1, 2, 3, 4 ]\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "restrict.c": {
+   "code": "#include <stdio.h>\n\n// Plain pointers: the function must be correct even when both point at one int.\nvoid add_twice(int *total, const int *amount) {\n    *total += *amount;\n    *total += *amount;\n}\n\n// `restrict` promises that nothing else reaches *total while this function runs.\n// The optimiser believes it, so it may read *amount once. GCC's default is no\n// optimisation, so ask for it on this one function to make the effect visible.\n__attribute__((optimize(\"O2\")))\nvoid add_twice_restrict(int *restrict total, const int *restrict amount) {\n    *total += *amount;\n    *total += *amount;\n}\n\nint main(void) {\n    int x = 1, y = 1;\n    add_twice(&x, &y);\n    printf(\"plain, separate:    x = %d\\n\", x);\n    x = 1;\n    add_twice(&x, &x);\n    printf(\"plain, same int:    x = %d\\n\", x);\n\n    x = 1;\n    add_twice_restrict(&x, &y);\n    printf(\"restrict, separate: x = %d\\n\", x);\n    x = 1;\n    add_twice_restrict(&x, &x); // breaks the promise: undefined behaviour\n    printf(\"restrict, same int: x = %d\\n\", x);\n    return 0;\n}\n",
+   "warnings": "main.c: In function ‘main’:\nmain.c:30:24: warning: passing argument 1 to ‘restrict’-qualified parameter aliases with argument 2 [-Wrestrict]\n   30 |     add_twice_restrict(&x, &x); // breaks the promise: undefined behaviour\n      |                        ^~  ~~",
+   "out": "plain, separate:    x = 3\nplain, same int:    x = 4\nrestrict, separate: x = 3\nrestrict, same int: x = 3\n",
+   "lang": "c",
+   "exit": 0
+  }
+ },
+ "exercises": {
+  "move-points": {
+   "starter": "struct Team {\n    red: u32,\n    blue: u32,\n}\n\n/// Move up to `amount` points from `from` to `to`. Return how many moved:\n/// fewer than `amount` when `from` doesn't have that many.\nfn transfer(from: &mut u32, to: &mut u32, amount: u32) -> u32 {\n    todo!(\"work out how many can move, then subtract from *from and add to *to\")\n}\n\n/// The same, between two positions `i` and `j` of a list of scores.\n/// If `i` and `j` are the same position, nothing moves: return 0.\nfn transfer_in_list(scores: &mut Vec<u32>, i: usize, j: usize, amount: u32) -> u32 {\n    todo!(\"two &mut scores[..] at once won't compile: read the number, then write both\")\n}\n\nfn main() {\n    let mut team = Team { red: 5, blue: 1 };\n    // Two different fields of one struct: two `&mut` at once is fine.\n    let moved = transfer(&mut team.red, &mut team.blue, 3);\n    assert_eq!((moved, team.red, team.blue), (3, 2, 4));\n    // Asking for more than red has moves only what is there.\n    let moved = transfer(&mut team.red, &mut team.blue, 10);\n    assert_eq!((moved, team.red, team.blue), (2, 0, 6));\n    // Nothing left to move.\n    let moved = transfer(&mut team.red, &mut team.blue, 1);\n    assert_eq!((moved, team.red, team.blue), (0, 0, 6));\n\n    let mut scores = vec![4, 0, 7];\n    assert_eq!(transfer_in_list(&mut scores, 2, 1, 5), 5);\n    assert_eq!(scores, [4, 5, 2]);\n    assert_eq!(transfer_in_list(&mut scores, 2, 0, 9), 2);\n    assert_eq!(scores, [6, 5, 0]);\n    // The same position twice: nothing moves.\n    assert_eq!(transfer_in_list(&mut scores, 1, 1, 3), 0);\n    assert_eq!(scores, [6, 5, 0]);\n\n    let mut single = vec![9];\n    assert_eq!(transfer_in_list(&mut single, 0, 0, 4), 0);\n    assert_eq!(single, [9]);\n\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "struct Team {\n    red: u32,\n    blue: u32,\n}\n\n/// Move up to `amount` points from `from` to `to`. Return how many moved:\n/// fewer than `amount` when `from` doesn't have that many.\nfn transfer(from: &mut u32, to: &mut u32, amount: u32) -> u32 {\n    let moved = if *from < amount { *from } else { amount };\n    *from -= moved;\n    *to += moved;\n    moved\n}\n\n/// The same, between two positions `i` and `j` of a list of scores.\n/// If `i` and `j` are the same position, nothing moves: return 0.\nfn transfer_in_list(scores: &mut Vec<u32>, i: usize, j: usize, amount: u32) -> u32 {\n    if i == j {\n        return 0;\n    }\n    // Numbers are copied out of the list, so no two borrows overlap.\n    let moved = if scores[i] < amount {\n        scores[i]\n    } else {\n        amount\n    };\n    scores[i] -= moved;\n    scores[j] += moved;\n    moved\n}\n\nfn main() {\n    let mut team = Team { red: 5, blue: 1 };\n    // Two different fields of one struct: two `&mut` at once is fine.\n    let moved = transfer(&mut team.red, &mut team.blue, 3);\n    assert_eq!((moved, team.red, team.blue), (3, 2, 4));\n    // Asking for more than red has moves only what is there.\n    let moved = transfer(&mut team.red, &mut team.blue, 10);\n    assert_eq!((moved, team.red, team.blue), (2, 0, 6));\n    // Nothing left to move.\n    let moved = transfer(&mut team.red, &mut team.blue, 1);\n    assert_eq!((moved, team.red, team.blue), (0, 0, 6));\n\n    let mut scores = vec![4, 0, 7];\n    assert_eq!(transfer_in_list(&mut scores, 2, 1, 5), 5);\n    assert_eq!(scores, [4, 5, 2]);\n    assert_eq!(transfer_in_list(&mut scores, 2, 0, 9), 2);\n    assert_eq!(scores, [6, 5, 0]);\n    // The same position twice: nothing moves.\n    assert_eq!(transfer_in_list(&mut scores, 1, 1, 3), 0);\n    assert_eq!(scores, [6, 5, 0]);\n\n    let mut single = vec![9];\n    assert_eq!(transfer_in_list(&mut single, 0, 0, 4), 0);\n    assert_eq!(single, [9]);\n\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "rename-and-drain": {
+   "starter": "struct Profile {\n    name: String,\n    tags: Vec<String>,\n}\n\n/// Give the profile a new name and return the old one.\nfn rename(p: &mut Profile, new_name: String) -> String {\n    todo!(\"std::mem::replace puts a new value in and gives the old one back\")\n}\n\n/// Remove every tag and return them. Afterwards `p.tags` is an empty Vec.\nfn take_tags(p: &mut Profile) -> Vec<String> {\n    todo!(\"std::mem::take leaves an empty value behind\")\n}\n\nfn main() {\n    let mut p = Profile {\n        name: String::from(\"Ada\"),\n        tags: vec![String::from(\"admin\"), String::from(\"beta\")],\n    };\n    let ada_text = p.name.as_ptr();\n    let new_name = String::from(\"Grace\");\n    let grace_text = new_name.as_ptr();\n\n    let old = rename(&mut p, new_name);\n    assert_eq!(old, \"Ada\");\n    assert_eq!(\n        old.as_ptr(),\n        ada_text,\n        \"return the old String, do not copy it\"\n    );\n    assert_eq!(p.name, \"Grace\");\n    assert_eq!(\n        p.name.as_ptr(),\n        grace_text,\n        \"store the new String, do not copy it\"\n    );\n\n    let admin_text = p.tags[0].as_ptr();\n    let tags = take_tags(&mut p);\n    assert_eq!(tags, [\"admin\", \"beta\"]);\n    assert_eq!(\n        tags[0].as_ptr(),\n        admin_text,\n        \"hand over the tags, do not copy them\"\n    );\n    assert!(p.tags.is_empty());\n\n    // Taking from an empty list is fine, and the profile still works.\n    assert!(take_tags(&mut p).is_empty());\n    p.tags.push(String::from(\"new\"));\n    assert_eq!(p.tags, [\"new\"]);\n\n    println!(\"{}: all checks passed\", p.name);\n}\n",
+   "solution": {
+    "code": "use std::mem;\n\nstruct Profile {\n    name: String,\n    tags: Vec<String>,\n}\n\n/// Give the profile a new name and return the old one.\nfn rename(p: &mut Profile, new_name: String) -> String {\n    mem::replace(&mut p.name, new_name)\n}\n\n/// Remove every tag and return them. Afterwards `p.tags` is an empty Vec.\nfn take_tags(p: &mut Profile) -> Vec<String> {\n    mem::take(&mut p.tags)\n}\n\nfn main() {\n    let mut p = Profile {\n        name: String::from(\"Ada\"),\n        tags: vec![String::from(\"admin\"), String::from(\"beta\")],\n    };\n    let ada_text = p.name.as_ptr();\n    let new_name = String::from(\"Grace\");\n    let grace_text = new_name.as_ptr();\n\n    let old = rename(&mut p, new_name);\n    assert_eq!(old, \"Ada\");\n    assert_eq!(\n        old.as_ptr(),\n        ada_text,\n        \"return the old String, do not copy it\"\n    );\n    assert_eq!(p.name, \"Grace\");\n    assert_eq!(\n        p.name.as_ptr(),\n        grace_text,\n        \"store the new String, do not copy it\"\n    );\n\n    let admin_text = p.tags[0].as_ptr();\n    let tags = take_tags(&mut p);\n    assert_eq!(tags, [\"admin\", \"beta\"]);\n    assert_eq!(\n        tags[0].as_ptr(),\n        admin_text,\n        \"hand over the tags, do not copy them\"\n    );\n    assert!(p.tags.is_empty());\n\n    // Taking from an empty list is fine, and the profile still works.\n    assert!(take_tags(&mut p).is_empty());\n    p.tags.push(String::from(\"new\"));\n    assert_eq!(p.tags, [\"new\"]);\n\n    println!(\"{}: all checks passed\", p.name);\n}\n",
+    "out": "Grace: all checks passed\n"
+   }
+  },
+  "swap-ends": {
+   "starter": "/// Swap the first and the last element. A list with fewer than two\n/// elements is left as it is.\nfn swap_ends(words: &mut Vec<String>) {\n    todo!(\"words.swap(i, j) swaps two elements; check the length first so an empty list is safe\")\n}\n\nfn main() {\n    let mut words = vec![\n        String::from(\"first\"),\n        String::from(\"second\"),\n        String::from(\"third\"),\n        String::from(\"last\"),\n    ];\n    let first_text = words[0].as_ptr();\n    let last_text = words[3].as_ptr();\n\n    swap_ends(&mut words);\n    assert_eq!(words, [\"last\", \"second\", \"third\", \"first\"]);\n    assert_eq!(\n        words[0].as_ptr(),\n        last_text,\n        \"swap the Strings, do not copy them\"\n    );\n    assert_eq!(\n        words[3].as_ptr(),\n        first_text,\n        \"swap the Strings, do not copy them\"\n    );\n\n    let mut odd = vec![String::from(\"a\"), String::from(\"b\"), String::from(\"c\")];\n    swap_ends(&mut odd);\n    assert_eq!(odd, [\"c\", \"b\", \"a\"]);\n\n    let mut two = vec![String::from(\"x\"), String::from(\"y\")];\n    swap_ends(&mut two);\n    assert_eq!(two, [\"y\", \"x\"]);\n\n    let mut one = vec![String::from(\"only\")];\n    swap_ends(&mut one);\n    assert_eq!(one, [\"only\"]);\n\n    let mut none: Vec<String> = Vec::new();\n    swap_ends(&mut none);\n    assert!(none.is_empty());\n\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "/// Swap the first and the last element. A list with fewer than two\n/// elements is left as it is.\nfn swap_ends(words: &mut Vec<String>) {\n    let len = words.len();\n    if len >= 2 {\n        // `words[0]` and `words[len - 1]` can't both be borrowed mutably at once,\n        // and a String can't be moved out of an index. `swap` does both jobs.\n        words.swap(0, len - 1);\n    }\n}\n\nfn main() {\n    let mut words = vec![\n        String::from(\"first\"),\n        String::from(\"second\"),\n        String::from(\"third\"),\n        String::from(\"last\"),\n    ];\n    let first_text = words[0].as_ptr();\n    let last_text = words[3].as_ptr();\n\n    swap_ends(&mut words);\n    assert_eq!(words, [\"last\", \"second\", \"third\", \"first\"]);\n    assert_eq!(\n        words[0].as_ptr(),\n        last_text,\n        \"swap the Strings, do not copy them\"\n    );\n    assert_eq!(\n        words[3].as_ptr(),\n        first_text,\n        \"swap the Strings, do not copy them\"\n    );\n\n    let mut odd = vec![String::from(\"a\"), String::from(\"b\"), String::from(\"c\")];\n    swap_ends(&mut odd);\n    assert_eq!(odd, [\"c\", \"b\", \"a\"]);\n\n    let mut two = vec![String::from(\"x\"), String::from(\"y\")];\n    swap_ends(&mut two);\n    assert_eq!(two, [\"y\", \"x\"]);\n\n    let mut one = vec![String::from(\"only\")];\n    swap_ends(&mut one);\n    assert_eq!(one, [\"only\"]);\n\n    let mut none: Vec<String> = Vec::new();\n    swap_ends(&mut none);\n    assert!(none.is_empty());\n\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}

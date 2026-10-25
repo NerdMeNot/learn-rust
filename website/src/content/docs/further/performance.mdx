@@ -1,0 +1,130 @@
+---
+title: "Performance: measure, then change"
+description: "Debug and release builds, profile settings, binary sizes, counting allocations, benchmarks the compiler cannot delete, and which of the usual performance beliefs a run supports."
+---
+
+import { Files, Remember, Session, Tree } from '../../../components/guide'
+
+Performance work is mostly measuring. This page runs the measurements in the course's image (Linux on ARM64, Rust 1.99.1) and keeps to two rules. A **time** is printed only to show a direction, and it is labelled as one run. The rest are **counts** (allocator calls, instructions), which came out the same in the runs here, and **sizes** in bytes, which belong to this path and target. Steps whose output changes say so.
+
+<Remember>Measure a release build. Count what you can count. Let a time tell you which of two things is smaller, never a number to quote.</Remember>
+
+<Tree guide="further-performance" dir="rust" name="perf-lab" title="Project layout" notes={{"src/bin/work.rs":"debug against release","src/bin/overflow.rs":"what release changes besides speed","src/bin/allocs.rs":"a counting allocator","src/bin/fold.rs":"loops the compiler can answer without running","src/bin/unwind.rs":"panic = abort","src/lib.rs":"three functions the page compiles to assembly","asm.sh":"prints one function from the assembly","Cargo.lock":"created by Cargo","Cargo.toml":"the profiles"}} />
+
+<Files guide="further-performance" dir="rust" files={["Cargo.toml"]} />
+
+## Debug and release are two programs
+
+`cargo run` builds the `dev` profile and `cargo run --release` builds the `release` profile ([Cargo's profile table](https://doc.rust-lang.org/cargo/reference/profiles.html#profile-selection)). The same source gives the same answer, and the program asserts that its loop and its iterator chain agree:
+
+<Files guide="further-performance" dir="rust" files={["src/bin/work.rs"]} run="modes" />
+
+In this run the debug build printed the larger time for both versions. The code explains it better than a ratio. Three functions compiled for release and for debug (`sum_to` is `(0..n).sum()` and `sum_loop` is a `for` loop):
+
+<Session guide="further-performance" run="asm" title="assembly for ARM64" />
+
+- In release, `sum_const` is a constant and `sum_to` has no loop at all: the compiler worked out a formula (`mul`, `umulh`).
+- In release, `sum_to` and `sum_loop` came out as the same instructions. That is one case, not a law about iterators.
+- In debug, `sum_to` makes one call (to `Iterator::sum`, not inlined) and `sum_loop` makes three, where release makes none. The debug `sum_loop` also loads and stores `total` in memory on each pass.
+
+The second difference is behaviour. The Cargo docs say that when `overflow-checks` is enabled, "a panic will occur on overflow". It was on in debug, off in release, and is a setting of its own:
+
+<Session guide="further-performance" run="overflow" />
+
+So "release is the same program, faster" is not quite true: an overflow that panics in debug wraps in release unless you turn the check on. [Integer overflow](/learn/types/) is covered earlier in the course.
+
+## Profile settings, and sizes
+
+Each profile in `Cargo.toml` changes one setting from `release` (`tiny` changes all of them). The listing is the size of the same small program (a word counter in `src/main.rs`) under each, on this target. Another program or target gives other sizes:
+
+<Session guide="further-performance" run="profiles" title="binary sizes" />
+
+What the listing shows for this program:
+
+- The debug build is the largest by far. Debug information (the `debug` setting) makes up most of the difference: release with `debug = true` came out about as large as the debug build (second task below). The debug size also changed with the build directory.
+- `strip` and `lto` each made the release binary smaller, and `tiny` (all five settings) is the smallest.
+- `opt-level = "z"` alone did **not** make it smaller. The Cargo docs warn of surprising results, such as 'the "s" and "z" levels not being necessarily smaller' ([profiles](https://doc.rust-lang.org/cargo/reference/profiles.html#opt-level)). [min-sized-rust](https://github.com/johnthagen/min-sized-rust) notes that "The prebuilt `libstd` is optimized for speed, not size", a likely reason here: a small program's `opt-level` reaches only its own code.
+- The Performance Book describes `lto` and `codegen-units = 1` as run-time options too. This page times neither.
+
+`panic = "abort"` changes behaviour, not only size. With the default, `catch_unwind` caught the panic and the guard's `Drop` ran. With `abort` the process was killed by a signal and neither line printed ([`catch_unwind`](https://doc.rust-lang.org/std/panic/fn.catch_unwind.html) says it catches only unwinding panics):
+
+<Files guide="further-performance" dir="rust" files={["src/bin/unwind.rs"]} run="unwind" />
+
+## Count first
+
+Time is noisy. The number of calls to the allocator did not change between runs. A global allocator that wraps the system one and counts its calls takes a dozen lines (the [formatting lesson](/learn/formatting/#format_args-and-what-format-costs) uses the same pattern). `unsafe impl` is boilerplate here ([`GlobalAlloc`](https://doc.rust-lang.org/std/alloc/trait.GlobalAlloc.html)). It counts calls, not bytes, and a `realloc` is a call:
+
+<Files guide="further-performance" dir="rust" files={["src/bin/allocs.rs"]} run="allocs" />
+
+The counts were the same in debug and release. They show:
+
+- Splitting into `Vec<&str>` made fewer allocations than into `Vec<String>`: the `&str` pieces borrow the line ([Strings](/learn/strings/#two-string-types-and-which-one-to-use)).
+- `String::clone` allocated once and `Rc::clone` not at all ([Smart pointers](/learn/smart-pointers/#rct-several-owners)). A clone is not always a copy of the data.
+- A `Vec` grown by `push` asked the allocator repeatedly; `with_capacity` asked once ([Capacity and growth](/learn/vectors/#capacity-and-growth)). Whether that matters is a question only a benchmark answers.
+- `format!` per item allocated a `String` per item; `write!` into one `String` only grew it.
+
+## A timing the compiler can delete
+
+A loop whose result is unused, or whose answer has a formula, may not run at all. [`std::hint::black_box`](https://doc.rust-lang.org/std/hint/fn.black_box.html) hides a value from the optimiser, and its docs say it works on a "best-effort" basis. This is what that means in practice (release build, one run on this VM, 8 cores (colima), varies):
+
+<Files guide="further-performance" dir="rust" files={["src/bin/fold.rs"]} run="fold" />
+
+`sum_squares` of a hundred million printed a time in nanoseconds, with or without `black_box` on the input: the compiler used a formula for the total, so the loop never ran. The assembly step backs that up: the release build contains a `umulh` instruction, the multiply-high the formula used in the `asm` session. `black_box` hid the number, and the formula still worked for any number. `mix` has no formula, so with a large count it ran for milliseconds either way. With a small count, `mix(100)` printed a smaller time without `black_box` than with it in this run. Three things help a benchmark: the input passed through `black_box`, the result passed through it too, and work the compiler cannot shortcut. [Criterion](https://bheisler.github.io/criterion.rs/book/index.html) passes the result through `black_box` for you; the input is yours to hide, as `benches/mix.rs` does. It also repeats the call and reports a range. The [Performance Book](https://nnethercote.github.io/perf-book/benchmarking.html) lists it, with Divan, as a more sophisticated alternative to the built-in `#[bench]` tests, which need nightly Rust. It is a separate crate, so its first run compiles it (needs network):
+
+<Files guide="further-performance" dir="bench" files={["benches/mix.rs"]} run="bench" />
+
+## Profilers
+
+A profiler tells you where the time went, which a benchmark does not. The usual Linux tools, `perf` and [`cargo flamegraph`](https://github.com/flamegraph-rs/flamegraph) (which relies on `perf`), and [`samply`](https://github.com/mstange/samply) (which uses perf events on Linux), are named here but **not run**: `perf` installs with apt inside the session (needs network), but this VM's setting refuses it.
+
+<Session guide="further-performance" run="perf" />
+
+## The same questions in your language
+
+Where the image has the tool, the cell is a run. The other cells name a tool and are marked not run.
+
+| Language | Optimised or not | Count allocations | Benchmark tool |
+| --- | --- | --- | --- |
+| Rust | `--release`, `[profile.*]` | counting allocator (above) | Criterion (run above) |
+| Go | `go tool compile` has `-N` (no optimisation) and `-l` (no inlining), help text below; no build run | `testing.AllocsPerRun` (run below) | `go test -bench`, in the [`testing`](https://pkg.go.dev/testing#hdr-Benchmarks) package, not run |
+| Python | not run | `sys.getallocatedblocks` (run below) | `timeit`, not run |
+| TypeScript | not run | not run | `node --cpu-prof` for profiles ([Node CLI](https://nodejs.org/docs/latest-v24.x/api/cli.html)), not run |
+| Java, Kotlin | not run | not run | [JMH](https://github.com/openjdk/jmh), not run |
+| C# | not run | not run | [BenchmarkDotNet](https://benchmarkdotnet.org/), not run |
+| C, C++ | `-O0` and `-O2` (C run below; `g++` not run) | not run | not run |
+
+<Session guide="further-performance" run="langs" title="the same questions, where they run" />
+
+- **Go** printed 1 for `strings.Split` where Rust's `Vec<&str>` split took 2; the two jobs are different code, so that is not a comparison of the languages. The appends matched: 9 for a thousand without a size hint and 1 with `make(..., 0, 1000)`, as Rust's 9 and 1. Both grow a slice by reallocating.
+- **Python** gained 746 blocks for a list of a thousand integers and 2 for a list of two hundred. The [Python 3.13 docs](https://docs.python.org/3.13/c-api/long.html) say CPython keeps one shared object for each integer from -5 to 256, so larger ones are objects of their own. The [`sys` docs](https://docs.python.org/3.13/library/sys.html) warn that this count can vary between calls.
+- **C** at `-O0` kept `total` in memory on every pass, as the debug Rust `sum_loop` did in the `asm` session. At `-O2` it kept it in a register. The `-O2` listing still has the loop: GCC 14 did not turn this one into a formula, where rustc did. That is one loop and one compiler version, not a verdict on either.
+
+## Myths, each tested or dropped
+
+| Belief | What the run showed |
+| --- | --- |
+| "Release is the same program, only faster." | An overflow panicked in debug and wrapped in release, until `overflow-checks` was set. |
+| "Cloning copies the data." | `String::clone` allocated once, `Rc::clone` not at all. |
+| "A benchmark that takes nanoseconds shows a fast program." | The formula loop took nanoseconds because it did not run. |
+| "`opt-level = "z"` gives a smaller binary." | Alone, it was bigger than plain `release` here (this program, this target). |
+| "Iterator chains cost more than loops." | In this release build `sum_to` and `sum_loop` were the same instructions. In debug, `sum_to` made 1 call and `sum_loop` 3. |
+| "More threads make any loop faster." | [Rayon](/build/rayon/#when-it-is-not-worth-it) printed the parallel version slower for 10 items. |
+
+## Try it yourself
+
+Each task is a step in the session below, run in the image.
+
+1. Give the debug profile `opt-level = 3` from the command line: `cargo run --bin work --config profile.dev.opt-level=3`. `debug assertions on` still prints `true`, and the time printed is smaller than the plain debug run. Optimisation and checks are separate settings.
+2. Build release with `--config profile.release.debug=true` and list the size. The binary is about as large as the debug one: the debug information is most of the difference.
+3. Change `with_capacity(1000)` to `with_capacity(10)` in `allocs.rs`. The pushes now take more than one allocation but fewer than with no hint, because the buffer still has to grow.
+
+<Session guide="further-performance" run="try" />
+
+## Read more
+
+- [The Cargo Book: Profiles](https://doc.rust-lang.org/cargo/reference/profiles.html) and [the Rust Book on release profiles](https://doc.rust-lang.org/book/ch14-01-release-profiles.html), for every setting used above.
+- [The Rust Performance Book](https://nnethercote.github.io/perf-book/): [build configuration](https://nnethercote.github.io/perf-book/build-configuration.html), [heap allocations](https://nnethercote.github.io/perf-book/heap-allocations.html), [benchmarking](https://nnethercote.github.io/perf-book/benchmarking.html) and [profiling](https://nnethercote.github.io/perf-book/profiling.html).
+- [min-sized-rust](https://github.com/johnthagen/min-sized-rust), on shrinking binaries.
+- [The Criterion.rs book](https://bheisler.github.io/criterion.rs/book/index.html) (the crate here is `criterion` 0.8.2, as pinned in `Cargo.lock`).
+- In this course: [Formatting](/learn/formatting/) (the first counting allocator), [Iterators](/learn/iterators/), [Rayon](/build/rayon/) and [Testing](/build/testing/).
+- Other languages: [Go's `testing`](https://pkg.go.dev/testing), [Python's `timeit`](https://docs.python.org/3.13/library/timeit.html), [GCC's optimisation options](https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html).

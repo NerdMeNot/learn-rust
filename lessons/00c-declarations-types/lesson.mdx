@@ -1,0 +1,375 @@
+<p class="lr-layer">The toolkit</p>
+
+Variables, constants, functions and types are declared with a keyword (`let`, `const`, `fn`, `struct`) and then a name. Where you write a type, it goes after the name, behind a colon. This page teaches only the spelling. The meaning is in the linked lessons: [Variables](/learn/variables/), [Numbers and types](/learn/types/), [Match](/learn/match/).
+
+## The pieces in one table
+
+| Syntax | What it is | Example | Learn more |
+|---|---|---|---|
+| `let`, `let mut` | A variable that cannot change, or can. | `let x = 5;` `let mut n = 0;` | [Variables](/learn/variables/) |
+| `const` | A name for a value known before the program runs. | `const MAX: u32 = 99;` | [Reference](https://doc.rust-lang.org/reference/items/constant-items.html) |
+| `static` | A value stored once for the whole program. | `static NAME: &str = "Ada";` | [Reference](https://doc.rust-lang.org/reference/items/static-items.html) |
+| `fn` | A function. The result type follows `->`. | `fn add(a: i32, b: i32) -> i32` | [Functions](/learn/functions/) |
+| `struct` | A record: named fields, or numbered. | `struct Point { x: i32 }` `struct Meters(f64);` | [Structs](/learn/structs/) |
+| `enum` | One of several shapes. | `enum Shape { Circle(f64), Empty }` | [Enums](/learn/enums/) |
+| `(A, B)` | A few values of different types. | `(7, "seven")`, `t.0` | [Tuples](/learn/tuples/) |
+| `[T; N]`, `&[T]`, `Vec<T>` | A fixed-size array; a slice (a borrowed view of part of one); a growable list. | `[0u8; 4]`, `&v[1..4]`, `vec![1, 2]` | [Vectors](/learn/vectors/) |
+| `a..b`, `a..=b` | A range, without and with the end. | `0..5`, `2..`, `..3` | [Loops](/learn/loops/) |
+| `<T>` | Type arguments. | `Option<String>` | [Generics](/learn/generics/) |
+| `\|x\| x + 1` | A closure: a function with no name. | `\|n\| n * 2` | [Closures](/learn/closures/) |
+| `_` | "Ignore this part." | `let (a, _) = pair;` | [Reference](https://doc.rust-lang.org/reference/patterns.html#wildcard-pattern) |
+
+<Snippet file="shapes.rs" />
+
+## Declaring: let, const, static
+
+<Snippet file="declare.rs" />
+
+`let` makes a variable, and its type is optional because Rust works it out. `const` and `static` need one:
+
+<Snippet file="const-needs-type.fail.rs" />
+
+A `const` is copied into every place that uses it. A `static` is one value stored once, and every reference to it points to that one place. Both can sit outside any function. `let` cannot:
+
+<Snippet file="let-top.fail.rs" />
+
+## The type goes after the name
+
+Read `count: i32` as "`count` is an `i32`". Rust does not convert between types for you: text is not a number, a whole number is not a float, and an `i32` is not an `i64`, even though it would fit.
+
+<Snippet file="mismatch.fail.rs" />
+
+Number types spell their kind and size. `i32` is a signed whole number in 32 bits, `u8` an unsigned one (zero and up) in 8 bits, `f64` a 64-bit float, and `usize` the unsigned type for lengths and indexes. An unsigned number cannot go below zero:
+
+<Snippet file="usize-underflow.panic.rs" />
+
+## Your language, side by side
+
+<ForLang only="go">
+
+| You write in Go | In Rust |
+|---|---|
+| `x := 5` | `let x = 5;`, or `let mut x = 5;` if you change it later |
+| `var x int = 5` | `let x: i64 = 5;` Go's `int` is 64 bits on a 64-bit machine, Rust's default integer is `i32` |
+| `var x int` (starts at 0) | `let x: i64;` has no value until you assign one ([below](#declared-now-set-later)) |
+| `const Max = 100` | `const MAX: i64 = 100;` Rust has no untyped constants |
+| `func add(a, b int) int` | `fn add(a: i64, b: i64) -> i64`: each parameter names its own type |
+| `a, b := 1, "two"` | `let (a, b) = (1, "two");` A Go `(int, error)` result is a tuple in Rust ([Tuples](/learn/tuples/)) |
+| `[]int{1, 2, 3}`, `string` | `vec![1, 2, 3]` and `&str`/`String`. A Rust slice `&[i64]` is a borrowed view; Go's slice is closer to a `Vec` |
+| `float64(n)`, `int(f)` | `n as f64`, `f as i64`. Integer narrowing wraps in both. A float too big for the integer is implementation-dependent in Go ([spec](https://go.dev/ref/spec#Conversions)) and saturates in Rust |
+| `017`, `0o17` | Only `0o17` is octal. `017` is the decimal number 17 |
+
+Go's `x := 1 << 40` runs because `int` is 64 bits. Rust's default `i32` rejects the same line. And a rune is a number, so `'R' + 1` works in Go but not on a `char`:
+
+<Snippet file="shift-overflow.fail.rs" />
+
+<Snippet file="char-plus.fail.rs" />
+
+</ForLang>
+
+<ForLang only="java">
+
+| You write in Java | In Rust |
+|---|---|
+| `int count = 5;`, `final int count = 5;` | `let mut count: i32 = 5;`, `let count: i32 = 5;` Add `mut` only if you reassign; the compiler warns otherwise |
+| `byte`, `short`, `int`, `long` | `i8`, `i16`, `i32`, `i64`. Java has no unsigned integers, so `u8`, `u32`... have no Java type |
+| `String s = "Ada";` | `let s = "Ada";` (a `&str`), or `String::from("Ada")` for text you can grow ([Strings](/learn/strings/)) |
+| `int[] a = {1, 2, 3};`, `List<Integer>` | `[i32; 3]` and `Vec<i32>`, from `[1, 2, 3]` and `vec![1, 2, 3]` |
+| `record Point(int x, int y)` | `struct Point { x: i32, y: i32 }` |
+| `static final int MAX = 100;` | `const MAX: i32 = 100;` |
+| `(int) price`, `(double) n` | `price as i32`, `n as f64`. Narrowing agrees: `(byte) 300` is 44, and so is `big as u8` when `big` holds 300. Java widens `int` to `double` on its own; Rust needs `as` |
+| `Integer.parseInt(s)` | `s.parse::<i32>()`: Java puts the type in the method name, Rust in the turbofish |
+| `char c = 'R';` | `let c = 'R';` (a Rust `char` is wider: [below](#a-char-is-not-a-byte)) |
+
+</ForLang>
+
+<ForLang only="kotlin">
+
+| You write in Kotlin | In Rust |
+|---|---|
+| `val count: Int = 5`, `var count = 5` | `let count: i32 = 5;`, `let mut count = 5;` |
+| `const val MAX = 100` | `const MAX: i32 = 100;` |
+| `fun add(a: Int, b: Int): Int` | `fn add(a: i32, b: i32) -> i32` |
+| `d.toInt()`, `"42".toInt()` | `d as i32`, `"42".parse::<i32>()` |
+| `5L`, `2.5f` | `5i64`, `2.5f32` |
+| `'R'` (2 bytes) | `'R'` (a `char`, 4 bytes) |
+
+</ForLang>
+
+<ForLang only="csharp">
+
+| You write in C# | In Rust |
+|---|---|
+| `int count = 5;`, `var count = 5;` | `let mut count: i32 = 5;`, `let mut count = 5;` |
+| `const int Max = 100;` | `const MAX: i32 = 100;` |
+| `int Add(int a, int b)` | `fn add(a: i32, b: i32) -> i32` |
+| `(int)price`, `int.Parse(s)` | `price as i32`, `s.parse::<i32>()` |
+| `5u`, `5L`, `2.5f` | `5u32`, `5i64`, `2.5f32` |
+| `char c = 'R';` | `let c = 'R';` (2 bytes in C#, 4 in Rust) |
+
+</ForLang>
+
+<ForLang only="python">
+
+| You write in Python | In Rust |
+|---|---|
+| `count = 5` | `let mut count = 5;`, or `let count = 5;` if it never changes |
+| `count: int = 5` | `let count: i32 = 5;` Python does not check annotations when it runs; Rust does |
+| `MAX_LEVEL = 99` | `const MAX_LEVEL: u32 = 99;` for a fixed value at the top; `let` for a local |
+| `def add(a: int, b: int) -> int:` | `fn add(a: i32, b: i32) -> i32 {` |
+| `a, b = 1, "two"` | `let (a, b) = (1, "two");` This is a pattern, like tuple unpacking |
+| `name = "Ada"` | `let name = "Ada";` (a `&str`), or `String::from("Ada")` for text you can grow ([Strings](/learn/strings/)) |
+| `@dataclass class Point: x: float` | `struct Point { x: f64, y: f64 }` |
+| `int(f)`, `float(n)` | `f as i32`, `n as f64`. Both cut toward zero, but Python's `int` never overflows |
+| `int("42")` | `"42".parse::<i32>()`: `as` does not accept text |
+| `'R'` or `"R"` | `"R"` is a string. `'R'` is a single `char` |
+
+</ForLang>
+
+<ForLang only="typescript">
+
+| You write in TypeScript | In Rust |
+|---|---|
+| `const count = 5;`, `let count = 5;` | `let count = 5;`, `let mut count = 5;`. A TypeScript `const` stops reassignment only; Rust's `let` also stops changes inside the value |
+| `let ratio: number = 5;` | `let ratio: f64 = 5.0;`: `number` is a float, so the literal needs `.0` |
+| `const MAX = 100;` | `const MAX: u32 = 100;` for a fixed value at the top; `let` for a local |
+| `function add(a: number, b: number): number` | `fn add(a: f64, b: f64) -> f64` |
+| `const [a, b] = pair;`, `const { x, y } = p;` | `let (a, b) = pair;`, `let Point { x, y } = p;` (patterns, like destructuring) |
+| `'hello'` or `"hello"` | `"hello"`. Single quotes make one `char` |
+| `interface Point { x: number; y: number }` | `struct Point { x: f64, y: f64 }` |
+| `x as number` | `x as f64`: TypeScript's `as` only asserts, Rust's `as` converts |
+| `parseInt(s, 10)`, `Number(s)` | `s.parse::<i32>()`, `s.parse::<f64>()` |
+
+</ForLang>
+
+<ForLang only="c cpp">
+
+| You write in C or C++ | In Rust |
+|---|---|
+| `int x = 5;` | `let mut x: i32 = 5;` |
+| `const int x = 5;` | `let x: i32 = 5;` In C++ this `x` can size an array; a Rust `let` never can ([below](#constants-and-array-lengths)) |
+| `auto x = 5;` (C++) | `let mut x = 5;`; `const auto` is `let` |
+| `#define MAX 100`, `constexpr int MAX = 100;` | `const MAX: i32 = 100;` |
+| `int a[3] = {1, 2, 3};` | `let mut a: [i32; 3] = [1, 2, 3];` |
+| `auto [a, b] = pair;` (C++) | `let (a, b) = pair;` |
+| `std::string s = "Ada";` | `let s = String::from("Ada");` |
+| `const char *p`, `std::string_view` | `let p: &str = "Ada";` (borrowed text) |
+| `atoi(s)`, `std::stoi(s)` | `s.parse::<i32>()` |
+| `(int)x`, `static_cast<int>(x)` | `x as i32` |
+| `5u`, `5UL`, `2.5f`, `1'000'000` (C++14, C23) | `5u32`, `5u64` (`UL` is 64-bit on Linux and macOS only), `2.5f32`, `1_000_000` |
+| `'a'` (an `int` in C, a `char` in C++) | `'a'` is a `char`; `b'a'` is a `u8`, the byte you know as `char` |
+
+</ForLang>
+
+## Literals
+
+A **literal** is a value written directly in the code. This program prints each one with its type:
+
+<Snippet file="literals.rs" />
+
+| You write | Type | Notes |
+|---|---|---|
+| `42`, `1_000_000` | `i32`, unless something else decides | `_` can go between digits and before a suffix. |
+| `0xff`, `0o17`, `0b1010` | integer | A leading `0` alone is not octal: `017` is 17. |
+| `7u8`, `7_i64`, `2.5f32` | the suffix's type | `i8`..`i128`, `u8`..`u128`, `isize`, `usize`, `f32`, `f64`. |
+| `2.5`, `1e3` | `f64`, unless something else decides | `1e3` is a float. |
+| `'R'`, `'\n'`, `'\u{1F980}'` | `char` | One Unicode scalar value (a code point). |
+| `"R"` | `&str` | A string. It may span lines. A `\` at the end of a line skips the break and the indentation. |
+| `r"C:\temp"`, `r#"say "hi""#` | `&str` | Raw: no escapes. The `#` on both ends lets the text contain `"`. |
+| `b'R'`, `b"Rs"` | `u8`, `&[u8; 2]` | An ASCII byte, and a byte string. |
+
+<Snippet file="strings.rs" />
+
+Single quotes hold exactly one character. If you write a word in them, the compiler suggests double quotes:
+
+<Snippet file="quote.fail.rs" />
+
+## `as` and the turbofish
+
+`as` converts between number types. It also turns a `char` or `bool` into an integer (not a float), and a `u8` into a `char`. It never fails at run time, which is why it can lose information silently:
+
+<Snippet file="casts.rs" />
+
+Integers that do not fit keep only their low bits (`big as u8` is 44 when `big` is 300, because a `u8` holds 0 to 255). The same bits can be read the other way: `200u8 as i8` is -56, because the top bit of a signed integer is its sign. Floats cut toward zero and saturate, stopping at the smallest or largest value, and `NaN` becomes 0. The standard library has `From` (`i64::from`) only for conversions that cannot lose data, and `u8::try_from(300)` returns an `Err` instead of cutting the value, as the last line shows.
+
+A literal that does not fit is refused, not cut: `300 as u8` does not compile, because the `overflowing_literals` lint is deny by default. The `big as u8` above compiles, because `big` is a variable.
+
+<Snippet file="cast-literal.fail.rs" />
+
+A conversion that makes no sense is refused too:
+
+<Snippet file="cast-char.fail.rs" />
+
+<ForLang only="c cpp">
+
+In C and C++ a float too big for the integer type is undefined behaviour ([cppreference](https://en.cppreference.com/w/cpp/language/implicit_conversion)). Rust's `as` saturates.
+
+</ForLang>
+
+The **turbofish** `::<T>` gives a type argument inside an expression, because `parse<i32>()` would read as comparisons. `unwrap` takes the number out of `parse`'s result and stops the program if the text was not one ([Errors](/learn/errors/) shows better handling). `_` in `Vec<_>` means "you work this part out", and `collect` gathers pieces into a list ([Iterators](/learn/iterators/)):
+
+<Snippet file="turbofish.rs" />
+
+Leave the type out and Rust has nothing to go on:
+
+<Snippet file="parse-type.fail.rs" />
+
+## Patterns in `let`, and shadowing
+
+The left side of a `let` is a **pattern**: a shape that a value is taken apart by, where each name takes its part.
+
+<Snippet file="patterns.rs" />
+
+A pattern in a plain `let` must match every possible value. When it might not, add an `else` block that does not fall through (`return`, `continue`, `break` or a panic). `Some(...)` and `Ok(...)` are the shapes you will use most ([Option](/learn/option/), [Errors](/learn/errors/)):
+
+<Snippet file="refutable.fail.rs" />
+
+<Snippet file="let-else.rs" />
+
+Writing `let` again with the same name makes a **new** variable that hides the old one. The type may change, and an inner block's version disappears at its closing brace:
+
+<Snippet file="shadowing.rs" />
+
+<ForLang only="go java cpp">
+
+Go (with `:=`) and C++ reject a second declaration of the same name in one scope, and Java rejects a local that reuses the name of an enclosing one. Rust allows all of these.
+
+</ForLang>
+
+## Naming
+
+Rust expects `snake_case` for values and `UpperCamelCase` for types. The compiler warns when you break this (the lints `non_snake_case`, `non_camel_case_types` and `non_upper_case_globals`, [listed here](https://doc.rust-lang.org/rustc/lints/listing/warn-by-default.html#non-snake-case)). `#![deny(nonstandard_style)]` at the top of a file (an "inner attribute", a setting for the whole file) turns all three into errors, which shows what the compiler thinks:
+
+<Snippet file="naming.fail.rs" />
+
+| What | Convention | Example |
+|---|---|---|
+| Variables, functions, methods, modules, fields | `snake_case` | `user_count`, `parse_line` |
+| Structs, enums, traits, enum variants | `UpperCamelCase` | `UserAccount`, `Shape::Circle` |
+| Constants and statics | `SCREAMING_SNAKE_CASE` | `MAX_USERS` |
+| Type parameters, lifetimes ([Lifetimes](/learn/lifetimes/)) | one capital letter; short lowercase after `'` | `T`, `'a` |
+
+Acronyms count as one word (`Uuid`), and the built-in types are lowercase (`i32`, `str`).
+
+<ForLang only="go java kotlin csharp typescript">
+
+Your `userCount` or `ParseLine` becomes `user_count` or `parse_line`. Type names such as `UserAccount` stay as they are.
+
+</ForLang>
+
+<ForLang only="go">
+
+In Go a capital letter exports a name. In Rust case does not control visibility: the `pub` keyword does ([Modules](/learn/modules/#private-by-default)).
+
+</ForLang>
+
+A strict or reserved keyword such as `type` cannot be a name. The compiler suggests a raw identifier, `r#type` (or a different name such as `kind`):
+
+<Snippet file="keyword-field.fail.rs" />
+
+<p class="lr-layer">Going deeper</p>
+
+## The type is often optional
+
+Rust infers types from how a value is used, including from lines further down. Only when nothing decides does it fall back to `i32` for integers and `f64` for floats (see the [Reference](https://doc.rust-lang.org/reference/expressions/literal-expr.html)):
+
+<Snippet file="infer.rs" />
+
+<ForLang only="cpp">
+
+C++ `auto` looks only at the initialiser. Rust also looks at how the variable is used afterwards.
+
+</ForLang>
+
+When even the later lines cannot decide, you get a "type annotations needed" error. The fix is a type on the `let`, or a turbofish:
+
+<Snippet file="infer.fail.rs" />
+
+## Declared now, set later
+
+Go gives every variable a zero value, and reading a C local that was never assigned is undefined behaviour. Rust allows a `let` without a value, but you cannot read the variable until every path has assigned it:
+
+<Snippet file="late-init.rs" />
+
+<Snippet file="uninit.fail.rs" />
+
+## Constants and array lengths
+
+An array length is part of the type, so it must be a constant, not a variable:
+
+<Snippet file="array-len.fail.rs" />
+
+A `const` may be built from other constants. The second half of the next program shows that two references to the same `static` have one address. The Reference promises that for a `static`, not for a `const`.
+
+<Snippet file="const-len.rs" />
+
+<ForLang only="go">
+
+Go has the same rule (`[n]int` with a variable `n` is an error), and the same way out is a growable list: `make([]int, n)` in Go, `vec![0; n]` in Rust.
+
+<Snippet file="array-len.fail.go" />
+
+</ForLang>
+
+<ForLang only="c cpp">
+
+C++ allows `const int n = 3; int grid[n];`, because a `const int` with a constant initialiser counts as a constant. A Rust `let` never does: write `const N: usize = 3;`. C99 also allows a variable-length array, and GCC accepts it (standard C++ has none; g++ accepts it as an extension). Rust has no such array: use `vec![0; n]`.
+
+<Snippet file="vla.c" />
+
+</ForLang>
+
+## A `char` is not a byte
+
+A Rust `char` is one Unicode scalar value and is 4 bytes wide, while a `u8` is one byte. A `"string"` is bytes in UTF-8, so its `len()` can be larger than its number of characters:
+
+<Snippet file="char-size.rs" />
+
+<ForLang only="java">
+
+A Java `char` is a 16-bit unit of UTF-16, so a character outside the basic plane (such as the crab) takes two `char`s:
+
+<Snippet file="char-size.java" />
+
+</ForLang>
+
+<ForLang only="kotlin csharp">
+
+A `Char` in Kotlin and a `char` in C# are 16-bit UTF-16 units, so a character outside the basic plane (such as the crab) takes two of them. A Rust `char` holds the whole code point.
+
+</ForLang>
+
+<ForLang only="c cpp">
+
+C and C++ `char` is a byte: it is Rust's `u8`. Rust's `char` is nearest to `char32_t`.
+
+</ForLang>
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Each exercise is a small program with checks in `main`. Open it in the Playground, replace the `todo!()`, and run it until it prints `all checks passed`. The first one trains reading: it shows a program and asks what it makes.
+
+<Exercise name="read-literals" title="Read this: what do the values come to?">
+Seven lines of casts, literals and shadowing. Say what each variable holds as text. `as`, a raw string and a second `let n` each change what the obvious reading gives.
+</Exercise>
+
+<Exercise name="rgb" title="Split a colour">
+A colour is written `0xRRGGBB`. Write `rgb`, which returns the three bytes. The last check puts a stray extra byte on top, as `0xAARRGGBB` does. Which cast throws it away?
+</Exercise>
+
+<Exercise name="int-float" title="An integer and a float">
+Turn text like `"3, 2.5"` into `Some((3, 2.5))`, a whole number and a float, and anything else into `None`. `parse::<i32>()` gives `Ok(n)` or `Err(_)`, so write `let Ok(n) = ... else { return None };`. Use `trim()` to drop spaces.
+</Exercise>
+
+<Exercise name="without-ends" title="Drop the ends">
+Return a slice without its first and last items, using a range. A length is a `usize`, which cannot go below zero, so `items.len() - 1` panics on an empty slice (see the panic above). Check the length first, and return `&[]` when nothing is left.
+</Exercise>
+
+## Read more
+
+- The Rust Reference: [literal expressions](https://doc.rust-lang.org/reference/expressions/literal-expr.html), [tokens](https://doc.rust-lang.org/reference/tokens.html), [type cast expressions](https://doc.rust-lang.org/reference/expressions/operator-expr.html#type-cast-expressions), [constant items](https://doc.rust-lang.org/reference/items/constant-items.html), [static items](https://doc.rust-lang.org/reference/items/static-items.html) and [patterns](https://doc.rust-lang.org/reference/patterns.html).
+- The Rust Book: [3.1 Variables and Mutability](https://doc.rust-lang.org/book/ch03-01-variables-and-mutability.html) and [3.2 Data Types](https://doc.rust-lang.org/book/ch03-02-data-types.html).
+- [Rust API Guidelines: Naming](https://rust-lang.github.io/api-guidelines/naming.html)
+- Rust by Example: [Literals and operators](https://doc.rust-lang.org/rust-by-example/primitives/literals.html), [Casting](https://doc.rust-lang.org/rust-by-example/types/cast.html) and [Inference](https://doc.rust-lang.org/rust-by-example/types/inference.html).

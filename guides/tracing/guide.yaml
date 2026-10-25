@@ -1,0 +1,171 @@
+# Logging with tracing
+name: logging
+sessions:
+  run:
+    dir: rust
+    steps:
+      - cmd: cargo run
+  go:
+    dir: go
+    steps:
+      - cmd: go run .
+  # Try it #3: the same `let _ =` mistake with a span guard compiles and prints no tags.
+  underscore:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-underscore/src/main.rs
+    steps:
+      - cmd: cargo run
+  # The gotcha: `let _ =` on a mutex guard is refused by a deny-by-default lint.
+  lock-underscore:
+    dir: rust
+    overlay:
+      src/main.rs: gotcha/main.rs
+    steps:
+      - cmd: cargo build
+        expect: fail
+  lock-guard:
+    dir: rust
+    overlay:
+      src/main.rs: gotcha/fixed.rs
+    steps:
+      - cmd: cargo run
+  # RUST_LOG needs the env-filter feature and with_env_filter: snippet-env has both.
+  env:
+    dir: rust
+    overlay:
+      Cargo.toml: snippet-env/Cargo.toml
+      Cargo.lock: snippet-env/Cargo.lock
+      src/main.rs: snippet-env/src/main.rs
+    steps:
+      - cmd: cargo run
+      - cmd: RUST_LOG=debug cargo run
+      - cmd: RUST_LOG=warn cargo run
+  # The default output starts every line with a timestamp. It changes on every run, so the
+  # step swaps it for a fixed word (and 2>/dev/null shows the lines came out on stdout).
+  stamps:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-stamps/src/main.rs
+    steps:
+      - cmd: "cargo run -q 2>/dev/null | sed -E 's/^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z/<timestamp>/'"
+        show: "$ cargo run | sed ...   # the timestamp replaced by <timestamp>"
+  spans:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-spans/src/main.rs
+    steps:
+      - cmd: cargo run
+  # The gotcha's idea in the other languages the image can run: end a scope, and a
+  # forgotten one that never ends. (C has no destructors; nothing to run.)
+  go-span:
+    dir: gotcha-go
+    steps:
+      - cmd: go run main.go
+  kt-span:
+    dir: gotcha-kotlin
+    steps:
+      - cmd: kotlinc main.kt -include-runtime -d span.jar && java -jar span.jar
+        show: "$ kotlinc main.kt -include-runtime -d span.jar && java -jar span.jar"
+  py-span:
+    dir: gotcha-python
+    steps:
+      - cmd: python3 main.py
+  ts-span:
+    dir: gotcha-ts
+    steps:
+      - cmd: node main.ts
+  java-span:
+    dir: gotcha-java
+    steps:
+      - cmd: javac Main.java && java Main
+  cs-span:
+    dir: gotcha-cs
+    steps:
+      - cmd: bash cs.sh main.cs
+        show: "$ dotnet run"
+  cpp-span:
+    dir: gotcha-cpp
+    steps:
+      - cmd: g++ -std=c++20 -Wall -Wextra main.cpp -o span && ./span
+gotcha:
+  kind: compile
+  title: "`let _ =` instead of `let _guard =`"
+  verdict: broken-elsewhere
+  looks_fine: >-
+    `_` is the usual name for a value you don't need: Go's `_ = x` throws a value away and
+    Python's `_` is the convention for an unused one. So naming a guard `_` instead of
+    `_guard` looks like a style choice.
+  rust_sees: >-
+    `let _ = counter.lock().unwrap();` does not bind the guard to any name, so it is dropped
+    at the end of that statement and the lock is released at once. rustc has a lint for
+    exactly this, `let_underscore_lock`, which is deny by default, so Rust refuses to compile
+    it. A name like `_guard` keeps the guard alive until the end of the block.
+  why: >-
+    The lint exists for lock guards only. The same mistake with another guard is not
+    caught: `let _ = span.enter();` compiles, and only the output tells you, because the
+    span exits before the next log line (Try it yourself, task 3, shows that output). The
+    other languages below show the scope version of the trap with a span-like object.
+  code: { file: gotcha/main.rs, name: src/main.rs }
+  session: lock-underscore
+  fixed: { file: gotcha/fixed.rs, name: src/main.rs, session: lock-guard }
+  langs:
+    go:
+      status: wrong
+      says: >-
+        `_ = Start(...)` throws the pointer away and nothing calls `End`. What closes a
+        scope in Go is `defer`, which runs when the function returns, not when a value
+        goes away.
+      file: gotcha-go/main.go
+      session: go-span
+    kotlin:
+      status: none
+      says: >-
+        There is no `val _ = ...` form to show: in the Kotlin version in the image it does
+        not compile without an experimental flag. Kotlin closes a resource with `use`, at
+        the end of its block. A value you just create, like `Span("forgotten")` in the
+        program shown, is never closed.
+      file: gotcha-kotlin/main.kt
+      session: kt-span
+    python:
+      status: wrong
+      says: >-
+        `with` calls `__exit__` at the end of its block. Calling `__enter__` yourself and
+        keeping the result in `_` never calls `__exit__`.
+      file: gotcha-python/main.py
+      session: py-span
+    typescript:
+      status: wrong
+      says: >-
+        A `using` declaration calls `[Symbol.dispose]` at the end of its block. An object
+        that is only created is never disposed. Node 24 ran this file directly; it was
+        not type-checked.
+      file: gotcha-ts/main.ts
+      session: ts-span
+    java:
+      status: wrong
+      says: >-
+        `try` with a resource calls `close()` at the end of its block. An object that is
+        only created is never closed.
+      file: gotcha-java/Main.java
+      session: java-span
+    csharp:
+      status: wrong
+      says: >-
+        `using` calls `Dispose()` at the end of its block. `_ = new Span(...)` discards
+        the object and never disposes it.
+      file: gotcha-cs/main.cs
+      session: cs-span
+    c:
+      status: none
+      says: >-
+        Not run here. Standard C has no destructors, so no value ends anything when it
+        goes away: you call the cleanup function yourself.
+    cpp:
+      status: wrong
+      says: >-
+        C++ has the same trap. A named object lives to the end of its block. A temporary
+        with no name is destroyed at the end of its statement, so `exit temporary` prints
+        before `listed notes`.
+      file: gotcha-cpp/main.cpp
+      session: cpp-span

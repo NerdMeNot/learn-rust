@@ -1,0 +1,281 @@
+<p class="lr-layer">The toolkit</p>
+
+The [Syntax part](/learn/declarations-types/) showed how `let`, `const` and `static` are spelled. This lesson is about what they do. Outputs come from Linux on 64-bit ARM with Rust 1.99.1.
+
+## Frozen unless you say `mut`
+
+A `let` variable cannot be assigned to once it has a value (E0384, in the gotcha above); `mut` lifts that. It also freezes the value the variable owns.
+
+<Snippet file="frozen-vec.fail.rs" />
+
+E0596. `push` changes the list, and its variable is not `mut`. The message says "borrow as mutable": a method that changes a value borrows it mutably ([Borrowing](/learn/borrowing/); `Vec` is a growable list, [Vectors](/learn/vectors/)). References and `Cell`-style types are the exceptions (Going deeper).
+
+**Why is this the default?** The Rust Book's reason: if one part of the code assumes a value never changes and another changes it, the first part may misbehave. With plain `let` a reader need not check; only `let mut` variables need watching.
+
+## Shadowing or `mut`?
+
+Writing `let` again with the same name makes a **new** variable and hides the old one ([spelling](/learn/declarations-types/#patterns-in-let-and-shadowing)). The two tools do different jobs:
+
+| | `let mut x` then `x = ...` | `let x = ...` again |
+|---|---|---|
+| Variable | the same one | a new one |
+| Type | must stay the same | may change |
+| Inside a block | the change outlives the block | the new variable ends with the block |
+| Afterwards | still `mut` | frozen again, unless you write `let mut` |
+
+<Snippet file="shadow-vs-mut.rs" />
+
+`a` was changed for good. `b` was hidden inside the block and came back after it. A new variable can have a new type (these two sizes are two variables):
+
+<Snippet file="shadow-type.rs" />
+
+Assigning a different type to a `mut` variable is an error:
+
+<Snippet file="mut-type.fail.rs" />
+
+Use `mut` for something that really changes, such as a counter, and shadowing for a step that makes a new version of the same thing (`let input = input.trim();`, a conversion).
+
+## `const`, `static` and `let`
+
+| | `let` | `const` | `static` |
+|---|---|---|---|
+| Value | any expression, computed when the line runs | a constant expression, computed before the program runs | a constant expression |
+| Can change | only with `mut` | never | not by assignment (atomic types and `Mutex` can change), and `static mut` needs `unsafe` for every use |
+| In memory | a variable | copied into each place that uses it | one place; all references point to it |
+
+The spelling, where each may sit are on [Declarations and types](/learn/declarations-types/#declaring-let-const-static), and the naming is under [Naming](/learn/declarations-types/#naming). The "In memory" row is the Rust Reference on [constants](https://doc.rust-lang.org/reference/items/constant-items.html) and [statics](https://doc.rust-lang.org/reference/items/static-items.html). The programs below run the other rows (`static mut` is in [what Rust lacks](/learn/what-rust-lacks/)).
+
+<Snippet file="const-static.rs" />
+
+A `const` cannot use a runtime value, even one that looks fixed:
+
+<Snippet file="const-runtime.fail.rs" />
+
+E0435. The `help:` suggests `let`, which is what you want for a value that is not known in advance. Nor can a `static` be assigned to:
+
+<Snippet file="static-assign.fail.rs" />
+
+A `static` can sit inside a function and keep its value between calls. It changes through a type made for that, here `AtomicU32` ([Shared state](/learn/shared-state/)):
+
+<Snippet file="static-fn.rs" />
+
+Reach for `const` first; use a `static` when the value should live in one place for the whole program. Mutable global state is awkward on purpose: see [what Rust lacks](/learn/what-rust-lacks/).
+
+## Variables you do not use
+
+An unused variable and a `mut` that is never needed are **warnings**, not errors: the lints [`unused_variables`](https://doc.rust-lang.org/rustc/lints/listing/warn-by-default.html#unused-variables) and [`unused_mut`](https://doc.rust-lang.org/rustc/lints/listing/warn-by-default.html#unused-mut) are on by default. `#![deny(unused)]` ([lint levels](/learn/macros-attributes-naming/#lints)) turns them into errors for the whole file:
+
+<Snippet file="unused.fail.rs" />
+
+For "unused on purpose", start the name with an underscore. `_kept` is still a variable; `_` alone binds nothing:
+
+<Snippet file="underscore.rs" />
+
+## Declared now, set later
+
+A `let` without a value is allowed ([the working form](/learn/declarations-types/#declared-now-set-later)), but a read that some path reaches unset is E0381:
+
+<Snippet file="maybe-set.fail.rs" />
+
+A plain `let` takes its value once; a second assignment is E0384 again:
+
+<Snippet file="set-twice.fail.rs" />
+
+## Inference looks ahead
+
+A later use can decide a variable's type: `let a = 5;` becomes a `u8` if a `takes_u8(a)` call follows ([the type is often optional](/learn/declarations-types/#the-type-is-often-optional)). If two uses disagree, the error is at the second:
+
+<Snippet file="infer-conflict.fail.rs" />
+
+## Your language, side by side
+
+<ForLang only="go" title="What you write today">
+
+| In Go | In Rust |
+|---|---|
+| `x := 5` | `let x = 5;`, or `let mut x` if it changes. Go has no read-only local variable: a Go `const` must be known when compiling (the const program below). |
+| `x := 1` then `x := 2` in one scope | an error in Go (the redeclare program below); a new variable in Rust |
+| `var n int` (n is 0) | `let n: i32 = 0;`. Rust has no zero value: reading an unset variable is E0381. |
+| `a, err := f()` then `b, err := g()` | `err` is reused in Go and `b` is new. A Rust `let` makes new variables; to reuse one, assign to a `let mut`. |
+| an unused local is a compile error | a warning in Rust; `_name` silences it |
+
+<Snippet file="zero-err.go" />
+
+<Snippet file="redeclare.fail.go" />
+
+<Snippet file="const.fail.go" />
+
+<Snippet file="unused.fail.go" />
+
+</ForLang>
+
+<ForLang only="java kotlin" title="What you write today">
+
+| In your language | In Rust |
+|---|---|
+| Java `final var x`, Kotlin `val x` | `let x`. They stop reassigning the name only: a `final` or `val` list still takes `add` (first two programs); read-only belongs to the collection (`List.of`, `listOf`: programs three and four). In Rust it belongs to the variable (Going deeper). |
+| Java `static final`, Kotlin `const val` | `const`. Kotlin's takes only primitives and `String` (fifth program); Rust's takes any constant expression (`square(4)` in Going deeper). |
+| Java `static final` list set by `new ArrayList<>()` | `static`, which also needs a constant expression (table above): no `new` call. |
+| an inner-block local named like an outer local | an error in Java (eighth program); allowed in Kotlin (sixth program) and Rust |
+| same name twice in one scope | an error in Kotlin (seventh program); allowed in Rust, where it is the usual way to convert a value |
+| a local set in only one branch | same rule in Java, Kotlin and Rust: reading it is an error (last two programs) |
+
+<Snippet file="final-shallow.java" />
+
+<Snippet file="val-shallow.kt" />
+
+<Snippet file="immutable-list.crash.java" />
+
+<Snippet file="listof-add.fail.kt" />
+
+<Snippet file="const-val.fail.kt" />
+
+<Snippet file="shadow.kt" />
+
+<Snippet file="redeclare.fail.kt" />
+
+<Snippet file="shadow.fail.java" />
+
+<Snippet file="unassigned.fail.java" />
+
+<Snippet file="unassigned.fail.kt" />
+
+</ForLang>
+
+<ForLang only="csharp" title="What you write today">
+
+| In C# | In Rust |
+|---|---|
+| a local you cannot reassign | `let x`. C# has no read-only local: `readonly` is not allowed on one, and `const` needs a compile-time value (last two programs). |
+| a local in an inner block with an outer local's name | an error in C# (first program); allowed in Rust |
+
+<Snippet file="shadow.fail.cs" />
+
+<Snippet file="readonly-local.fail.cs" />
+
+<Snippet file="const-runtime.fail.cs" />
+
+</ForLang>
+
+<ForLang only="python typescript" title="What you write today">
+
+| In your language | In Rust |
+|---|---|
+| Python `x = ...` again, with any type | `let mut x` keeps its type; shadowing with `let x` changes it |
+| TypeScript `const list = [1]` | `let list`. TypeScript's `const` keeps the name from being reassigned, but `list.push(2)` still works. Rust's `let` forbids the push. |
+| TypeScript `let x = 1; let x = 2;` | an error in TypeScript; shadowing in Rust |
+| a variable set in only one branch | Python fails when the line runs; TypeScript (strict mode) refuses at compile time; Rust refuses at compile time (E0381) |
+
+<Snippet file="rebind.py" />
+
+<Snippet file="const-shallow.ts" />
+
+<Snippet file="redeclare.fail.ts" />
+
+<Snippet file="unbound.fail.py" />
+
+<Snippet file="unassigned.fail.ts" />
+
+</ForLang>
+
+<ForLang only="c cpp" title="What you write today">
+
+| In your language | In Rust |
+|---|---|
+| a block variable that hides an outer one | allowed in C, C++ and Rust (first program) |
+| the same name twice in one block | an error in C and C++ (second program); allowed in Rust |
+| `{ int x = x + 1; }` in an inner block | the new `x` is already in scope on the right, so it reads itself; gcc warns, and the value is undefined (third and fourth programs). Rust's `let x = x + 1;` reads the old `x`. |
+| `int label; if (c) label = 1; use(label);` | compiles with no gcc warning and reads a value never set (fifth and sixth programs). Rust: E0381, above. |
+| `const int x = c ? 1 : 2;` | `let x = if c { 1 } else { 2 };` |
+| `int speed = 90; speed = speed * 1.6;` | stores 144 without a word in C++ (seventh program). Rust rejects it (E0308, `mut-type` above). |
+| `auto a = 5;` | `auto` reads only the right-hand side: `a` is an `int` (eighth program). A `let` can wait for a later line. |
+| `constexpr int N = 4;`, `#define N 4`, a `constexpr` function | `const N: i32 = 4;`, a `const fn` (Going deeper), which can also be called while the program runs |
+| `static int calls` in a function | a `static` in a function (`static-fn` above), changed through an atomic, not by `calls += 1` (last program) |
+
+<Snippet file="inner-shadow.c" />
+
+<Snippet file="redeclare.fail.c" />
+
+<Snippet file="self-init.c" />
+
+<Snippet file="self-init.cpp" />
+
+<Snippet file="maybe-unset.c" />
+
+<Snippet file="maybe-unset.cpp" />
+
+<Snippet file="narrow.cpp" />
+
+<Snippet file="auto-rhs.cpp" />
+
+<Snippet file="static-local.c" />
+
+The Rust cells in this table are run by `check-rows.rs`.
+
+</ForLang>
+
+<p class="lr-layer">Going deeper</p>
+
+## `mut` belongs to the name, not the value
+
+Whether a value can change depends on its variable: move it into a `mut` variable and it can change ("moved" is [Ownership](/learn/ownership/)):
+
+<Snippet file="move-mut.rs" />
+
+The reverse works too. Shadowing a `mut` variable with a plain `let` freezes it again, a way to say "built, now finished":
+
+<Snippet file="freeze.fail.rs" />
+
+Two things still change a value through a variable that is not `mut`. A `&mut` reference changes what it points at ([Borrowing](/learn/borrowing/)):
+
+<Snippet file="mut-ref.rs" />
+
+And types such as `Cell` are built to change through a plain `let` ([Smart pointers](/learn/smart-pointers/#cell-and-refcell-change-it-through-a-shared-reference) covers them):
+
+<Snippet file="cell.rs" />
+
+## What a `const` may contain
+
+A `const` is computed before the program runs, so it can call only `const fn` functions:
+
+<Snippet file="const-call.rs" />
+
+`String::from` is not one, so this fails with E0015:
+
+<Snippet file="const-string.fail.rs" />
+
+For a fixed piece of text, use `&str` (`const NAME: &str = "tracker";`).
+
+## Shadowing can hide a mistake
+
+Shadowing inside a block does not touch the outer variable, and the compiler cannot know you meant to update it. The program below compiles and prints `total: 0`:
+
+<Snippet file="shadow-trap.rs" />
+
+That file switches the warnings off. With them on, the compiler notices the inner `total` is never used and the outer `mut` never needed:
+
+<Snippet file="shadow-trap.fail.rs" />
+
+Read warnings about unused variables. Here one is the bug.
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Open each exercise in the Playground, replace the `todo!()`, and run it until it prints `all checks passed`.
+
+<Exercise name="multiples" title="Fix a counter">
+This counts the multiples of `step` from 1 to `limit`, and the answer is wrong. The compiler already warns about the cause: read its warnings.
+</Exercise>
+
+<Exercise name="average" title="Shadow to convert">
+Return the average of `total` over `count` as an `f64`. Shadow each parameter with a converted copy (`let total = total as f64;`) and divide. No items must give `0.0`, not NaN.
+</Exercise>
+
+## Read more
+
+- [The Rust Book, chapter 3.1: Variables and Mutability](https://doc.rust-lang.org/book/ch03-01-variables-and-mutability.html): the reasoning for immutable defaults, shadowing and constants.
+- [Rust by Example: Variable Bindings](https://doc.rust-lang.org/rust-by-example/variable_bindings.html), [scope and shadowing](https://doc.rust-lang.org/rust-by-example/variable_bindings/scope.html) and [constants](https://doc.rust-lang.org/rust-by-example/custom_types/constants.html).
+- The Rust Reference: [constant items](https://doc.rust-lang.org/reference/items/constant-items.html), [static items](https://doc.rust-lang.org/reference/items/static-items.html) and [constant evaluation](https://doc.rust-lang.org/reference/const_eval.html).
+- [`Cell`](https://doc.rust-lang.org/std/cell/struct.Cell.html) in the standard library docs.
+- [Reading compiler errors](/errors/): E0384, E0596, E0435, E0381, E0308, E0015 and E0594 from this page.

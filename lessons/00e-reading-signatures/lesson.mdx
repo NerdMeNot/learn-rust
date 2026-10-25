@@ -1,0 +1,395 @@
+<p class="lr-layer">The toolkit</p>
+
+A function's **signature** is everything before the body's `{` (in a declaration, up to the `;`). The standard library's docs show signatures first, and compiler errors often point at them. Read the name, the parameters, the result, and the bounds last. This page maps your language's signatures to Rust, decodes five of them, then covers `use`, `pub` and `::`. Outputs come from Linux on 64-bit ARM with Rust 1.99.1, and each std signature is copied from the 1.99.1 docs.
+
+## Your language's signature, in Rust
+
+Each form is compiled and run, in your language and in Rust. The next section names the Rust pieces.
+
+<ForLang only="go">
+
+| You write in Go | In Rust |
+|---|---|
+| `func Max[T cmp.Ordered](a, b T) T` | `pub fn max_of<T: PartialOrd>(a: T, b: T) -> T` |
+| `func apply(f func(int) int, x int) int` | `fn apply64(f: impl Fn(i64) -> i64, x: i64) -> i64` |
+| `func lookup(m map[string]int, k string) (int, bool)` | `fn lookup64(m: &HashMap<String, i64>, k: &str) -> Option<i64>` |
+| `func read(path string) (string, error)`, `func run() error` | `fn read(path: &str) -> Result<String, io::Error>`, `fn run(..) -> Result<(), Box<dyn Error>>` |
+| `func (l *Log) Add(line string)`, `func (l Log) Count() int` | `fn add(&mut self, line: &str)`, `fn count(&self) -> usize` |
+| `func show(d Describe) string` | `fn show(item: &dyn Describe) -> String` |
+| `Max` is exported by its capital letter | `pub fn` exports |
+
+- Go's `int` is 64 bits here (the check prints `strconv.IntSize`), so the rows use `i64`.
+- A Go `func` value may change what it captured; in Rust that needs `FnMut` (an `Fn` bound gives E0594), and a plain `fn(...)` pointer cannot capture.
+- `cmp.Ordered` is a fixed list of built-in types; `PartialOrd` is a trait your own types can implement. A Go type satisfies an interface by having the methods; a Rust type needs `impl Describe for T`.
+- A `pub struct` keeps its fields private unless each is `pub`.
+
+</ForLang>
+
+<ForLang only="java">
+
+| You write in Java | In Rust |
+|---|---|
+| `static <T extends Comparable<T>> T largest(List<T> list)` | `fn largest<T: PartialOrd>(list: &[T]) -> &T` |
+| `<T extends A & B>` | `<T: A + B>` |
+| `static int apply(Function<Integer, Integer> f, int x)` | `fn apply(f: impl Fn(i32) -> i32, x: i32) -> i32` |
+| `static Optional<Integer> find(Map<String, Integer> m, String k)` | `fn lookup(m: &HashMap<String, i32>, k: &str) -> Option<i32>` |
+| `static String read(String path) throws IOException` | `fn read(path: &str) -> Result<String, io::Error>` |
+| `static String show(Describe d)` | `fn show(item: &dyn Describe) -> String`, or `&impl Describe` |
+| `public`, no modifier, `private` | `pub`, or nothing: private to the module |
+
+- `throws A, B` has no Rust form: use an enum of your errors, or `Box<dyn Error>`.
+- Rust writes no `? extends` or `? super`: a trait bound has no subclass relation to account for (`T: PartialOrd` is shorthand for `T: PartialOrd<T>`).
+- A Java interface parameter finds the method at run time, like `&dyn Describe`; `impl Describe` fixes the type when compiling.
+- Rust private is per module, not per class; there is no package-private and no `protected`.
+
+</ForLang>
+
+<ForLang only="kotlin">
+
+| You write in Kotlin | In Rust |
+|---|---|
+| `fun <T : Comparable<T>> largest(list: List<T>): T` | `fn largest<T: PartialOrd>(list: &[T]) -> &T` |
+| `fun apply(f: (Int) -> Int, x: Int): Int` | `fn apply(f: impl Fn(i32) -> i32, x: i32) -> i32` |
+| `fun find(m: Map<String, Int>, k: String): Int?` | `fn lookup(m: &HashMap<String, i32>, k: &str) -> Option<i32>` |
+| `fun read(path: String): Result<String>` | `fn read(path: &str) -> Result<String, io::Error>` |
+| `fun add(line: String)` in a class | `fn add(&mut self, line: &str)` inside `impl Log` |
+| declarations are public unless marked | private unless marked `pub` |
+
+- Kotlin's `Result<String>` has a fixed failure type, `Throwable`; Rust names the error type. A method that only reads takes `&self`; Kotlin does not say which a method is.
+
+</ForLang>
+
+<ForLang only="csharp">
+
+| You write in C# | In Rust |
+|---|---|
+| `static T Largest<T>(IReadOnlyList<T> list) where T : IComparable<T>` | `fn largest<T: PartialOrd>(list: &[T]) -> &T` |
+| `static int Apply(Func<int, int> f, int x)` | `fn apply(f: impl Fn(i32) -> i32, x: i32) -> i32` |
+| `static int? Find(Dictionary<string, int> m, string k)` | `fn lookup(m: &HashMap<String, i32>, k: &str) -> Option<i32>` |
+| `static string Read(string path)` (it throws; the signature is silent) | `fn read(path: &str) -> Result<String, io::Error>` |
+| `static void Bump(ref int x)`, called as `Bump(ref n)` | `fn bump(x: &mut i32)`, called as `bump(&mut n)` |
+
+`ref` is the nearest C# form to `&mut`, and both languages mark the call site. A Rust `where` clause exists too.
+
+</ForLang>
+
+<ForLang only="python">
+
+| You write in Python | In Rust |
+|---|---|
+| `def largest[T: Comparable](items: Sequence[T]) -> T` | `fn largest<T: PartialOrd>(list: &[T]) -> &T` |
+| `def apply(f: Callable[[int], int], x: int) -> int` | `fn apply64(f: impl Fn(i64) -> i64, x: i64) -> i64` |
+| `def find(d: dict[str, int], k: str) -> int \| None` | `fn lookup64(m: &HashMap<String, i64>, k: &str) -> Option<i64>` |
+| `def read(path: str) -> str` (a failure raises; the hint is silent) | `fn read(path: &str) -> Result<String, io::Error>` |
+| `def add(self, line: str) -> None` | `fn add(&mut self, line: &str)` inside `impl Log` |
+| `from collections import defaultdict as Map`; `_helper` is private by habit | `use std::collections::HashMap as Map;`; nothing means private, enforced |
+
+- The `[T: Comparable]` form needs Python 3.12 or newer (the runner has 3.13).
+- The interpreter ignores hints: `bad: int = "text"` runs (the check does it). Python's `int` has no size limit, so the rows pick `i64`.
+- `&str` is a borrowed view of text; `String` would hand the text over ([Strings](/learn/strings/)). `from m import n` runs module `m`; `use` only brings in a name.
+
+</ForLang>
+
+<ForLang only="typescript">
+
+| You write in TypeScript | In Rust |
+|---|---|
+| `function largest<T extends number \| string>(list: T[]): T` | `fn largest<T: PartialOrd>(list: &[T]) -> &T` |
+| `function apply(f: (x: number) => number, x: number): number` | `fn apply_f64(f: impl Fn(f64) -> f64, x: f64) -> f64` |
+| `function find(m: Map<string, string>, k: string): string \| undefined` | `fn lookup_text(m: &HashMap<String, String>, k: &str) -> Option<String>` |
+| `function read(path: string): string` (it throws; the type is silent) | `fn read(path: &str) -> Result<String, io::Error>` |
+| `readonly number[]`, `number[]` as parameters | `&[f64]` to read, `&mut Vec<f64>` to change and grow |
+| `import { readFileSync as readSync } from "node:fs";` | `use std::fs::read_to_string as read_all;` |
+
+- JavaScript's `number` is a 64-bit float, so the number rows use `f64`. A TypeScript file is a module; `mod shop { }` here is an inline block, and `use` loads nothing.
+
+</ForLang>
+
+<ForLang only="c">
+
+| You write in C | In Rust |
+|---|---|
+| `int max_int(int a, int b)`, once per type | `fn max_of<T: PartialOrd>(a: T, b: T) -> T`, once |
+| `int apply(int (*f)(int), int x)` | `fn apply_ptr(f: fn(i32) -> i32, x: i32) -> i32`, or `impl Fn(i32) -> i32` to take closures too |
+| `const int *find(const int *a, int n, int key)`, `NULL` when missing | `fn find(a: &[i32], key: i32) -> Option<&i32>` |
+| `int read_file(const char *path, char *buf, size_t n)`, `-1` on failure | `fn read(path: &str) -> Result<String, io::Error>` |
+| `void bump(int *x)`; `const int *p` | `fn bump(x: &mut i32)`; `&i32` |
+| `static int helper(void)`; `#include <stdio.h>` | `fn helper()` with no `pub`: private to its module; `use std::fs;` |
+
+- `int` is 32 bits on this runner (the check asserts it), so the rows use `i32`. The slice `&[i32]` carries its length, which C passes as `n`.
+- `#include` pastes a header's text; `use` only brings a name into scope. `'static` in a bound is not C's `static`.
+
+</ForLang>
+
+<ForLang only="cpp">
+
+| You write in C++ | In Rust |
+|---|---|
+| `template <std::totally_ordered T> const T& largest(const std::vector<T>&)` | `fn largest<T: PartialOrd>(list: &[T]) -> &T` |
+| `int apply(std::function<int(int)> f, int x)` | `fn apply(f: impl Fn(i32) -> i32, x: i32) -> i32` |
+| `std::optional<int> find(const std::vector<int>& a, int key)` | `fn find(a: &[i32], key: i32) -> Option<&i32>`, or `Option<i32>` to copy |
+| `std::string read(const std::string& path)` (it throws; the signature is silent) | `fn read(path: &str) -> Result<String, io::Error>` |
+| `void bump(int& x)`, `const int&`, a `const` method | `fn bump(x: &mut i32)`, `&i32`, a method taking `&self` |
+| `namespace shop { }`, `using namespace std;`, a `class` member is private by default | `mod shop { }`, `use std::cmp::*;`, items and struct fields are private by default |
+
+- A concept is met by any type that has the operations (a struct with `operator<=>` passes `std::totally_ordered` without saying so; the check asserts it). A Rust trait is met only by a type that says so, with `impl` or `#[derive(...)]`.
+- `std::totally_ordered` also holds for `double`; `PartialOrd` is the closer match to what `largest` uses.
+- C++ lets `bump(n)` change `n`; Rust requires `bump(&mut n)`. `&T` is like `const T&` that the compiler checks cannot outlive what it points at. The concept needs C++20 (the runner uses `-std=c++20`).
+
+</ForLang>
+
+## One program, every piece
+
+Each helper uses one piece of signature syntax. The table names them.
+
+<Snippet file="grammar.rs" />
+
+| Written | It means | Learn more |
+|---|---|---|
+| `<T>` after the name | a *type parameter*, filled in by the call | [Generics](/learn/generics/) |
+| `T: Display + Clone`, or `where A: Display,` | a **bound**: the abilities `T` must have. A *trait* is a named ability, and `+` asks for several. A `where` clause is the same bounds moved after the result. The body may use what the bounds give, plus what every type has | [Traits](/learn/traits/) |
+| `&T`, `&mut T` | a borrow: look at a `T`, or change it, without taking it. A bare `T` hands the value over; the caller cannot use it again (a small type such as `i32` is copied) | [Borrowing](/learn/borrowing/), [Mutable Borrows](/learn/mutable-borrows/) |
+| `self`, `&self`, `&mut self`, `Self` | a method's first parameter. `Self` is the type the `impl` is for | [Methods](/learn/methods/) |
+| `&[T]`, `Option<&T>`, `Result<T, E>` | a *slice* is any number of items in a row. The result type says whether a call can come back empty or fail | [Vectors and Slices](/learn/vectors/), [Option](/learn/option/), [Errors](/learn/errors/) |
+| `dyn Describe`, `Box<dyn Error>` | the method to run is looked up while the program runs. `Box` owns a heap value ([Ownership](/learn/ownership/#boxt-one-value-on-the-heap)) | [Traits](/learn/traits/) |
+| `impl Describe` | in a parameter, shorthand for a bounded type parameter; in a result, "one type of this kind, chosen by the function" | [Traits](/learn/traits/) |
+| `Fn(i32) -> i32`, `FnMut`, `FnOnce`; `fn(i32) -> i32` | capital `Fn...` are bounds for anything callable, such as a closure (an unnamed function, `\|x\| x + 1`). `Fn` needs only shared access to what it captured, `FnMut` may change it, and `FnOnce` may use it up, so it is called once. Lowercase `fn(i32) -> i32` is a type: a pointer to a plain function, or to a closure that captures nothing | [Closures](/learn/closures/), [Functions](/learn/functions/) |
+| `'a`, `'_`, `'static` | a lifetime is the span a reference stays valid. `'a` ties references together; as a bound, `'static` means "holds no borrow that could end early" | [Returning References](/learn/returning-references/) |
+| `-> !` | there is no result to give back | [Statements and Expressions](/learn/statements-expressions/) |
+
+## Decoding five signatures
+
+### `largest`: this page's own
+
+```rust
+fn largest<T: PartialOrd>(list: &[T]) -> &T
+```
+
+| Piece | Reads as | Means |
+|---|---|---|
+| `<T: PartialOrd>` | for any `T` that can be compared with `>` | `PartialOrd` allows `>` even when some pairs, such as a float `NaN`, cannot be ranked. `Ord` forbids that, so floats lack it: `cmp::max` needs `Ord`, and `max(1.5, 0.5)` is E0277. `largest` only compares, so floats are fine |
+| `list: &[T]` | a borrowed slice | the caller keeps the list |
+| `-> &T` | a borrow of one item | not a copy: returning `T` out of a slice is E0508 ("consider borrowing here") |
+
+A type with no `PartialOrd` is refused at the call, and the note points at the bound:
+
+<Snippet file="missing-bound-call.fail.rs" />
+
+A type gets a trait by declaring it. `#[derive(...)]` writes the `impl`; `PartialOrd` needs `PartialEq`, so derive both:
+
+<Snippet file="derive-bound.rs" />
+
+### `Option::map`: a closure bound
+
+[`Option::map`](https://doc.rust-lang.org/std/option/enum.Option.html#method.map) changes the value inside an `Option`:
+
+```rust
+pub fn map<U, F>(self, f: F) -> Option<U>
+where
+    F: FnOnce(T) -> U,
+```
+
+| Piece | Reads as | Means |
+|---|---|---|
+| `map<U, F>` | two new placeholders | `U` is what the closure gives back. `F` is the closure's own type: every closure has its own type, so a parameter that takes one is a type parameter with a bound. `T` comes from the `Option<T>` the method belongs to |
+| `self` | the option itself | the method takes the `Option` (an `Option<i32>` is copied, so it stays usable) |
+| `f: F`, `F: FnOnce(T) -> U` | a callable taking the `T`, giving a `U` | called at most once, so it may use up what it captured |
+| `-> Option<U>` | maybe a `U` | `None` stays `None` |
+
+<Snippet file="decode-map.rs" />
+
+### `HashMap::entry`: a mutable borrow
+
+[`HashMap::entry`](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.entry) finds the slot for a key, whether or not it has a value yet ([Maps](/learn/maps/)):
+
+```rust
+pub fn entry(&mut self, key: K) -> Entry<'_, K, V, A>
+```
+
+`K` and `V`, the key and value types, are not in the method's own `<>`. They come from the line the docs print above it, `impl<K, V, S, A> HashMap<K, V, S, A> where K: Eq + Hash, S: BuildHasher, A: Allocator`, which declares the generics for every method in that block. Its `K: Eq + Hash` is why keys must be hashable. Ignore `S`, the hasher, and `A`, the allocator: on stable Rust `A` is always `Global` (a custom one is unstable, E0658).
+
+<ForLang only="go">
+
+Go's version of that line is the receiver: `func (m *Store[K, V]) Entry(key K)`.
+
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+
+That line plays the part of the class header `HashMap<K, V>`: the method adds no type parameters of its own.
+
+</ForLang>
+
+| Piece | Reads as | Means |
+|---|---|---|
+| `&mut self` | borrowed to change | the map must be reachable mutably (a `let mut` variable or a `&mut` reference), and nothing else may use it while the result lives |
+| `key: K` | the key, by value | moved in. A `HashMap<String, _>` needs `entry(word.to_string())`, not `entry(word)` with a `&str` |
+| `Entry<'_, K, V, A>` | a handle for one key's slot, filled or empty | `'_` is a lifetime the compiler fills in: the `Entry` cannot outlive the borrow of the map |
+
+<Snippet file="entry-call.rs" />
+
+`or_insert(0)` fills an empty slot and hands back a `&mut` to the count.
+
+### `thread::spawn`: three bounds at once
+
+[`thread::spawn`](https://doc.rust-lang.org/std/thread/fn.spawn.html) starts a thread ([Threads](/learn/threads/)):
+
+```rust
+pub fn spawn<F, T>(f: F) -> JoinHandle<T>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+```
+
+| Piece | Reads as | Means |
+|---|---|---|
+| `F: FnOnce() -> T + Send + 'static` | `F` is all three | callable once with no arguments, giving a `T`; [`Send`](/learn/send-sync/) means it may be moved to another thread; `'static` means it holds no borrow of a local variable that could end first |
+| `-> JoinHandle<T>` | a handle | `.join()` waits for the thread and gives `Ok(T)`, or `Err` if the thread panicked. `T: Send + 'static` lets the result cross back |
+
+A closure that only uses a local *borrows* it, and the borrow could end before the thread does. `'static` refuses that; the `help:` shows the fix, `move`:
+
+<Snippet file="spawn-borrow.fail.rs" />
+
+`move` makes the closure own the variables it uses, so nothing is borrowed:
+
+<Snippet file="spawn-move.rs" />
+
+<ForLang only="go">
+
+A goroutine's closure may use and change any local, because the garbage collector keeps it alive. Rust has no collector, so `spawn` asks the closure to own what it uses:
+
+<Snippet file="spawn-capture.go" />
+
+</ForLang>
+
+<ForLang only="java">
+
+Java's nearest rule is that a lambda may use only locals that are final or effectively final. Java has no equivalent of `Send`.
+
+<Snippet file="lambda-final.fail.java" />
+
+</ForLang>
+
+### `fs::read_to_string`: a conversion bound, and a shortened `Result`
+
+[`fs::read_to_string`](https://doc.rust-lang.org/std/fs/fn.read_to_string.html) reads a whole file:
+
+```rust
+pub fn read_to_string<P: AsRef<Path>>(path: P) -> Result<String>
+```
+
+`P: AsRef<Path>` means "anything viewable as a file path": a `&str`, a `String` or a `Path`. `Result<String>` has one parameter because this `Result` is [`io::Result`](https://doc.rust-lang.org/std/io/type.Result.html), an alias for `Result<String, io::Error>`. `Box<dyn Error>` holds any error, and `?` converts into it:
+
+<Snippet file="read-file.rs" />
+
+### Two more at a glance
+
+| Signature | What it already tells you |
+|---|---|
+| [`pub fn exit(code: i32) -> !`](https://doc.rust-lang.org/std/process/fn.exit.html) | never comes back |
+| [`fn map<B, F>(self, f: F) -> Map<Self, F> where Self: Sized, F: FnMut(Self::Item) -> B`](https://doc.rust-lang.org/std/iter/trait.Iterator.html#method.map) on `Iterator` | `Self::Item` is what the iterator yields; skip `Self: Sized`; the result is a new iterator that does nothing until used ([Iterators](/learn/iterators/)) |
+
+## Paths: use, pub and mod
+
+A **path** names an item by walking through modules with `::`. A **module** (`mod`) is a named group of items, and a **crate** is one unit of compilation: your program is one, and `std` is another. This program uses each path form:
+
+<Snippet file="paths.rs" />
+
+| Written | Means |
+|---|---|
+| `use std::collections::HashMap;` | bring the name in, so `HashMap` can be written short |
+| `use std::collections::{BTreeMap, HashSet};`, `use std::cmp::*;` | several names; every public name in a module |
+| `use shop::prices::with_tax as taxed;` | bring it in under another name |
+| `crate::shop::TAX_PERCENT`, `self::TAX_PERCENT`, `super::double` | start at the top of this crate, at this module, or at the one above it |
+| `pub`, `pub(crate)`, nothing | visible outside the module; visible in this crate only; private (trait items and enum variants follow their trait or enum) |
+| `str::len("abc")` against `"abc".len()` | `::` walks to a function by name; `.` calls a method on a value you hold |
+
+A private item is visible in its own module and the modules inside it: `double` has no `pub`, and `prices` still calls it through `super::`. A name used without its `use` is E0433 when it starts a path (`HashMap::new()`) and E0425 when it stands alone (a call like `max(3, 9)`). The `help:` supplies the line either way:
+
+<Snippet file="no-use.fail.rs" />
+
+<Snippet file="no-use-fn.fail.rs" />
+
+And a private function reached from outside is E0603:
+
+<Snippet file="private-fn.fail.rs" />
+
+<p class="lr-layer">Going deeper</p>
+
+## The bound is checked where you write it
+
+Rust checks a generic function's body once, against its bounds. That is why the [gotcha](#gotcha) fails at the `>` inside `largest`, and why a bad call fails at the call, as the `Point` error above did.
+
+<ForLang only="typescript">
+
+TypeScript checks that both sides of `>` have the same type, not that it can be ordered. So the unbounded `largest` compiles, and on objects it quietly returns the first one:
+
+<Snippet file="unbounded-objects.ts" />
+
+`extends number | string` makes the main program safe; `T: PartialOrd` does the same job.
+
+</ForLang>
+
+<ForLang only="cpp">
+
+A C++ template checks an expression that depends on `T`, such as `item > *best`, when it is used with a type. This unconstrained `largest` compiles until it meets a type with no `>`, and then the error is reported inside the template, with a "required from here" pointing back at the call:
+
+<Snippet file="template-late.fail.cpp" />
+
+With a C++20 concept (`template <std::totally_ordered T>`), g++ 14 reports the failure at the call instead. Look for `constraints not satisfied` and `[with T = Point]`:
+
+<Snippet file="template-concept.fail.cpp" />
+
+</ForLang>
+
+## What the first parameter promises
+
+`self`, `&self` and `&mut self` tell you what a call may do to the value. `finish(self)` takes the counter and does not give it back, so a second use is an error (`Counter` is not `Copy`). The note points at the `self`:
+
+<Snippet file="use-after-self.fail.rs" />
+
+`&self` says "shared access", which for ordinary values means read-only; `Cell` and `Mutex` can change behind a `&` ([Smart pointers](/learn/smart-pointers/#cell-and-refcell-change-it-through-a-shared-reference), [Shared state](/learn/shared-state/)).
+
+## `'a`: why it appears, and when it does not
+
+A reference in a result must point at something, and the compiler must know what. With one reference in the parameters, or a `&self`, it works that out, so you write no `'a`, as in `fn first_word(text: &str) -> &str`. With two references and neither of them `&self`, it cannot guess:
+
+<Snippet file="longest-missing.fail.rs" />
+
+The `help:` is the fix. Annotations "don't change how long any of the references live", says the [Rust Book](https://doc.rust-lang.org/book/ch10-03-lifetime-syntax.html); read `'a` as a label that ties the output to the inputs carrying it ([Lifetimes](/learn/lifetimes/) comes later).
+
+<ForLang only="go java kotlin csharp python typescript">
+
+A garbage-collected language never writes this: the collector keeps whatever a reference points at alive. Rust has no collector, so the signature says which input the result points into.
+
+</ForLang>
+
+<p class="lr-layer">Practice</p>
+
+The first asks you to read rather than write.
+
+<Exercise name="read-calls" title="Read this: what does each call give?">
+Four short signatures (`&mut`, `impl FnMut`, a `PartialOrd` bound, an `Option` result) and the calls that use them. Say what each call gives; the checks run the real code and name the item you misread, not the right answer. Two methods you have not met: `list.first()` is the first item as an `Option<&i32>` (`None` for an empty list), and `.copied()` turns that into an `Option<i32>`.
+</Exercise>
+
+<Exercise name="largest" title="Largest, or nothing">
+Fill in `largest`: the biggest item, or `None` for an empty list (return `None` early). The compiler's `help:` names the bound. The tempting `list.iter().max()` needs `Ord`, and the float check shows why it fails.
+</Exercise>
+
+<Exercise name="repeat" title="Call it n times">
+Call the closure `f` exactly `n` times. A closure that changes state must itself be `mut` to be called, so the parameter list needs one more word than the starter has; the compiler will say which.
+</Exercise>
+
+<Exercise name="count-words" title="Count with entry">
+Count how often each word appears. The key is a `String`, passed to `entry` by value. The checks include an empty list.
+</Exercise>
+
+<Exercise name="sum-in-thread" title="Sum in a thread">
+Sum a `Vec<i32>` on another thread. The closure must own the vector (`move`), and `join()` hands back a `Result`. The checks include an empty vector.
+</Exercise>
+
+## Read more
+
+- The Rust Book, [Generic Data Types](https://doc.rust-lang.org/book/ch10-01-syntax.html), [Traits](https://doc.rust-lang.org/book/ch10-02-traits.html) (bounds, `where`, `impl Trait`), [Lifetimes](https://doc.rust-lang.org/book/ch10-03-lifetime-syntax.html), [Paths](https://doc.rust-lang.org/book/ch07-03-paths-for-referring-to-an-item-in-the-module-tree.html) and [`use`](https://doc.rust-lang.org/book/ch07-04-bringing-paths-into-scope-with-the-use-keyword.html).
+- The Rust Reference, [Generic parameters](https://doc.rust-lang.org/reference/items/generics.html), [Trait and lifetime bounds](https://doc.rust-lang.org/reference/trait-bounds.html), [Impl trait type](https://doc.rust-lang.org/reference/types/impl-trait.html), [Lifetime elision](https://doc.rust-lang.org/reference/lifetime-elision.html) and [Visibility and privacy](https://doc.rust-lang.org/reference/visibility-and-privacy.html).
+- The standard library, [`Fn`](https://doc.rust-lang.org/std/ops/trait.Fn.html), [`FnMut`](https://doc.rust-lang.org/std/ops/trait.FnMut.html) and [`FnOnce`](https://doc.rust-lang.org/std/ops/trait.FnOnce.html). Rust by Example, [Bounds](https://doc.rust-lang.org/rust-by-example/generics/bounds.html), [Where clauses](https://doc.rust-lang.org/rust-by-example/generics/where.html) and [Visibility](https://doc.rust-lang.org/rust-by-example/mod/visibility.html).

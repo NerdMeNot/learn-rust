@@ -1,0 +1,10 @@
+---
+// Starlight's footer (edit link, previous/next), plus the line every page carries.
+import Default from '@astrojs/starlight/components/Footer.astro'
+---
+<Default {...Astro.props}><slot /></Default>
+<p class="lr-legal">
+  Learn Rust is an independent project, not affiliated with the Rust Project or the Rust Foundation.
+  Code and text are under the <a href="https://github.com/NerdMeNot/learn-rust/blob/main/LICENSE">MIT licence</a>.
+  <a href="https://github.com/NerdMeNot/learn-rust">Source on GitHub</a>.
+</p>

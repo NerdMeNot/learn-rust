@@ -1,0 +1,125 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Trait Objects (dyn)"
+part: "abstractions"
+intro: >-
+  A trait object is a value whose exact type is forgotten, and only the trait's methods
+  remain. It is how one list holds squares and rectangles, or one variable holds
+  "whichever shape we picked at run time". You write `dyn Shape`, and you hold it behind
+  a pointer.
+coming_from:
+  go: >-
+    `&dyn Shape` and `Box<dyn Shape>` are interface values: a pointer to the data plus a
+    pointer to a table of methods. `Vec<Box<dyn Shape>>` is your `[]Shape`. The
+    differences: a type must say `impl Shape for Square` first, a `&dyn Shape` points at
+    the original where a Go interface copies the value, and in Rust you choose per use
+    between this and a generic `<T: Shape>`, which is decided at compile time.
+  kotlin: >-
+    A `Box<dyn Shape>` is a `Shape` reference: the object sits on the heap and each call
+    finds the right method at run time. In Kotlin every call through an interface works
+    like that. In Rust it is something you ask for with `dyn`. A Kotlin `<T : Shape>`
+    is erased and still an interface call; Rust's `<T: Shape>` is compiled once per type,
+    with a direct call.
+  python: >-
+    Python needs nothing like this to hold a mix: any object with an `area()` method goes
+    in a list, and the method is found by name when the call runs. In Rust the list is
+    `Vec<Box<dyn Shape>>`, each type must say `impl Shape` first, and a type without it
+    is refused at compile time, not when the call runs.
+  typescript: >-
+    `Shape[]` is `Vec<Box<dyn Shape>>`. TypeScript checks shape (any object with an
+    `area()` counts) and the interface is erased at run time. In Rust a type must say
+    `impl Shape for Square`, and a `dyn Shape` carries its method table with it.
+  java: >-
+    `List<Shape>` is `Vec<Box<dyn Shape>>`. In Java every object sits behind a reference
+    and an interface call picks the method by the object's class at run time. Rust asks
+    you to write both parts, `Box` and `dyn`. A Java `<T extends Shape>` is erased and
+    still an interface call; Rust's `<T: Shape>` is compiled once per type, with a direct
+    call.
+  csharp: >-
+    `List<IShape>` is `Vec<Box<dyn Shape>>`. A class instance is always behind a
+    reference in C# and an interface call picks the method by the object's type at run
+    time. Rust asks you to write both parts, `Box` and `dyn`. Its generic `<T: Shape>` is
+    closest to a C# generic with a struct type argument, and a struct behind an interface
+    is boxed, as a `Square` is in a `Box<dyn Shape>`.
+  c: >-
+    `main.c` builds a `dyn` by hand: a struct holding a data pointer and a pointer to a
+    table of function pointers. A `&dyn Shape` is the same idea, filled in and checked by
+    the compiler, with drop, size and alignment added to the table.
+  cpp: >-
+    `Box<dyn Shape>` is a `std::unique_ptr<Shape>` calling `virtual` methods, with one
+    difference in layout: the pointer to the table sits in the pointer, not inside every
+    object, so `Square` stays a plain struct and only a `dyn` pays for the table.
+notes:
+  - >-
+    `dyn Shape` means "some type that implements `Shape`, known only at run time". Its
+    size is not known, so you cannot hold one by value. You hold it behind a pointer:
+    `&dyn Shape`, `&mut dyn Shape`, or `Box<dyn Shape>`. A `Box` is an owned pointer to
+    a value on the heap.
+  - >-
+    A `Vec` holds values of one type and one size. `Box<dyn Shape>` is one type and one
+    size whatever it contains, so a `Vec<Box<dyn Shape>>` can hold squares and
+    rectangles side by side.
+  - >-
+    The call `s.area()` looks up the right `area` through a table at run time. That is
+    dynamic dispatch. The compile-time alternative is a generic `fn f<T: Shape>(s: &T)`,
+    which the compiler writes once per type.
+  - >-
+    Only some traits can be used as `dyn`, because the compiler must be able to build
+    the table. A method with its own type parameter, or one that returns `Self`, makes the
+    trait unusable as `dyn` unless that method says `where Self: Sized`.
+gotcha:
+  title: "A list of a trait, without Box<dyn>"
+  verdict: "rust-rule"
+  looks_fine: >-
+    In Go, Kotlin, Java, C# and TypeScript, a list whose element type is an interface
+    holds any mix of implementing types.
+  rust_sees: >-
+    `Shape` is a trait, not a type. It names a whole set of types of different sizes, and
+    a `Vec` needs every element to be the same size. The compiler asks for `dyn`, and
+    after that it asks for a pointer.
+  why: >-
+    Those languages give the list an element of one fixed size: a reference (Kotlin, Java,
+    C#, TypeScript) or, in Go, a two-word interface value that holds a copy of the value
+    and points at it. Rust stores values where you put them and does not add a pointer on
+    its own, so you write the pointer: `Box<dyn Shape>`.
+  langs:
+    go:
+      status: "runs"
+      says: >-
+        Go runs this and prints total: 33. An interface value is always the same size (two
+        words) and holds a copy of the value, so `[]Shape` holds a mix.
+    kotlin:
+      status: "runs"
+      says: >-
+        Kotlin runs this and prints total: 33. A `List<Shape>` holds references, which
+        are all the same size.
+    python:
+      status: "runs"
+      says: >-
+        Python prints total: 33. A list holds references to objects, and there is no
+        declared element type to satisfy.
+    typescript:
+      status: "runs"
+      says: >-
+        Prints total: 33. A `Shape[]` holds references to objects of any class that fits
+        the interface.
+    java:
+      status: "runs"
+      says: >-
+        Java runs this and prints total: 33. A `List<Shape>` holds references, so it
+        holds any mix of implementing classes.
+    csharp:
+      status: "runs"
+      says: >-
+        C# runs this and prints total: 33. A `List<IShape>` holds references to class
+        instances.
+    c:
+      status: "none"
+      says: >-
+        C has no traits. A mixed array is an array of structs holding a data pointer and
+        a function table, as `main.c` shows.
+    cpp:
+      status: "refuses"
+      says: >-
+        C++ refuses this too: an array (or a `std::vector`) of `Shape` stores `Shape`
+        objects themselves, and `Shape` is abstract. The usual fix is the same as in Rust,
+        pointers: `std::vector<std::unique_ptr<Shape>>`.

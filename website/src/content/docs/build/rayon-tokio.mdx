@@ -1,0 +1,67 @@
+---
+title: "Rayon and Tokio together"
+description: "Tokio can switch tasks only at an .await, so heavy CPU work does not belong on its threads. Hand a blocking call to spawn_blocking, and parallel work to rayon with rayon::spawn and a oneshot channel."
+---
+
+import { Files, GuideGotcha, Remember, Session, Tree } from '../../../components/guide'
+
+[Tokio](/build/tokio/) runs async code on a few threads, and it can switch from one task to another only at an `.await`. [rayon](https://docs.rs/rayon/1.12.0/rayon/) runs work on its own pool of threads: `par_iter()` hands the pieces of a collection to those threads and returns when they are all done. Put the two together and one question matters: which thread is waiting?
+
+<Remember>Work with no `.await` in it, a parallel loop included, should not run for long on a runtime thread. A blocking call goes to `spawn_blocking`. Parallel CPU work goes to `rayon::spawn`, and the async side waits on a `oneshot` channel.</Remember>
+
+<Tree guide="rayon-tokio" dir="rust" name="rayon-tokio" title="Project layout" notes={{"src/main.rs":"the program on this page","Cargo.lock":"created by Cargo","Cargo.toml":"dependencies go here"}} />
+
+<Files guide="rayon-tokio" dir="rust" files={["Cargo.toml"]} />
+
+<div class="lr-compare">
+<Files guide="rayon-tokio" dir="rust" files={["src/main.rs"]} run="run" />
+<Files guide="rayon-tokio" dir="go" files={["main.go"]} run="go" lang="go" />
+</div>
+
+- **`rayon::spawn(move || ...)`** puts the closure in rayon's job queue and returns. The closure must be `Send + 'static` ([docs](https://docs.rs/rayon/1.12.0/rayon/fn.spawn.html)), the bounds `thread::spawn` has ([Send and Sync](/learn/send-sync/#what-spawn-and-scope-ask-for)), so `lines` is moved in.
+- **`oneshot`** carries one value back. Its docs say "Since the send method is not async, it can be used anywhere", so a rayon thread can call `send`, and `rx.await` makes the task wait without holding a thread. The [Tokio docs](https://docs.rs/tokio/1.54.1/tokio/index.html#cpu-bound-tasks-and-blocking-code) give this as the hint for rayon.
+- **`spawn_blocking`** runs a closure on a thread from Tokio's separate blocking pool. The docs say it is for "non-async operations that eventually finish on their own", and the default limit on those threads is 512 ([`max_blocking_threads`](https://docs.rs/tokio/1.54.1/tokio/runtime/struct.Builder.html)). Here it reads a file.
+- **The handles are awaited in order**, so the output is in request order. The Go version gets the same effect with one result slot per request. In an axum handler, which is an `async fn` too, you would call `parse_all(...).await` the same way ([axum](/build/axum/)).
+- **Is it worth it?** Alice Ryhl's article on blocking, about a sum, says that "unless the array is very very large" computing it "is probably cheap enough that you can just do it directly in Tokio". The three-line inputs here are only to keep the output short. Neither source gives a size to switch at, so measure your own workload.
+
+## Two pools, two sizes
+
+Each pool sizes itself. Tokio's default is "the number of cores available to the system", from [`available_parallelism`](/learn/threads/#how-many-threads) (I read that call in the [tokio 1.54.1 source](https://docs.rs/tokio/1.54.1/src/tokio/loom/std/mod.rs.html); the Tokio docs only say "cores"), and rayon's is the number of logical CPUs, unless `TOKIO_WORKER_THREADS` or `RAYON_NUM_THREADS` is set ([`num_threads`](https://docs.rs/rayon/1.12.0/rayon/struct.ThreadPoolBuilder.html)). The run asserts that both defaults matched in this image, then sets 2 and 3 by hand and shows `par_iter` staying on the rayon threads. Neither pool sizes itself from the other, so on a busy N-core machine there can be N runtime workers and N rayon threads wanting to run. I did not measure what that costs.
+
+<Files guide="rayon-tokio" dir="snippet-pools" files={["src/main.rs"]} run="pools" />
+
+For CPU-bound work the Tokio docs advise "a separate thread pool dedicated to CPU bound tasks", rayon for example, if you want to limit the threads it uses. The rayon docs warn the default may change and say to set `num_threads` if you rely on a fixed number. Neither gives a ratio between the two pools.
+
+## Dropping the receiver does not stop the job
+
+If the request is cancelled, the task awaiting the `oneshot` is dropped, and with it the receiver. The rayon job is not told. The run drops the receiver after a job's first of five chunks. The first job ignores that and does all five. The second asks `tx.is_closed()` before each chunk, which the [docs](https://docs.rs/tokio/1.54.1/tokio/sync/oneshot/struct.Sender.html#method.is_closed) say is true once the receiver is dropped, and stops after one. The `halfway`, `go` and `finished` channels in the code (a `std::sync::mpsc` channel and two `oneshot`s) only force that order. Compare [dropping a future](/learn/async-basics/#dropping-a-future-cancels-it). The Tokio docs say a started `spawn_blocking` task cannot be aborted either.
+
+<Files guide="rayon-tokio" dir="snippet-cancel" files={["src/main.rs"]} run="cancel" />
+
+## The same job in your language
+
+Each row except Go moved the same sum (1,000,000 numbers, printed `2999997`) off the calling thread, in the image behind this page. The Go row is the parse program above, which prints different lines.
+
+| Language | Usual choice | What I ran |
+| --- | --- | --- |
+| Go | goroutines; no separate pool to choose | the Go program above, and the gotcha's preempted loop |
+| Python | `asyncio` with an executor | `asyncio.to_thread`, and `run_in_executor` with a `ProcessPoolExecutor` |
+| TypeScript | `worker_threads` | a `Worker` started from the same file |
+| Java | `CompletableFuture`, parallel streams | `supplyAsync` and a parallel `LongStream` |
+| Kotlin | coroutines, `Dispatchers.Default` | `withContext(Dispatchers.Default)`, using the kotlinx.coroutines jar in the Kotlin compiler's `lib` directory (not a project dependency). The same file also runs the gotcha's loop called directly from a coroutine on `runBlocking`: the log has the Rust order (a Kotlin tab is not in the gotcha above, because its fixed command line has no way to include that jar) |
+| C# | `Task.Run`, PLINQ | `await Task.Run(...)` around `AsParallel().Sum` |
+| C | no async runtime; threads | one `pthread` |
+| C++ | `std::async` | `std::async(std::launch::async, ...)` and a future |
+
+<Session guide="rayon-tokio" run="languages" title="the same sum, off the calling thread" />
+
+<GuideGotcha guide="rayon-tokio" />
+
+## Read more
+
+- [Tokio: CPU-bound tasks and blocking code](https://docs.rs/tokio/1.54.1/tokio/index.html#cpu-bound-tasks-and-blocking-code) and [`spawn_blocking`](https://docs.rs/tokio/1.54.1/tokio/task/fn.spawn_blocking.html), which also says when to use a dedicated thread.
+- Alice Ryhl, [Async: What is blocking?](https://ryhl.io/blog/async-what-is-blocking/), with a cheat sheet for CPU work, synchronous IO and work that runs forever.
+- [`rayon::spawn`](https://docs.rs/rayon/1.12.0/rayon/fn.spawn.html) and [`ThreadPoolBuilder`](https://docs.rs/rayon/1.12.0/rayon/struct.ThreadPoolBuilder.html). A panic inside `rayon::spawn` aborts the process unless the builder has a `panic_handler` (docs: "the default is to abort the process"); the page does not run that.
+- In this course: [Threads](/learn/threads/), [Shared state](/learn/shared-state/#holding-a-guard-too-long), [Send and Sync](/learn/send-sync/) and [Async Basics](/learn/async-basics/#many-tasks-on-one-thread-and-blocking).
+
+<p class="lr-fine">The versions this page is about are tokio 1.54.1 and rayon 1.12.0, as pinned in <code>Cargo.lock</code>.</p>

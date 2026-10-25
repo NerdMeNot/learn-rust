@@ -1,0 +1,452 @@
+<p class="lr-layer">The toolkit</p>
+
+## What an iterator is
+
+An iterator is anything with a `next()` method that returns `Option<Item>`: `Some(item)` while there are items, then `None`. That's the whole contract. Every method in this lesson is built on calling `next()`.
+
+Iterators are **lazy**. Building a chain only describes the work; something at the end (`collect`, `sum`, a `for` loop) has to pull items through. The closure below prints when it runs:
+
+<Snippet file="lazy.rs" />
+
+"Chain built" comes first; nothing ran until `collect` asked. A chain you never consume gets a compiler warning ("unused `Map` that must be used").
+
+This is Java Streams, C# LINQ, Kotlin sequences and Python generators. It is **not** JavaScript's `array.map().filter()` or Kotlin's `list.map {}`, which build a whole new list at every step.
+
+## Closures in two minutes
+
+Almost every iterator method takes a **closure**: a small function written inline, as `|parameters| body`. It's the same idea as `x => x * 2` in TypeScript, `lambda x: x * 2` in Python, `{ x -> x * 2 }` in Kotlin, `x -> x * 2` in Java and C#, or a `func` literal in Go.
+
+<Snippet file="closures-quick.rs" />
+
+Types are usually inferred, a closure can use the variables around it (`limit` above), and `|x| x * 3` reads as "for each item, give me three times it". The [closures lesson](/learn/closures/) covers the rest.
+
+## Why iterators hand you references
+
+This trips up everyone at first. When you write `v.iter()`, the items are **references** (`&T`), not copies of the values. Here's why, and what to do when you'd rather have values.
+
+### Borrowing is the default because it costs nothing
+
+A reference is the address of a value that already exists, plus the compiler's promise that it stays valid while you use it. On a 64-bit machine it is 8 bytes, whatever it points at. Looking through it copies nothing and allocates nothing, and the collection is still yours when the loop ends.
+
+The alternative is to copy every item. For numbers that's harmless. For anything that owns heap data (a `String`, a `Vec`, a struct holding them), a copy allocates new memory and copies the bytes. This photo type prints every time it is copied:
+
+<Snippet file="refs-why.rs" />
+
+- `iter()` read all 10 MB of pixels and copied none of them. Each item was an 8-byte reference.
+- `cloned()` did the same job with real copies, 10 MB of them. Sometimes that's what you need; it should never happen by accident.
+- `into_iter()` handed over the photos themselves. No copies, but `photos` is gone afterwards: the `Vec` was used up.
+
+Here is what an item from `iter()` is, in memory:
+
+<Memory
+  title={'let first: &String = names.iter().next().unwrap();'}
+  stack={[
+    { name: 'names', type: 'Vec<String>', cells: ['ptr', 'len 3', 'cap 3'], to: 'slots' },
+    { name: 'first', type: '&String', cells: ['address'], to: 'slots', note: "points at the first String inside the Vec" },
+  ]}
+  heap={[
+    { id: 'slots', label: "the Vec's buffer: 3 Strings", cells: ['String', 'String', 'String'], links: [{ cell: 0, to: 'a' }, { cell: 1, to: 'b' }, { cell: 2, to: 'c' }] },
+    { id: 'a', label: 'text', cells: ['a', 'n', 'a'] },
+    { id: 'b', label: 'text', cells: ['b', 'o'] },
+    { id: 'c', label: 'text', cells: ['c', 'y'] },
+  ]}
+  caption="The item is an address into the Vec's own buffer. Nothing new was allocated, and the text wasn't touched."
+/>
+
+<Snippet file="refs-memory.rs" />
+
+Garbage-collected languages do the same without showing it: a Java `for (String s : list)` or a Python `for s in names` gives you a reference to the object already in the list. Rust shows the `&` because it must know, at compile time, that `names` outlives every reference into it. That's what makes the [borrowing](/learn/borrowing/) rules work.
+
+### Where `&&` comes from
+
+Each method decides how it hands items to your closure, and the compiler tells you what it chose:
+
+<Snippet file="refs-types.rs" />
+
+- `iter()` lends you each item: `&i32`.
+- `map` receives the item and turns it into something else, so your closure gets the item as it is: still `&i32`.
+- `filter` is different. It looks at an item and then **passes the same item on** if you say yes. It can't give the item away and still have it to pass on, so it lends it to your closure: a reference to the item. The item was already a reference, so your closure gets a reference to a reference, `&&i32`.
+
+The same goes for the other methods that only look at an item before deciding what to do with it: `find`, `take_while`, `skip_while` and `peekable`'s `next_if`. Methods that use the item up (`map`, `filter_map`, `for_each`, `fold`, `any`, `all`) get it with one `&` less.
+
+`&&i32` isn't a different number. It's two hops to the same `i32`: an address of an address. Rust usually follows the hops for you. Sometimes it doesn't:
+
+<Snippet file="refs-double.fail.rs" />
+
+### Using a value through references
+
+What follows references for you, and what doesn't:
+
+<Snippet file="refs-using.rs" />
+
+- **Method calls** follow any number of `&` automatically: `nn.is_positive()` worked on a `&&i32`.
+- **Arithmetic** works through one `&`: Rust defines `&i32 * i32`, `&i32 % i32` and the rest. Through two, it doesn't, which is the error above.
+- **Comparisons** want the same type on both sides: `n == &8` or `*n == 8`, not `n == 8`.
+- **`*`** follows one reference and gives you the value. For a number, that's a copy, which is free.
+- **A pattern** in the parameter does the same: `|&x|` takes off one `&`, `|&&x|` takes off two. You'll see `.filter(|&&n| n > 5)` everywhere in Rust; it means "give me the plain number".
+
+The pattern trick only works for cheap-to-copy values like numbers (types that are [`Copy`](/learn/ownership/)). For a `String`, `|&s|` would move the `String` out of a collection you only borrowed, and the compiler refuses:
+
+<Snippet file="pattern-move.fail.rs" />
+
+### Going without references
+
+To work with plain values, say so before the rest of the chain:
+
+| You write | Your closures get | What it costs | Afterwards |
+|---|---|---|---|
+| `.iter()` | `&T` | nothing | collection unchanged |
+| `.iter().copied()` | `T` | copies each value: free for numbers, `char`, `bool` | collection unchanged |
+| `.iter().cloned()` | `T` | a full copy of each item, allocations included | collection unchanged |
+| `.into_iter()` | `T` | nothing: the items are moved out | collection used up |
+| `.iter_mut()` | `&mut T` | nothing | items changed in place |
+
+<Snippet file="closure-types.rs" />
+
+`into_iter()` is the cheapest way to own the items, but only if you're finished with the collection:
+
+<Snippet file="into-iter-moves.fail.rs" />
+
+The rules of thumb:
+
+- **Numbers and other small values:** start with `.iter().copied()` and forget the `&`s.
+- **Strings and anything with heap data:** keep the references while you filter and search, and call `.cloned()` at the end, on just the items you keep.
+- **Done with the collection?** `into_iter()` owns the items with no copying.
+- **Need to change items?** `iter_mut()`; [Looping over a collection](/learn/for-collections/) covers it.
+
+## Translating from what you know
+
+The methods you already use, and their Rust names. This shows the language you picked at the top of the page.
+
+<ForLang only="go">
+Go's standard library has no `map` or `filter`; you write loops. Go 1.23's range-over-func iterators (`iter.Seq`) are **push** iterators: the iterator calls your `yield` for each item. Rust's are **pull** iterators: you call `next()` for the next item, which is what Go's `iter.Pull` turns a `Seq` into. Pulling lets Rust adaptors stop early, zip two iterators together, or `peek` ahead.
+
+| In Go | In Rust |
+|---|---|
+| `for i, x := range s` | `for (i, x) in s.iter().enumerate()` |
+| a loop that appends what passes a test | `s.iter().filter(...).collect::<Vec<_>>()` |
+| `slices.Contains(s, x)` / `slices.Index(s, x)` | `s.contains(&x)` / `s.iter().position(\|y\| *y == x)` |
+| `slices.Max(s)` | `s.iter().max()` (an `Option`: the slice may be empty) |
+| `slices.Sort(s)` / `slices.SortFunc` | `s.sort()` / `s.sort_by_key(...)` |
+| `maps.Keys(m)` | `m.keys()` |
+| `strings.Join(parts, ", ")` | `parts.join(", ")` |
+| `iter.Seq` with `yield` | a struct that implements `Iterator` (below), or `std::iter::from_fn` |
+</ForLang>
+
+<ForLang only="java">
+Java Streams and Rust iterators are both lazy and run one item through the whole pipeline at a time.
+
+| Java Streams | Rust |
+|---|---|
+| `list.stream()` | `list.iter()` (or `into_iter()` to consume the list) |
+| `map`, `filter`, `flatMap` | `map`, `filter`, `flat_map` |
+| `limit(n)`, `skip(n)` | `take(n)`, `skip(n)` |
+| `peek` | `inspect` |
+| `reduce(identity, op)` / `reduce(op)` | `fold(init, op)` / `reduce(op)` |
+| `findFirst()`, `anyMatch`, `allMatch`, `count` | `next()` or `find`, `any`, `all`, `count` |
+| `collect(Collectors.toList())` | `collect::<Vec<_>>()` |
+| `Collectors.joining(", ")` | `collect::<Vec<_>>().join(", ")` |
+| `Collectors.groupingBy` | a `HashMap` with `entry` (see grouping below) |
+| `IntStream.range(0, n)` | `0..n` |
+| `sorted()` | `collect` into a `Vec`, then `sort()` |
+| `parallelStream()` | the `rayon` crate's `par_iter()` |
+
+One thing Rust does better: a lambda that can fail. In a stream you can't throw a checked exception from inside `map`, so you wrap it. In Rust you `collect` into a `Result` (below) and the first error stops the chain.
+</ForLang>
+
+<ForLang only="kotlin">
+Kotlin's list operations (`list.map {}`) are eager and build a new list at each step; `asSequence()` makes them lazy. Rust iterators are always lazy.
+
+| Kotlin | Rust |
+|---|---|
+| `filter { it > 2 }` | `filter(\|x\| **x > 2)` (no `it`: name the parameter) |
+| `map`, `flatMap`, `mapNotNull` | `map`, `flat_map`, `filter_map` |
+| `withIndex()` | `enumerate()` |
+| `firstOrNull { }`, `any`, `all`, `count` | `find`, `any`, `all`, `count` |
+| `sumOf { }` | `map(...).sum()` |
+| `associateBy`, `groupBy` | `collect` into a `HashMap`, or `entry` (see grouping below) |
+| `windowed(n)`, `chunked(n)` | `windows(n)`, `chunks(n)` on a slice |
+| `sequence { yield(x) }` | no stable generators yet: a struct that implements `Iterator`, or `std::iter::from_fn` |
+</ForLang>
+
+<ForLang only="csharp">
+LINQ is the closest thing to Rust iterators in any mainstream language: lazy, composable, one item at a time.
+
+| LINQ | Rust |
+|---|---|
+| `Where`, `Select`, `SelectMany` | `filter`, `map`, `flat_map` |
+| `Take`, `Skip`, `TakeWhile`, `SkipWhile` | the same names in snake_case |
+| `First`, `FirstOrDefault` | `next()`, `find` (both return `Option`) |
+| `Any`, `All`, `Count`, `Sum`, `Min`, `Max` | `any`, `all`, `count`, `sum`, `min`, `max` |
+| `Aggregate` | `fold` |
+| `Zip`, `Concat` | `zip`, `chain` |
+| `ToList()`, `ToDictionary()` | `collect::<Vec<_>>()`, `collect::<HashMap<_, _>>()` |
+| `GroupBy` | `entry` on a `HashMap` (see grouping below) |
+| `OrderBy` | `collect`, then `sort_by_key` |
+| `yield return` | no stable generators yet: a struct that implements `Iterator`, or `std::iter::from_fn` |
+</ForLang>
+
+<ForLang only="python">
+| Python | Rust |
+|---|---|
+| `[f(x) for x in xs if p(x)]` | `xs.iter().filter(p).map(f).collect::<Vec<_>>()` |
+| a generator expression `(f(x) for x in xs)` | the same chain without `collect`: it's lazy, like the generator |
+| `{k: v for ...}` | `.map(\|x\| (k, v)).collect::<HashMap<_, _>>()` |
+| `enumerate`, `zip`, `reversed` | `enumerate()`, `zip()`, `rev()` |
+| `sum`, `min`, `max`, `any`, `all` | the same names, as methods |
+| `itertools.chain`, `islice`, `takewhile`, `dropwhile` | `chain`, `take`/`skip`, `take_while`, `skip_while` |
+| `sorted(xs, key=...)` | `collect`, then `sort_by_key` |
+| `next(it)` | `it.next()` (an `Option`, not an exception) |
+| a generator function with `yield` | no stable generators yet: a struct that implements `Iterator`, or `std::iter::from_fn` |
+</ForLang>
+
+<ForLang only="typescript">
+Array methods (`arr.map().filter()`) are eager: each builds a new array. Rust iterators are lazy, like the iterator helpers in newer Node (`arr.values().map(...)`).
+
+| TypeScript | Rust |
+|---|---|
+| `map`, `filter`, `flatMap` | `map`, `filter`, `flat_map`, then `collect()` |
+| `reduce(fn, init)` | `fold(init, fn)` |
+| `find`, `findIndex` | `find`, `position` (both return `Option`) |
+| `some`, `every` | `any`, `all` |
+| `arr.entries()` | `enumerate()` |
+| `Array.from({ length: n }, (_, i) => f(i))` | `(0..n).map(f).collect()` |
+| `[...a, ...b]` | `a.iter().chain(b.iter())` |
+| a generator `function*` | no stable generators yet: a struct that implements `Iterator`, or `std::iter::from_fn` |
+</ForLang>
+
+<ForLang only="c cpp">
+| C++ | Rust |
+|---|---|
+| `views::filter`, `views::transform` | `filter`, `map` |
+| `views::take`, `views::drop`, `views::take_while`, `views::reverse` | `take`, `skip`, `take_while`, `rev` |
+| `views::iota(0, n)` | `0..n` |
+| `std::ranges::to<std::vector>()` (C++23) | `collect::<Vec<_>>()` |
+| `std::accumulate` | `fold`, or `sum` |
+| `find_if`, `any_of`, `all_of`, `count_if` | `find`, `any`, `all`, `filter(...).count()` |
+| `std::sort` / `std::stable_sort` | `sort_unstable` / `sort` (Rust's default sort is the stable one) |
+| `std::max_element` | `max_by_key` / `max_by`, but on a tie Rust returns the **last** maximum, C++ the first |
+
+Each closure has its own type, so a chain is [monomorphized](/learn/generics/#one-copy-per-type) and inlined much like a C++ range pipeline with lambdas. Rust iterators have no `begin()` to cache, so there's no equivalent of `filter_view`'s caching surprises.
+</ForLang>
+
+## Where iterators come from
+
+From a collection you pick `iter()` (items are `&T`), `iter_mut()` (`&mut T`) or `into_iter()` (`T`, and the collection is used up). These match `for x in &v`, `for x in &mut v` and `for x in v` ([Looping over a collection](/learn/for-collections/)). Most iterators come from elsewhere:
+
+<Snippet file="sources.rs" />
+
+Ranges, text ([strings lesson](/learn/strings/)) and maps are all iterators. A `HashMap`'s order changes between runs, on purpose; sort, or use a `BTreeMap`. `std::iter` builds iterators from nothing: `repeat`, `repeat_n`, `once`, `successors` (each item from the one before) and `from_fn` (a closure returning `Some` until `None`).
+
+## Adaptors
+
+Methods that take an iterator and give back another are **adaptors**, and they're lazy. Results below are what `collect()` would give.
+
+| Method | What it does | Example → result |
+|---|---|---|
+| `map(f)`, `filter(f)` | change each item; keep the accepted ones | `[1, 2, 3]`, square → `[1, 4, 9]` |
+| `filter_map(f)` | both in one: the closure returns `Option` | `["7", "x", "12"]`, `s.parse().ok()` → `[7, 12]` |
+| `flat_map(f)`, `flatten()` | one item becomes several; remove a level of nesting | `["hi", "yo"]`, `w.chars()` → `['h', 'i', 'y', 'o']` |
+| `flatten()` on `Option`s | an `Option` is zero or one items | `[Some(1), None, Some(3)]` → `[1, 3]` |
+| `take(n)`, `skip(n)` | the first `n`; all but the first `n` | `[3, 8, 1, 9, 4, 7, 2]`: 3 → `[3, 8, 1]`; 5 → `[7, 2]` |
+| `take_while(f)`, `skip_while(f)` | stop; start, at the first failure | same list, `< 9` → `[3, 8, 1]`; `[9, 4, 7, 2]` |
+| `step_by(n)`, `rev()` | every `n`-th item; backwards | `(0..10).step_by(3)` → `[0, 3, 6, 9]` |
+| `enumerate()` | `(index, item)` pairs | `["ana", "bo"]` → `[(0, "ana"), (1, "bo")]` |
+| `zip(other)` | side by side, until the shorter ends (no error) | `["ana", "bo"]`, `[90, 75, 82]` → `[("ana", 90), ("bo", 75)]` |
+| `chain(other)`, `cycle()` | one then another; repeat forever (`take` must stop it) | `(1..=3).chain(7..=8)` → `[1, 2, 3, 7, 8]` |
+
+- `take_while` stops at the first failure, even though `4`, `7` and `2` would pass. It's for ordered data; for every passing item, use `filter`.
+- `rev` needs an iterator that can run from the back (a `DoubleEndedIterator`): slices, ranges and `chars()` can, `from_fn` can't.
+
+## Peeking, windows and chunks
+
+<Snippet file="peeking.rs" />
+
+`peekable()` lets you `peek()` at the next item without taking it, which tokenizers need; `next_if` takes it only if it passes a test.
+
+`windows(n)` and `chunks(n)` are **slice** methods, not iterator methods, so collect an iterator first. `windows(2)` gives overlapping pairs; `chunks(2)` gives pieces that don't overlap, the last possibly shorter (`chunks_exact` keeps the leftovers in `remainder()`).
+
+## Watching a chain, and running totals
+
+<Snippet file="inspect-scan.rs" />
+
+`inspect` is a debug `println!` for a chain. It shows the real order: each item goes through the whole chain before the next starts, as in Java Streams and C# LINQ but not JavaScript's array methods.
+
+`scan` is `map` with memory: the closure changes a state (here, the balance) and returns a value for each item, or `None` to stop.
+
+## Consumers: collect
+
+**Consumers** pull every item through and produce one result. `collect` builds whatever collection you name, with a `let` annotation or the turbofish `::<>`. Write the item type as `_` (`Vec<_>`) and Rust works it out. Collecting `char`s or `&str`s into a `String` glues them together.
+
+<Snippet file="collect-into.rs" />
+
+## Collecting into a `Result`: stop at the first error
+
+This is the one people from other languages don't expect.
+
+<Snippet file="collect-result.rs" />
+
+Collect items that are `Result`s into `Result<Vec<T>, E>` instead of `Vec<Result<T, E>>`. You get `Ok` with all the values, or the **first** `Err`, and it stops there: `inspect` shows that `"3"` and `"four"` are never parsed. `Option` works the same way.
+
+It's the iterator version of `?`: "parse every line, or tell me what was wrong" in one expression. The [errors lesson](/learn/errors/) covers `Result` and `?`.
+
+## Consumers: sum, product, count
+
+`sum` looks like it needs no help. It does:
+
+<Snippet file="sum-untyped.fail.rs" />
+
+`sum` can produce many types (`i32`, `i64`, `Option`, `Result`, `Duration`), and the compiler won't guess:
+
+<Snippet file="counting.rs" />
+
+An empty sum is `0` and an empty product `1`, not `None`, so check for empty input before dividing. (`average` prints `2` because that is how `{}` prints a whole-number `f64`.)
+
+## Consumers: min and max
+
+<Snippet file="min-max.rs" />
+
+`min` and `max` return `Option`, because an empty iterator has neither. `max_by_key` and `min_by_key` compare by something you compute and return the whole item. On a tie, `max_by_key` returns the **last** of the equal items and `min_by_key` the first. That's documented, and it matters when you expect "the first longest word".
+
+Floats are the catch. `max()` needs `Ord` (any two items can be compared), and `f64` isn't, because `NaN` is neither bigger nor smaller than anything:
+
+<Snippet file="max-float.fail.rs" />
+
+The fix is [`total_cmp`](https://doc.rust-lang.org/std/primitive.f64.html#method.total_cmp), which gives floats a complete order (with `NaN` at the ends), used through `max_by` or `min_by`. For plain numbers, `fold(f64::INFINITY, f64::min)` also works. Other languages make the choice for you, and not consistently. On the list `[1, NaN, 3]`, run on this site's runner (Java 25, .NET 10): Java's `DoubleStream.max()` gives `NaN`, but `Stream.min(Comparator.naturalOrder())` gives `1.0`; C#'s `Max()` gives `3` while `Min()` gives `NaN`. Rust makes you pick, and the pick is visible in the code.
+
+## Consumers: searching and folding
+
+| Method | What it does | Example → result |
+|---|---|---|
+| `any(f)`, `all(f)` | stop as soon as the answer is known | on `[3, 8, 12, 5, 20]`, `> 10` → `true`; `> 0` → `true` |
+| `find(f)`, `position(f)` | the first match; its index | same list, `> 10` → `Some(12)`; `Some(2)` |
+| `find_map(f)` | `filter_map` that stops at the first `Some` | `l.strip_prefix("port=")` → `Some("8080")` |
+| `last()`, `nth(n)` | one item; `nth` counts from 0 and uses up the ones before | `nth(2)` on `[3, 8, 1, 9]` → `Some(1)` |
+| `fold(init, f)`, `reduce(f)` | combine all items into one value; `reduce` starts with the first item, so `None` if empty | squares of `1..=6`, added → `91` |
+| `partition(f)`, `unzip()` | split into two collections: by a test; from pairs | `1..=6`, even or not → `[2, 4, 6]` and `[1, 3, 5]` |
+
+<Snippet file="searching.rs" />
+
+On an empty iterator, `any` is `false` and `all` is `true` ("every one of none of them"), as in Python and Java. `contains` is a slice method; on an iterator, use `any(|x| x == &wanted)`.
+
+<Snippet file="folding.rs" />
+
+When you're building a collection, `collect`, `sum` or `partition` usually says it better. `partition` and `unzip` need their target types written out. `for_each` is a `for` loop at the end of a chain, but only `for` can `break` or use `?`.
+
+## Sorting and removing duplicates
+
+Iterators have no `sort`: sorting needs every item at once. Collect into a `Vec` and sort that in place.
+
+- `sort` and `sort_by_key` are **stable**: equal items keep their order. `sort_unstable` is a little faster, and fine when equal items look the same.
+- Floats need `sort_by` with `a.total_cmp(b)`, as with `max`.
+- `dedup` removes only repeats that sit next to each other, like `uniq`. Sort first, or collect into a `HashSet`.
+- For "highest score first, then by name", use a tuple key with [`Reverse`](https://doc.rust-lang.org/std/cmp/struct.Reverse.html): `sort_by_key(|&(name, score)| (Reverse(score), name))`.
+
+## Counting and grouping
+
+The standard library has no `group_by` or `counts` on iterators. The usual pattern is a loop with the map's `entry` method:
+
+<Snippet file="grouping.rs" />
+
+`entry(key)` finds the key or makes a space for it. `or_insert(0)` puts `0` there if it's new, and either way gives you the value to change; `or_default()` uses the type's default (`0`, or an empty `Vec`). The [maps lesson](/learn/maps/) has more. To group only **neighbours**, slices have `chunk_by`, which splits where the test between two neighbours fails.
+
+<Aside type="tip" title="The itertools crate">
+[`itertools`](https://docs.rs/itertools/latest/itertools/trait.Itertools.html) adds methods to every iterator: `counts`, `into_group_map`, `sorted`, `unique`, `join`, `tuple_windows` and more. [Finding and using crates](/start/using-crates/) shows how to add one.
+</Aside>
+
+<p class="lr-layer">Going deeper</p>
+
+## The `Iterator` trait, and writing your own
+
+`Iterator` is a [trait](/learn/traits/): a list of methods a type promises to have. You write `next`; over 70 more come free, all built on it, so your type gets `map`, `filter`, `zip`, `sum` and the rest.
+
+<Snippet file="custom-iterator.rs" />
+
+`type Item = u64` says what `next` hands out; the struct holds what the iterator remembers between calls. The `?` after `checked_add` returns `None` as soon as an addition would overflow, so the iterator ends by itself. (It ends two numbers early, because it checks the number after the one it returns. Being exact needs a little more state.) An iterator can also go on forever, like `repeat` and `cycle`; the consumer then stops it, as `take_while` does here.
+
+Java's `Iterator` and C#'s `IEnumerator` split this across two calls (`hasNext()`/`next()`, `MoveNext()`/`Current`); Rust's `Option` does both. Python generators and C#'s `yield return` build the state for you; stable Rust has no `yield` yet, so keep it in a struct or use `iter::from_fn`.
+
+## What a chain compiles to
+
+A chain like `nums.iter().filter(..).map(..)` is not a list of steps kept for later. It's a struct wrapping a struct:
+
+<Snippet file="chain-type.rs" />
+
+`Map` holds a `Filter`, which holds the slice iterator. `next()` on the `Map` calls it on the `Filter`, which calls it on the slice iterator until an item passes. The closures here capture nothing, so they take no space, and the whole chain is 16 bytes on the stack: the slice iterator's two pointers. Nothing is on the heap, and there's no list of callbacks underneath.
+
+Each closure has its own type, so the compiler knows which code every `next()` calls. In an optimized build it typically inlines all of it into the loop you'd write by hand, and iterating a slice lets it drop the bounds checks `v[i]` may need. The Rust Book shows this in [Comparing Performance: Loops vs. Iterators](https://doc.rust-lang.org/book/ch13-04-performance.html), and the [Compiler Explorer](https://godbolt.org/) shows the machine code for your own chain.
+
+Two honest caveats:
+
+- This is about **optimized** builds (`cargo run --release`). In a debug build nothing is inlined, and a long chain can be noticeably slower than a loop.
+- In a `Box<dyn Iterator>` (to return different iterator types from one function, say), the compiler no longer knows which `next()` to call, so each item costs an indirect call. Usually you can return `impl Iterator<Item = T>` instead, which keeps the exact type.
+
+## You can't change a `Vec` while iterating it
+
+In Java this is usually a `ConcurrentModificationException` at runtime (the JDK documents the check as best-effort). In Python, appending to a list while you loop over it can loop forever. In C++ it's undefined behaviour, because `push_back` may move the elements and leave the iterator pointing at freed memory. In Rust, it doesn't compile:
+
+<Snippet file="push-while-iterating.fail.rs" />
+
+The loop borrows `queue` while it runs, and `push` needs to borrow it mutably. The [borrowing rules](/learn/borrowing/) allow one or the other. The compiler's hint names the usual fixes:
+
+<Snippet file="push-fixed.rs" />
+
+- **Collect first, then change.** Work out what to add with one chain, then `extend`; the borrow has ended by the time you push. It only looks at the items there at the start.
+- **Loop by index** when new items must be visited too, as in a work queue. `queue[i]` copies one number out, so no borrow lasts across the `push`. (A [`VecDeque`](/learn/collections/) with `pop_front` is cleaner for a real queue.)
+- **Changing items** is fine with `iter_mut()`; **removing** them is `retain`.
+
+## An iterator can only be used once
+
+<Snippet file="used-up.fail.rs" />
+
+`count` takes the iterator by value (`self`) and uses it up. In Java, reusing a Stream compiles and then throws `IllegalStateException`. In Python, a second loop over a used generator quietly gives you nothing. Rust tells you at compile time.
+
+Build the chain again (it's cheap), or collect once into a `Vec`. `.clone()`, as the hint suggests, works for most std iterators but runs the whole chain a second time.
+
+A related surprise: `take_while` has to pull the first failing item to know it failed, and that item is then gone. `by_ref()` lets you keep using an iterator after an adaptor has borrowed it, and shows this:
+
+<Snippet file="take-while-eats.rs" />
+
+When that item matters (in a parser, usually), use `peekable` and `next_if`.
+
+## `IntoIterator`: why `for x in v` works
+
+A `for` loop needs something that can **become** an iterator: a type that implements [`IntoIterator`](https://doc.rust-lang.org/std/iter/trait.IntoIterator.html). `for x in v` calls `IntoIterator::into_iter(v)`, then `next()` until `None`.
+
+<Snippet file="into-iterator.rs" />
+
+`Vec`, arrays, sets and maps implement it, and so do `&Vec` and `&mut Vec`, which is why `for x in &v` borrows and `for x in &mut v` changes items. Every iterator implements it too (it turns into itself), so you can `for` over a chain.
+
+A function that takes `impl IntoIterator<Item = T>` accepts a `Vec`, array, range, set or chain, as `total` shows. `extend` and `zip` do the same, which is why `zip` took an array in the adaptors table. The [generics lesson](/learn/generics/) explains `impl Trait`.
+
+## Things that waste work
+
+- **Collecting just to iterate again.** Keep it one chain; collect to keep, sort or reuse results.
+- **`count()` when you know the length.** `count` walks every item; a `Vec` and any `ExactSizeIterator` have `len()`.
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Each exercise is a small program with checks in `main`. Open it in the Playground, replace the `todo!()`, and run until it prints `all checks passed`.
+
+<Exercise name="word-frequency" title="Most common words">
+Return the `n` most common words in a text with their counts, most common first. Words are runs of letters, compared in lowercase, and ties are sorted alphabetically. Watch for empty "words" between punctuation, and for words that aren't English.
+</Exercise>
+
+<Exercise name="parse-list" title="Parse a list, or say what's wrong">
+Turn `"3, 4,5"` into `Ok(vec![3, 4, 5])`, or an `Err` naming the first piece that isn't a number. Collecting into a `Result` does most of the work. An empty input is an empty list, which a plain `split` gets wrong.
+</Exercise>
+
+<Exercise name="longest-rise" title="Longest rising stretch">
+Given a list of readings, find the length of the longest stretch where each reading is higher than the one before. A slice method from the grouping section makes this a one-liner. It must return `0` for no readings, and treat equal readings as not rising.
+</Exercise>
+
+## Read more
+
+- [The `Iterator` trait](https://doc.rust-lang.org/std/iter/trait.Iterator.html): every method, each with a runnable example. Skim the list on the left once; you'll remember that a method exists when you need it.
+- [The `std::iter` module](https://doc.rust-lang.org/std/iter/index.html): how iterators, `IntoIterator` and `for` fit together, and the functions like `repeat`, `once` and `successors`.
+- [The Rust Book, chapter 13.2: Processing a Series of Items with Iterators](https://doc.rust-lang.org/book/ch13-02-iterators.html), and [13.4: Comparing Performance](https://doc.rust-lang.org/book/ch13-04-performance.html).
+- [Rust by Example: Iterators](https://doc.rust-lang.org/rust-by-example/trait/iter.html)
+- [`itertools` on docs.rs](https://docs.rs/itertools/latest/itertools/trait.Itertools.html): the extra adaptors almost every project ends up wanting.
+- [Slice methods](https://doc.rust-lang.org/std/primitive.slice.html): `windows`, `chunks`, `chunk_by`, `sort_by_key`, `dedup` and the rest that live on slices rather than iterators.

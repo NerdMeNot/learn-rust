@@ -1,0 +1,431 @@
+<p class="lr-layer">The toolkit</p>
+
+## Generic functions
+
+A **generic** function is written once with a placeholder for a type, usually `T`, and the compiler fills it in at each call. [Reading signatures](/learn/reading-signatures/) shows where the `<T>` goes; this lesson is about what it does.
+
+<Snippet file="generic-fn.rs" />
+
+- `T` is worked out from the arguments. `&[4, 8, 15, 16]` makes it `i32`, and the words make it `&str`.
+- It returns references into the slice, not `T` itself: a generic `T` may not be `Copy`, and moving an item out of a slice is refused ([Reading signatures](/learn/reading-signatures/) runs E0508).
+- An empty list says nothing about `T`, so `first_and_last::<f64>(&[])` names it with the turbofish ([`::<>`](/learn/declarations-types/#as-and-the-turbofish)).
+- `T: Default` is a **bound**: "`T` must have a default value". Bounds get their own section below.
+
+`zero` mentions `T` only in its result, so a call with nothing to go on is an error:
+
+<Snippet file="return-only.fail.rs" />
+
+`help:` offers a type on the `let`; `zero::<i32>()` does the same job. This is E0283. `Vec::new()` with no use gave E0282 in [Declarations and types](/learn/declarations-types/#the-type-is-often-optional); both are the "type annotations needed" family.
+
+## Generic structs and enums
+
+Structs and enums take type parameters the same way. `Vec<T>`, `Option<T>` and `Result<T, E>` are ordinary types declared like this, and `Maybe<T>` below has the shape of `Option<T>`.
+
+<Snippet file="generic-types.rs" />
+
+- In `impl<T> Pair<T>`, the first `<T>` introduces the placeholder and the second says which type the block is for.
+- A method can add parameters of its own after its name: `map<U>` turns a `Pair<T>` into a `Pair<U>`, and `impl Fn(T) -> U` takes a [closure](/learn/closures/).
+- `impl Pair<f64>` names one concrete type, so `sum` exists only for pairs of `f64`.
+- `Entry<K, V>` has two parameters, the same type or different ones.
+
+## Bounds: what `T` may do
+
+Inside a generic body, `T` could be any type, so a bare `T` has no `{}`, no `==` and no `.clone()`: the body can move it, borrow it and store it. Anything more must be asked for in a **bound**, the name of a [trait](/learn/traits/) (an ability a type can have):
+
+<Snippet file="bare-t.fail.rs" />
+
+The `help:` writes the bound for you. These are the ones you will ask for most; [Common traits](/learn/common-traits/) says what each means.
+
+| To do this with a `T` | Ask for |
+|---|---|
+| print with `{}`, with `{:?}` | `Display`, `Debug` |
+| compare with `==`; with `<` and `>` | `PartialEq`; `PartialOrd` |
+| `sort()`, `max()`, use as a `BTreeSet` item | `Ord` |
+| use as a `HashMap` key or `HashSet` item | `Eq + Hash` |
+| call `.clone()` | `Clone` |
+| use a value twice without moving it | `Copy` |
+| `a + b` giving a `T` | `Add<Output = T>` |
+| `T::default()` | `Default` |
+| turn a `u8` or `u32` into a `u64` | `Into<u64>` |
+
+`f64` has `PartialOrd` but not `Ord`: `NaN` is neither less than nor greater than anything, so `sort()` on floats is refused ([Common traits](/learn/common-traits/#equality-order-and-hashing)). Leave a needed bound out and the error is inside the body; pass a type that lacks it and the error is at the call ([Reading signatures](/learn/reading-signatures/#the-bound-is-checked-where-you-write-it) shows both).
+
+`a + b` is the odd row, and the [gotcha](#gotcha) above is about it. `T: Add` says two `T`s can be added, but the sum has a type of its own, `T::Output`, and for `&i32` it is `i32`:
+
+<Snippet file="add-output.rs" />
+
+`Add<Output = T>` closes the gap: "adding two `T`s gives a `T`".
+
+## Several bounds, `where` and `impl Trait`
+
+<Snippet file="multiple-bounds.rs" />
+
+`+` asks for all the bounds, and `where` moves them after the signature ([Traits](/learn/traits/#asking-for-a-trait-bounds) shows all three forms). Each `impl` parameter is its own hidden type parameter, so `pair_impl(1, "one")` works. With one `T` for both the arguments must match:
+
+<Snippet file="same-type.fail.rs" />
+
+A hidden parameter has no name to write, so the turbofish refuses it:
+
+<Snippet file="impl-turbofish.fail.rs" />
+
+Use `T` when parameters must match or callers may need the turbofish, `impl` when you never name the type.
+
+## Methods for some `T` only
+
+A bound can sit on an `impl` block, so its methods exist only for types that qualify:
+
+<Snippet file="conditional-impl.rs" />
+
+A list has no `show`; the error says a bound is missing and points at the `impl` that asks for it:
+
+<Snippet file="conditional-impl.fail.rs" />
+
+Put bounds on the `impl` that needs them, not on the struct. A bound on the struct is demanded of every `impl` that mentions it, even one whose methods do not use it:
+
+<Snippet file="struct-bound.fail.rs" />
+
+The API Guidelines agree: [Data structures do not duplicate derived trait bounds](https://rust-lang.github.io/api-guidelines/future-proofing.html#c-struct-bounds).
+
+The same works for a trait: `impl<T: Display> Shout for T` gives `Shout` to every type that meets the bound, types written later too. This blanket impl runs in [Traits](/learn/traits/#traits-for-types-you-did-not-write); `ToString` is one.
+
+## Traits with their own parameters
+
+A trait can take type parameters too, and one type can implement it once for each:
+
+<Snippet file="generic-trait.rs" />
+
+The type you ask for picks the impl.
+
+<ForLang only="java">
+
+Java refuses the same shape: one class cannot implement two parameterizations of one interface.
+
+<Snippet file="two-args.fail.java" />
+
+</ForLang>
+
+<ForLang only="csharp">
+
+C# allows it, as Rust does:
+
+<Snippet file="two-args.cs" />
+
+</ForLang>
+
+A parameter can have a default. [`Add`](https://doc.rust-lang.org/std/ops/trait.Add.html) is `Add<Rhs = Self>`, so `impl Add for Meters` means `Add<Meters>`, and a bare `T: Add` means `Add<T>`, which is why the gotcha can add two `T`s.
+
+<Snippet file="default-param.rs" />
+
+When a type should have only one answer, a trait uses an associated type instead, as `Add` does for `Output` and `Iterator` does for `Item` ([Traits](/learn/traits/#associated-types-and-constants)).
+
+## Const generics
+
+A **const generic** is a number, not a type, known when the program is compiled. It is how a function or type works with arrays of any length:
+
+<Snippet file="const-generic.rs" />
+
+`[i32; 3]` and `[i32; 4]` are different types, so `sum` takes the length as a parameter. `N` can be used as a value inside, and `0` is allowed. A const parameter may be an integer, `char` or `bool` (Reference). For a length known only at run time, use a slice or a `Vec` ([Vectors](/learn/vectors/)).
+
+## Your language's generics
+
+Pick your language in "Coming from" at the top. Every row below is compiled in the image that builds this page, in Rust and in the other language.
+
+<ForLang only="go">
+
+| In Go | In Rust |
+|---|---|
+| `type Stack[T any] struct{ items []T }` | `struct Stack<T> { items: Vec<T> }` |
+| `func Map[T, U any](s []T, f func(T) U) []U` | `fn map_all<T, U>(s: &[T], f: impl Fn(&T) -> U) -> Vec<U>` |
+| `Map[int, string](xs, f)` | `map_all::<i32, String>(&xs, f)` |
+| `[T comparable]` | `T: PartialEq` for `==`; `T: Eq + Hash` for a map key |
+| `[T cmp.Ordered]` | `T: PartialOrd` (or `Ord`) |
+| `[T fmt.Stringer]`, a method constraint | `T: Display` |
+| `interface{ ~int \| ~float64 }`, a list of types | no list: ask for what you do, `T: Add<Output = T> + Copy` |
+| `var zero T` | `T::default()`, with `T: Default`; or return an `Option<T>` |
+| `func (s Stack[T]) Map[U any](f func(T) U) []U`, Go 1.27 and later | `impl<T> Stack<T> { fn map<U>(&self, f: impl Fn(&T) -> U) -> Vec<U> }` |
+
+- A Go constraint can list types or require methods (`fmt.Stringer`, or a `Less(T) bool` of your own). `cmp.Ordered` lists the built-in ordered types and types built on them, so `type MyInt int` qualifies. Go's `<` works only on those, so a struct needs a `Less` method; a Rust struct can implement `PartialOrd` and use `<`. A Go type meets a method constraint by having the method, a Rust type by saying `impl` ([Traits](/learn/traits/)).
+- Methods with their own type parameters need Go 1.27 ([release notes](https://go.dev/doc/go1.27); the runner printed `go1.27.3`). With `-lang=go1.26`, or `go 1.24` in `go.mod`, the last row stops with `generic method requires go1.27 or later`; before then it was a function.
+
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+
+| In Java / Kotlin / C# | In Rust |
+|---|---|
+| `T extends Comparable<T>` / `T : Comparable<T>` / `where T : IComparable<T>` | `T: PartialOrd` (or `Ord`) |
+| an unbounded `T` still has `toString`, `equals`, `hashCode` | a bare `T` has none of them: ask for `Display` or `Debug`, `PartialEq`, `Hash` |
+| Java `new T()`: an error. C# `where T : new()` | `T::default()`, with `T: Default` |
+| Java `List<int>`: an error. Kotlin `List<Int>` stores boxed `Integer`s. C# `List<int>` is accepted | any type; an `i32` is stored inline |
+| C# `where T : INumber<T>` for `+` | `T: Add<Output = T>` |
+| `<R> Pair<R> map(Function<? super T, ? extends R> f)` / `fun <R> map(f: (T) -> R)` / `Map<R>(Func<T, R> f)` | `fn map<U>(self, f: impl Fn(T) -> U) -> Pair<U>` |
+| `Collections.<String>emptyList()` / `emptyList<String>()` / `Array.Empty<string>()`, an explicit type argument | `zero::<String>()`, the turbofish |
+| `List<? extends Animal>` / `MutableList<out Animal>` / `IEnumerable<out T>` | `fn names<T: Animal>(xs: &[T])`, or `&[Box<dyn Animal>]` for a mixed list |
+
+- Rust has no subclassing, so there is no `Dog <: Animal` for a wildcard to range over, and no `in`/`out` marks to write. The two replacements run here (`Box<dyn Animal>` is an owned pointer to any `Animal`; [Trait objects](/learn/trait-objects/)):
+
+<Snippet file="animals.rs" />
+
+- A list of `Dog`s is not a list of `Animal`s, for the reason Kotlin's `MutableList` shows below:
+
+<Snippet file="variance.fail.rs" />
+
+
+</ForLang>
+
+<ForLang only="python typescript">
+
+| In Python / TypeScript | In Rust |
+|---|---|
+| `class Stack[T]:` / `class Stack<T> { items: T[] }` | `struct Stack<T> { items: Vec<T> }` |
+| `def f[T: Comparable](xs: list[T]) -> T` (a `Protocol` you define) / `function f<T extends number \| string>(xs: T[]): T` | `fn f<T: PartialOrd>(xs: &[T]) -> &T` |
+| a `Protocol` / an `interface` as the bound | a trait, which the type must declare with `impl` |
+| TypeScript `T extends { length: number }`: any type with that shape | `T: HasLength`, a trait you write and implement for each type |
+| `list[int]` / `number[]` | `Vec<i32>` |
+
+- A TypeScript shape and a Python `Protocol` match by what a type has. A Rust bound matches by what a type declared ([Traits](/learn/traits/) shows the difference).
+- `number | string` is a closed list of types; a Rust bound is open, and any type that implements the trait qualifies ([Generics or trait objects](#generics-or-trait-objects) has the closed-set answer).
+- TypeScript checks `T extends ...` at each call, as Rust does, but accepts `>` on an unbounded `T` ([Reading signatures](/learn/reading-signatures/#the-bound-is-checked-where-you-write-it)). Rust refuses that body.
+
+</ForLang>
+
+<ForLang only="c cpp">
+
+| In C / C++ | In Rust |
+|---|---|
+| C: `#define MAX(a, b) ...`, or `void *` plus a size and a comparator, as `qsort` does | a generic function with a bound; the compiler checks the types |
+| C++: `template <typename T> T biggest(T a, T b)` | `fn biggest<T: PartialOrd>(a: T, b: T) -> T` |
+| C++20: `template <std::totally_ordered T>` | `T: PartialOrd` |
+| C++20: `void show(std::totally_ordered auto x)` | `fn show(x: impl PartialOrd)`, a hidden parameter you cannot name |
+| C++: `biggest<double>(1, 2.5)` | `biggest::<f64>(1.0, 2.5)` |
+| C++: `template <typename T, std::size_t N>` | `<T, const N: usize>` |
+| C++: `template <> struct Describe<int>`, a specialization | none: a general `impl` plus one for `i32` is E0119. The fallback is a default method in the trait |
+
+- C++ checks the parts of a template body that depend on `T` when it meets a type. A C++20 concept constrains the call, not the body. This `twice` asks for `totally_ordered` but also uses `+`: it compiles for `int`, and a `Point` with no `+` is fine until something calls it with one:
+
+<Snippet file="concept-body.cpp" />
+
+Call it with the `Point` and the error is inside the body:
+
+<Snippet file="concept-body.fail.cpp" />
+
+Rust checks the body against its bounds, once, at the definition ([Reading signatures](/learn/reading-signatures/#the-bound-is-checked-where-you-write-it)).
+
+- A specialization is a general case plus a special one. In Rust that pair is the overlap error, and a default method is the fallback:
+
+<Snippet file="specialization.fail.rs" />
+
+<Snippet file="fallback.rs" />
+
+- Overloading by constraint (SFINAE, or two `requires` overloads) has no Rust form: a failed bound is an error, never "try the next candidate". Two `impl`s with different bounds that both define `show` are an error (E0592):
+
+<Snippet file="same-name.fail.rs" />
+
+- A type may use `N` only bare, so `std::array<T, N + 1>` has no equivalent:
+
+<Snippet file="grow.fail.rs" />
+
+</ForLang>
+
+<p class="lr-layer">Going deeper</p>
+
+## One copy per type
+
+The compiler writes a separate copy of a generic function for each type it is used with. This is called **monomorphization**. Each copy knows its `T`: `size_of::<T>()` is a plain number in it, and `<` or `+` is the operation for that type, chosen when compiling. `type_name::<T>()` below is for diagnostics only: the standard library says its text is not specified.
+
+<Snippet file="mono.rs" />
+
+The last line compares the addresses of two instances of `largest`: different functions. The Book says the result runs as if you had written each copy by hand ([Performance of Code Using Generics](https://doc.rust-lang.org/book/ch10-01-syntax.html#performance-of-code-using-generics)). The price is more compiled code, one copy per type. This page measures no speed, binary size or compile time, and the runner builds only debug builds.
+
+Because a copy knows its `T`, a generic struct stores its fields inline:
+
+<Memory
+  title={'Pair<i32> and Pair<String>'}
+  stack={[
+    { name: 'numbers', type: 'Pair<i32>', cells: ['first 1', 'second 2'], note: '8 bytes: two numbers side by side' },
+    { name: 'names.first', type: 'String', cells: ['ptr', 'len 3', 'cap 3'], to: 'ana', note: 'names is a Pair<String>: 48 bytes, two of these side by side' },
+    { name: 'names.second', type: 'String', cells: ['ptr', 'len 2', 'cap 2'], to: 'bo' },
+  ]}
+  heap={[
+    { id: 'ana', label: '"ana"', cells: ['a', 'n', 'a'] },
+    { id: 'bo', label: '"bo"', cells: ['b', 'o'] },
+  ]}
+  caption="The same struct, two layouts. The size of Pair<T> follows from the size of T. The letters of a String live on the heap; the two Strings of a Pair<String> sit next to each other."
+/>
+
+<Snippet file="layout.rs" />
+
+<ForLang only="java">
+
+A Java `Pair<Integer>` is two references to `Integer` objects, and with values this large they are two separate objects:
+
+<Snippet file="boxing.java" />
+
+</ForLang>
+
+<ForLang only="kotlin">
+
+On the JVM a Kotlin `List<Int>` holds boxed `Integer` objects too; `IntArray` is the unboxed form:
+
+<Snippet file="boxing.kt" />
+
+</ForLang>
+
+## `T` has a known size, unless you say otherwise
+
+Each copy must know how big its `T` is, so every type parameter carries a hidden bound, `Sized`. The text behind a `&str` is a `str`, whose length is known only when the program runs, so it cannot be a `T`:
+
+<Snippet file="sized.fail.rs" />
+
+`?Sized` ("may or may not have a known size") lifts the rule. A `&` has a known size, so a reference to the value is fine:
+
+<Snippet file="sized.rs" />
+
+You will meet `T: ?Sized` in standard library signatures: [`ToString`](https://doc.rust-lang.org/std/string/trait.ToString.html) is implemented for every `T: Display + ?Sized`.
+
+## What `T` is at run time, in your language
+
+In Rust each copy is for one concrete type, so no generic code is left at run time and there is no reflection on `T`: you cannot list its members or rely on its name. You can ask whether two types are the same, for `'static` types (types that hold no borrowed data), and you call `T`'s behaviour through trait functions such as `T::default()`:
+
+<Snippet file="type-id.rs" />
+
+Other languages keep more or less of `T`:
+
+<ForLang only="go">
+
+Go keeps type information in values: `%T` on a value of a concrete `T` prints its type, but the zero value of `T = error` is a nil interface, with no type to print:
+
+<Snippet file="runtime-type.go" />
+
+Go makes one copy per *GC shape*, not per type: types that look the same to the garbage collector, such as all pointers, share one, with a dictionary of type information ([design note](https://github.com/golang/proposal/blob/master/design/generics-implementation-gcshape.md)). `Id[*int]` and `Id[*string]` run the same code; `Id[int]` and `Id[int64]` do not:
+
+<Snippet file="shape.go" />
+
+Rust's `type_name::<T>()` is for messages; the compiler fills its text in for each copy (`mono.rs`).
+
+</ForLang>
+
+<ForLang only="java">
+
+Java **erases** the type argument: the compiler checks it, then removes it, so one body serves every `T` and "no new classes are created for parameterized types" ([Java Tutorials](https://docs.oracle.com/javase/tutorial/java/generics/erasure.html)). The price shows at run time: a `List<String>` and a `List<Integer>` are the same class, and a raw list accepts anything until a read fails:
+
+<Snippet file="erasure.java" />
+
+Because the type argument is gone, `new T()` is refused, and a type argument must be a reference type:
+
+<Snippet file="new-t.fail.java" />
+
+<Snippet file="primitive-arg.fail.java" />
+
+Rust copies the code per type, so `T` can be a number, stored inline as in the picture above.
+
+</ForLang>
+
+<ForLang only="kotlin">
+
+Kotlin erases type arguments like Java, but an `inline` function with `reified` keeps one. Without it, `value is T` is refused:
+
+<Snippet file="erased.fail.kt" />
+
+<Snippet file="reified.kt" />
+
+Rust has no `reified`: `Any::is::<T>()` (above) answers `value is T` for `'static` types, and trait functions cover the rest. Kotlin's read-only `List<out E>` may be seen as a list of a supertype. A mutable list may not, because someone could add the wrong kind of item through the supertype view:
+
+<Snippet file="variance.kt" />
+
+<Snippet file="variance.fail.kt" />
+
+</ForLang>
+
+<ForLang only="csharp">
+
+C# keeps type arguments at run time. `typeof(T)` works, `List<int>` and `List<string>` are different types, and `new T[2]` is fine:
+
+<Snippet file="reified.cs" />
+
+The CLR also compiles separate code for each value-type argument and shares one body for reference types ([Generics in the runtime](https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/generics/generics-in-the-run-time); documented, not run here), so `List<int>` stores ints inline, as Rust does. The difference is what stays: C# keeps `T` as metadata you can ask; Rust keeps only what `TypeId` shows.
+
+</ForLang>
+
+<ForLang only="python">
+
+Python ignores the hints when the program runs. This runs until `>` meets an `int` and a `str`:
+
+<Snippet file="typing.fail.py" />
+
+A type checker is a separate tool, and this site runs only the interpreter. Run outside the site, `mypy --strict` (2.4) rejects the mixed list (`Value of type variable "T" of "largest" cannot be "object"`) and the gotcha's `a + b` on an unbounded `T` (`Unsupported left operand type for + ("T")`). In Rust the compiler is the checker and always runs ([below](#generics-or-trait-objects) shows the mixed-list error).
+
+</ForLang>
+
+<ForLang only="typescript">
+
+TypeScript erases its types when it compiles. This prints the emitted JavaScript of a generic function:
+
+<Snippet file="erased.ts" />
+
+There is no `T` in it. Rust has no `T` left either, but for a different reason: each copy is for a real type, and nothing was removed.
+
+</ForLang>
+
+<ForLang only="c">
+
+A C macro is text pasted before the compiler sees the types. It works for `int` and `double`, and an argument can run twice:
+
+<Snippet file="max-macro.c" />
+
+`i++` ran twice, so `bigger` is 6 and `i` is 7.
+
+</ForLang>
+
+<ForLang only="cpp">
+
+A C++ template is also compiled once per type. `__PRETTY_FUNCTION__` is a GCC name for the function being run, and it shows the type each copy was made for:
+
+<Snippet file="instances.cpp" />
+
+Rust does the same. The difference is where a mistake is reported, as the concept example above shows.
+
+</ForLang>
+
+## When to make something generic
+
+Write the concrete version first. Make it generic when a second type needs the same code, and ask for only the bounds the body uses: every extra bound narrows who can call it, as the exercises check.
+
+## Generics or trait objects
+
+A generic parameter is one type per use. `Vec<T>` holds only `T`s, and a list of mixed types is refused:
+
+<Snippet file="one-type.fail.rs" />
+
+When one list must hold different types that share an ability, you use a **trait object** (`dyn Trait`): the compiler no longer picks a copy, and the method is looked up while the program runs. [Trait objects](/learn/trait-objects/) covers it, and what it costs compared with generics.
+
+<ForLang only="python typescript">
+
+Your own answer to a mixed list is a union (`list[int | str]`, `(number | string)[]`). For a fixed set of types the Rust counterpart is an enum, not a trait object ([Traits](/learn/traits/#a-trait-or-an-enum)).
+
+</ForLang>
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Each exercise is a small program with checks in `main`. Open it in the Playground, replace the `todo!()`, and run until it prints `all checks passed`.
+
+<Exercise name="min-max" title="Smallest and largest">
+Return references to the smallest and the largest item of a slice, or `None` if it is empty. The checks use whole numbers, decimals, `&str`, `char` and a `Version` type that supports `<` and `>` and nothing else. Decimals are not `Ord`, and all of them are negative, so starting from a zero does not work either.
+</Exercise>
+
+<Exercise name="stack" title="A stack of anything">
+Fill in `Stack<T>`: `push`, `pop`, `peek` and `len`, plus `show`, which prints the items as `[1, 2, 3]`. The checks push more than three items and include a type that cannot be printed.
+</Exercise>
+
+<Exercise name="first-n" title="The first N items">
+Return the first `N` items of a slice as an array, filled up with the default value when the slice is shorter. The caller picks `N` with a type: `let a: [i32; 3] = first_n(&items)`. The checks use numbers, `String` and a type with very few traits: choose the bounds the body needs and no more.
+</Exercise>
+
+## Read more
+
+- [The Rust Book, chapter 10.1: Generic Data Types](https://doc.rust-lang.org/book/ch10-01-syntax.html), which ends with monomorphization, and [10.2: Defining Shared Behavior](https://doc.rust-lang.org/book/ch10-02-traits.html) for bounds, `where` and blanket impls.
+- [Rust by Example: Generics](https://doc.rust-lang.org/rust-by-example/generics.html), with [Bounds](https://doc.rust-lang.org/rust-by-example/generics/bounds.html) and [Where clauses](https://doc.rust-lang.org/rust-by-example/generics/where.html).
+- The Rust Reference, [Generic parameters](https://doc.rust-lang.org/reference/items/generics.html), including [const generics](https://doc.rust-lang.org/reference/items/generics.html#const-generics).
+- The standard library: [`std::ops::Add`](https://doc.rust-lang.org/std/ops/trait.Add.html) (the `Output` type), [`std::any::TypeId`](https://doc.rust-lang.org/std/any/struct.TypeId.html) and [`std::any::type_name`](https://doc.rust-lang.org/std/any/fn.type_name.html).

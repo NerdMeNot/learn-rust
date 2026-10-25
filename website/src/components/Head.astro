@@ -1,0 +1,42 @@
+---
+// Starlight's <head>, plus the reader's "coming from" language, set before first paint.
+//
+// Every lesson renders all eight languages. One attribute on <html> decides which one
+// shows, through the rules below, so there is no flash of the wrong language and the
+// pages still read correctly without JavaScript (Go is the default).
+import Default from '@astrojs/starlight/components/Head.astro'
+import { OTHERS, VERDICT } from '../lib/langs'
+
+const verdicts = Object.keys(VERDICT)
+const css = OTHERS.map(k => [
+  `:root[data-from="${k}"] .lr-others [data-pane]:not([data-pane="${k}"]),`,
+  `:root[data-from="${k}"] [data-for]:not([data-for="${k}"]),`,
+  `:root[data-from="${k}"] .lr-tab-missing:not([data-tab="${k}"]) { display: none }`,
+  `:root[data-from="${k}"] .lr-tab[data-tab="${k}"] { background: var(--lr-soft); color: var(--lr-ink) }`,
+  `:root[data-from="${k}"] .lr-tab[data-tab="${k}"]::before { opacity: 1 }`,
+  `:root[data-from="${k}"] .lr-tab[data-tab="${k}"] { box-shadow: inset 0 -2px 0 var(--c) }`,
+  `:root[data-from="${k}"] .lr-forlang:not(.lr-for-${k}) { display: none }`,
+  ...verdicts.map(v => `:root[data-from="${k}"] .lr-trap[data-v-${k}="${v}"] { --vc: var(--lr-v-${v}); --vb: var(--lr-v-${v}-bg) }`),
+].join('\n')).join('\n')
+
+const boot =
+  `try{var f=localStorage.getItem('lr:from');` +
+  `document.documentElement.dataset.from=${JSON.stringify(OTHERS)}.indexOf(f)>=0?f:'go';` +
+  `}catch(e){document.documentElement.dataset.from='go'}`
+
+// The sidebar opens with the current page in view (every page change is a fresh document,
+// so it would otherwise start at the top). Progress ticks: a page counts as read when the reader gets to the end of it (or, on
+// a short page, has had it open for a while). The set lives in localStorage; nothing
+// leaves the browser. Without it the sidebar is just the sidebar.
+const progress = `(function(){var K='lr:done',get=function(){try{return JSON.parse(localStorage.getItem(K)||'[]')}catch(e){return[]}};
+var mark=function(){var d=get();document.querySelectorAll('.sidebar-content a[href]').forEach(function(a){var p=a.getAttribute('href');if(d.indexOf(p)>=0)a.setAttribute('data-done','')})};
+var done=function(){var p=location.pathname,d=get();if(d.indexOf(p)<0){d.push(p);try{localStorage.setItem(K,JSON.stringify(d))}catch(e){}}mark()};
+var center=function(){var a=document.querySelector('.sidebar-content a[aria-current="page"]');if(!a)return;var p=a.parentElement;while(p&&!(p.scrollHeight>p.clientHeight+1&&/(auto|scroll)/.test(getComputedStyle(p).overflowY)))p=p.parentElement;if(!p)return;var pr=p.getBoundingClientRect(),ar=a.getBoundingClientRect();p.scrollTop+=(ar.top-pr.top)-(pr.height-ar.height)/2};
+document.addEventListener('DOMContentLoaded',function(){mark();center();window.addEventListener('load',center);
+var h=document.documentElement,check=function(){if(h.scrollHeight-(window.scrollY+window.innerHeight)<240){done();window.removeEventListener('scroll',check)}};
+window.addEventListener('scroll',check,{passive:true});setTimeout(check,1500)})})()`
+---
+<script is:inline set:html={boot} />
+<script is:inline set:html={progress} />
+<Default />
+<style is:inline set:html={css} />

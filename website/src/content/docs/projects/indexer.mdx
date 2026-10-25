@@ -1,0 +1,121 @@
+---
+title: "Project: a concurrent file indexer"
+description: "Build a small tool that walks a directory and counts the lines, words and bytes of every file, many files at a time. Four steps add a semaphore, a bounded channel and cancellation to a Tokio program, and every step has tests that pass."
+---
+
+import { Files, Remember, Session, Tree } from '../../../components/guide'
+
+This page builds one program in four steps. The program walks a directory tree and counts the lines, words and bytes of every file in it. The counting is easy. The work is in running it for many files at once without opening too many, without the walk running far ahead of the readers, and with a way to stop it halfway. Each step's output below is a real run in the image.
+
+Earlier pages explain the ideas used here: [Async Basics](/learn/async-basics/) and the [Tokio guide](/build/tokio/) for tasks and `select!`, [Channels](/learn/channels/) for `mpsc`, [Send and Sync](/learn/send-sync/) for the `Send` bound. The tests lean on ideas from [More testing](/further/testing-more/).
+
+<Remember>Three separate limits do three separate jobs. A semaphore limits how much work is in flight. A bounded channel limits how far the producer can run ahead. A cancellation token tells everything to stop.</Remember>
+
+The first `cargo` command downloads `tokio` and `tokio-util` from crates.io, so it needs network. The versions are pinned by the committed `Cargo.lock`: tokio 1.54.1 and tokio-util 0.7.20. `Cargo.toml` alone says `1.54.1`, which Cargo reads as that version or a newer 1.x one, so copy `Cargo.lock` too or Cargo may pick a newer release.
+
+<Tree guide="project-indexer" dir="rust" name="indexer" title="The finished project" notes={{"src/lib.rs":"lists the modules","src/index.rs":"counting one file","src/walk.rs":"finds the files","src/pipeline.rs":"bounded concurrency and cancellation","src/report.rs":"the sorted table","src/main.rs":"the command line","sample":"a small tree to index","Cargo.lock":"created by Cargo, committed"}} />
+
+<Files guide="project-indexer" dir="rust" files={["Cargo.toml"]} />
+
+The `test-util` feature sits in `[dev-dependencies]` because only tests need it. Cargo enables dev-dependency features for builds that include dev-dependencies, such as `cargo test` ([the Cargo book on features](https://doc.rust-lang.org/cargo/reference/features.html)).
+
+## Step 1: count one file, then all of them in order
+
+Start with no concurrency at all. `count` is a plain function on a `&str`, which makes it easy to test, and `index_file` is the async wrapper that reads the file. The [`tokio::fs` docs](https://docs.rs/tokio/1.54.1/tokio/fs/index.html) say Tokio "will use ordinary blocking file operations behind the scenes", run with `spawn_blocking`, so an `await` on a file read does not hold up the runtime's own threads.
+
+<Files guide="project-indexer" dir="rust" files={["src/index.rs", "src/report.rs"]} />
+
+Two choices here pay off later. Results go into a `BTreeMap`, which keeps its keys sorted, so the table's order never depends on which file finished first. And `render` returns a `String` instead of printing, so a test can look at it.
+
+<Files guide="project-indexer" dir="stage1" files={["src/walk.rs", "src/main.rs"]} run="step1-run" />
+
+The second run adds a file that is not UTF-8. `read_to_string` fails for it, the table says so on that file's row, and the other rows are still there ([Errors](/learn/errors/) covers `io::Result` and `?`). The program exits with code 1 when any file failed.
+
+The tests for this step, with `--test-threads=1` so the lines print in a fixed order:
+
+<Session guide="project-indexer" run="step1-test" />
+
+## Step 2: a semaphore bounds the work in flight
+
+Step 1 reads one file at a time. The obvious change, `tokio::spawn` for every file, has a different problem: a directory with a hundred thousand files would create a hundred thousand tasks, each asking for a file read. A semaphore puts a number on it. The [`Semaphore` docs](https://docs.rs/tokio/1.54.1/tokio/sync/struct.Semaphore.html) describe it as a "counting semaphore performing asynchronous permit acquisition", and unlike a mutex it lets more than one holder in.
+
+The new file is `pipeline.rs`, and `lib.rs` gains one line, `pub mod pipeline;`, so `main` can import it:
+
+<Files guide="project-indexer" dir="rust" files={["src/lib.rs"]} />
+
+`run` is generic over the work, so the same code can run the real file reads in `main` and fake sleeping work in tests. The `Send` bound on the future is there because `tokio::spawn` needs it ([Send and Sync](/learn/send-sync/)).
+
+<Files guide="project-indexer" dir="stage2" files={["src/pipeline.rs", "src/main.rs"]} run="step2-test" />
+
+`acquire_owned` gives a permit that is not tied to a borrow, so it can move into the spawned task and is released when the task ends. The loop waits for a permit before it spawns, so the loop itself is what slows down. A `JoinSet` is Tokio's collection of spawned tasks: `spawn` adds one, and `join_next().await` returns the next task to finish, in whatever order they finish, until none are left. That unknown order is why the results go into a `BTreeMap`.
+
+The first test is the interesting one. It counts how many jobs are running at the same moment and asserts that the peak is exactly the limit, 3 (`fetch_max` stores the larger of the old and new value, which records the peak). Real sleeps could make a test pass or fail by luck of the scheduler, so `#[tokio::test(start_paused = true)]` stops the clock: the [`pause` docs](https://docs.rs/tokio/1.54.1/tokio/time/fn.pause.html) say that if the runtime "has no work to do, the clock is auto-advanced to the next pending timer". The sleeps finish at once and in a fixed order. (Pausing needs the `current_thread` runtime, which `#[tokio::test]` uses by default.)
+
+The second test makes the files finish in reverse order and asserts that the map still comes out sorted. Step 3 replaces this test with the producer test below, so nothing after step 2 tests the order. `run` still collects into a `BTreeMap`.
+
+## Step 3: a bounded channel between the walker and the workers
+
+Step 2 still builds the whole list of paths before any work starts, which holds every path in memory. The fix is to hand paths over as the walk finds them, through a channel. The bounded `mpsc` channel is the important part: the [`mpsc` docs](https://docs.rs/tokio/1.54.1/tokio/sync/mpsc/index.html) say that when it is at capacity the send waits for room, and "the channel provides backpressure". The walker cannot get further ahead than the channel allows.
+
+Three files change. `walk` sends into the channel, `run` receives from it, and `main` creates the channel and gives the sender to the walker.
+
+<Files guide="project-indexer" dir="stage3" files={["src/walk.rs", "src/pipeline.rs", "src/main.rs"]} run="step3-test" />
+
+Look at the order in `run`: permit first, path second. If it took the path first and then waited for a permit, it would hold one path in its hands while the channel had room for another, so the producer could be one path further ahead than the capacity. With this order, when every worker is busy the loop does not call `recv`, the channel fills to its capacity, and the walker waits in `send`.
+
+The `the_producer_cannot_get_far_ahead_of_the_workers` test checks it with one slow worker: at the start of every file it measures how many paths were sent but not yet started (`saturating_sub` stops at 0 instead of going below it), and asserts the worst case is at most the channel's capacity.
+
+## Step 4: cancellation
+
+A tool that reads a whole disk needs a way to stop. This step adds a `CancellationToken` from `tokio-util`, whose [docs](https://docs.rs/tokio-util/0.7.20/tokio_util/sync/struct.CancellationToken.html) call it "a token which can be used to signal a cancellation request to one or more tasks". Every clone sees the same cancel. The token goes into three places:
+
+- the walker stops sending,
+- the loop in `run` stops taking new paths,
+- each running job races its work against `token.cancelled()`, and the loser of a `select!` is dropped. Dropping a future cancels it ([Async Basics](/learn/async-basics/#dropping-a-future-cancels-it)), so a job that was cut off simply returns `None` and has no entry in the result.
+
+`run` now returns a `Report` with the finished work and a `cancelled` flag, so the caller can tell the run was stopped. In `main`, a small task waits for Ctrl-C and cancels the token. (That Ctrl-C path was not run: no key was pressed in these sessions, so the tests drive cancellation instead.)
+
+**A known limitation.** `cancelled` is read after the workers have stopped, and it only says that the token was cancelled. If the cancel arrives after the last job has finished, the table is complete but `cancelled` is still true, and `main` prints "the table above is partial". The tests cover a cancel in the middle of a run and a run nobody cancels, not this case.
+
+<Files guide="project-indexer" dir="rust" files={["src/pipeline.rs", "src/walk.rs", "src/main.rs"]} />
+
+Each `select!` here starts with `biased;`. By default `select!` picks which ready branch to poll first at random ([the `select!` docs](https://docs.rs/tokio/1.54.1/tokio/macro.select.html), also covered in the [Tokio guide](/build/tokio/#select-drops-the-losers)). That mattered: a first version of the walk test, which cancels before the walk starts and expects nothing to be sent, failed on some runs, because the send branch was ready too and the random choice sometimes picked it. With `biased;` the cancel check is first.
+
+The cancellation test fixes the timing with the paused clock. Two jobs at a time, 10 ms each, cancel at 25 ms: the first four files finished at 10 ms and 20 ms, and the last two were still running at 25 ms. So the test asserts that exactly `f00` to `f03` are in the result. All 12 tests pass:
+
+<Session guide="project-indexer" run="test" />
+
+## Run it
+
+The job count is the second argument. It changes how the work is scheduled, not what comes out: the last step runs the program with 1 job and with 16 and compares the two outputs with `diff`. Zero jobs is refused, because a semaphore with no permits would wait forever.
+
+<Session guide="project-indexer" run="jobs" />
+
+## Break it
+
+**A worker that is not `Send`.** Give `run` a job that holds an `Rc` across an `.await`. The `Send` bound on `Fut` rejects it, and the error names the captured value:
+
+<Files guide="project-indexer" dir="snippet-not-send" files={["src/main.rs"]} />
+
+<Session guide="project-indexer" run="not-send" />
+
+**A channel that is too big.** The backpressure test says the producer may be at most `capacity` paths ahead. This run changes the capacity to 10 but keeps the assertion at 2. The first command is GNU `sed -i`, as in the image (on macOS write `sed -i ''`, or edit those two spots by hand). The producer then gets 9 paths ahead before the worker catches up, and the test fails with that number. The second command filters the test output to the failing lines.
+
+<Session guide="project-indexer" run="try-capacity" />
+
+## What to try next
+
+1. **Count something more useful.** Replace `FileStats` with a word index: a `BTreeMap<String, usize>` per file, merged into one map at the end. Keep the merge in the caller so the workers share nothing.
+2. **Skip what you do not want.** Add a third argument with an extension, such as `txt`, and filter in `walk`. Add a test that uses the `sample` tree, which holds only `.txt` files, so a filter for `rs` would find nothing.
+3. **Report progress.** Send a message on a second channel after each file, and print a running count from a separate task. Decide whether that channel should be bounded, and what should happen when the printer is slow.
+4. **Stop on a deadline.** Wrap the whole `run` in `tokio::time::timeout`, or cancel the token after N seconds, and test it with the paused clock as above.
+5. **CPU-heavy work.** If the per-file job were heavy computation instead of a read, it would hold up the runtime's own threads. The [Rayon and Tokio guide](/build/rayon-tokio/) shows how to hand that work to a thread pool.
+6. **Split it up.** Move the library into its own crate with a thin binary in a Cargo workspace ([Project structure](/further/project-structure/)).
+
+## Read more
+
+- [The Tokio tutorial](https://tokio.rs/tokio/tutorial), including its channels and `select` chapters.
+- [`tokio::sync::Semaphore`](https://docs.rs/tokio/1.54.1/tokio/sync/struct.Semaphore.html), [`tokio::sync::mpsc`](https://docs.rs/tokio/1.54.1/tokio/sync/mpsc/index.html) and [`tokio_util::sync::CancellationToken`](https://docs.rs/tokio-util/0.7.20/tokio_util/sync/struct.CancellationToken.html).
+- In this course: [Threads](/learn/threads/), [Channels](/learn/channels/), [Send and Sync](/learn/send-sync/), [Async Basics](/learn/async-basics/), [Testing](/build/testing/) and [More testing](/further/testing-more/).
+
+<p class="lr-fine">The project is the guide <code>project-indexer</code>: tokio 1.54.1 and tokio-util 0.7.20, as pinned in <code>Cargo.lock</code>.</p>

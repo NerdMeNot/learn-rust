@@ -1,0 +1,355 @@
+{
+ "id": "methods",
+ "title": "Methods",
+ "part": "data",
+ "intro": "Methods go in an `impl` block. The first parameter says how the method uses the struct: read it, change it, or take it.",
+ "coming_from": {
+  "go": "An `impl` block holds the methods, and `&mut self` is your pointer receiver. A Go value receiver gets a copy; in Rust, plain `self` takes the value itself, and the caller can't use it again unless the type is `Copy`. `&self` is a pointer receiver that can only read, which Go can't say. `Counter::new()` is a naming habit, like `NewCounter()`.",
+  "kotlin": "Methods go in a separate `impl` block, and there is no constructor: `new` is an ordinary function, like a factory in a companion object. A method that changes the struct takes `&mut self`, and a variable that owns the struct must be `let mut` to call it, where Kotlin lets a `val` call anything.",
+  "python": "`self` is written out like Python's, but its form says what the method does: `&self` reads, `&mut self` changes, plain `self` uses it up. There is no `__init__`: `Counter::new()` is just a function that returns a `Counter`.",
+  "typescript": "`this` becomes an explicit `self` parameter, and its form says what the method does: `&self` reads, `&mut self` changes. There is no `class` or `new`: `Counter::new()` is a plain function, and a variable that owns the object must be `let mut` to call a `&mut self` method.",
+  "java": "Methods live in a separate `impl` block, and `this` is written out as the first parameter, with a mode: `&self` reads, `&mut self` changes, `self` takes the value. There are no constructors, so `Counter::new()` is a plain function, and two methods of one type can't share a name. A variable that owns the object must be `let mut` to call a `&mut self` method.",
+  "csharp": "An `impl` block holds the methods, and `fn new()` with no `self` is a `static` factory, since Rust has no constructors. The receiver says whether a method changes the struct (`&mut self`) or only reads it (`&self`), which C# classes never spell out.",
+  "c": "This is your `counter_bump(struct Counter *c)` pattern with the call written `c.bump()`: `&self` is like `const struct Counter *` and `&mut self` like `struct Counter *`. Where gcc only warns about passing a `const` object to a non-`const` pointer, Rust refuses to build.",
+  "cpp": "`&self` is a `const` member function and `&mut self` is a non-`const` one, but the default flips: values are immutable unless declared `let mut`. There are no constructors; `Counter::new()` is an ordinary associated function that returns a value."
+ },
+ "notes": [
+  "`&self` lets the method read the struct without copying it. `&mut self` lets the method change it. `self` (no &) means the method takes the struct; after calling it the caller can't use it (unless the type is `Copy`), and the method may hand it back.",
+  "`new` is not a keyword. It is just the usual name for a constructor function.",
+  "You call methods with a dot either way. Rust adds the `&` or `&mut` for you.",
+  "Two methods written in a type's own `impl` blocks can't share a name, so you can't overload by parameter list. Constructors get different names instead: `new`, `with_capacity`, `from_parts`. ([Traits](/learn/traits/), covered later, can give one name several meanings, as `From` does for `from`.)"
+ ],
+ "gotcha": {
+  "title": "Calling a changing method on a non-mut variable",
+  "verdict": "rust-rule",
+  "looks_fine": "In Go, `c.Bump()` works on any variable: Go takes `&c` for you. In Kotlin, `val c` only stops reassigning `c`; the object inside can still change.",
+  "rust_sees": "`bump` says \"I change the counter\" (`&mut self`). But `c` was declared with plain `let`, which means \"this never changes\".",
+  "why": "In Rust, `let` without `mut` covers the whole value, including everything inside it. That is stronger than Java's `final`, Kotlin's `val` or a JavaScript `const`, which only stop the variable from pointing somewhere else. It is what lets you trust that a non-mut value really stays the same (a few types, such as `Cell` and `Mutex`, change through `&` on purpose; see Shared state).",
+  "langs": {
+   "go": {
+    "status": "runs",
+    "says": "Go runs this and prints 1. Go takes `&c` for you behind the scenes when `c` is a variable, so it can call a pointer method.",
+    "code": "package main\n\nimport \"fmt\"\n\ntype Counter struct{ count int }\n\nfunc (c *Counter) Bump() { c.count++ }\n\nfunc main() {\n\tc := Counter{}\n\tc.Bump()\n\tfmt.Println(c.count)\n}\n",
+    "out": "1\n"
+   },
+   "kotlin": {
+    "status": "runs",
+    "says": "Kotlin runs this and prints 1. `val` only stops you from reassigning `c`, not from changing what's inside it.",
+    "code": "class Counter {\n    var count = 0\n    fun bump() { count++ }\n}\n\nfun main() {\n    val c = Counter()\n    c.bump()\n    println(c.count)\n}\n",
+    "out": "1\n"
+   },
+   "python": {
+    "status": "runs",
+    "says": "Python prints 1. There is no `mut`: any name can call any method, and the object changes. An ordinary class has no way to mark a method as \"changes the object\" or a variable as \"never changes\" (a frozen dataclass opts in per class).",
+    "code": "class Counter:\n    def __init__(self) -> None:\n        self.count = 0\n\n    def bump(self) -> None:\n        self.count += 1\n\n\nc = Counter()\nc.bump()\nprint(c.count)\n",
+    "out": "1\n"
+   },
+   "typescript": {
+    "status": "runs",
+    "says": "Prints 1. `const` only stops you from pointing `c` at a different object; the object itself can still change. (`readonly` fields opt in, one by one.)",
+    "code": "class Counter {\n  count = 0;\n  bump(): void {\n    this.count += 1;\n  }\n}\n\nconst c = new Counter();\nc.bump();\nconsole.log(c.count);\n",
+    "out": "1\n"
+   },
+   "java": {
+    "status": "runs",
+    "says": "This prints 1. In Java, `final` only stops `c` from pointing at another object; the object itself can still change.",
+    "code": "public class Main {\n    static class Counter {\n        int count = 0;\n\n        void bump() {\n            count++;\n        }\n    }\n\n    public static void main(String[] args) {\n        final var c = new Counter();\n        c.bump();\n        System.out.println(c.count);\n    }\n}\n",
+    "out": "1\n"
+   },
+   "csharp": {
+    "status": "runs",
+    "says": "A method can change a class's (non-`readonly`) fields in C#, so this prints 1. There is no marker at the call site that says this call changes `c`.",
+    "code": "var c = new Counter();\nc.Bump();\nConsole.WriteLine(c.Count);\n\nclass Counter\n{\n    public uint Count { get; private set; }\n\n    public void Bump() => Count++;\n}\n",
+    "out": "1\n"
+   },
+   "c": {
+    "status": "runs",
+    "says": "gcc only warns that `&c` drops the `const`, then lets `counter_bump` change it and prints 1. Changing a const object is undefined behaviour, so this is luck.",
+    "code": "#include <stdio.h>\n\nstruct Counter {\n    unsigned count;\n};\n\nvoid counter_bump(struct Counter *c) {\n    c->count += 1;\n}\n\nint main(void) {\n    const struct Counter c = {0};\n    counter_bump(&c);\n    printf(\"%u\\n\", c.count);\n    return 0;\n}\n",
+    "warnings": "main.c: In function ‘main’:\nmain.c:13:18: warning: passing argument 1 of ‘counter_bump’ discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]\n   13 |     counter_bump(&c);\n      |                  ^~\nmain.c:7:35: note: expected ‘struct Counter *’ but argument is of type ‘const struct Counter *’\n    7 | void counter_bump(struct Counter *c) {\n      |                   ~~~~~~~~~~~~~~~~^",
+    "out": "1\n"
+   },
+   "cpp": {
+    "status": "refuses",
+    "says": "In C++ you have to write `const` to get this error; in Rust you get it by writing nothing. `bump` is not a `const` method, so it can't be called on a `const Counter`. (`-fpermissive` in the message is the switch that would turn this error into a warning; without it, it is an error.)",
+    "code": "#include <iostream>\n\nstruct Counter {\n    unsigned count = 0;\n    void bump() { count += 1; }\n};\n\nint main() {\n    const Counter c;\n    c.bump();\n    std::cout << c.count << \"\\n\";\n}\n",
+    "error": "main.cpp: In function ‘int main()’:\nmain.cpp:10:11: error: passing ‘const Counter’ as ‘this’ argument discards qualifiers [-fpermissive]\n   10 |     c.bump();\n      |     ~~~~~~^~\nmain.cpp:5:10: note:   in call to ‘void Counter::bump()’\n    5 |     void bump() { count += 1; }\n      |          ^~~~"
+   }
+  },
+  "code": "struct Counter {\n    count: u32,\n}\n\nimpl Counter {\n    fn bump(&mut self) {\n        self.count += 1;\n    }\n}\n\nfn main() {\n    let c = Counter { count: 0 };\n    c.bump();\n    println!(\"{}\", c.count);\n}\n",
+  "error": "error[E0596]: cannot borrow `c` as mutable, as it is not declared as mutable\n  --> src/main.rs:13:5\n   |\n13 |     c.bump();\n   |     ^ cannot borrow as mutable\n   |\nhelp: consider changing this to be mutable\n   |\n12 |     let mut c = Counter { count: 0 };\n   |         +++\n",
+  "error_code": "E0596",
+  "fixed": {
+   "code": "struct Counter {\n    count: u32,\n}\n\nimpl Counter {\n    fn bump(&mut self) {\n        self.count += 1;\n    }\n}\n\nfn main() {\n    let mut c = Counter { count: 0 };\n    c.bump();\n    println!(\"{}\", c.count);\n}\n",
+   "out": "1\n"
+  }
+ },
+ "order": 21,
+ "program": {
+  "rust": {
+   "code": "struct Counter {\n    count: u32,\n}\n\nimpl Counter {\n    fn new() -> Counter {          // no self: called as Counter::new()\n        Counter { count: 0 }\n    }\n\n    fn get(&self) -> u32 {         // &self: only reads\n        self.count\n    }\n\n    fn bump(&mut self) {           // &mut self: changes the struct\n        self.count += 1;\n    }\n}\n\nfn main() {\n    let mut c = Counter::new();\n    c.bump();\n    c.bump();\n    println!(\"{}\", c.get());\n}\n",
+   "out": "2\n"
+  },
+  "go": {
+   "code": "package main\n\nimport \"fmt\"\n\ntype Counter struct {\n\tcount int\n}\n\nfunc NewCounter() *Counter {\n\treturn &Counter{}\n}\n\nfunc (c *Counter) Get() int {\n\treturn c.count\n}\n\nfunc (c *Counter) Bump() {\n\tc.count++\n}\n\nfunc main() {\n\tc := NewCounter()\n\tc.Bump()\n\tc.Bump()\n\tfmt.Println(c.Get())\n}\n",
+   "out": "2\n"
+  },
+  "kotlin": {
+   "code": "class Counter {\n    private var count = 0\n\n    fun get(): Int = count\n\n    fun bump() {\n        count++\n    }\n}\n\nfun main() {\n    val c = Counter()\n    c.bump()\n    c.bump()\n    println(c.get())\n}\n",
+   "out": "2\n"
+  },
+  "python": {
+   "code": "class Counter:\n    def __init__(self) -> None:  # called as Counter()\n        self.count = 0\n\n    def get(self) -> int:\n        return self.count\n\n    def bump(self) -> None:  # any method can change self\n        self.count += 1\n\n\nc = Counter()\nc.bump()\nc.bump()\nprint(c.get())\n",
+   "out": "2\n"
+  },
+  "typescript": {
+   "code": "class Counter {\n  private count = 0;\n\n  get(): number { // only reads\n    return this.count;\n  }\n\n  bump(): void { // changes the object\n    this.count += 1;\n  }\n}\n\nconst c = new Counter();\nc.bump();\nc.bump();\nconsole.log(c.get());\n",
+   "out": "2\n"
+  },
+  "java": {
+   "code": "public class Main {\n    static class Counter {\n        private int count = 0;\n\n        int get() {\n            return count;\n        }\n\n        void bump() {\n            count++;\n        }\n    }\n\n    public static void main(String[] args) {\n        var c = new Counter();\n        c.bump();\n        c.bump();\n        System.out.println(c.get());\n    }\n}\n",
+   "out": "2\n"
+  },
+  "csharp": {
+   "code": "var c = new Counter();\nc.Bump();\nc.Bump();\nConsole.WriteLine(c.Get());\n\nclass Counter\n{\n    private uint count;   // starts at 0\n\n    public uint Get() => count;\n\n    public void Bump() => count++;\n}\n",
+   "out": "2\n"
+  },
+  "c": {
+   "code": "#include <stdio.h>\n\nstruct Counter {\n    unsigned count;\n};\n\n// C has no methods: plain functions that take the struct by pointer\nstruct Counter counter_new(void) {\n    return (struct Counter){.count = 0};\n}\n\nunsigned counter_get(const struct Counter *c) {   // const: only reads\n    return c->count;\n}\n\nvoid counter_bump(struct Counter *c) {            // no const: changes it\n    c->count += 1;\n}\n\nint main(void) {\n    struct Counter c = counter_new();\n    counter_bump(&c);\n    counter_bump(&c);\n    printf(\"%u\\n\", counter_get(&c));\n    return 0;\n}\n",
+   "out": "2\n"
+  },
+  "cpp": {
+   "code": "#include <iostream>\n\nclass Counter {\npublic:\n    unsigned get() const { return count_; }   // const: only reads\n    void bump() { count_ += 1; }               // not const: changes the object\n\nprivate:\n    unsigned count_ = 0;                       // a default member initializer: starts at 0\n};\n\nint main() {\n    Counter c;\n    c.bump();\n    c.bump();\n    std::cout << c.get() << \"\\n\";\n}\n",
+   "out": "2\n"
+  }
+ },
+ "faq": [],
+ "snippets": {
+  "assoc.rs": {
+   "code": "struct Account {\n    owner: String,\n    balance: u32,\n}\n\nimpl Account {\n    const MAX_BALANCE: u32 = 1_000;\n\n    fn new(owner: &str) -> Self {\n        Self::with_balance(owner, 0)\n    }\n\n    fn with_balance(owner: &str, balance: u32) -> Self {\n        Self {\n            owner: owner.to_string(),\n            balance: balance.min(Self::MAX_BALANCE),\n        }\n    }\n}\n\n// A second `impl` block for the same type is allowed.\nimpl Account {\n    fn is_full(&self) -> bool {\n        self.balance == Self::MAX_BALANCE\n    }\n}\n\nfn main() {\n    let a = Account::new(\"ana\");\n    let b = Account::with_balance(\"bo\", 5_000);\n    println!(\"a: {} has {}, full: {}\", a.owner, a.balance, a.is_full());\n    println!(\"b: {} has {}, full: {}\", b.owner, b.balance, b.is_full());\n    println!(\"limit: {}\", Account::MAX_BALANCE);\n}\n",
+   "out": "a: ana has 0, full: false\nb: bo has 1000, full: true\nlimit: 1000\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "auto-ref.rs": {
+   "code": "struct Account {\n    balance: u32,\n}\n\nimpl Account {\n    fn balance(&self) -> u32 {\n        self.balance\n    }\n\n    fn deposit(&mut self, amount: u32) {\n        self.balance += amount;\n    }\n}\n\nfn top_up(acct: &mut Account) {\n    acct.deposit(10); // `acct` is already a `&mut Account`; no `(*acct)` needed\n}\n\nfn main() {\n    let mut acct = Account { balance: 0 };\n    acct.deposit(5); // the compiler passes `&mut acct`\n    top_up(&mut acct);\n    println!(\"value:       {}\", acct.balance());\n\n    let r = &acct;\n    let rr = &r;\n    println!(\"&Account:    {}\", r.balance());\n    println!(\"&&Account:   {}\", rr.balance());\n\n    let mut accounts = vec![Account { balance: 1 }, Account { balance: 2 }];\n    for a in &mut accounts {\n        a.deposit(100); // `a` is a `&mut Account`\n    }\n    println!(\"accounts[0]: {}\", accounts[0].balance());\n    println!(\"accounts[1]: {}\", accounts[1].balance());\n}\n",
+   "out": "value:       15\n&Account:    15\n&&Account:   15\naccounts[0]: 101\naccounts[1]: 102\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "builder-build-self.fail.rs": {
+   "code": "struct Builder {\n    name: String,\n}\n\nimpl Builder {\n    fn new() -> Self {\n        Self {\n            name: String::new(),\n        }\n    }\n\n    fn name(&mut self, name: &str) -> &mut Self {\n        self.name = name.to_string();\n        self\n    }\n\n    fn build(self) -> String {\n        self.name\n    }\n}\n\nfn main() {\n    let text = Builder::new().name(\"ana\").build();\n    println!(\"built: {text}\");\n}\n",
+   "error": "error[E0507]: cannot move out of a mutable reference\n  --> src/main.rs:23:16\n   |\n23 |     let text = Builder::new().name(\"ana\").build();\n   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^ ------- value moved due to this method call\n   |                |\n   |                move occurs because value has type `Builder`, which does not implement the `Copy` trait\n   |\nnote: `Builder::build` takes ownership of the receiver `self`, which moves value\n  --> src/main.rs:17:14\n   |\n17 |     fn build(self) -> String {\n   |              ^^^^\nnote: if `Builder` implemented `Clone`, you could clone the value\n  --> src/main.rs:1:1\n   |\n 1 | struct Builder {\n   | ^^^^^^^^^^^^^^ consider implementing `Clone` for this type\n...\n23 |     let text = Builder::new().name(\"ana\").build();\n   |                -------------------------- you could clone this value\n",
+   "lang": "rust"
+  },
+  "builder-consuming.rs": {
+   "code": "struct Request {\n    url: String,\n    retries: u32,\n    timeout_secs: u32,\n    headers: Vec<String>,\n}\n\nimpl Request {\n    fn new(url: &str) -> Self {\n        Self {\n            url: url.to_string(),\n            retries: 0,\n            timeout_secs: 30,\n            headers: Vec::new(),\n        }\n    }\n\n    fn retries(mut self, n: u32) -> Self {\n        self.retries = n;\n        self\n    }\n\n    fn timeout(mut self, secs: u32) -> Self {\n        self.timeout_secs = secs;\n        self\n    }\n\n    fn header(mut self, line: &str) -> Self {\n        self.headers.push(line.to_string());\n        self\n    }\n}\n\nfn main() {\n    let req = Request::new(\"https://example.com\")\n        .retries(3)\n        .header(\"Accept: text/plain\")\n        .header(\"X-Id: 7\")\n        .timeout(5);\n    println!(\"url: {}\", req.url);\n    println!(\"retries: {}\", req.retries);\n    println!(\"timeout: {}\", req.timeout_secs);\n    println!(\"headers: {:?}\", req.headers);\n\n    // Adding a header only sometimes means putting the value back:\n    let verbose = true;\n    let mut req = Request::new(\"https://example.com\");\n    if verbose {\n        req = req.header(\"X-Debug: 1\");\n    }\n    println!(\"headers: {:?}\", req.headers);\n}\n",
+   "out": "url: https://example.com\nretries: 3\ntimeout: 5\nheaders: [\"Accept: text/plain\", \"X-Id: 7\"]\nheaders: [\"X-Debug: 1\"]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "builder-mut-ref.rs": {
+   "code": "struct Request {\n    url: String,\n    retries: u32,\n    headers: Vec<String>,\n}\n\nstruct RequestBuilder {\n    url: String,\n    retries: u32,\n    headers: Vec<String>,\n}\n\nimpl RequestBuilder {\n    fn new(url: &str) -> Self {\n        Self {\n            url: url.to_string(),\n            retries: 0,\n            headers: Vec::new(),\n        }\n    }\n\n    fn retries(&mut self, n: u32) -> &mut Self {\n        self.retries = n;\n        self\n    }\n\n    fn header(&mut self, line: &str) -> &mut Self {\n        self.headers.push(line.to_string());\n        self\n    }\n\n    fn build(&self) -> Request {\n        Request {\n            url: self.url.clone(),\n            retries: self.retries,\n            headers: self.headers.clone(),\n        }\n    }\n}\n\nfn main() {\n    // One expression: the temporary builder lives until the end of the statement.\n    let one = RequestBuilder::new(\"https://example.com\")\n        .retries(3)\n        .header(\"Accept: text/plain\")\n        .build();\n    println!(\"one:  {} {} {:?}\", one.url, one.retries, one.headers);\n\n    // Step by step: the builder is a `let mut` variable, and a method call does\n    // not need its result put back.\n    let verbose = true;\n    let mut b = RequestBuilder::new(\"https://example.com\");\n    b.retries(1);\n    if verbose {\n        b.header(\"X-Debug: 1\");\n    }\n    let two = b.build();\n    println!(\"two:  {} {} {:?}\", two.url, two.retries, two.headers);\n}\n",
+   "out": "one:  https://example.com 3 [\"Accept: text/plain\"]\ntwo:  https://example.com 1 [\"X-Debug: 1\"]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "builder-temp.fail.rs": {
+   "code": "struct Builder {\n    retries: u32,\n}\n\nimpl Builder {\n    fn new() -> Self {\n        Self { retries: 0 }\n    }\n\n    fn retries(&mut self, n: u32) -> &mut Self {\n        self.retries = n;\n        self\n    }\n\n    fn build(&self) -> u32 {\n        self.retries\n    }\n}\n\nfn main() {\n    let b = Builder::new().retries(3);\n    println!(\"built: {}\", b.build());\n}\n",
+   "error": "error[E0716]: temporary value dropped while borrowed\n  --> src/main.rs:21:13\n   |\n21 |     let b = Builder::new().retries(3);\n   |             ^^^^^^^^^^^^^^           - temporary value is freed at the end of this statement\n   |             |\n   |             creates a temporary value which is freed while still in use\n22 |     println!(\"built: {}\", b.build());\n   |                           - borrow later used here\n   |\nhelp: consider using a `let` binding to create a longer lived value\n   |\n21 ~     let mut binding = Builder::new();\n22 ~     let b = binding.retries(3);",
+   "lang": "rust"
+  },
+  "check-method-value.fail.rs": {
+   "code": "struct Account {\n    balance: u32,\n}\n\nimpl Account {\n    fn deposit(&mut self, amount: u32) {\n        self.balance += amount;\n    }\n}\n\nfn main() {\n    let mut acct = Account { balance: 0 };\n    let f = acct.deposit;\n    f(5);\n}\n",
+   "error": "error[E0615]: attempted to take value of method `deposit` on type `Account`\n  --> src/main.rs:13:18\n   |\n13 |     let f = acct.deposit;\n   |                  ^^^^^^^ method, not a field\n   |\nhelp: use parentheses to call the method\n   |\n13 |     let f = acct.deposit(_);\n   |                         +++\n",
+   "lang": "rust"
+  },
+  "check-overload-ok.rs": {
+   "code": "// Backs the claim that traits give one name several meanings, while two inherent methods cannot.\nstruct Y(String);\n\nimpl From<u8> for Y {\n    fn from(n: u8) -> Y {\n        Y(format!(\"number {n}\"))\n    }\n}\n\nimpl From<&str> for Y {\n    fn from(s: &str) -> Y {\n        Y(format!(\"text {s}\"))\n    }\n}\n\nfn main() {\n    assert_eq!(Y::from(7u8).0, \"number 7\");\n    assert_eq!(Y::from(\"abc\").0, \"text abc\");\n    println!(\"checks passed\");\n}\n",
+   "out": "checks passed\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-self-forms.rs": {
+   "code": "// Backs the table of receivers: which forms need a `let mut` variable.\nstruct Account {\n    balance: u32,\n}\n\nimpl Account {\n    fn read(&self) -> u32 {\n        self.balance\n    }\n    fn with_bonus(mut self, bonus: u32) -> Self {\n        self.balance += bonus;\n        self\n    }\n    fn change(&mut self) {\n        self.balance += 1;\n    }\n    fn consume(self) -> u32 {\n        self.balance\n    }\n}\n\nfn main() {\n    // a plain `let` is enough for `&self`, `mut self` and `self`\n    let acct = Account { balance: 1 };\n    assert_eq!(acct.read(), 1);\n    let acct = acct.with_bonus(4);\n    assert_eq!(acct.read(), 5);\n    assert_eq!(acct.consume(), 5);\n    // only `&mut self` needs `let mut`\n    let mut acct = Account { balance: 1 };\n    acct.change();\n    assert_eq!(acct.read(), 2);\n    println!(\"checks passed\");\n}\n",
+   "out": "checks passed\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-self-types.rs": {
+   "code": "// Backs the claim that `self`, `&self` and `&mut self` are shorthand for typed parameters.\nstruct Account {\n    balance: u32,\n}\n\nimpl Account {\n    fn read(self: &Self) -> u32 {\n        self.balance\n    }\n    fn change(self: &mut Self) {\n        self.balance += 1;\n    }\n    fn consume(self: Self) -> u32 {\n        self.balance\n    }\n}\n\nfn main() {\n    let mut acct = Account { balance: 1 };\n    acct.change();\n    assert_eq!(acct.read(), 2);\n    assert_eq!(acct.consume(), 2);\n    println!(\"checks passed\");\n}\n",
+   "out": "checks passed\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-slice-path.rs": {
+   "code": "// Backs the claim: `Vec::iter(&v)` fails because `iter` is a slice method, but the slice path works.\nfn main() {\n    let v = vec![1, 2, 3];\n    let total: i32 = <[i32]>::iter(&v).sum();\n    assert_eq!(total, 6);\n    println!(\"checks passed\");\n}\n",
+   "out": "checks passed\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-vec-iter-path.fail.rs": {
+   "code": "fn main() {\n    let v = vec![1, 2, 3];\n    let total: i32 = Vec::iter(&v).sum();\n    println!(\"{total}\");\n}\n",
+   "error": "error[E0599]: no associated function or constant named `iter` found for struct `Vec<_, _>` in the current scope\n --> src/main.rs:3:27\n  |\n3 |     let total: i32 = Vec::iter(&v).sum();\n  |                           ^^^^ associated function or constant not found in `Vec<_, _>`\n  |\nhelp: the function `iter` is implemented on `[_]`\n  |\n3 -     let total: i32 = Vec::iter(&v).sum();\n3 +     let total: i32 = <[_]>::iter(&v).sum();\n  ... (notes pointing into the standard library trimmed)",
+   "lang": "rust"
+  },
+  "composition.rs": {
+   "code": "struct Account {\n    balance: u32,\n}\n\nimpl Account {\n    fn balance(&self) -> u32 {\n        self.balance\n    }\n\n    fn deposit(&mut self, amount: u32) {\n        self.balance += amount;\n    }\n}\n\n// There is no `extends`. A bigger type holds the smaller one as a field.\nstruct Savings {\n    account: Account,\n    rate_percent: u32,\n}\n\nimpl Savings {\n    fn deposit(&mut self, amount: u32) {\n        self.account.deposit(amount); // forwarded by hand\n    }\n\n    fn interest(&self) -> u32 {\n        self.account.balance() * self.rate_percent / 100\n    }\n}\n\nfn main() {\n    let mut s = Savings {\n        account: Account { balance: 0 },\n        rate_percent: 5,\n    };\n    s.deposit(200);\n    println!(\"balance:  {}\", s.account.balance());\n    println!(\"interest: {}\", s.interest());\n}\n",
+   "out": "balance:  200\ninterest: 10\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "consume-behind-ref.fail.rs": {
+   "code": "struct Account {\n    owner: String,\n}\n\nimpl Account {\n    fn close(self) -> String {\n        format!(\"{} closed\", self.owner)\n    }\n}\n\nfn close_it(acct: &Account) -> String {\n    acct.close()\n}\n\nfn main() {\n    let acct = Account {\n        owner: String::from(\"ana\"),\n    };\n    println!(\"{}\", close_it(&acct));\n}\n",
+   "error": "error[E0507]: cannot move out of `*acct` which is behind a shared reference\n  --> src/main.rs:12:5\n   |\n12 |     acct.close()\n   |     ^^^^ ------- `*acct` moved due to this method call\n   |     |\n   |     move occurs because `*acct` has type `Account`, which does not implement the `Copy` trait\n   |\nnote: `Account::close` takes ownership of the receiver `self`, which moves `*acct`\n  --> src/main.rs:6:14\n   |\n 6 |     fn close(self) -> String {\n   |              ^^^^\nnote: if `Account` implemented `Clone`, you could clone the value\n  --> src/main.rs:1:1\n   |\n 1 | struct Account {\n   | ^^^^^^^^^^^^^^ consider implementing `Clone` for this type\n...\n12 |     acct.close()\n   |     ---- you could clone this value\n",
+   "lang": "rust"
+  },
+  "explicit-call.rs": {
+   "code": "struct Account {\n    balance: u32,\n}\n\nimpl Account {\n    fn balance(&self) -> u32 {\n        self.balance\n    }\n\n    fn deposit(&mut self, amount: u32) {\n        self.balance += amount;\n    }\n}\n\nfn main() {\n    let mut acct = Account { balance: 0 };\n    acct.deposit(5);\n    Account::deposit(&mut acct, 5); // the same call, written out\n    println!(\"method syntax:   {}\", acct.balance());\n    println!(\"function syntax: {}\", Account::balance(&acct));\n\n    // A method is a function whose first parameter is the receiver, so it can be\n    // stored in a variable and passed around.\n    let read: fn(&Account) -> u32 = Account::balance;\n    println!(\"through a variable: {}\", read(&acct));\n\n    let accounts = vec![Account { balance: 3 }, Account { balance: 4 }];\n    let total: u32 = accounts.iter().map(Account::balance).sum();\n    println!(\"total: {total}\");\n}\n",
+   "out": "method syntax:   10\nfunction syntax: 10\nthrough a variable: 10\ntotal: 7\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "first-methods.rs": {
+   "code": "struct Account {\n    owner: String,\n    balance: u32,\n}\n\nimpl Account {\n    fn new(owner: &str) -> Self {\n        Self {\n            owner: owner.to_string(),\n            balance: 0,\n        }\n    }\n\n    fn balance(&self) -> u32 {\n        self.balance\n    }\n\n    fn deposit(&mut self, amount: u32) {\n        self.balance += amount;\n    }\n\n    fn close(self) -> String {\n        format!(\"{} closed with {}\", self.owner, self.balance)\n    }\n}\n\nfn main() {\n    let mut acct = Account::new(\"ana\");\n    acct.deposit(50);\n    acct.deposit(25);\n    println!(\"balance: {}\", acct.balance());\n    let note = acct.close();\n    println!(\"note: {note}\");\n}\n",
+   "out": "balance: 75\nnote: ana closed with 75\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "memory.rs": {
+   "code": "use std::mem::size_of;\n\nstruct Account {\n    owner: String,\n    balance: u32,\n}\n\nimpl Account {\n    fn itself(&self) -> &Account {\n        self\n    }\n\n    fn balance(&self) -> u32 {\n        self.balance\n    }\n\n    fn text_address(&self) -> *const u8 {\n        self.owner.as_ptr()\n    }\n\n    fn close(self) -> *const u8 {\n        self.owner.as_ptr()\n    }\n}\n\nfn main() {\n    let acct = Account {\n        owner: String::from(\"ana\"),\n        balance: 75,\n    };\n    println!(\"size of Account: {} bytes\", size_of::<Account>());\n    println!(\"size of String:  {} bytes\", size_of::<String>());\n    println!(\"size of u32:     {} bytes\", size_of::<u32>());\n    println!(\n        \"owner: {} bytes of text, capacity {}\",\n        acct.owner.len(),\n        acct.owner.capacity()\n    );\n    println!(\"balance: {}\", acct.balance());\n    println!(\n        \"&self is the caller's variable: {}\",\n        std::ptr::eq(acct.itself(), &acct)\n    );\n\n    let before = acct.text_address();\n    let after = acct.close();\n    println!(\"same text buffer after close: {}\", before == after);\n}\n",
+   "out": "size of Account: 32 bytes\nsize of String:  24 bytes\nsize of u32:     4 bytes\nowner: 3 bytes of text, capacity 3\nbalance: 75\n&self is the caller's variable: true\nsame text buffer after close: true\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "method-size.rs": {
+   "code": "use std::mem::size_of;\n\nstruct Counter {\n    count: u32,\n}\n\nimpl Counter {\n    fn get(&self) -> u32 {\n        self.count\n    }\n\n    fn bump(&mut self) {\n        self.count += 1;\n    }\n\n    fn into_value(self) -> u32 {\n        self.count\n    }\n}\n\nfn main() {\n    let mut c = Counter { count: 0 };\n    c.bump();\n    println!(\"count: {}\", c.get());\n    println!(\"size of Counter: {} bytes\", size_of::<Counter>());\n    println!(\"size of u32:     {} bytes\", size_of::<u32>());\n    println!(\"into_value: {}\", c.into_value());\n}\n",
+   "out": "count: 1\nsize of Counter: 4 bytes\nsize of u32:     4 bytes\ninto_value: 1\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "no-overload.fail.rs": {
+   "code": "struct Account {\n    owner: String,\n    balance: u32,\n}\n\nimpl Account {\n    fn new(owner: &str) -> Self {\n        Self {\n            owner: owner.to_string(),\n            balance: 0,\n        }\n    }\n\n    fn new(owner: &str, balance: u32) -> Self {\n        Self {\n            owner: owner.to_string(),\n            balance,\n        }\n    }\n}\n\nfn main() {\n    let a = Account::new(\"ana\");\n    println!(\"{} has {}\", a.owner, a.balance);\n}\n",
+   "error": "error[E0592]: duplicate definitions with name `new`\n  --> src/main.rs:14:5\n   |\n 7 |     fn new(owner: &str) -> Self {\n   |     --------------------------- other definition for `new`\n...\n14 |     fn new(owner: &str, balance: u32) -> Self {\n   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ duplicate definitions for `new`\n",
+   "lang": "rust"
+  },
+  "private.fail.rs": {
+   "code": "mod bank {\n    pub struct Account {\n        balance: u32,\n    }\n\n    impl Account {\n        pub fn new() -> Self {\n            Account { balance: 0 }\n        }\n\n        pub fn deposit(&mut self, amount: u32) {\n            self.balance += amount;\n        }\n\n        pub fn balance(&self) -> u32 {\n            self.balance\n        }\n    }\n}\n\nfn main() {\n    let mut acct = bank::Account::new();\n    acct.deposit(5);\n    acct.balance = 1_000_000;\n    println!(\"balance: {}\", acct.balance());\n}\n",
+   "error": "error[E0616]: field `balance` of struct `Account` is private\n  --> src/main.rs:24:10\n   |\n24 |     acct.balance = 1_000_000;\n   |          ^^^^^^^ private field\n",
+   "lang": "rust"
+  },
+  "read-only-self.fail.rs": {
+   "code": "struct Account {\n    balance: u32,\n}\n\nimpl Account {\n    fn reset(&self) {\n        self.balance = 0;\n    }\n}\n\nfn main() {\n    let acct = Account { balance: 5 };\n    acct.reset();\n    println!(\"balance: {}\", acct.balance);\n}\n",
+   "error": "error[E0594]: cannot assign to `self.balance`, which is behind a `&` reference\n --> src/main.rs:7:9\n  |\n7 |         self.balance = 0;\n  |         ^^^^^^^^^^^^^^^^ `self` is a `&` reference, so it cannot be written to\n  |\nhelp: consider changing this to be a mutable reference\n  |\n6 |     fn reset(&mut self) {\n  |               +++\n",
+   "lang": "rust"
+  },
+  "receivers-copy.rs": {
+   "code": "// A `Copy` type: `self` copies it, like a Go value receiver.\n#[derive(Clone, Copy)]\nstruct Counter {\n    count: u32,\n}\n\nimpl Counter {\n    fn bump_copy(mut self) {\n        self.count += 1;\n    }\n\n    fn bump_in_place(&mut self) {\n        self.count += 1;\n    }\n}\n\nfn main() {\n    let mut c = Counter { count: 0 };\n    c.bump_copy();\n    println!(\"after bump_copy: {}\", c.count);\n    c.bump_in_place();\n    println!(\"after bump_in_place: {}\", c.count);\n}\n",
+   "out": "after bump_copy: 0\nafter bump_in_place: 1\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "tuple-struct.rs": {
+   "code": "struct Score(u32);\n\nimpl Score {\n    fn new(points: u32) -> Self {\n        Self(points)\n    }\n\n    fn add(&mut self, points: u32) {\n        self.0 += points;\n    }\n\n    fn is_high(&self) -> bool {\n        self.0 >= 100\n    }\n\n    fn into_inner(self) -> u32 {\n        self.0\n    }\n}\n\nfn main() {\n    let mut s = Score::new(90);\n    s.add(15);\n    println!(\"high: {}\", s.is_high());\n    println!(\"inner: {}\", s.into_inner());\n}\n",
+   "out": "high: true\ninner: 105\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "use-after-close.fail.rs": {
+   "code": "struct Account {\n    owner: String,\n    balance: u32,\n}\n\nimpl Account {\n    fn close(self) -> String {\n        format!(\"{} closed with {}\", self.owner, self.balance)\n    }\n}\n\nfn main() {\n    let acct = Account {\n        owner: String::from(\"ana\"),\n        balance: 75,\n    };\n    let note = acct.close();\n    println!(\"note: {note}\");\n    println!(\"balance: {}\", acct.balance);\n}\n",
+   "error": "error[E0382]: borrow of moved value: `acct`\n  --> src/main.rs:19:29\n   |\n13 |     let acct = Account {\n   |         ---- move occurs because `acct` has type `Account`, which does not implement the `Copy` trait\n...\n17 |     let note = acct.close();\n   |                     ------- `acct` moved due to this method call\n18 |     println!(\"note: {note}\");\n19 |     println!(\"balance: {}\", acct.balance);\n   |                             ^^^^^^^^^^^^ value borrowed here after move\n   |\nnote: `Account::close` takes ownership of the receiver `self`, which moves `acct`\n  --> src/main.rs:7:14\n   |\n 7 |     fn close(self) -> String {\n   |              ^^^^\n",
+   "lang": "rust"
+  },
+  "closed-stream.fail.py": {
+   "code": "import io\n\nf = io.StringIO(\"hello\")\nf.close()\nprint(f.read())  # ValueError: the object is closed, found out when the program runs\n",
+   "out": "Traceback (most recent call last):\n  File \"main.py\", line 5, in <module>\n    print(f.read())  # ValueError: the object is closed, found out when the program runs\n          ~~~~~~^^\nValueError: I/O operation on closed file\n",
+   "lang": "python",
+   "exit": 1
+  },
+  "consume.cpp": {
+   "code": "#include <iostream>\n#include <string>\n#include <utility>\n\nstruct Account {\n    std::string owner;\n    unsigned balance;\n\n    // The closest thing to Rust's `self`: callable only on an rvalue.\n    std::string close() && { return std::move(owner) + \" closed\"; }\n};\n\nint main() {\n    Account acct{\"ana\", 75};\n    std::string note = std::move(acct).close();\n    std::cout << \"note: \" << note << \"\\n\";\n    std::cout << \"owner afterwards: '\" << acct.owner << \"'\\n\";\n    std::cout << \"balance afterwards: \" << acct.balance << \"\\n\";\n}\n",
+   "out": "note: ana closed\nowner afterwards: ''\nbalance afterwards: 75\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "dangling-builder.crash.asan.cpp": {
+   "code": "#include <iostream>\n#include <string>\n\nstruct Builder {\n    std::string name;\n    Builder &set_name(const std::string &n) {\n        name = n;\n        return *this;\n    }\n};\n\nint main() {\n    // The Builder() temporary is destroyed at the end of this statement.\n    auto &b = Builder().set_name(\"a name too long for the small-string buffer\");\n    std::cout << b.name << \"\\n\";\n}\n",
+   "out": "=================================================================\n==1==ERROR: AddressSanitizer: heap-use-after-free on address 0x············ at pc 0x············ bp 0x············ sp 0x············\nREAD of size 43 at 0x············ thread T0\n    #0 0x············ in fwrite ../../../../src/libsanitizer/sanitizer_common/sanitizer_common_interceptors.inc:1110\n    #1 0x············ in std::basic_ostream<char, std::char_traits<char> >& std::__ostream_insert<char, std::char_traits<char> >(std::basic_ostream<char, std::char_traits<char> >&, char const*, long) (/lib/aarch64-linux-gnu/libstdc++.so.6+0x······)\n    #2 0x············ in main main.cpp:15\n    #3 0x············  (/lib/aarch64-linux-gnu/libc.so.6+0x22258)\n    #4 0x············ in __libc_start_main (/lib/aarch64-linux-gnu/libc.so.6+0x22338)\n    #5 0x············ in _start (main+0x216c)\n\n0x············ is located 0 bytes inside of 44-byte region [0x············,0x············)\nfreed by thread T0 here:\n    #0 0x············ in operator delete(void*, unsigned long) ../../../../src/libsanitizer/asan/asan_new_delete.cpp:164\n    #1 0x············ in std::__new_allocator<char>::deallocate(char*, unsigned long) /usr/include/c++/14/bits/new_allocator.h:172\n    #2 0x············ in std::allocator<char>::deallocate(char*, unsigned long) /usr/include/c++/14/bits/allocator.h:208\n    #3 0x············ in std::allocator_traits<std::allocator<char> >::deallocate(std::allocator<char>&, char*, unsigned long) /usr/include/c++/14/bits/alloc_traits.h:550\n    #4 0x············ in std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::_M_destroy(unsigned long) /usr/include/c++/14/bits/basic_string.h:294\n    #5 0x············ in std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::_M_dispose() /usr/include/c++/14/bits/basic_string.h:288\n    #6 0x············ in std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::~basic_string() /usr/include/c++/14/bits/basic_string.h:809\n    #7 0x············ in Builder::~Builder() main.cpp:4\n    #8 0x············ in main main.cpp:14\n    #9 0x············  (/lib/aarch64-linux-gnu/libc.so.6+0x22258)\n    #10 0x············ in __libc_start_main (/lib/aarch64-linux-gnu/libc.so.6+0x22338)\n    #11 0x············ in _start (main+0x216c)\n\npreviously allocated by thread T0 here:\n    #0 0x············ in operator new(unsigned long) ../../../../src/libsanitizer/asan/asan_new_delete.cpp:95\n    #1 0x············ in std::__new_allocator<char>::allocate(unsigned long, void const*) /usr/include/c++/14/bits/new_allocator.h:151\n    #2 0x············ in std::allocator<char>::allocate(unsigned long) /usr/include/c++/14/bits/allocator.h:196\n    #3 0x············ in std::allocator_traits<std::allocator<char> >::allocate(std::allocator<char>&, unsigned long) /usr/include/c++/14/bits/alloc_traits.h:515\n    #4 0x············ in std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::_S_allocate(std::allocator<char>&, unsigned long) /usr/include/c++/14/bits/basic_string.h:131\n    #5 0x············ in std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::_M_create(unsigned long&, unsigned long) /usr/include/c++/14/bits/basic_string.tcc:159\n    #6 0x············ in std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::_M_assign(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&) /usr/include/c++/14/bits/basic_string.tcc:288\n    #7 0x············ in std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::assign(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&) /usr/include/c++/14/bits/basic_string.h:1619\n    #8 0x············ in std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::operator=(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&) /usr/include/c++/14/bits/basic_string.h:819\n    #9 0x············ in Builder::set_name(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&) main.cpp:7\n    #10 0x············ in main main.cpp:14\n    #11 0x············  (/lib/aarch64-linux-gnu/libc.so.6+0x22258)\n    #12 0x············ in __libc_start_main (/lib/aarch64-linux-gnu/libc.so.6+0x22338)\n    #13 0x············ in _start (main+0x216c)\n\nSUMMARY: AddressSanitizer: heap-use-after-free ../../../../src/libsanitizer/sanitizer_common/sanitizer_common_interceptors.inc:1110 in fwrite\nShadow bytes around the buggy address:\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n=>0x············: fa fa fd fd fd fd fd fd fa fa[fd]fd fd fd fd fd\n  0x············: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\n  0x············: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\n  0x············: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\n  0x············: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\n  0x············: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa\nShadow byte legend (one shadow byte represents 8 application bytes):\n  Addressable:           00\n  Partially addressable: 01 02 03 04 05 06 07 \n  Heap left redzone:       fa\n  Freed heap region:       fd\n  Stack left redzone:      f1\n  Stack mid redzone:       f2\n  Stack right redzone:     f3\n  Stack after return:      f5\n  Stack use after scope:   f8\n  Global redzone:          f9\n  Global init order:       f6\n  Poisoned by user:        f7\n  Container overflow:      fc\n  Array cookie:            ac\n  Intra object redzone:    bb\n  ASan internal:           fe\n  Left alloca redzone:     ca\n  Right alloca redzone:    cb\n==1==ABORTING\n",
+   "lang": "cpp",
+   "mode": "asan",
+   "exit": 1
+  },
+  "defaults.cs": {
+   "code": "var a = new Account(\"ana\", currency: \"EUR\");\nConsole.WriteLine($\"{a.Owner} {a.Balance} {a.Currency}\");\n\nclass Account\n{\n    public string Owner;\n    public int Balance;\n    public string Currency;\n\n    public Account(string owner, int balance = 0, string currency = \"USD\")\n    {\n        Owner = owner;\n        Balance = balance;\n        Currency = currency;\n    }\n}\n",
+   "out": "ana 0 EUR\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "explicit-self.py": {
+   "code": "class Account:\n    def __init__(self):\n        self.balance = 0\n\n    def deposit(self, amount):\n        self.balance += amount\n\n\nacct = Account()\nacct.deposit(5)\nAccount.deposit(acct, 5)  # the same call, written out\nprint(\"balance:\", acct.balance)\n",
+   "out": "balance: 10\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "fnptr.c": {
+   "code": "#include <stdio.h>\n\nstruct Counter {\n    unsigned count;\n    void (*bump)(struct Counter *); // a method stored in the value\n};\n\nstatic void bump_impl(struct Counter *c) {\n    c->count += 1;\n}\n\nint main(void) {\n    struct Counter c = {0, bump_impl};\n    c.bump(&c); // you pass the object yourself\n    c.bump(&c);\n    printf(\"count: %u\\n\", c.count);\n    printf(\"sizeof(struct Counter): %zu\\n\", sizeof(struct Counter));\n    return 0;\n}\n",
+   "out": "count: 2\nsizeof(struct Counter): 16\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "kwargs.py": {
+   "code": "class Account:\n    def __init__(self, owner, balance=0, currency=\"USD\"):\n        self.owner = owner\n        self.balance = balance\n        self.currency = currency\n\n\na = Account(\"ana\", currency=\"EUR\")\nprint(a.owner, a.balance, a.currency)\n",
+   "out": "ana 0 EUR\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "lost-this.ts": {
+   "code": "class Account {\n  balance = 0;\n\n  deposit(amount: number): void {\n    this.balance += amount;\n  }\n}\n\nconst acct = new Account();\nacct.deposit(5);\nconsole.log(\"after acct.deposit(5):\", acct.balance);\n\nconst f = acct.deposit; // the method, without the object\ntry {\n  f(5); // `this` is gone\n} catch (e) {\n  console.log(\"f(5) failed:\", (e as Error).message);\n}\n",
+   "out": "after acct.deposit(5): 5\nf(5) failed: Cannot read properties of undefined (reading 'balance')\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "named-args.kt": {
+   "code": "class Account(val owner: String, val balance: Int = 0, val currency: String = \"USD\")\n\nfun main() {\n    val a = Account(\"ana\", currency = \"EUR\")\n    println(\"${a.owner} ${a.balance} ${a.currency}\")\n}\n",
+   "out": "ana 0 EUR\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "overload.java": {
+   "code": "public class Main {\n    static class Account {\n        final String owner;\n        final int balance;\n\n        Account(String owner) {\n            this(owner, 0); // one constructor calls another\n        }\n\n        Account(String owner, int balance) {\n            this.owner = owner;\n            this.balance = balance;\n        }\n    }\n\n    public static void main(String[] args) {\n        var a = new Account(\"ana\");\n        var b = new Account(\"bo\", 500);\n        System.out.println(a.owner + \" \" + a.balance);\n        System.out.println(b.owner + \" \" + b.balance);\n    }\n}\n",
+   "out": "ana 0\nbo 500\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "receivers.go": {
+   "code": "package main\n\nimport \"fmt\"\n\ntype Counter struct{ count int }\n\n// A value receiver gets a copy of the struct.\nfunc (c Counter) BumpCopy() { c.count++ }\n\n// A pointer receiver gets the struct's address.\nfunc (c *Counter) BumpInPlace() { c.count++ }\n\nfunc main() {\n\tc := Counter{}\n\tc.BumpCopy()\n\tfmt.Println(\"after BumpCopy:\", c.count)\n\tc.BumpInPlace()\n\tfmt.Println(\"after BumpInPlace:\", c.count)\n}\n",
+   "out": "after BumpCopy: 0\nafter BumpInPlace: 1\n",
+   "lang": "go",
+   "exit": 0
+  }
+ },
+ "exercises": {
+  "basket": {
+   "starter": "struct Basket {\n    items: Vec<String>,\n}\n\nimpl Basket {\n    /// An empty basket.\n    fn new() -> Self {\n        todo!(\"build a Basket whose items field is Vec::new()\")\n    }\n\n    /// How many items are in the basket. It only reads.\n    fn count(&self) -> usize {\n        todo!(\"self.items.len()\")\n    }\n\n    /// Adds the item with spaces trimmed off both ends and returns true.\n    /// A blank item (empty, or only spaces) is not added: return false.\n    fn add(&mut self, item: &str) -> bool {\n        todo!(\"trim() the item; if it is empty return false, else push a String\")\n    }\n\n    /// Uses the basket up and returns the items joined with \", \".\n    /// An empty basket gives \"(empty)\".\n    fn into_receipt(self) -> String {\n        todo!(\"loop over &self.items, push_str each, and put \\\", \\\" between them\")\n    }\n}\n\nfn main() {\n    let mut basket = Basket::new();\n    assert_eq!(basket.count(), 0);\n    assert!(basket.add(\"café\"));\n    assert!(basket.add(\"  tea  \"));\n    assert!(!basket.add(\"   \"), \"a blank item is not added\");\n    assert!(!basket.add(\"\"), \"an empty item is not added\");\n    assert_eq!(basket.count(), 2);\n    assert_eq!(basket.into_receipt(), \"café, tea\");\n\n    let empty = Basket::new();\n    assert_eq!(empty.into_receipt(), \"(empty)\");\n\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "struct Basket {\n    items: Vec<String>,\n}\n\nimpl Basket {\n    /// An empty basket.\n    fn new() -> Self {\n        Self { items: Vec::new() }\n    }\n\n    /// How many items are in the basket. It only reads.\n    fn count(&self) -> usize {\n        self.items.len()\n    }\n\n    /// Adds the item with spaces trimmed off both ends and returns true.\n    /// A blank item (empty, or only spaces) is not added: return false.\n    fn add(&mut self, item: &str) -> bool {\n        let item = item.trim();\n        if item.is_empty() {\n            return false;\n        }\n        self.items.push(item.to_string());\n        true\n    }\n\n    /// Uses the basket up and returns the items joined with \", \".\n    /// An empty basket gives \"(empty)\".\n    fn into_receipt(self) -> String {\n        if self.items.is_empty() {\n            return String::from(\"(empty)\");\n        }\n        let mut receipt = String::new();\n        for item in &self.items {\n            if !receipt.is_empty() {\n                receipt.push_str(\", \");\n            }\n            receipt.push_str(item);\n        }\n        receipt\n    }\n}\n\nfn main() {\n    let mut basket = Basket::new();\n    assert_eq!(basket.count(), 0);\n    assert!(basket.add(\"café\"));\n    assert!(basket.add(\"  tea  \"));\n    assert!(!basket.add(\"   \"), \"a blank item is not added\");\n    assert!(!basket.add(\"\"), \"an empty item is not added\");\n    assert_eq!(basket.count(), 2);\n    assert_eq!(basket.into_receipt(), \"café, tea\");\n\n    let empty = Basket::new();\n    assert_eq!(empty.into_receipt(), \"(empty)\");\n\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "celsius": {
+   "starter": "struct Celsius(f64);\n\nimpl Celsius {\n    const ABSOLUTE_ZERO: f64 = -273.15;\n\n    /// An associated function: no `self`. Celsius = (F - 32) * 5 / 9.\n    fn from_fahrenheit(f: f64) -> Self {\n        todo!(\"Self((f - 32.0) * 5.0 / 9.0)\")\n    }\n\n    /// Reads the temperature. Fahrenheit = C * 9 / 5 + 32.\n    fn to_fahrenheit(&self) -> f64 {\n        todo!(\"self.0 * 9.0 / 5.0 + 32.0\")\n    }\n\n    /// Lowers the temperature, but never below ABSOLUTE_ZERO.\n    fn cool(&mut self, degrees: f64) {\n        todo!(\"subtract, then f64::max with Self::ABSOLUTE_ZERO\")\n    }\n\n    /// Takes both temperatures and gives back the colder one.\n    fn colder(self, other: Celsius) -> Celsius {\n        todo!(\"compare self.0 and other.0\")\n    }\n}\n\nfn main() {\n    assert_eq!(Celsius::from_fahrenheit(212.0).0, 100.0);\n    assert_eq!(Celsius::from_fahrenheit(-40.0).0, -40.0);\n    assert_eq!(Celsius(100.0).to_fahrenheit(), 212.0);\n    assert_eq!(Celsius(0.0).to_fahrenheit(), 32.0);\n\n    let mut c = Celsius(20.0);\n    c.cool(5.0);\n    assert_eq!(c.0, 15.0);\n    c.cool(1000.0);\n    assert_eq!(\n        c.0,\n        Celsius::ABSOLUTE_ZERO,\n        \"nothing is colder than absolute zero\"\n    );\n\n    let a = Celsius(3.0);\n    let b = Celsius(-4.5);\n    assert_eq!(a.colder(b).0, -4.5);\n\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "struct Celsius(f64);\n\nimpl Celsius {\n    const ABSOLUTE_ZERO: f64 = -273.15;\n\n    /// An associated function: no `self`. Celsius = (F - 32) * 5 / 9.\n    fn from_fahrenheit(f: f64) -> Self {\n        Self((f - 32.0) * 5.0 / 9.0)\n    }\n\n    /// Reads the temperature. Fahrenheit = C * 9 / 5 + 32.\n    fn to_fahrenheit(&self) -> f64 {\n        self.0 * 9.0 / 5.0 + 32.0\n    }\n\n    /// Lowers the temperature, but never below ABSOLUTE_ZERO.\n    fn cool(&mut self, degrees: f64) {\n        self.0 = (self.0 - degrees).max(Self::ABSOLUTE_ZERO);\n    }\n\n    /// Takes both temperatures and gives back the colder one.\n    fn colder(self, other: Celsius) -> Celsius {\n        if self.0 <= other.0 { self } else { other }\n    }\n}\n\nfn main() {\n    assert_eq!(Celsius::from_fahrenheit(212.0).0, 100.0);\n    assert_eq!(Celsius::from_fahrenheit(-40.0).0, -40.0);\n    assert_eq!(Celsius(100.0).to_fahrenheit(), 212.0);\n    assert_eq!(Celsius(0.0).to_fahrenheit(), 32.0);\n\n    let mut c = Celsius(20.0);\n    c.cool(5.0);\n    assert_eq!(c.0, 15.0);\n    c.cool(1000.0);\n    assert_eq!(\n        c.0,\n        Celsius::ABSOLUTE_ZERO,\n        \"nothing is colder than absolute zero\"\n    );\n\n    let a = Celsius(3.0);\n    let b = Celsius(-4.5);\n    assert_eq!(a.colder(b).0, -4.5);\n\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "greeting-builder": {
+   "starter": "struct GreetingBuilder {\n    name: String,\n    excited: bool,\n    times: u32,\n}\n\nimpl GreetingBuilder {\n    /// No name, not excited, said once.\n    fn new() -> Self {\n        todo!(\"name is String::new(), excited is false, times is 1\")\n    }\n\n    /// Sets the name. Each setter takes `mut self` and gives `self` back.\n    fn name(mut self, name: &str) -> Self {\n        todo!(\"self.name = name.to_string(); self\")\n    }\n\n    /// `true` ends the greeting with \"!\", `false` with \".\".\n    fn excited(mut self, yes: bool) -> Self {\n        todo!(\"set the field, return self\")\n    }\n\n    /// How many times the greeting is repeated.\n    fn times(mut self, n: u32) -> Self {\n        todo!(\"set the field, return self\")\n    }\n\n    /// \"Hello, NAME.\" repeated `times` times, separated by one space.\n    /// The name is trimmed; a blank name becomes \"stranger\".\n    /// Zero times gives an empty String.\n    fn build(self) -> String {\n        todo!(\"trim the name, make one sentence, push_str it `times` times with spaces between\")\n    }\n}\n\nfn main() {\n    assert_eq!(GreetingBuilder::new().build(), \"Hello, stranger.\");\n    assert_eq!(\n        GreetingBuilder::new().name(\"Zoë\").excited(true).build(),\n        \"Hello, Zoë!\"\n    );\n    assert_eq!(\n        GreetingBuilder::new().times(2).name(\"  Åsa  \").build(),\n        \"Hello, Åsa. Hello, Åsa.\"\n    );\n    assert_eq!(\n        GreetingBuilder::new().name(\"   \").build(),\n        \"Hello, stranger.\",\n        \"a blank name falls back to stranger\"\n    );\n    assert_eq!(GreetingBuilder::new().times(0).build(), \"\");\n\n    // Setting an option only sometimes means putting the builder back.\n    let loud = true;\n    let mut builder = GreetingBuilder::new().name(\"Li\");\n    if loud {\n        builder = builder.excited(true);\n    }\n    assert_eq!(builder.build(), \"Hello, Li!\");\n\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "struct GreetingBuilder {\n    name: String,\n    excited: bool,\n    times: u32,\n}\n\nimpl GreetingBuilder {\n    /// No name, not excited, said once.\n    fn new() -> Self {\n        Self {\n            name: String::new(),\n            excited: false,\n            times: 1,\n        }\n    }\n\n    /// Sets the name. Each setter takes `mut self` and gives `self` back.\n    fn name(mut self, name: &str) -> Self {\n        self.name = name.to_string();\n        self\n    }\n\n    /// `true` ends the greeting with \"!\", `false` with \".\".\n    fn excited(mut self, yes: bool) -> Self {\n        self.excited = yes;\n        self\n    }\n\n    /// How many times the greeting is repeated.\n    fn times(mut self, n: u32) -> Self {\n        self.times = n;\n        self\n    }\n\n    /// \"Hello, NAME.\" repeated `times` times, separated by one space.\n    /// The name is trimmed; a blank name becomes \"stranger\".\n    /// Zero times gives an empty String.\n    fn build(self) -> String {\n        let name = self.name.trim();\n        let name = if name.is_empty() { \"stranger\" } else { name };\n        let end = if self.excited { \"!\" } else { \".\" };\n        let sentence = format!(\"Hello, {name}{end}\");\n        let mut out = String::new();\n        for i in 0..self.times {\n            if i > 0 {\n                out.push(' ');\n            }\n            out.push_str(&sentence);\n        }\n        out\n    }\n}\n\nfn main() {\n    assert_eq!(GreetingBuilder::new().build(), \"Hello, stranger.\");\n    assert_eq!(\n        GreetingBuilder::new().name(\"Zoë\").excited(true).build(),\n        \"Hello, Zoë!\"\n    );\n    assert_eq!(\n        GreetingBuilder::new().times(2).name(\"  Åsa  \").build(),\n        \"Hello, Åsa. Hello, Åsa.\"\n    );\n    assert_eq!(\n        GreetingBuilder::new().name(\"   \").build(),\n        \"Hello, stranger.\",\n        \"a blank name falls back to stranger\"\n    );\n    assert_eq!(GreetingBuilder::new().times(0).build(), \"\");\n\n    // Setting an option only sometimes means putting the builder back.\n    let loud = true;\n    let mut builder = GreetingBuilder::new().name(\"Li\");\n    if loud {\n        builder = builder.excited(true);\n    }\n    assert_eq!(builder.build(), \"Hello, Li!\");\n\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}

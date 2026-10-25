@@ -1,0 +1,329 @@
+<p class="lr-layer">The toolkit</p>
+
+Outputs come from Linux on 64-bit ARM with Rust 1.99.1, in debug mode. A program here starts with no arguments and an environment of its own, so several start a copy of themselves with `Command` (it starts another program, and `.output()` runs it and captures what it printed; [Running other programs](#running-other-programs) teaches it). `env::current_exe()` is the path of the running program, and an argument tells the copy what to do. The tools they run (`echo`, `sort`, `sleep`, `sh`, `pwd`) are common on Linux and macOS; Windows has different ones. A `Duration` is an amount of time (see Time).
+
+## Arguments
+
+`env::args()` is an iterator of `String`s. Item 0 is the program, then one item per argument. Here `args[1]` is the `--child` marker, so the parent's arguments start at `args[2]`:
+
+<Snippet file="args.rs" />
+
+The docs call the first item "traditionally the path of the executable" and say not to rely on it for security ([docs](https://doc.rust-lang.org/std/env/fn.args.html)). `"hello world"` is one argument because the parent passed it as one, and `*` arrives as `*` because no shell is involved (on Unix a shell expands globs before the program starts). `--flag=1` is only text: `std` has no flag parser, so use `clap` ([guide](/build/clap/)). A missing argument is `None` from `nth`, not an index error. `args()` panics on an argument that is not valid UTF-8, and a Unix file name can hold any bytes; `args_os()` does not ([run below](#strings-that-are-not-string)).
+
+## Environment variables
+
+`env::var` returns a `Result<String, VarError>`, and "not set" differs from "set to an empty string". This program starts copies of itself with the variable removed, then set to empty:
+
+<Snippet file="env-var.rs" />
+
+`unwrap_or_else` supplies a default for a missing variable only: an empty `RBC_LEVEL` stays `""`, unless `.filter(|v| !v.is_empty())` comes first. `.ok()` turns the `Result` into an `Option`, so `.and_then(|v| v.parse().ok())` turns a bad number into the default too. `vars()` is a snapshot in no promised order.
+
+A program can change its own environment with `set_var` and `remove_var`. In the 2024 edition (the edition of every program here) both are `unsafe`:
+
+<Snippet file="set-var.fail.rs" />
+
+The [Edition Guide](https://doc.rust-lang.org/edition-guide/rust-2024/newly-unsafe-functions.html) says so from 2024, "while not requiring unsafe in previous editions". The fix is an [`unsafe` block](/learn/unsafe/#unsafe-fn-blocks-and--safety-comments) with a comment saying why it is sound ([what you promise](#why-set_var-is-unsafe)):
+
+<Snippet file="set-var.rs" />
+
+To give a child a variable, set it on the `Command`; your own process is unchanged:
+
+<Snippet file="child-env.rs" />
+
+A child inherits your variables; `env` adds one, `env_remove` hides one, `env_clear` starts from nothing.
+
+## Where am I running?
+
+<Snippet file="where-am-i.rs" />
+
+`env::consts::OS` and `ARCH` are fixed at build time. A `Command` can have its own `current_dir`; `set_current_dir` is `chdir` on Unix (docs), which moves the whole process, so every relative path changes meaning.
+
+## Exit codes
+
+The [Errors lesson](/learn/errors/#exit-codes) shows which endings give which code. `ExitCode::from(n)` returns any `u8` from `main`. On Unix the operating system keeps only part of the number: the [`exit` docs](https://doc.rust-lang.org/std/process/fn.exit.html) say only the eight least significant bits count on most Unix-like platforms, and `0x0100` is 0 on Linux but 256 on Windows:
+
+<Snippet file="exit-values.rs" />
+
+`process::exit` runs no destructors. This program returns once, exits once, and exits with text inside a `BufWriter`:
+
+<Snippet file="exit-drop.rs" />
+
+The guard's message and the buffered line never arrived: a `BufWriter` writes what it holds when it is flushed or dropped, and `exit` does neither. Returning from `main` (with an `ExitCode` or a `Result` too) runs the destructors first ([Drop](/learn/common-traits/#drop-the-trait-behind-scope-exit)).
+
+## Time
+
+Elapsed times change on every run, so these programs print comparisons, never the numbers.
+
+### `Instant`: measuring
+
+An `Instant` is a reading of a clock that is "monotonically nondecreasing", in the docs' words. You subtract two readings. It is `CLOCK_MONOTONIC` on Linux and `CLOCK_UPTIME_RAW` on macOS, and whether a system suspend counts "varies across platforms and Rust versions" ([docs](https://doc.rust-lang.org/std/time/struct.Instant.html)). `thread::sleep` sleeps for at least the time asked ([docs](https://doc.rust-lang.org/std/thread/fn.sleep.html), [Threads](/learn/threads/)), so the first check is safe:
+
+<Snippet file="time-instant.rs" />
+
+`Instant + Duration` builds a later instant without waiting, so the other lines do not depend on the clock. `duration_since` the wrong way round gives `0ns` today, and the docs add that "Future versions may reintroduce the panic in some circumstances". Say what you mean instead: `checked_duration_since` gives `None`, so you notice a mistake, and `saturating_duration_since` gives `0ns` on purpose.
+
+### `SystemTime`: the wall clock
+
+A `SystemTime` is the system clock, which a person can set, so two readings can come out in the wrong order and `duration_since` returns a `Result`. `UNIX_EPOCH` is 1970-01-01 00:00:00 UTC:
+
+<Snippet file="time-system.rs" />
+
+`std` has no calendar or time zones: "Sunday, 25 October" takes a crate. `chrono` and `time` are long established; `jiff` is newer, handles time zones, and its README compares it with both. [Finding and using crates](/start/using-crates/) shows how to add one.
+
+### `Duration`: an amount of time
+
+<Snippet file="time-duration.rs" />
+
+`as_secs` cuts off the fraction (1.5 s is `1`), so read `subsec_millis` or `as_secs_f64`. A `Duration` has no `Display`, deliberately (docs); `{:?}` prints `1.5s`. It is never negative, unlike the durations of Go, Java, Kotlin, C#, C++ and Python (their sections run one), so a plain `-` that would go below zero panics:
+
+<Snippet file="duration-sub.panic.rs" />
+
+Use `checked_sub` or `saturating_sub`.
+
+## Running other programs
+
+`Command` runs another program. `output()` waits and captures what it printed:
+
+<Snippet file="command-basic.rs" />
+
+A program name is a file name, so `"echo hello"` is not found. On Unix, arguments arrive as they are: `$HOME`, `*` and `;` did nothing, because no shell reads them. For a shell's pipes or globs, run `sh -c "..."` yourself and take care with the string. A program that fails is `Ok(status)`; `Err` means it could not be started or its output could not be read. A name without a slash is looked up in `PATH`, as `execvp` does; with a slash it is a path:
+
+<Snippet file="path-lookup.rs" />
+
+`output()` gives the child an input already at its end ([docs](https://doc.rust-lang.org/std/process/struct.Command.html#method.output)). To feed it, pipe its stdin, write, and close. New here: `Stdio::piped()` asks for a pipe, `spawn` starts the child and returns at once, `child.stdin.take()` moves the pipe's write end out of the `Child` so you own it, and `try_wait` asks "finished?" without waiting (`None`: not yet).
+
+<Snippet file="command-pipe.rs" />
+
+`sort` cannot answer before its input ends, and the pipe stays open until `stdin` is dropped, so `try_wait` finds it running. `wait` and `wait_with_output` close a `stdin` still inside the `Child` ([docs](https://doc.rust-lang.org/std/process/struct.Child.html#method.wait)), but after `take()` it is yours to drop. Reading `sort`'s output before closing its input waits forever.
+
+### How the child ended
+
+`ExitStatus` wraps the wait status Unix gives the parent. `code()` is `Some` when the program exited (C's `WIFEXITED`, `WEXITSTATUS`); `signal()` is `Some` when a signal ended it (`WIFSIGNALED`, `WTERMSIG`), and then there is no exit code. `signal` and `into_raw` come from `ExitStatusExt`, an extension trait whose methods exist only after `use std::os::unix::process::ExitStatusExt`. `into_raw` is the number C's `system` returns. `Child::kill` is the one signal stable `std` can send:
+
+<Snippet file="exit-status.rs" />
+
+`exit 5` is raw 1280, 5 times 256: the exit code is shifted up one byte, while a signal number sits in the lowest bits.
+
+### A deadline for a child
+
+`std` has no timeout for a child: `wait` blocks until it exits. The loop is yours: `spawn`, `try_wait` every few milliseconds until `Some` or you give up, then `kill` and `wait`. This one counts polls, so it prints no times:
+
+<Snippet file="child-timeout.rs" />
+
+The `wait-timeout` crate does this for you. Go, Python, Java and Node build a deadline in; their sections run it.
+
+<p class="lr-layer">Going deeper</p>
+
+## Strings that are not `String`
+
+A `String` is always valid UTF-8 ([Strings](/learn/strings/)), but arguments, variable values and file names arrive as bytes that on Unix need not be. `OsString` and `OsStr` hold them ([Files and I/O](/learn/files-io/) uses them for paths). This program passes the bytes `caf` and `0xE9` (a lone byte, not UTF-8) as an argument and a variable, built with `OsStrExt` from `std::os::unix`:
+
+<Snippet file="non-utf8.rs" />
+
+`var` returns `NotUnicode`; `args()` and `vars()` panic while iterating, as their docs say. `args_os`, `var_os` and `vars_os` hand over the value, and `to_str()` or `to_string_lossy()` makes text of it. A tool that takes file names should use `args_os`.
+
+## Why `set_var` is `unsafe`
+
+The environment is one global for the whole process. The `set_var` docs say that, outside Windows, there is no thread-safe way to read it, since "most C libraries, including libc itself, do not advertise which functions read from the environment", and that in multi-threaded programs on those systems "the only sound option is to not use `set_var` or `remove_var` at all". So `unsafe` marks a promise: no other thread is running that could read or write the environment.
+
+C programmers know this: glibc marks `setenv` "MT-Unsafe" ([setenv(3)](https://man7.org/linux/man-pages/man3/setenv.3.html)), and the string `getenv` returns "can be modified by a subsequent call to getenv(), putenv(3), setenv(3), or unsetenv(3)" ([getenv(3)](https://man7.org/linux/man-pages/man3/getenv.3.html)). `env::var` copies into an owned `String`, so no pointer goes stale. Go's `os.Setenv` and Python's `os.environ[k] = v` are plain functions. Go guards its own copy with a lock (its `syscall` source), which protects Go code, but no lock inside one runtime stops C code in the same process calling `getenv` on another thread. Java has no call to change its own environment (its section runs the map throwing). For your own settings, pass a parameter.
+
+## Who closes the pipe
+
+The child sees "end of input" when the parent's write end is closed, which is why `command-pipe.rs` drops `stdin`. Go, Python and Node write and close inside the call (a reader as `Stdin`, `input=`, the `input` option; their sections run each). Rust has no `input=`; you write and close yourself, as `run-script` does.
+
+The `Stdio` docs add a trap: writing more than a pipe buffer's worth to the child's stdin without reading its stdout "may cause a deadlock" for a program that writes before it has read everything. The child's output pipe fills, so it stops reading, so the parent's write blocks. Such a program hangs, so the page does not run it. The docs' example avoids it by writing from a second thread ([Threads](/learn/threads/)) while the first reads.
+
+`std` does not wait for a child on its own, even when the `Child` is dropped. On some systems a finished, unwaited child stays in the process table as a "zombie" (`Child` docs), so long-running programs call `wait`.
+
+## What `std` leaves to crates
+
+`ctrlc` and `signal-hook` catch Ctrl-C and other signals, which `std` cannot. `dotenvy` loads a `.env` file. `wait-timeout` gives a child a timeout, and Tokio covers timers in async code ([guide](/build/tokio/)).
+
+## Translating from what you know
+
+<ForLang only="go">
+Go's `os/exec` uses no shell either. A failing program is an error in Go and `Ok(status)` in Rust. `cmd.Run()` discards the child's output (no `Stdout`), where Rust's `status()` lets it print. `Stdin` takes a reader, and Go closes the pipe for you.
+
+<Snippet file="exec.go" />
+
+`exec.CommandContext` kills the child at a deadline. A child killed by a signal has `ExitCode()` -1; Rust has `code()` `None` and `signal()` `Some(9)`:
+
+<Snippet file="timeout.go" />
+
+One `time.Time` does the work of three Rust pieces: from `time.Now()` it carries a wall-clock and a monotonic reading (`SystemTime`, `Instant`) and has a calendar, which Rust leaves to a crate. One not made by `time.Now()` has no monotonic reading:
+
+<Snippet file="time-mono.go" />
+
+`os.Exit` skips deferred calls:
+
+<Snippet file="exit-defer.go" />
+
+| In Go | In Rust |
+|---|---|
+| `flag` package | none in `std`: `clap` |
+| `os.Getenv`, `os.LookupEnv` | `env::var` (a `Result`) |
+| `os.Setenv` | `unsafe { env::set_var }`; `Command::env` for a child |
+| `time.Since(t)`; `time.Duration` (signed) | `t.elapsed()`; `Duration` (unsigned) |
+| `cmd.Run()` (output discarded) | `.status()` (output inherited) |
+| `exec.CommandContext(ctx, ..)` | `spawn`, a `try_wait` loop, `kill` |
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+All three pass arguments one by one, with no shell. A child killed by a signal is reported by Java and .NET as exit code 128 plus the signal number, so SIGKILL is 137, the same as `exit(137)`; Rust keeps `code()` and `signal()` apart. Each has a monotonic clock, a signed duration type, and an `exit` that skips `finally`.
+</ForLang>
+
+<ForLang only="java">
+`System.nanoTime()` is `Instant`: it is "not related to any other notion of system or wall-clock time" ([docs](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/System.html#nanoTime())). `java.time.Instant.now()` "obtains the current instant from the system clock" ([docs](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Instant.html)), so it is `SystemTime`. The map from `System.getenv()` cannot be changed; a child's environment is edited on its `ProcessBuilder`:
+
+<Snippet file="procs.java" />
+
+<Snippet file="timeout.java" />
+
+`System.exit` skips `finally`, as `process::exit` skips `Drop`:
+
+<Snippet file="exit-finally.java" />
+
+| In Java | In Rust |
+|---|---|
+| `System.getenv("X")` (`null`) | `env::var("X")` (a `Result`) |
+| `System.nanoTime()`; `java.time.Instant.now()` | `Instant::now()`; `SystemTime::now()` |
+| `java.time.Duration` (signed) | `Duration` (unsigned) |
+| `waitFor(200, MILLISECONDS)` | a `try_wait` loop, then `kill` |
+| `pb.environment().put(..)` | `Command::env` |
+</ForLang>
+
+<ForLang only="kotlin">
+Kotlin uses the JVM's `ProcessBuilder`, and `TimeSource.Monotonic` is its `Instant`. `System.getenv` is a Java method, so Kotlin gives its result the platform type `String!`, not `String?`: it may be null, and nothing makes you check. `port.length` compiles and throws `NullPointerException` when the variable is unset:
+
+<Snippet file="getenv-platform.crash.kt" />
+
+`?:` gives a default, as `unwrap_or_else` does. Kotlin's `Duration` is signed; `exitProcess` skips `finally`:
+
+<Snippet file="procs.kt" />
+
+<Snippet file="timeout.kt" />
+
+| In Kotlin | In Rust |
+|---|---|
+| `System.getenv("X")` (`String!`, null if unset) | `env::var("X")` (a `Result`) |
+| `System.getenv("X") ?: "8080"` | `env::var("X").unwrap_or_else(\|_\| "8080".into())` |
+| `TimeSource.Monotonic`; `System.currentTimeMillis()` | `Instant::now()`; `SystemTime::now()` |
+| `pb.environment()["X"] = v` | `Command::env` |
+</ForLang>
+
+<ForLang only="csharp">
+`ProcessStartInfo.ArgumentList` takes one string per argument, so there is no shell, and `ExitCode` returns the code without throwing. `Stopwatch` is the monotonic clock, `DateTime.UtcNow` the wall clock, and `TimeSpan` is signed. C# can change its own environment, and a child started afterwards sees it. `Environment.Exit` in a `try` block skips `finally` ([docs](https://learn.microsoft.com/en-us/dotnet/api/system.environment.exit)):
+
+<Snippet file="procs.cs" />
+
+<Snippet file="timeout.cs" />
+
+| In C# | In Rust |
+|---|---|
+| `Environment.GetEnvironmentVariable("X")` (`null`) | `env::var("X")` (a `Result`) |
+| `Environment.SetEnvironmentVariable` | `unsafe { env::set_var }`; `Command::env` for a child |
+| `Stopwatch`; `DateTime.UtcNow` | `Instant::now()`; `SystemTime::now()` |
+| `WaitForExit(200)`, then `Kill()` | a `try_wait` loop, then `kill` |
+</ForLang>
+
+<ForLang only="python">
+`subprocess.run` with a list uses no shell. A failing program is a `returncode` unless `check=True` raises. `input=` writes the child's stdin and closes it, `timeout=` kills the child and raises, and a signal-killed child has a negative `returncode`. `timedelta` is signed. `sys.exit` raises `SystemExit`, so `finally` runs, more like returning from `main`; `os._exit` is `process::exit`:
+
+<Snippet file="procs.py" />
+
+<Snippet file="timeout.py" />
+
+`shell=True` hands one string to `/bin/sh` ([Python docs](https://docs.python.org/3/library/subprocess.html#security-considerations)):
+
+<Snippet file="shell-true.py" />
+
+| In Python | In Rust |
+|---|---|
+| `os.environ["X"]` (`KeyError`); `.get("X")` | `env::var("X")` (a `Result`) |
+| `os.environ["X"] = v` | `unsafe { env::set_var }`; `Command::env` for a child |
+| `time.monotonic()`; `time.time()` | `Instant::now()`; `SystemTime::now()` |
+| `timedelta` (signed) | `Duration` (unsigned) |
+| `subprocess.run(.., capture_output=True)` | `Command::new(..).output()` |
+| `input=`, `timeout=` | write and close yourself; a `try_wait` loop |
+| `sys.exit(n)`; `os._exit(n)` | return from `main`; `process::exit(n)` |
+</ForLang>
+
+<ForLang only="typescript">
+`spawnSync` takes an array of arguments, with no shell, and reports a failing program as a `status`; `execFileSync` throws. Its `input` option writes the child's stdin and closes it, `timeout` kills the child, and a signal-killed child has `status` `null` and a `signal` name. `process.exit` ends the program with timers pending ([Node docs](https://nodejs.org/api/process.html)). Node code is mostly asynchronous; Rust's `Command` blocks; the async one is Tokio's ([guide](/build/tokio/)):
+
+<Snippet file="procs.ts" />
+
+<Snippet file="timeout.ts" />
+
+| In TypeScript | In Rust |
+|---|---|
+| `process.env.X` (`string \| undefined`) | `env::var("X")` (a `Result`) |
+| `process.env.X = v` | `unsafe { env::set_var }`; `Command::env` for a child |
+| `performance.now()`; `Date.now()` | `Instant::now()`; `SystemTime::now()` |
+| `{ input }`, `{ timeout }` | write and close yourself; a `try_wait` loop |
+</ForLang>
+
+<ForLang only="c cpp">
+`system("...")` and `popen` give one string to `/bin/sh`, so a `;` in an argument starts a second command. `Command` uses no shell unless you start `sh` yourself, so that text stays text (the `one; echo two` of `command-basic.rs`). `system` returns the raw wait status: `exit 3` is 768 and `WEXITSTATUS` gets the 3; a killed child is the signal number, and `WIFSIGNALED` says so ([man page](https://man7.org/linux/man-pages/man3/system.3.html)). Rust's `ExitStatus` wraps the same number: `raw` in `exit-status.rs` is 1280 for `exit 5` and 9 for `kill -9`:
+
+<Snippet file="system.c" />
+</ForLang>
+
+<ForLang only="c">
+| In C | In Rust |
+|---|---|
+| `getenv("X")` (`NULL`); `setenv` | `env::var("X")` (a `Result`); `unsafe { env::set_var }` |
+| `clock_gettime(CLOCK_MONOTONIC, ..)` (Linux) | `Instant::now()` |
+| `clock_gettime(CLOCK_REALTIME, ..)` | `SystemTime::now()` |
+| `fork` then `exec*`, `posix_spawn` | `Command::new(..).spawn()` |
+| `exec*` alone | `CommandExt::exec` (Unix; replaces the process) |
+| `fork` alone | not in `std` (`libc` or `nix`, `unsafe`) |
+| `popen(cmd, "r")` | `.output()`, or `.stdout(Stdio::piped()).spawn()` |
+| `exit(n)` | `process::exit(n)`; like `exit`, it runs `atexit` handlers (docs) |
+</ForLang>
+
+<ForLang only="cpp">
+`std::exit` runs the destructors of static objects but not of locals ([cppreference](https://en.cppreference.com/w/cpp/utility/program/exit): "Stack is not unwound"):
+
+<Snippet file="exit-dtor.cpp" />
+
+A `chrono::duration` is signed, and two `system_clock` times subtract without failing; `SystemTime::duration_since` returns a `Result`:
+
+<Snippet file="duration.cpp" />
+
+| In C++ | In Rust |
+|---|---|
+| `steady_clock::now()`; `system_clock::now()` | `Instant::now()`; `SystemTime::now()` |
+| `std::chrono::duration` (signed) | `Duration` (unsigned) |
+| `std::system("a b")` (a shell) | `Command::new("a").arg("b")` (no shell) |
+| `fork` and `exec*` (POSIX) | `spawn`; `CommandExt::exec` |
+</ForLang>
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Replace each `todo!()` and run until it prints `all checks passed`. No check depends on timing.
+
+<Exercise name="pick-port" title="Argument, else variable, else default">
+Write `port`: the first argument after the program name if it is a valid port number, else the `RBC_PORT` value if it is one, else 8080. The function receives the arguments and the `env::var` result as parameters, so the checks control both. An empty or non-numeric value counts as not given.
+</Exercise>
+
+<Exercise name="run-script" title="Run a script">
+Write `run_script`: run a shell script with `sh -c` in a given directory, with extra variables and text on its standard input, and give back what it printed and its exit code. A directory that does not exist is an `Err`; a script that exits non-zero is not. A watchdog ends a run that waits 10 seconds for input, since forgetting to close the pipe waits forever.
+</Exercise>
+
+<Exercise name="time-left" title="How much time is left?">
+Write `time_left` (the part of a limit still unused, that it is used up, or that the clock went back) and `average` (of some durations, or `None` for none). The checks include a half second, which `as_secs` would lose, and a `now` before `start`, where `duration_since` and `saturating_duration_since` both give zero and tell the caller nothing.
+</Exercise>
+
+<Exercise name="describe-status" title="Say how it ended">
+Write `describe`: turn an `ExitStatus` into `ok`, `failed with code N` or `killed by signal N`. The checks end real scripts with a code and with signals 9 and 15.
+</Exercise>
+
+## Read more
+
+- [The Rust Book, chapter 12.5: Working with Environment Variables](https://doc.rust-lang.org/book/ch12-05-working-with-environment-variables.html), inside the command-line project of [chapter 12](https://doc.rust-lang.org/book/ch12-00-an-io-project.html).
+- The standard library: [`std::env`](https://doc.rust-lang.org/std/env/index.html), [`std::time`](https://doc.rust-lang.org/std/time/index.html), [`Instant`](https://doc.rust-lang.org/std/time/struct.Instant.html), [`Duration`](https://doc.rust-lang.org/std/time/struct.Duration.html), [`std::process`](https://doc.rust-lang.org/std/process/index.html), [`Command`](https://doc.rust-lang.org/std/process/struct.Command.html), [`Child`](https://doc.rust-lang.org/std/process/struct.Child.html), [`Stdio`](https://doc.rust-lang.org/std/process/struct.Stdio.html), [`ExitCode`](https://doc.rust-lang.org/std/process/struct.ExitCode.html), [`ExitStatusExt`](https://doc.rust-lang.org/std/os/unix/process/trait.ExitStatusExt.html).
+- Rust by Example: [Program arguments](https://doc.rust-lang.org/rust-by-example/std_misc/arg.html), [Child processes](https://doc.rust-lang.org/rust-by-example/std_misc/process.html) and [Pipes](https://doc.rust-lang.org/rust-by-example/std_misc/process/pipe.html).

@@ -1,0 +1,48 @@
+# Checkpoint: Smart pointers. One cargo binary per question (rust/src/bin/qN.rs).
+# The questions that must not compile live in fails/ and are swapped in for the run, so
+# the project itself always builds. fixes/q7.rs is the answer to the fix-it question.
+name: checkpoint-smart-pointers
+sessions:
+  q1:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin q1
+  q2:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin q2
+  q3:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin q3
+  q4:
+    dir: rust
+    overlay:
+      src/bin/q4.rs: fails/q4.rs
+    steps:
+      - cmd: cargo run --bin q4
+        expect: fail
+  q5:
+    dir: rust
+    overlay:
+      src/bin/q5.rs: fails/q5.rs
+    steps:
+      - cmd: cargo run --bin q5
+        expect: fail
+  q6:
+    dir: rust
+    overlay:
+      src/bin/q6.rs: fails/q6.rs
+    steps:
+      - cmd: cargo run --bin q6
+        expect: fail
+  q7:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin q7
+  q7-fixed:
+    dir: rust
+    overlay:
+      src/bin/q7.rs: fixes/q7.rs
+    steps:
+      - cmd: cargo run --bin q7

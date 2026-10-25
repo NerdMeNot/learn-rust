@@ -1,0 +1,143 @@
+---
+title: "Checkpoint: Standard library"
+description: "Eight questions on text, collections, formatting, files and the process, with real compiler errors and runs behind each answer."
+---
+
+import { Files, Session } from '../../../components/guide'
+
+Eight short programs on the Standard library part: [text](/learn/text/), [collections](/learn/collections/), [formatting](/learn/formatting/), [files](/learn/files-io/) and [the environment and process](/learn/env-time-process/). Earlier parts count too.
+
+How to use it: read the program, write down your answer (the output, or the error code), then open the answer. Every answer is a real run with Rust 1.99.1, edition 2024.
+
+## 1. How many pieces?
+
+<Files guide="checkpoint-std" dir="rust" files={["src/bin/q1.rs"]} />
+
+What are the five numbers?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-std" run="q1" />
+
+`split` keeps every empty piece, the one after the last comma included. `split_terminator` drops that last one. `lines` does not count an empty line after the final newline, but keeps the empty line in the middle. `split(' ')` on `"  a  b "` yields six pieces: `""`, `""`, `"a"`, `""`, `"b"`, `""`. It gives an empty piece wherever two spaces touch and at either end where a space is the first or last character, and `split_whitespace` skips them. Taught in [Cutting text apart](/learn/text/#cutting-text-apart).
+
+</details>
+
+## 2. Reverse in a heap
+
+<Files guide="checkpoint-std" dir="rust" files={["src/bin/q2.rs"]} />
+
+What does it print?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-std" run="q2" />
+
+A `BinaryHeap` pops its greatest item, and `Reverse` flips the comparison, so the first pop is the smallest number, 1, and `peek` then shows 3. `into_sorted_vec` sorts ascending by the item's own order, and for `Reverse` that puts 8 first. Taught in [`BinaryHeap`](/learn/collections/#binaryheap-the-biggest-next).
+
+</details>
+
+## 3. Does the width apply?
+
+<Files guide="checkpoint-std" dir="rust" files={["src/bin/q3.rs"]} />
+
+What do the four lines print?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-std" run="q3" />
+
+Width, fill and precision are data that each `fmt` decides how to use. `write!` ignores them, so the first line has no padding. `f.pad` applies them, so `Name` pads and `{:.2}` cuts it to two characters. Formatting to a `String` first and padding that `String` works for any type that implements `Display`. Taught in [Width is your job](/learn/formatting/#width-is-your-job).
+
+</details>
+
+## 4. Which error code?
+
+<Files guide="checkpoint-std" dir="fails" files={["q4.rs"]} />
+
+`File` has a `read_to_string` method. Does this compile? If not, which error code and which import fixes it?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-std" run="q4" />
+
+E0599. The method comes from the `Read` trait, and you can call a trait's method as `file.read_to_string(..)` only where the trait is in scope. The compiler suggests `use std::io::Read;`, and `use std::io::prelude::*;` would also do. Taught in [`Read`, `Write`, `BufRead` and `Seek`](/learn/files-io/#read-write-bufread-and-seek).
+
+</details>
+
+## 5. Which error code?
+
+<Files guide="checkpoint-std" dir="fails" files={["q5.rs"]} />
+
+This program is in edition 2024. Does it compile? If not, which error code?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-std" run="q5" />
+
+E0133. In the 2024 edition `set_var` is an `unsafe` function, because the environment is one global that other threads may be reading. The fix is an `unsafe` block with a comment saying why no other thread can be reading. Taught in [Environment variables](/learn/env-time-process/#environment-variables) and [Why `set_var` is `unsafe`](/learn/env-time-process/#why-set_var-is-unsafe).
+
+</details>
+
+## 6. Which error code?
+
+<Files guide="checkpoint-std" dir="fails" files={["q6.rs"]} />
+
+Does it compile? If not, which error code, and which trait is missing?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-std" run="q6" />
+
+E0277: `f64` has no `Ord`, because `NaN` is not equal to anything, and a heap needs a total order. A wrapper whose `Ord` calls `f64::total_cmp` is the usual fix. Taught in [What the items must provide](/learn/collections/#what-the-items-must-provide).
+
+</details>
+
+## 7. Fix it: the first two letters
+
+<Files guide="checkpoint-std" dir="rust" files={["src/bin/q7.rs"]} />
+
+It should print `hé`. What happens when it runs, and how do you fix it?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-std" run="q7" />
+
+Slicing a `str` counts bytes, and `é` takes two. Byte 2 is inside it, so the slice panics. Take characters instead:
+
+<Files guide="checkpoint-std" dir="fixes" files={["q7.rs"]} run="q7-fixed" />
+
+Taught in [Cutting at a byte limit](/learn/text/#cutting-at-a-byte-limit) and [Characters, bytes and what a person sees](/learn/strings/#characters-bytes-and-what-a-person-sees).
+
+</details>
+
+## 8. Does the guard drop?
+
+<Files guide="checkpoint-std" dir="rust" files={["src/bin/q8.rs"]} />
+
+What does it print, and what exit code does the program end with?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-std" run="q8" />
+
+`process::exit` ends the program at once and runs no destructors, so `guard dropped` never prints. Returning from `main` would have run it. The exit code here is 3, the number given (on Unix only the low eight bits are kept, so keep it small). Taught in [Exit codes](/learn/env-time-process/#exit-codes).
+
+</details>
+
+## If you missed one
+
+- Questions 1 and 7: [Text](/learn/text/), then [Strings](/learn/strings/).
+- Questions 2 and 6: [Collections](/learn/collections/).
+- Question 3: [Formatting](/learn/formatting/).
+- Question 4: [Files and I/O](/learn/files-io/).
+- Questions 5 and 8: [Arguments, environment, time and processes](/learn/env-time-process/).
+- Next: [The standard library tour](/std/tour/), or the [glossary](/start/glossary/).

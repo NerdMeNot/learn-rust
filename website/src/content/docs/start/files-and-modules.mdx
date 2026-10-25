@@ -1,0 +1,139 @@
+---
+title: "Splitting code into files: mod and use"
+description: "Two little keywords trip up many newcomers: mod and use. They look related, but they do completely different jobs. Once you see which is which, splitting a program into files is easy."
+---
+
+import { Files, GuideGotcha, Remember, Session, Tree } from '../../../components/guide'
+
+Two little keywords trip up many newcomers: `mod` and `use`. They look related, but they do completely different jobs. Once you see which is which, splitting a program into files is easy.
+
+<Remember>`mod` says "this file is part of my program", once, in the parent. `use` gives a short name to something, in any file that wants it.</Remember>
+
+This page is the step-by-step. The [Modules lesson](/learn/modules/) is the reference: every `pub` form, re-exports, globs and the prelude.
+
+## Two keywords, two jobs
+
+|  | `mod pricing;` | `use crate::pricing::total;` |
+| --- | --- | --- |
+| What it means | "There's a module called `pricing`. Load it from `pricing.rs`." | "In this file, let me write `total` instead of `crate::pricing::total`." |
+| Where you write it | Once, in the **parent** file (usually `main.rs`) | In **any** file that wants the short name |
+| Loads a file? | Yes | Never |
+| Needed for crates and std? | No | Optional: it's only a shortcut |
+| Closest thing in Go | Nothing: the compiler takes the `.go` files of a package folder | `import` (of a whole package) |
+| Closest thing in Python | `import pricing` does both jobs at once. Rust splits them in two. | `from pricing import total` |
+| Closest thing in TypeScript | Nothing as a statement: a file joins when something imports it | `import { total } from "./pricing"`, which also loads the file |
+| Closest thing in Java, Kotlin, C# | Nothing: the build gives the compiler its files | `import` (Java, Kotlin), `using` (C#) |
+| Closest thing in C, C++ | Nothing in the code: the file is listed in the build | `using` in C++; C has none (`#include` pastes a header) |
+
+## Where names come from
+
+This explains why you see `use` lines with no `mod` lines in most files. Most names in your code come from one of three places, and only one of them needs `mod`:
+
+| Where it comes from | Example | Needs `mod`? |
+| --- | --- | --- |
+| The standard library | `use std::collections::HashMap;` | No. `std` is available by name in every file. |
+| A crate in `Cargo.toml` | `use serde::Deserialize;` | No. Every normal dependency is available by name in every file (a hyphen in its name becomes `_`). |
+| Your own files | `use crate::models::Order;` | Yes, **once**, in the parent file. Then every file can `use` it. |
+
+## A small shop, in four files
+
+Here's a program split across four files. The notes on the right show which files have `mod` lines:
+
+<Tree guide="files-and-modules" dir="rust" name="shop" title="Project layout" notes={{"src/pricing/discounts.rs":"no mod lines","src/main.rs":"mod models; mod pricing;","src/models.rs":"no mod lines","src/pricing.rs":"mod discounts; use crate::models::Order;"}} />
+
+<Files guide="files-and-modules" dir="rust" files={["src/main.rs","src/models.rs","src/pricing.rs","src/pricing/discounts.rs"]} run="run" />
+
+### Reading it file by file
+
+1. **`main.rs`** is where Rust starts. Its two `mod` lines say "`models.rs` and `pricing.rs` are part of this program". Then `use models::Order;` lets it write `Order` instead of `models::Order`.
+2. **`models.rs`** declares nothing. It doesn't need to: `main.rs` already declared it.
+3. **`pricing.rs`** has one `mod` line, for its own child `discounts`. Because the parent is `pricing`, Rust looks for that file in a folder named after it: `src/pricing/discounts.rs`. It also *uses* `Order`, with no `mod models;`, because `main.rs` already declared `models`. `crate::` means "start from the top of this crate", and here the crate is the program ([crates and packages](/learn/modules/#packages-and-crates)).
+4. **`discounts.rs`** declares nothing. Its parent, `pricing.rs`, declared it.
+
+The `mod` lines build a tree of modules, starting at `main.rs`. The `use` lines just point into it:
+
+```text title="The module tree"
+crate                (src/main.rs)
+├── models           (src/models.rs)
+└── pricing          (src/pricing.rs)
+    └── discounts    (src/pricing/discounts.rs)
+```
+
+To refer to something in this tree, start from the top with `crate::`, as in `crate::models::Order`, or one level up with `super::`, as in `super::models::Order` from inside `pricing`.
+
+## Questions people ask
+
+### Why do some files have `use` lines but no `mod` lines?
+
+Because `mod` is written once, in the parent, and that's usually `main.rs` (or `lib.rs` for a library). Every other file just uses what's already been declared, plus things from std and your crates, which never need `mod` at all.
+
+### What if I write `mod models;` in `pricing.rs` too?
+
+Then you're declaring a *second*, different module called `models`, inside `pricing`. Rust looks for its file at `src/pricing/models.rs`, doesn't find it, and stops. The error's last line says what to do instead:
+
+<Session guide="files-and-modules" run="mod-twice" />
+
+### Does `use` make code slower, or load anything?
+
+No. `use` is resolved while compiling and loads nothing at run time. It only chooses how you spell a name: you can write the full path instead, like `models::Order::new(...)`. Try it #2 below does that and prints the same lines.
+
+### What's `mod.rs`?
+
+The older way to give a module a folder. `src/pricing/mod.rs` means the same as `src/pricing.rs` (Try it #3 moves the file to show it), and you'll see both in real projects. The Book calls the `pricing.rs` style more idiomatic and the other "still supported". Using both for one module is an error ([layouts compared](/learn/modules/#modules-inline-and-in-files)).
+
+## Sharing: items are private until you say pub
+
+- A function, struct, field or module is visible only inside its own module, and the modules inside that one, unless you mark it `pub` ([private by default](/learn/modules/#private-by-default)). Enum variants and trait methods are the exception: they take the visibility of their enum or trait ([fields and variants](/learn/modules/#fields-and-variants)).
+- That's why `Order`'s fields are `pub`: `pricing.rs` reads `order.quantity`.
+- `discounts` isn't `pub` in `pricing.rs`, so `main.rs` can't reach it, even though `bulk` inside it is `pub`. A module is only as visible as the path to it.
+- `pub(crate)` means "visible anywhere in this crate, but not to other crates that use it as a library". Try it #1 below shows the `discounts` rule.
+
+## Try it yourself
+
+1. **Reach into `discounts` from `main.rs`.** Call `pricing::discounts::bulk(...)` there. The compiler says the module is private. Write `pub mod discounts;` in `pricing.rs` and it prints the discount, 375 cents:
+
+   <Session guide="files-and-modules" run="private-module" />
+
+   <Session guide="files-and-modules" run="pub-mod" />
+
+2. **Delete the `use` line.** Remove `use models::Order;` and write `models::Order::new(...)`. The output is the same two lines:
+
+   <Session guide="files-and-modules" run="no-use" />
+
+3. **Move `pricing.rs` into its folder.** Rename `src/pricing.rs` to `src/pricing/mod.rs`, nothing else. Same two lines again:
+
+   <Session guide="files-and-modules" run="mod-rs" />
+
+## How other languages decide what's in your program
+
+| Language | A file joins your program when… | Import | Shared by default? |
+| --- | --- | --- | --- |
+| Rust | its parent declares it: `mod db;` | `use crate::db::User;` | No: add `pub` |
+| Go | it sits in the package folder | `import "example.com/app/db"` | Other packages see only capitalised names |
+| Python | something imports it | `from app.db import User` | Yes; `_name` is private by convention only |
+| TypeScript | something imports it (or `tsconfig.json` includes it) | `import { User } from "./db"` | No: add `export` |
+| Java | the build compiles it (a source folder, or the files `javac` is given) | `import com.app.db.User;` | Package only: add `public` |
+| Kotlin | the build compiles it (a source folder, or the files `kotlinc` is given) | `import app.db.User` | Yes (`public` is the default); `internal` and `private` exist |
+| C# | it is in the project | `using App.Db;` | Types: project only (`internal`); members: `private`. Add `public` |
+| C | it is listed in the build | `#include "db.h"` | Yes (external linkage); `static` hides |
+| C++ | it is listed in the build | `#include "db.h"` or `import db;` | Yes; `static` or an unnamed namespace hides |
+
+Most rows above come from tiny projects run in the image. Open the log to see them:
+
+<details>
+<summary>The runs behind the table</summary>
+
+<Session guide="files-and-modules" run="langs" />
+
+Commands are shortened in the log (for example, `tsc` was run with `--noEmit --target es2022 --module nodenext`, and the `javac` and `kotlinc` lines are abbreviated). Java, Kotlin, C and C++ were given their file lists by hand, as a build tool would. The linker's temporary file name is replaced by `ccXXXX`, because it is different on every run. C# ran from the image's offline project template with `dotnet run --no-restore`: it shows that an unlisted `Extra.cs` is compiled, and that a member with no modifier is private. That a type with no modifier is `internal` was checked in a separate two-project run that is not in this log. Not run here: C++ `import db;`, C++ unnamed namespaces, and Python's `_name` convention.
+
+</details>
+
+<GuideGotcha guide="files-and-modules" />
+
+## Read more
+
+- [The Rust Book, chapter 7: Packages, Crates, and Modules](https://doc.rust-lang.org/book/ch07-00-managing-growing-projects-with-packages-crates-and-modules.html), especially [Control Scope and Privacy with Modules](https://doc.rust-lang.org/book/ch07-02-defining-modules-to-control-scope-and-privacy.html), [Bringing Paths Into Scope with the use Keyword](https://doc.rust-lang.org/book/ch07-04-bringing-paths-into-scope-with-the-use-keyword.html) and [Separating Modules into Different Files](https://doc.rust-lang.org/book/ch07-05-separating-modules-into-different-files.html)
+- [Rust by Example: File hierarchy](https://doc.rust-lang.org/rust-by-example/mod/split.html) and [Visibility](https://doc.rust-lang.org/rust-by-example/mod/visibility.html)
+- [The Reference: Modules](https://doc.rust-lang.org/reference/items/modules.html) and [Visibility and privacy](https://doc.rust-lang.org/reference/visibility-and-privacy.html)
+- This site: [Modules](/learn/modules/) (the reference lesson) and [More than one program in a project](/start/several-programs/) for workspaces

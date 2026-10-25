@@ -1,0 +1,113 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Structs"
+part: "data"
+intro: "Structs group named fields into one type of your own."
+coming_from:
+  go: >-
+    A Rust struct is a Go struct with `name: Type` order. You must set every field when
+    you build one (there are no zero values), and fields are private to their module
+    until you mark them `pub`, not when they start with a lowercase letter. There is no
+    struct embedding: a struct that holds another one keeps it in a named field.
+  kotlin: >-
+    A struct is a data class where you don't write the constructor: you build it with `User { name: ...,
+    age: ... }`. Printing, `==` and copying are opt-in through `#[derive(Debug,
+    PartialEq, Clone)]` rather than given for free.
+  python: >-
+    A struct is your `@dataclass`, and `#[derive(Debug)]` is the generated `__repr__`.
+    The set of fields is fixed, so you can't add a new attribute to a value later.
+  typescript: >-
+    A struct is like an `interface` plus an object literal, but every field must be
+    given and the type is nominal. Another struct with the same fields is still not a
+    `User`, and an optional field is written `Option<T>` ([Option](/learn/option/)), not `age?:`.
+  java: >-
+    A Rust `struct` is closest to a `record`: named fields, and every field must be
+    given when you create one. Unlike a record, a field can be changed if the variable is
+    `mut`. There's no constructor, no default values and no auto `toString` or `equals`;
+    `#[derive(Debug, PartialEq)]` adds them.
+  csharp: >-
+    A `struct` with `#[derive(Debug)]` is a lot like a positional `record`, but you
+    build it with field names, like an object initializer where every property is
+    `required`. There is no constructor and no default value for a missing field. It is
+    not a C# `struct` in the value-type sense: `let b = a;` moves the value, it does not
+    copy it.
+  c: >-
+    Rust structs look like C structs built with designated initializers, `.name = ...`
+    becoming `name: ...`. Leaving a field out is a compile error instead of zero, and
+    `#[derive(Debug)]` writes the print function for you. Rust may also reorder the
+    fields in memory; `#[repr(C)]` asks for C's layout.
+  cpp: >-
+    A Rust `struct` is an aggregate built with designated initializers, but every field
+    is required, so nothing is silently zeroed. `#[derive(Debug)]` stands in for the
+    `operator<<` you would write by hand. Rust may reorder the fields in memory; `#[repr(C)]`
+    asks for the order you wrote.
+notes:
+  - >-
+    `#[derive(Debug)]` asks the compiler to write the printing code for you, so `{u:?}`
+    can print the whole struct. You can also derive `Clone`, `PartialEq` (for `==`),
+    `Default`, and more.
+  - >-
+    `String::from("ana")` makes an owned `String` from text in your code. The Strings
+    lesson, later, explains the two string types.
+  - >-
+    `User { age: 31, ..old }` builds a new value and takes every field you did not list
+    from `old`. If it takes a `String` or other owned field, `old` loses it.
+  - >-
+    Fields are private outside their module unless marked `pub`. There is no
+    capital-letter rule.
+gotcha:
+  title: "Leaving fields out"
+  verdict: "rust-rule"
+  looks_fine: >-
+    In Go, fields you leave out become zero values: `Age` is 0 and `Active` is false.
+    The code runs, and plenty of Go types are designed so that the zero value is useful.
+  rust_sees: "Rust has no automatic zero values. Every field must be given."
+  why: >-
+    Nothing here is unsafe; it is a different default. Is `age: 0` a real age, or a
+    field you forgot? Is `port: 0` intended? Rust makes you say. When zeros really are
+    what you want, ask for them explicitly with `Default`. (Go would use a `*int` for
+    "unset"; Rust uses `Option<u32>`, [Option](/learn/option/).)
+  langs:
+    go:
+      status: "runs"
+      says: >-
+        Go runs this and prints ana 0 false. Missing fields get their zero values, which Go
+        treats as a feature, and many Go types are written so that the zero value works.
+        Rust asks you to say it.
+    kotlin:
+      status: "refuses"
+      says: >-
+        Kotlin refuses this too: leaving out `age` and `active` is a compile error
+        unless the class gives them defaults, like `val age: Int = 0`. The closest Rust
+        tool is `#[derive(Default)]`, which defaults the whole struct, shown in the fix.
+    python:
+      status: "crash"
+      says: >-
+        A dataclass won't let you skip fields either. Python raises a TypeError when you
+        build the object, naming the two missing fields.
+    typescript:
+      status: "refuses"
+      says: >-
+        TypeScript refuses this too: an object typed as `User` must have every field, so
+        `age` and `active` are reported as missing.
+    java:
+      status: "runs"
+      says: >-
+        A plain class fills missing fields with 0 and false, so this prints `ana 0
+        false` like Go. A record would refuse, because its constructor needs every
+        field.
+    csharp:
+      status: "runs"
+      says: >-
+        The object initializer fills only Name, and the rest get defaults, so it prints
+        ana 0 False. Mark the properties `required` if you want the compiler to insist.
+    c:
+      status: "runs"
+      says: >-
+        C sets the fields you leave out to zero, so this prints ana 0 0. Rust makes you
+        give every field.
+    cpp:
+      status: "runs"
+      says: >-
+        This compiles with a `-Wextra` warning about the missing fields, then prints
+        `ana 0 false`. With brace initialization the left-out fields are zero, much
+        like Go.

@@ -1,0 +1,284 @@
+---
+title: "Rust for C and C++ developers"
+description: "Ten habits from C and C++ that Rust changes, each run in C, C++ and Rust, plus an idiom table, a toolchain map and a reading path."
+---
+
+import { Files, Remember, Session } from '../../../components/guide'
+
+You already know how memory works. What changes is who checks the rules you keep in your head. This page takes ten habits and runs each one in the language it comes from, then in Rust. Each habit is labelled **C**, **C++** or **both**.
+
+Everything was compiled and run in the same Linux ARM64 image as the rest of the course: gcc and g++ 14 with `-Wall -Wextra` (C++ with `-std=c++20`), and Rust 1.99.1. Where a habit is about undefined behaviour, the build adds AddressSanitizer (`-fsanitize=address`, "ASan") or UBSan (`-fsanitize=undefined`). Output with addresses or thread ids in it is marked as changing from run to run.
+
+<Remember>Rust keeps your picture of memory and moves three rules out of your head and into the compiler: who frees, who may alias, and what may be missing.</Remember>
+
+## What carries over
+
+- **The memory model.** Locals live on the stack, `Box`, `Vec` and `String` own heap memory, and there is no garbage collector. [Stack and heap](/learn/stack-heap/) will mostly confirm what you know.
+- **Destructors.** A type's `Drop` runs when its owner goes out of scope, which is what you use a C++ destructor for. Habit 1 prints it.
+- **Templates become generics.** The compiler makes one copy of a generic function per type, as it does for a template ([One copy per type](/learn/generics/#one-copy-per-type)).
+- **Layout and linking.** [`#[repr(C)]`](https://doc.rust-lang.org/reference/type-layout.html#the-c-representation) asks for a layout that interoperates with C, and `extern "C"` functions link with C code ([C and C++ interop](/interop/c-cpp/)).
+- **Raw pointers exist.** Dereferencing one needs an `unsafe` block, and the compiler says so:
+
+<Session guide="for-c-cpp" run="unsafe-check" />
+
+## Ten habits to unlearn
+
+### 1. "I decide when to free" (both)
+
+In C, copying a pointer copies the address, so two `free` calls on one block are easy to write. gcc 14 warned (`-Wuse-after-free`) and still built it; ASan stopped the program. In C++, a `new` with a `delete` on only some paths leaks on the others, and LeakSanitizer (part of ASan on Linux) reports it.
+
+In Rust a value is dropped once, when its owner goes out of scope, on whichever path leaves the scope: `drop p` prints before `early: 1`. After `let b = a;` there is one owner, so the second `drop(a)` is error E0382.
+
+<div class="lr-compare">
+<Files guide="for-c-cpp" dir="habits" files={["c/h01_free.c", "cpp/h01_free.cpp"]} lang="cpp" title="C and C++" />
+<Files guide="for-c-cpp" dir="habits" files={["src/bin/h01_drop.rs", "src/bin/h01_double_free.rs"]} />
+</div>
+
+<Session guide="for-c-cpp" run="own" />
+
+Why: the compiler tracks one owner per value, so "who frees" is answered by the code. Read [Ownership](/learn/ownership/#scopes-drop-order-and-let-_) and [Box, Rc and RefCell](/learn/smart-pointers/) for the `unique_ptr` and `shared_ptr` counterparts.
+
+### 2. "Indexing past the end is my problem" (both)
+
+C and C++ do not check, and an out-of-range read is undefined behaviour. ASan named a `stack-buffer-overflow` for the C array and a `heap-buffer-overflow` for `v[i]`. In C++ `v.at(i)` is the checked form and throws.
+
+In Rust `a[i]` is the checked form. It panics with the length and the index, and `a.get(i)` gives an `Option` instead. The release build panics too.
+
+<div class="lr-compare">
+<Files guide="for-c-cpp" dir="habits" files={["c/h02_bounds.c", "cpp/h02_bounds.cpp"]} lang="cpp" title="C and C++" />
+<Files guide="for-c-cpp" dir="habits" files={["src/bin/h02_bounds.rs"]} />
+</div>
+
+<Session guide="for-c-cpp" run="bounds" />
+
+Why: a panic stops the thread with a message, and the bad read does not happen. See [Vectors](/learn/vectors/#adding-reading-and-removing).
+
+### 3. "A moved-from object is still there" (C++)
+
+`std::move` is a cast, and the standard library leaves a moved-from object ["valid but unspecified"](https://en.cppreference.com/w/cpp/utility/move). libstdc++'s vector was empty in this run, and `push_back` on it was allowed. The worse case is a moved-from `unique_ptr`, which is null; dereferencing it crashed ([Smart pointers](/learn/smart-pointers/#translating-from-what-you-know)).
+
+A Rust move copies the bytes and the compiler forgets the old name. Using `a` afterwards is E0382, so there is no moved-from state to inspect.
+
+<div class="lr-compare">
+<Files guide="for-c-cpp" dir="habits" files={["cpp/h03_move.cpp"]} lang="cpp" />
+<Files guide="for-c-cpp" dir="habits" files={["src/bin/h03_move.rs"]} />
+</div>
+
+<Session guide="for-c-cpp" run="move" />
+
+Why: "used after move" is caught before the program runs. See [Moves](/learn/ownership/#moves).
+
+### 4. "A pointer into a container stays good" (both)
+
+A `realloc` may move the block (C), and `push_back` may reallocate the vector (C++). The pointer or reference taken before is then dangling. gcc warned about the C case; both runs ended in ASan's `heap-use-after-free`.
+
+Rust refuses at compile time: while `first` is alive, `v` may not be changed (E0502).
+
+<div class="lr-compare">
+<Files guide="for-c-cpp" dir="habits" files={["c/h04_realloc.c", "cpp/h04_push_back.cpp"]} lang="cpp" title="C and C++" />
+<Files guide="for-c-cpp" dir="habits" files={["src/bin/h04_push.rs"]} />
+</div>
+
+<Session guide="for-c-cpp" run="invalidate" />
+
+Why: Rust's rule is many readers or one writer, never both, and it is checked at compile time; `const T&` and `T&` do not enforce it. See [A reference into a list that moves](/learn/mutable-borrows/#a-reference-into-a-list-that-moves) and [Working with the Borrow Checker](/learn/borrow-checker/).
+
+### 5. "A missing value is a null pointer" (C)
+
+`strchr` returns `NULL` when there is no `=`, and `eq + 1` then does arithmetic on null. ASan reported a read at address `0x1`. C++'s `std::optional` is the same idea, but `*o` on an empty one is undefined behaviour ([cppreference](https://en.cppreference.com/w/cpp/utility/optional/operator*): until C++26, not run here); a Rust `Option` cannot be used as the value.
+
+Rust's `find` returns an `Option<usize>`. You must handle it, and `eq + 1` is E0369.
+
+<div class="lr-compare">
+<Files guide="for-c-cpp" dir="habits" files={["c/h05_null.c"]} lang="c" />
+<Files guide="for-c-cpp" dir="habits" files={["src/bin/h05_option.rs", "src/bin/h05_option_fail.rs"]} />
+</div>
+
+<Session guide="for-c-cpp" run="optional" />
+
+Why: absence is part of the type, so forgetting to check is a compile error. See [Option](/learn/option/#you-cant-use-an-option-as-the-value).
+
+### 6. "Declare it first, put it in a header" (both)
+
+gcc 14 rejects a call to a function it has not seen ([GCC 14 porting guide](https://gcc.gnu.org/gcc-14/porting_to.html)), and g++ says `'square' was not declared in this scope`. Rust items can be used above their definition, and there are no prototypes, headers or include guards: `mod` names a node in a tree of code and does not paste text.
+
+What you do have to write is `pub`. Items are private by default, so the `pub` keyword does the job of listing a function in a header (E0603 below).
+
+<div class="lr-compare">
+<Files guide="for-c-cpp" dir="habits" files={["c/h06_order.c", "cpp/h06_order.cpp"]} lang="cpp" title="C and C++" />
+<Files guide="for-c-cpp" dir="habits" files={["src/bin/h06_order.rs", "src/bin/h06_private.rs"]} />
+</div>
+
+<Session guide="for-c-cpp" run="order" />
+
+Why: the crate is compiled as a whole. See [Private by default](/learn/modules/#private-by-default) and the step-by-step [Files and modules](/start/files-and-modules/).
+
+### 7. "Variables change unless I write `const`" (both)
+
+Both C and C++ printed `count = 2`. In Rust `let` is the `const` one, and E0384 says so; the compiler's help text suggests `let mut`.
+
+<div class="lr-compare">
+<Files guide="for-c-cpp" dir="habits" files={["c/h07_const.c", "cpp/h07_const.cpp"]} lang="cpp" title="C and C++" />
+<Files guide="for-c-cpp" dir="habits" files={["src/bin/h07_let.rs", "src/bin/h07_let_mut.rs"]} />
+</div>
+
+<Session guide="for-c-cpp" run="constness" />
+
+Why: a reader sees which names can change by looking for `mut`. See [Frozen unless you say `mut`](/learn/variables/#frozen-unless-you-say-mut).
+
+### 8. "A macro or a template will do" (C for macros, C++ for templates)
+
+`MAX(i++, j)` pastes `i++` twice, so `i` ends at 7 and `m` is 6; gcc 14 said nothing. A C++ template is checked after the type is substituted, so the error for a `Point` with no `>` appears inside the function body, with "required from here" pointing back at the call.
+
+Rust checks a generic body once, against its bound. Without `T: PartialOrd` the error (E0369) is at the definition, and an argument expression runs once: `i` and `m` are both 6.
+
+<div class="lr-compare">
+<Files guide="for-c-cpp" dir="habits" files={["c/h08_macro.c", "cpp/h08_template.cpp"]} lang="cpp" title="C and C++" />
+<Files guide="for-c-cpp" dir="habits" files={["src/bin/h08_generic.rs", "src/bin/h08_no_bound.rs"]} />
+</div>
+
+<Session guide="for-c-cpp" run="generic" />
+
+Why: the bound is the contract. Reach for a macro when a generic function cannot do the job. See [Bounds: what `T` may do](/learn/generics/#bounds-what-t-may-do) and [Macros you'll read](/learn/reading-macros/).
+
+### 9. "Integers convert and overflow quietly" (both)
+
+In C and C++, `-1 < 1u` is false because the `int` is converted to unsigned (`-Wextra` warned). `uint8_t` arithmetic happens in `int`, so `200 + 100` is 300 and storing it back keeps 44. Signed overflow is undefined behaviour, and UBSan reported it.
+
+Rust has no implicit numeric conversions (E0308), and the checked, wrapping and widening versions are separate methods. A debug build panics on overflow; the release run wrapped to 44. Cargo's [profile settings](https://doc.rust-lang.org/cargo/reference/profiles.html) list `overflow-checks` as on for `dev` and off for `release`.
+
+<div class="lr-compare">
+<Files guide="for-c-cpp" dir="habits" files={["c/h09_conversions.c", "cpp/h09_conversions.cpp"]} lang="cpp" title="C and C++" />
+<Files guide="for-c-cpp" dir="habits" files={["src/bin/h09_compare_fail.rs", "src/bin/h09_overflow.rs"]} />
+</div>
+
+<Session guide="for-c-cpp" run="numbers" />
+<Session guide="for-c-cpp" run="overflow" />
+
+Why: every numeric conversion is written down, and the one that loses information is a method you can search for. See [Overflow](/learn/types/#overflow-a-panic-in-debug-a-wrap-in-release) and [No implicit widening](/learn/types/#no-implicit-widening).
+
+### 10. "Errors are return codes or exceptions" (both)
+
+C's `atoi("abc")` returns 0, the same as `atoi("0")`. C++'s `std::stoi` throws, and with no `catch` the program aborts. Nothing in either signature says so.
+
+Rust's `parse` returns a `Result`. `?` passes the error up, and a `main` that returns `Err` prints it and exits with status 1 (task 3 below shows the code).
+
+<div class="lr-compare">
+<Files guide="for-c-cpp" dir="habits" files={["c/h10_errors.c", "cpp/h10_errors.cpp"]} lang="cpp" title="C and C++" />
+<Files guide="for-c-cpp" dir="habits" files={["src/bin/h10_result.rs"]} />
+</div>
+
+<Session guide="for-c-cpp" run="errors" />
+
+Why: the failure is part of the return type, so the compiler warns a caller who ignores it. See [Errors](/learn/errors/#main-can-return-a-result).
+
+## Idiom by idiom
+
+Every cell below is a line from a program that compiled and ran: `idioms.c`, `idioms.cpp` and `idioms.rs`, whose output follows the table.
+
+| You write (C / C++) | In Rust | Read |
+| --- | --- | --- |
+| C `int *p = malloc(sizeof *p);` then `free(p);`<br />C++ `auto p = std::make_unique<int>(7);` | `let p = Box::new(7);` | [Smart pointers](/learn/smart-pointers/#boxt-one-owner-on-the-heap) |
+| C++ `auto s = std::make_shared<int>(7);` | `let s = Rc::new(7);`, or `let a = Arc::new(7);` across threads | [Smart pointers](/learn/smart-pointers/#translating-from-what-you-know) |
+| C++ `std::vector<int> v{1, 2, 3};` and `v.push_back(4);` | `let mut v = vec![1, 2, 3];` and `v.push(4);` | [Vectors](/learn/vectors/) |
+| C++ `v.at(9)` (throws) | `v.get(9)` (an `Option`) | [Vectors](/learn/vectors/#adding-reading-and-removing) |
+| C++ `std::string s = "hi";` and `s += " there";` | `let mut s = String::from("hi");` and `s.push_str(" there");` | [Strings](/learn/strings/) |
+| C `const char *s = "hi";`<br />C++ `std::string_view s = "hi";` | `let s: &str = "hi";` | [Strings](/learn/strings/#two-string-types-and-which-one-to-use) |
+| C `p != NULL`<br />C++ `std::optional<int> o = 5;` | `let o: Option<i32> = Some(5);` and `if let Some(x) = o` | [Option](/learn/option/) |
+| C++ `std::variant<int, std::string>` and `std::visit` | `enum Value { Int(i32), Text(String) }` and `match w` | [Enums](/learn/enums/) |
+| C `strtol(text, &end, 10)`<br />C++ `std::stoi("abc")` in a `try` block | `"abc".parse::<i32>()`, a `Result` | [Errors](/learn/errors/) |
+| C++ `for (const auto &x : v)` | `for x in &v` | [Looping over collections](/learn/for-collections/) |
+| C++ `std::views::transform(std::views::filter(v, even), times_ten)` | `v.iter().filter(\|x\| **x % 2 == 0).map(\|x\| x * 10).collect()` | [Iterators](/learn/iterators/) |
+| C++ `m["a"]++;` | `*m.entry("a").or_insert(0) += 1;` | [Maps](/learn/maps/#the-entry-api-look-up-once-then-decide) |
+| C++ `std::unique_ptr<Shape> sh = std::make_unique<Square>(3);` | `let sh: Box<dyn Shape> = Box::new(Square(3.0));` | [Trait objects](/learn/trait-objects/) |
+| C++ `template <std::totally_ordered T>` | `fn largest<T: PartialOrd>(a: T, b: T) -> T`, the closest bound; `Ord` is the total-order one, and `f64` lacks it | [Generics](/learn/generics/) |
+| C++ `~Guard() {` | `impl Drop for Guard {` | [Drop](/learn/common-traits/#drop-the-trait-behind-scope-exit) |
+| C++ `std::lock_guard<std::mutex> g(m);` | `let n = Mutex::new(0);` and `*n.lock().unwrap() += 1;` | [Shared state](/learn/shared-state/#mutext-the-data-lives-inside-the-lock) |
+| C `pthread_create(&t, NULL, work, &result);`<br />C++ `std::thread t([&result] { result = 42; });` | `thread::spawn(\|\| 42).join().unwrap()` | [Threads](/learn/threads/) |
+| C `(int)x`<br />C++ `static_cast<int>(x)` | `x as i32`, or `i32::try_from(big)` | [Casts](/learn/types/#as-casts-that-never-fail) |
+| C `#define LIMIT 100`<br />C++ `constexpr int limit = 100;` | `const LIMIT: i32 = 100;` | [const, static and let](/learn/variables/#const-static-and-let) |
+| C `int *p = &x;` and `*p` | `let p = &x as *const i32;` and `unsafe { *p }` | [`unsafe`](/learn/unsafe/) |
+
+<Session guide="for-c-cpp" run="idioms" />
+
+## Toolchain map
+
+| Job | C and C++ | Rust |
+| --- | --- | --- |
+| Build | CMake with Make (installed in the session below) | `cargo build`, `cargo run` |
+| Dependencies | vcpkg, Conan or system packages (named, not run) | `Cargo.toml`, crates.io and `Cargo.lock` ([Using crates](/start/using-crates/)) |
+| Test | CTest, GoogleTest (named, not run) | `cargo test` ([Testing](/build/testing/)) |
+| Format | clang-format (not in the image, not run) | `cargo fmt` |
+| Lint | `-Wall -Wextra` (run throughout), clang-tidy and cppcheck (not in the image, not run) | `cargo clippy` |
+| Memory errors | `-fsanitize=address,undefined` (run throughout) | Miri, installed with `rustup +nightly component add miri` ([README](https://github.com/rust-lang/miri)); the toolchain in the image has no `miri` component, as the last session below shows (not run) |
+| Docs | Doxygen (named, not run) | `cargo doc`, and doc comments are tests |
+| Debugger | gdb, lldb (not in the image, not run) | `rust-gdb` and `rust-lldb` are present in the image (last session below), but gdb and lldb are not, so no debugger was run |
+
+The first session below shows that CMake and Make are not in the image, then installs them (needs network). The same "hello" is then built both ways:
+
+<div class="lr-compare">
+<Files guide="for-c-cpp" dir="cmake" files={["CMakeLists.txt", "main.cpp"]} lang="cpp" title="CMake and C++" />
+<Files guide="for-c-cpp" dir="hello" files={["Cargo.toml", "src/lib.rs", "src/main.rs"]} />
+</div>
+
+<Session guide="for-c-cpp" run="cmake" />
+<Session guide="for-c-cpp" run="cargo" />
+<Session guide="for-c-cpp" run="tools" />
+
+[Your first project](/start/first-project/) walks through Cargo's own output, and [Project structure](/further/project-structure/) covers workspaces and features, the Cargo answer to CMake targets.
+
+## A reading path
+
+1. [Rust at a glance](/learn/rust-at-a-glance/): the syntax on one page.
+2. [What Rust lacks](/learn/what-rust-lacks/): your C and C++ habits that fail to compile, side by side.
+3. [Stack and heap](/learn/stack-heap/): confirms the model you have.
+4. [Ownership](/learn/ownership/): the replacement for `free`, `delete` and `std::move`.
+5. [Borrowing](/learn/borrowing/) and [Mutable borrows](/learn/mutable-borrows/): `const T&`, `T&` and the one rule between them.
+6. [Working with the Borrow Checker](/learn/borrow-checker/): read this when the compiler says no.
+7. [Enums](/learn/enums/), [Option](/learn/option/) and [Errors](/learn/errors/): variants, `NULL` and exceptions.
+8. [Traits](/learn/traits/) and [Generics](/learn/generics/): classes and templates, in their places.
+9. [Common traits](/learn/common-traits/): `Drop`, `Clone`, `PartialEq`, the things you wrote operators and destructors for.
+10. [Box, Rc and RefCell](/learn/smart-pointers/): `unique_ptr`, `shared_ptr` and what has no C++ twin.
+11. [Modules](/learn/modules/): the replacement for headers.
+12. [Threads](/learn/threads/), [Shared state](/learn/shared-state/) and [Send and Sync](/learn/send-sync/): data races as compile errors.
+13. [`unsafe`](/learn/unsafe/) and [C and C++ interop](/interop/c-cpp/): last, because you can stay away from both for a long while.
+
+## What you will miss
+
+These are limits you can show, not opinions.
+
+- **Overloading.** Two functions with one name are E0428, and a call with the other argument list is E0061. Use different names, a trait, or a builder ([No default or named arguments, no overloading](/learn/what-rust-lacks/#no-default-or-named-arguments-no-function-overloading)).
+
+<Session guide="for-c-cpp" run="miss-overload" />
+
+- **Specialisation.** C++ lets you replace a template for one type. A Rust blanket `impl<T>` and an `impl` for `i32` overlap (E0119).
+
+<Session guide="for-c-cpp" run="miss-specialise" />
+
+- **Layout guarantees by default.** The Reference says the default representation makes [only the layout guarantees that soundness requires](https://doc.rust-lang.org/reference/type-layout.html#the-rust-representation), so a shared struct needs `#[repr(C)]`.
+- **Allocators in the collections.** `std::vector` takes an allocator as a template parameter; `Vec::new_in` is behind an unstable feature on 1.99.1 (E0658).
+
+<Session guide="for-c-cpp" run="miss-allocator" />
+
+- **Correct code that the checker rejects.** This function returns a borrow from one branch and inserts in the other. It has the same shape as [problem case #3](https://rust-lang.github.io/rfcs/2094-nll.html) in the RFC that introduced non-lexical lifetimes, and it is E0502 on 1.99.1. The `entry` API is the usual rewrite.
+
+<Session guide="for-c-cpp" run="miss-rejected" />
+<Session guide="for-c-cpp" run="miss-fixed" />
+
+## Try it yourself
+
+1. In `h04_push.rs`, print `first` before `v.push(4)`. It compiles and prints `1`, because a borrow lasts until its last use ([A borrow ends at its last use](/learn/mutable-borrows/#a-borrow-ends-at-its-last-use)).
+2. Run the release build of habit 9 with `CARGO_PROFILE_RELEASE_OVERFLOW_CHECKS=true`. The release build now panics like the debug one ([Cargo config](https://doc.rust-lang.org/cargo/reference/config.html#profile)).
+3. Run habit 10 and print the exit status. A `main` that returns `Err` exits with 1, where the C++ run above aborted.
+
+<Session guide="for-c-cpp" run="try-reorder" />
+<Session guide="for-c-cpp" run="try-overflow-checks" />
+<Session guide="for-c-cpp" run="try-exit-code" />
+
+## Read more
+
+- [The Rust Book, chapter 4](https://doc.rust-lang.org/book/ch04-00-understanding-ownership.html): ownership, in the book's order.
+- [The Rust Book, chapter 9](https://doc.rust-lang.org/book/ch09-00-error-handling.html): panics and `Result`.
+- [The Rust Reference: behavior considered undefined](https://doc.rust-lang.org/reference/behavior-considered-undefined.html): the list of what `unsafe` code must not do.
+- [The Rustonomicon](https://doc.rust-lang.org/nomicon/): `unsafe` Rust in depth.
+- [GCC instrumentation options](https://gcc.gnu.org/onlinedocs/gcc/Instrumentation-Options.html): the `-fsanitize` flags used on this page.

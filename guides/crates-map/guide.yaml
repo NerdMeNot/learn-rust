@@ -1,0 +1,54 @@
+# The crates everyone uses
+# A table of crates and links, plus one program that tries five of the crates that no
+# other guide page uses, and a session that asks cargo what each crate says it is.
+name: crates-map
+sessions:
+  # What each crate's own Cargo.toml says it is. `cargo info` reads the registry, so this
+  # works from any folder; the lines between the name and `version:` are the description.
+  info:
+    dir: rust
+    steps:
+      - cmd: |-
+          cd /tmp && for c in serde serde_json tokio axum reqwest tonic prost sqlx diesel sea-orm clap anyhow thiserror tracing proptest insta chrono jiff regex uuid rayon datafusion polars tantivy; do echo "$c: $(cargo info $c 2>/dev/null | awk 'NR>1 && /^version:/{exit} NR>1' | tr '\n' ' ')"; done
+        show: "$ cargo info <crate>    # once per crate; the description sits between the name and the version"
+      - cmd: cd /tmp && cargo info uuid
+        show: "$ cargo info uuid"
+  run:
+    dir: rust
+    steps:
+      - cmd: cargo run
+  feature:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-v4/src/main.rs
+    steps:
+      - cmd: cargo build
+        expect: fail
+      - cmd: cargo add uuid --features v4
+        raw: true
+      - cmd: cargo run
+  # The cells of the language tables that name something built in: does it exist in the
+  # image (Go 1.27, Java 25, Kotlin, .NET 10, Node, Python 3.13, gcc 14)? Only presence
+  # and a first call; the third-party libraries in the tables are not installed here.
+  languages:
+    dir: languages
+    steps:
+      - cmd: |-
+          for p in encoding/json net/http database/sql flag errors log/slog testing time regexp sync; do go doc $p | head -1; done
+        show: "$ go doc <package>    # once per package"
+      - cmd: python3 check.py
+      - cmd: node check.js
+      - cmd: |-
+          javap -public java.net.http.HttpClient java.sql.Connection java.util.UUID java.util.regex.Pattern java.time.LocalDate | grep -E '^public .*(class|interface)'
+        show: "$ javap -public <class>    # once per class"
+      - cmd: |-
+          javap -public java.lang.Thread java.util.Collection | grep -E ' (ofVirtual|parallelStream)\('
+        show: "$ javap -public java.lang.Thread java.util.Collection"
+      - cmd: kotlinc check.kt -include-runtime -d check.jar && java -jar check.jar
+      - cmd: bash cs.sh check.cs | tail -n 1
+        show: "$ dotnet run"
+      - cmd: gcc -Wall -Wextra check.c -o check_c && ./check_c
+      - cmd: g++ -std=c++23 -Wall -Wextra check.cpp -o check_cpp && ./check_cpp
+      - cmd: |-
+          g++ -std=c++17 -fsyntax-only par.cpp && echo "par.cpp compiles with -std=c++17"
+        show: "$ g++ -std=c++17 -fsyntax-only par.cpp"

@@ -1,0 +1,470 @@
+{
+ "id": "generics",
+ "title": "Generics",
+ "part": "abstractions",
+ "intro": "A generic function or type is written once with a placeholder, `T`, and the compiler fills it in for each type you use. A bound such as `T: PartialOrd` says what `T` must be able to do, and the body may use only that.",
+ "coming_from": {
+  "go": "`fn largest<T: PartialOrd>` is `func largest[T cmp.Ordered]`, with the type parameter in angle brackets. The bound is a trait, so any type that implements `PartialOrd`, including your own structs, qualifies, not just the built-in ordered types.",
+  "kotlin": "`<T: PartialOrd>` reads like `<T : Comparable<T>>`. Rust compiles a separate copy of the function for each type you use, so there is no type erasure and no `reified` keyword: `TypeId::of::<T>()` identifies a `'static` type, and trait functions such as `T::default()` cover the rest.",
+  "python": "`fn largest<T: PartialOrd>` is the 3.12 syntax `def largest[T: Comparable]`, but the compiler enforces the bound. You can't use `>` on `T` unless the bound says it can. Python does not check hints when the program runs; a type checker such as mypy can, but only if you run one.",
+  "typescript": "`<T: PartialOrd>` is like `<T extends ...>`, but the bound is a trait (something the type can do), not a list of allowed types. Any type with `PartialOrd`, including your own struct with `#[derive(PartialOrd)]`, can be passed in.",
+  "java": "`fn largest<T: PartialOrd>` is `<T extends Comparable<T>>`, and you can use `<` and `>` directly. Rust generics are not erased: the compiler makes a separate copy for each type used, so `T` works with plain numbers without boxing.",
+  "csharp": "`<T: PartialOrd>` is `where T : IComparable<T>`, and you can use `<` and `>` instead of `CompareTo`. Like C#, Rust does not erase `T`, but it gets there differently: the compiler makes a separate copy of the function for each type, so no `T` exists at run time (C# keeps it, and `typeof(T)` works).",
+  "c": "C has no generics, so you'd write `largest_int` and `largest_str` by hand or paste text with a macro. Rust writes those copies for you and type-checks them.",
+  "cpp": "Generics are templates with a concept, `T: PartialOrd` playing the role of `std::totally_ordered T`, and each type gets its own compiled copy. The difference is that Rust checks the function body against the bound once, so a missing bound is reported at the definition. A concept checks the call, not the body: a `+` it never promised still fails per type, inside the body."
+ },
+ "notes": [
+  "`T: PartialOrd` means \"any type `T` whose values can be compared with `<` and `>`\". Without it, the compiler won't let you compare two `T` values.",
+  "This returns `&T`, a reference to the biggest item inside `items`, so nothing is copied.",
+  "Several bounds: `T: PartialOrd + Display`. Long lists go in a `where` clause after the signature.",
+  "Rust makes you state the constraint up front. `largest<T>` with no bound is a compile error, because the compiler checks a generic function on its own, before anyone calls it."
+ ],
+ "gotcha": {
+  "title": "Adding two `T`s and returning a `T`",
+  "verdict": "rust-rule",
+  "looks_fine": "Adding two numbers of one type gives that type, so a generic `add(a, b)` that returns `T` only seems to need a way to say that `T` can be added.",
+  "rust_sees": "`T: Add` says only that two `T` values can be added. The type of the sum is a separate type, `<T as Add>::Output`, and nothing says it is `T`. So the compiler refuses to return it as a `T`.",
+  "why": "In Rust, `+` calls the `add` method of the `Add` trait, and each implementation chooses its own result type. For `i32` it is `i32`, but for `&i32` it is also `i32`, not `&i32`. `Add<Output = T>` promises that the sum is a `T`, and the compiler's `help:` writes it for you. The toolkit below prints the types.",
+  "langs": {
+   "go": {
+    "status": "runs",
+    "says": "Go prints 5 and 3.75. The constraint `int | float64` lists the allowed types, and `+` on a `T` gives a `T` back, so nothing more needs to be said.",
+    "code": "package main\n\nimport \"fmt\"\n\n// T is one of these types, and `+` on a T gives a T.\nfunc add[T int | float64](a, b T) T {\n\treturn a + b\n}\n\nfunc main() {\n\tfmt.Println(add(2, 3))\n\tfmt.Println(add(1.5, 2.25))\n}\n",
+    "out": "5\n3.75\n"
+   },
+   "kotlin": {
+    "status": "refuses",
+    "says": "Kotlin refuses too. `Number` has no `plus`, so `a + b` on a `T : Number` finds nothing to call.",
+    "code": "// Number has no `plus`, so there is no way to say \"any type with +\".\nfun <T : Number> add(a: T, b: T): T = a + b\n\nfun main() {\n    println(add(2, 3))\n    println(add(1.5, 2.25))\n}\n",
+    "error": "Main.kt:2:41: error: none of the following candidates is applicable:\n\nfun BigDecimal.plus(other: BigDecimal): BigDecimal:\n  Candidate 'fun BigDecimal.plus(other: BigDecimal): BigDecimal' is inapplicable because of a receiver type mismatch.\n\nfun BigInteger.plus(other: BigInteger): BigInteger:\n  Candidate 'fun BigInteger.plus(other: BigInteger): BigInteger' is inapplicable because of a receiver type mismatch.\n\nfun String?.plus(other: Any?): String:\n  Candidate 'fun String?.plus(other: Any?): String' is inapplicable because of a receiver type mismatch.\n\nfun <T> Array<T>.plus(element: T): Array<T>:\n  Candidate 'fun <T> Array<T>.plus(element: T): Array<T>' is inapplicable because of a receiver type mismatch.\n\nfun ByteArray.plus(element: Byte): ByteArray:\n  Candidate 'fun ByteArray.plus(element: Byte): ByteArray' is inapplicable because of a receiver type mismatch.\n\nfun ShortArray.plus(element: Short): ShortArray:\n  Candidate 'fun ShortArray.plus(element: Short): ShortArray' is inapplicable because of a receiver type mismatch.\n\nfun IntArray.plus(element: Int): IntArray:\n  Candidate 'fun IntArray.plus(element: Int): IntArray' is inapplicable because of a receiver type mismatch.\n\nfun LongArray.plus(element: Long): LongArray:\n  Candidate 'fun LongArray.plus(element: Long): LongArray' is inapplicable because of a receiver type mismatch.\n\nfun FloatArray.plus(element: Float): FloatArray:\n  Candidate 'fun FloatArray.plus(element: Float): FloatArray' is inapplicable because of a receiver type mismatch.\n\nfun DoubleArray.plus(element: Double): DoubleArray:\n  Candidate 'fun DoubleArray.plus(element: Double): DoubleArray' is inapplicable because of a receiver type mismatch.\n\nfun BooleanArray.plus(element: Boolean): BooleanArray:\n  Candidate 'fun BooleanArray.plus(element: Boolean): BooleanArray' is inapplicable because of a receiver type mismatch.\n\nfun CharArray.plus(element: Char): CharArray:\n  Candidate 'fun CharArray.plus(element: Char): CharArray' is inapplicable because of a receiver type mismatch.\n\nfun <T> Array<T>.plus(elements: Collection<T>): Array<T>:\n  Candidate 'fun <T> Array<T>.plus(elements: Collection<T>): Array<T>' is inapplicable because of a receiver type mismatch.\n\nfun ByteArray.plus(elements: Collection<Byte>): ByteArray:\n  Candidate 'fun ByteArray.plus(elements: Collection<Byte>): ByteArray' is inapplicable because of a receiver type mismatch.\n\nfun ShortArray.plus(elements: Collection<Short>): ShortArray:\n  Candidate 'fun ShortArray.plus(elements: Collection<Short>): ShortArray' is inapplicable because of a receiver type mismatch.\n\nfun IntArray.plus(elements: Collection<Int>): IntArray:\n  Candidate 'fun IntArray.plus(elements: Collection<Int>): IntArray' is inapplicable because of a receiver type mismatch.\n\nfun LongArray.plus(elements: Collection<Long>): LongArray:\n  Candidate 'fun LongArray.plus(elements: Collection<Long>): LongArray' is inapplicable because of a receiver type mismatch.\n\nfun FloatArray.plus(elements: Collection<Float>): FloatArray:\n  Candidate 'fun FloatArray.plus(elements: Collection<Float>): FloatArray' is inapplicable because of a receiver type mismatch.\n\nfun DoubleArray.plus(elements: Collection<Double>): DoubleArray:\n  Candidate 'fun DoubleArray.plus(elements: Collection<Double>): DoubleArray' is inapplicable because of a receiver type mismatch.\n\nfun BooleanArray.plus(elements: Collection<Boolean>): BooleanArray:\n  Candidate 'fun BooleanArray.plus(elements: Collection<Boolean>): BooleanArray' is inapplicable because of a receiver type mismatch.\n\nfun CharArray.plus(elements: Collection<Char>): CharArray:\n  Candidate 'fun CharArray.plus(elements: Collection<Char>): CharArray' is inapplicable because of a receiver type mismatch.\n\nfun <T> Array<T>.plus(elements: Array<out T>): Array<T>:\n  Candidate 'fun <T> Array<T>.plus(elements: Array<out T>): Array<T>' is inapplicable because of a receiver type mismatch.\n\nfun ByteArray.plus(elements: ByteArray): ByteArray:\n  Candidate 'fun ByteArray.plus(elements: ByteArray): ByteArray' is inapplicable because of a receiver type mismatch.\n\nfun ShortArray.plus(elements: ShortArray): ShortArray:\n  Candidate 'fun ShortArray.plus(elements: ShortArray): ShortArray' is inapplicable because of a receiver type mismatch.\n\nfun IntArray.plus(elements: IntArray): IntArray:\n  Candidate 'fun IntArray.plus(elements: IntArray): IntArray' is inapplicable because of a receiver type mismatch.\n\nfun LongArray.plus(elements: LongArray): LongArray:\n  Candidate 'fun LongArray.plus(elements: LongArray): LongArray' is inapplicable because of a receiver type mismatch.\n\nfun FloatArray.plus(elements: FloatArray): FloatArray:\n  Candidate 'fun FloatArray.plus(elements: FloatArray): FloatArray' is inapplicable because of a receiver type mismatch.\n\nfun DoubleArray.plus(elements: DoubleArray): DoubleArray:\n  Candidate 'fun DoubleArray.plus(elements: DoubleArray): DoubleArray' is inapplicable because of a receiver type mismatch.\n\nfun BooleanArray.plus(elements: BooleanArray): BooleanArray:\n  Candidate 'fun BooleanArray.plus(elements: BooleanArray): BooleanArray' is inapplicable because of a receiver type mismatch.\n\nfun CharArray.plus(elements: CharArray): CharArray:\n  Candidate 'fun CharArray.plus(elements: CharArray): CharArray' is inapplicable because of a receiver type mismatch.\n\nfun <T> Iterable<T>.plus(element: T): List<T>:\n  Candidate 'fun <T> Iterable<T>.plus(element: T): List<T>' is inapplicable because of a receiver type mismatch.\n\nfun <T> Collection<T>.plus(element: T): List<T>:\n  Candidate 'fun <T> Collection<T>.plus(element: T): List<T>' is inapplicable because of a receiver type mismatch.\n\nfun <T> Iterable<T>.plus(elements: Array<out T>): List<T>:\n  Candidate 'fun <T> Iterable<T>.plus(elements: Array<out T>): List<T>' is inapplicable because of a receiver type mismatch.\n\nfun <T> Collection<T>.plus(elements: Array<out T>): List<T>:\n  Candidate 'fun <T> Collection<T>.plus(elements: Array<out T>): List<T>' is inapplicable because of a receiver type mismatch.\n\nfun <T> Iterable<T>.plus(elements: Iterable<T>): List<T>:\n  Candidate 'fun <T> Iterable<T>.plus(elements: Iterable<T>): List<T>' is inapplicable because of a receiver type mismatch.\n\nfun <T> Collection<T>.plus(elements: Iterable<T>): List<T>:\n  Candidate 'fun <T> Collection<T>.plus(elements: Iterable<T>): List<T>' is inapplicable because of a receiver type mismatch.\n\nfun <T> Iterable<T>.plus(elements: Sequence<T>): List<T>:\n  Candidate 'fun <T> Iterable<T>.plus(elements: Sequence<T>): List<T>' is inapplicable because of a receiver type mismatch.\n\nfun <T> Collection<T>.plus(elements: Sequence<T>): List<T>:\n  Candidate 'fun <T> Collection<T>.plus(elements: Sequence<T>): List<T>' is inapplicable because of a receiver type mismatch.\n\nfun <K, V> Map<out K, V>.plus(pair: Pair<K, V>): Map<K, V>:\n  Candidate 'fun <K, V> Map<out K, V>.plus(pair: Pair<K, V>): Map<K, V>' is inapplicable because of a receiver type mismatch.\n\nfun <K, V> Map<out K, V>.plus(pairs: Iterable<Pair<K, V>>): Map<K, V>:\n  Candidate 'fun <K, V> Map<out K, V>.plus(pairs: Iterable<Pair<K, V>>): Map<K, V>' is inapplicable because of a receiver type mismatch.\n\nfun <K, V> Map<out K, V>.plus(pairs: Array<out Pair<K, V>>): Map<K, V>:\n  Candidate 'fun <K, V> Map<out K, V>.plus(pairs: Array<out Pair<K, V>>): Map<K, V>' is inapplicable because of a receiver type mismatch.\n\nfun <K, V> Map<out K, V>.plus(pairs: Sequence<Pair<K, V>>): Map<K, V>:\n  Candidate 'fun <K, V> Map<out K, V>.plus(pairs: Sequence<Pair<K, V>>): Map<K, V>' is inapplicable because of a receiver type mismatch.\n\nfun <K, V> Map<out K, V>.plus(map: Map<out K, V>): Map<K, V>:\n  Candidate 'fun <K, V> Map<out K, V>.plus(map: Map<out K, V>): Map<K, V>' is inapplicable because of a receiver type mismatch.\n\nfun <T> Set<T>.plus(element: T): Set<T>:\n  Candidate 'fun <T> Set<T>.plus(element: T): Set<T>' is inapplicable because of a receiver type mismatch.\n\nfun <T> Set<T>.plus(elements: Array<out T>): Set<T>:\n  Candidate 'fun <T> Set<T>.plus(elements: Array<out T>): Set<T>' is inapplicable because of a receiver type mismatch.\n\nfun <T> Set<T>.plus(elements: Iterable<T>): Set<T>:\n  Candidate 'fun <T> Set<T>.plus(elements: Iterable<T>): Set<T>' is inapplicable because of a receiver type mismatch.\n\nfun <T> Set<T>.plus(elements: Sequence<T>): Set<T>:\n  Candidate 'fun <T> Set<T>.plus(elements: Sequence<T>): Set<T>' is inapplicable because of a receiver type mismatch.\n\nfun UIntArray.plus(element: UInt): UIntArray:\n  Candidate 'fun UIntArray.plus(element: UInt): UIntArray' is inapplicable because of a receiver type mismatch.\n\nfun ULongArray.plus(element: ULong): ULongArray:\n  Candidate 'fun ULongArray.plus(element: ULong): ULongArray' is inapplicable because of a receiver type mismatch.\n\nfun UByteArray.plus(element: UByte): UByteArray:\n  Candidate 'fun UByteArray.plus(element: UByte): UByteArray' is inapplicable because of a receiver type mismatch.\n\nfun UShortArray.plus(element: UShort): UShortArray:\n  Candidate 'fun UShortArray.plus(element: UShort): UShortArray' is inapplicable because of a receiver type mismatch.\n\nfun UIntArray.plus(elements: Collection<UInt>): UIntArray:\n  Candidate 'fun UIntArray.plus(elements: Collection<UInt>): UIntArray' is inapplicable because of a receiver type mismatch.\n\nfun ULongArray.plus(elements: Collection<ULong>): ULongArray:\n  Candidate 'fun ULongArray.plus(elements: Collection<ULong>): ULongArray' is inapplicable because of a receiver type mismatch.\n\nfun UByteArray.plus(elements: Collection<UByte>): UByteArray:\n  Candidate 'fun UByteArray.plus(elements: Collection<UByte>): UByteArray' is inapplicable because of a receiver type mismatch.\n\nfun UShortArray.plus(elements: Collection<UShort>): UShortArray:\n  Candidate 'fun UShortArray.plus(elements: Collection<UShort>): UShortArray' is inapplicable because of a receiver type mismatch.\n\nfun UIntArray.plus(elements: UIntArray): UIntArray:\n  Candidate 'fun UIntArray.plus(elements: UIntArray): UIntArray' is inapplicable because of a receiver type mismatch.\n\nfun ULongArray.plus(elements: ULongArray): ULongArray:\n  Candidate 'fun ULongArray.plus(elements: ULongArray): ULongArray' is inapplicable because of a receiver type mismatch.\n\nfun UByteArray.plus(elements: UByteArray): UByteArray:\n  Candidate 'fun UByteArray.plus(elements: UByteArray): UByteArray' is inapplicable because of a receiver type mismatch.\n\nfun UShortArray.plus(elements: UShortArray): UShortArray:\n  Candidate 'fun UShortArray.plus(elements: UShortArray): UShortArray' is inapplicable because of a receiver type mismatch.\n\nfun <T> Sequence<T>.plus(element: T): Sequence<T>:\n  Candidate 'fun <T> Sequence<T>.plus(element: T): Sequence<T>' is inapplicable because of a receiver type mismatch.\n\nfun <T> Sequence<T>.plus(elements: Array<out T>): Sequence<T>:\n  Candidate 'fun <T> Sequence<T>.plus(elements: Array<out T>): Sequence<T>' is inapplicable because of a receiver type mismatch.\n\nfun <T> Sequence<T>.plus(elements: Iterable<T>): Sequence<T>:\n  Candidate 'fun <T> Sequence<T>.plus(elements: Iterable<T>): Sequence<T>' is inapplicable because of a receiver type mismatch.\n\nfun <T> Sequence<T>.plus(elements: Sequence<T>): Sequence<T>:\n  Candidate 'fun <T> Sequence<T>.plus(elements: Sequence<T>): Sequence<T>' is inapplicable because of a receiver type mismatch.\n\nfun Char.plus(other: String): String:\n  Candidate 'fun Char.plus(other: String): String' is inapplicable because of a receiver type mismatch.\nfun <T : Number> add(a: T, b: T): T = a + b\n                                        ^"
+   },
+   "python": {
+    "status": "runs",
+    "says": "Python prints 5 and 3.75. The interpreter does not check the `[T]` hint when the program runs, so `a + b` is tried with whatever arrives. A type checker such as mypy would reject `a + b` on an unbounded `T`; this site does not run one.",
+    "code": "def add[T](a: T, b: T) -> T:\n    return a + b\n\n\nprint(add(2, 3))\nprint(add(1.5, 2.25))\n",
+    "out": "5\n3.75\n"
+   },
+   "typescript": {
+    "status": "refuses",
+    "says": "TypeScript refuses too, in terms close to Rust's: the sum is a `number`, and `T` could be a narrower type, so it cannot be returned as a `T`.",
+    "code": "function add<T extends number>(a: T, b: T): T {\n  return a + b;\n}\n\nconsole.log(add(2, 3));\nconsole.log(add(1.5, 2.25));\n",
+    "error": "main.ts(2,3): error TS2322: Type 'number' is not assignable to type 'T'.\n  'number' is assignable to the constraint of type 'T', but 'T' could be instantiated with a different subtype of constraint 'number'."
+   },
+   "java": {
+    "status": "refuses",
+    "says": "Java refuses too (`bad operand types for binary operator '+'`). `Number` has no `+`, and a type variable cannot supply one.",
+    "code": "public class Main {\n    // Number has no `+`: Java's operators work only on the primitive types.\n    static <T extends Number> T add(T a, T b) {\n        return a + b;\n    }\n\n    public static void main(String[] args) {\n        System.out.println(add(2, 3));\n        System.out.println(add(1.5, 2.25));\n    }\n}\n",
+    "error": "Main.java:4: error: bad operand types for binary operator '+'\n        return a + b;\n                 ^\n  first type:  T\n  second type: T\n  where T is a type-variable:\n    T extends Number declared in method <T>add(T,T)\n1 error"
+   },
+   "csharp": {
+    "status": "runs",
+    "says": "C# prints 5 and 3.75. The `INumber<T>` constraint (C# 11) says `T` has `+` and that adding two `T` gives a `T`, so the promise is in the constraint.",
+    "code": "using System.Numerics;\n\nConsole.WriteLine(Add(2, 3));\nConsole.WriteLine(Add(1.5, 2.25));\n\n// INumber<T> (C# 11) says \"T has + and gives a T back\".\nstatic T Add<T>(T a, T b) where T : INumber<T>\n{\n    return a + b;\n}\n",
+    "out": "5\n3.75\n"
+   },
+   "c": {
+    "status": "runs",
+    "says": "C prints 5 and 3.75. The macro pastes `((2) + (3))` and `((1.5) + (2.25))` before the compiler looks at types, so there is no generic function to check.",
+    "code": "#include <stdio.h>\n\n// C has no generics. A macro pastes the text, and the compiler checks the result.\n#define ADD(a, b) ((a) + (b))\n\nint main(void) {\n    printf(\"%d\\n\", ADD(2, 3));\n    printf(\"%g\\n\", ADD(1.5, 2.25));\n    return 0;\n}\n",
+    "out": "5\n3.75\n"
+   },
+   "cpp": {
+    "status": "runs",
+    "says": "C++ prints 5 and 3.75. With no constraint, the template body is checked when it is used with `int` and with `double`. A C++20 concept would check the call, not the body. Rust checks the body once, against the bound.",
+    "code": "#include <iostream>\n\n// No constraint: the body is checked when add is used with a type.\ntemplate <typename T>\nT add(T a, T b) {\n    return a + b;\n}\n\nint main() {\n    std::cout << add(2, 3) << \"\\n\";\n    std::cout << add(1.5, 2.25) << \"\\n\";\n}\n",
+    "out": "5\n3.75\n"
+   }
+  },
+  "code": "use std::ops::Add;\n\nfn add<T: Add>(a: T, b: T) -> T {\n    a + b\n}\n\nfn main() {\n    println!(\"{}\", add(2, 3));\n    println!(\"{}\", add(1.5, 2.25));\n}\n",
+  "error": "error[E0308]: mismatched types\n --> src/main.rs:4:5\n  |\n3 | fn add<T: Add>(a: T, b: T) -> T {\n  |        -                      - expected `T` because of return type\n  |        |\n  |        expected this type parameter\n4 |     a + b\n  |     ^^^^^ expected type parameter `T`, found associated type\n  |\n  = note: expected type parameter `T`\n            found associated type `<T as Add>::Output`\nhelp: consider further restricting this bound\n  |\n3 | fn add<T: Add<Output = T>>(a: T, b: T) -> T {\n  |              ++++++++++++\n",
+  "error_code": "E0308",
+  "fixed": {
+   "code": "use std::ops::Add;\n\n// The sum of two Ts must also be a T: `Output = T` says so.\nfn add<T: Add<Output = T>>(a: T, b: T) -> T {\n    a + b\n}\n\nfn main() {\n    println!(\"{}\", add(2, 3));\n    println!(\"{}\", add(1.5, 2.25));\n}\n",
+   "out": "5\n3.75\n"
+  }
+ },
+ "order": 33,
+ "program": {
+  "rust": {
+   "code": "// T can be any type that can be compared with < and >\nfn largest<T: PartialOrd>(items: &[T]) -> &T {\n    let mut best = &items[0];\n    for item in items {\n        if item > best {\n            best = item;\n        }\n    }\n    best\n}\n\nfn main() {\n    println!(\"{}\", largest(&[3, 9, 2]));\n    println!(\"{}\", largest(&[\"kiwi\", \"apple\", \"pear\"]));\n}\n",
+   "out": "9\npear\n"
+  },
+  "go": {
+   "code": "package main\n\nimport (\n\t\"cmp\"\n\t\"fmt\"\n)\n\nfunc largest[T cmp.Ordered](items []T) T {\n\tbest := items[0]\n\tfor _, item := range items {\n\t\tif item > best {\n\t\t\tbest = item\n\t\t}\n\t}\n\treturn best\n}\n\nfunc main() {\n\tfmt.Println(largest([]int{3, 9, 2}))\n\tfmt.Println(largest([]string{\"kiwi\", \"apple\", \"pear\"}))\n}\n",
+   "out": "9\npear\n"
+  },
+  "kotlin": {
+   "code": "fun <T : Comparable<T>> largest(items: List<T>): T {\n    var best = items[0]\n    for (item in items) {\n        if (item > best) {\n            best = item\n        }\n    }\n    return best\n}\n\nfun main() {\n    println(largest(listOf(3, 9, 2)))\n    println(largest(listOf(\"kiwi\", \"apple\", \"pear\")))\n}\n",
+   "out": "9\npear\n"
+  },
+  "python": {
+   "code": "from typing import Protocol, Self\n\n\nclass Comparable(Protocol):\n    def __gt__(self, other: Self, /) -> bool: ...\n\n\ndef largest[T: Comparable](items: list[T]) -> T:\n    best = items[0]\n    for item in items:\n        if item > best:\n            best = item\n    return best\n\n\nprint(largest([3, 9, 2]))\nprint(largest([\"kiwi\", \"apple\", \"pear\"]))\n",
+   "out": "9\npear\n"
+  },
+  "typescript": {
+   "code": "// T can be a number or a string: both can be compared with < and >\nfunction largest<T extends number | string>(items: readonly T[]): T {\n  let best = items[0];\n  for (const item of items) {\n    if (item > best) {\n      best = item;\n    }\n  }\n  return best;\n}\n\nconsole.log(largest([3, 9, 2]));\nconsole.log(largest([\"kiwi\", \"apple\", \"pear\"]));\n",
+   "out": "9\npear\n"
+  },
+  "java": {
+   "code": "import java.util.List;\n\npublic class Main {\n    // T can be any type that can be compared to itself\n    static <T extends Comparable<T>> T largest(List<T> items) {\n        T best = items.get(0);\n        for (T item : items) {\n            if (item.compareTo(best) > 0) {\n                best = item;\n            }\n        }\n        return best;\n    }\n\n    public static void main(String[] args) {\n        System.out.println(largest(List.of(3, 9, 2)));\n        System.out.println(largest(List.of(\"kiwi\", \"apple\", \"pear\")));\n    }\n}\n",
+   "out": "9\npear\n"
+  },
+  "csharp": {
+   "code": "Console.WriteLine(Largest([3, 9, 2]));\nConsole.WriteLine(Largest([\"kiwi\", \"apple\", \"pear\"]));\n\n// T can be any type that can compare itself to another T\nstatic T Largest<T>(T[] items) where T : IComparable<T>\n{\n    var best = items[0];\n    foreach (var item in items)\n    {\n        if (item.CompareTo(best) > 0)\n        {\n            best = item;\n        }\n    }\n    return best;\n}\n",
+   "out": "9\npear\n"
+  },
+  "c": {
+   "code": "#include <stdio.h>\n#include <string.h>\n\n// C has no generics: you write one version per type.\nconst int *largest_int(const int *items, size_t len) {\n    const int *best = &items[0];\n    for (size_t i = 0; i < len; i++) {\n        if (items[i] > *best) best = &items[i];\n    }\n    return best;\n}\n\nconst char *const *largest_str(const char *const *items, size_t len) {\n    const char *const *best = &items[0];\n    for (size_t i = 0; i < len; i++) {\n        if (strcmp(items[i], *best) > 0) best = &items[i];\n    }\n    return best;\n}\n\nint main(void) {\n    int nums[] = {3, 9, 2};\n    const char *fruits[] = {\"kiwi\", \"apple\", \"pear\"};\n    printf(\"%d\\n\", *largest_int(nums, 3));\n    printf(\"%s\\n\", *largest_str(fruits, 3));\n    return 0;\n}\n",
+   "out": "9\npear\n"
+  },
+  "cpp": {
+   "code": "#include <concepts>\n#include <iostream>\n#include <string_view>\n#include <vector>\n\n// T can be any type that can be compared with < and >\ntemplate <std::totally_ordered T>\nconst T& largest(const std::vector<T>& items) {\n    const T* best = &items[0];\n    for (const T& item : items) {\n        if (item > *best) {\n            best = &item;\n        }\n    }\n    return *best;\n}\n\nint main() {\n    std::vector<int> nums{3, 9, 2};\n    std::vector<std::string_view> fruit{\"kiwi\", \"apple\", \"pear\"};\n    std::cout << largest(nums) << \"\\n\";\n    std::cout << largest(fruit) << \"\\n\";\n}\n",
+   "out": "9\npear\n"
+  }
+ },
+ "faq": [],
+ "snippets": {
+  "add-output.rs": {
+   "code": "use std::any::type_name;\nuse std::ops::Add;\n\n// `T: Add` says two Ts can be added. The result type is T::Output.\nfn sum_type<T: Add>() -> String {\n    format!(\n        \"T = {:<5} T + T = {}\",\n        type_name::<T>(),\n        type_name::<T::Output>()\n    )\n}\n\nfn main() {\n    println!(\"{}\", sum_type::<i32>());\n    println!(\"{}\", sum_type::<f64>());\n    println!(\"{}\", sum_type::<&i32>());\n}\n",
+   "out": "T = i32   T + T = i32\nT = f64   T + T = f64\nT = &i32  T + T = i32\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "animals.rs": {
+   "code": "trait Animal {\n    fn name(&self) -> String;\n}\n\nstruct Dog;\nstruct Cat;\n\nimpl Animal for Dog {\n    fn name(&self) -> String {\n        \"dog\".to_string()\n    }\n}\n\nimpl Animal for Cat {\n    fn name(&self) -> String {\n        \"cat\".to_string()\n    }\n}\n\n// Java's `List<? extends Animal>`: any one type that is an Animal.\nfn names<T: Animal>(xs: &[T]) -> Vec<String> {\n    xs.iter().map(|x| x.name()).collect()\n}\n\n// A list that mixes kinds holds trait objects.\nfn mixed_names(xs: &[Box<dyn Animal>]) -> Vec<String> {\n    xs.iter().map(|x| x.name()).collect()\n}\n\nfn main() {\n    println!(\"dogs: {:?}\", names(&[Dog, Dog]));\n    let pets: Vec<Box<dyn Animal>> = vec![Box::new(Dog), Box::new(Cat)];\n    println!(\"mixed: {:?}\", mixed_names(&pets));\n}\n",
+   "out": "dogs: [\"dog\", \"dog\"]\nmixed: [\"dog\", \"cat\"]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "bare-t.fail.rs": {
+   "code": "// Nothing is asked of T, so a body may not print it or compare it.\nfn bracket<T>(item: T) -> String {\n    format!(\"[{item}]\")\n}\n\nfn same<T>(a: T, b: T) -> bool {\n    a == b\n}\n\nfn main() {\n    println!(\"{} {}\", bracket(5), same(1, 2));\n}\n",
+   "error": "error[E0277]: `T` doesn't implement `std::fmt::Display`\n --> src/main.rs:3:15\n  |\n3 |     format!(\"[{item}]\")\n  |               ^^^^^^ `T` cannot be formatted with the default formatter\n  |\n  = note: in format strings you may be able to use `{:?}` (or `{:#?}` for pretty-print) instead\nhelp: consider restricting type parameter `T` with trait `Display`\n  |\n2 | fn bracket<T: std::fmt::Display>(item: T) -> String {\n  |             +++++++++++++++++++\n\nerror[E0369]: binary operation `==` cannot be applied to type `T`\n --> src/main.rs:7:7\n  |\n7 |     a == b\n  |     - ^^ - T\n  |     |\n  |     T\n  |\nhelp: consider restricting type parameter `T` with trait `PartialEq`\n  |\n6 | fn same<T: std::cmp::PartialEq>(a: T, b: T) -> bool {\n  |          +++++++++++++++++++++\n\nSome errors have detailed explanations: E0277, E0369.",
+   "lang": "rust"
+  },
+  "check-bounds.rs": {
+   "code": "// Backs the \"bound\" table in lesson.mdx. Never shown.\nuse std::collections::{BTreeSet, HashMap};\nuse std::fmt::{Debug, Display};\nuse std::hash::Hash;\nuse std::ops::Add;\n\nfn display<T: Display>(x: T) -> String {\n    format!(\"{x}\")\n}\nfn debug<T: Debug>(x: T) -> String {\n    format!(\"{x:?}\")\n}\nfn equal<T: PartialEq>(a: T, b: T) -> bool {\n    a == b\n}\nfn less<T: PartialOrd>(a: T, b: T) -> bool {\n    a < b\n}\nfn sorted<T: Ord + Clone>(items: &[T]) -> Vec<T> {\n    let mut v = items.to_vec();\n    v.sort();\n    v\n}\nfn ordered_set<T: Ord>(items: Vec<T>) -> usize {\n    items.into_iter().collect::<BTreeSet<T>>().len()\n}\nfn count<T: Eq + Hash>(items: Vec<T>) -> usize {\n    let mut map = HashMap::new();\n    for item in items {\n        *map.entry(item).or_insert(0) += 1;\n    }\n    map.len()\n}\nfn twice<T: Clone>(x: &T) -> (T, T) {\n    (x.clone(), x.clone())\n}\nfn use_twice<T: Copy>(x: T) -> (T, T) {\n    let y = x;\n    (x, y)\n}\nfn add<T: Add<Output = T>>(a: T, b: T) -> T {\n    a + b\n}\nfn fresh<T: Default>() -> T {\n    T::default()\n}\nfn widen<T: Into<u64>>(x: T) -> u64 {\n    x.into()\n}\n\nfn main() {\n    assert_eq!(display(1.5), \"1.5\");\n    assert_eq!(debug(\"a\"), \"\\\"a\\\"\");\n    assert!(equal(\"a\", \"a\") && !equal(1, 2));\n    assert!(less(1.5, 2.5));\n    assert_eq!(sorted(&[3, 1, 2]), [1, 2, 3]);\n    assert_eq!(ordered_set(vec![\"b\", \"a\", \"b\"]), 2);\n    assert_eq!(count(vec![\"b\", \"a\", \"b\"]), 2);\n    assert_eq!(\n        twice(&String::from(\"x\")),\n        (\"x\".to_string(), \"x\".to_string())\n    );\n    assert_eq!(use_twice(4), (4, 4));\n    assert_eq!(add(1.5, 2.0), 3.5);\n    assert_eq!(fresh::<Vec<i32>>(), Vec::<i32>::new());\n    assert_eq!(widen(7u8), 7u64);\n    assert_eq!(widen(7u32), 7u64);\n    println!(\"ok\");\n}\n",
+   "out": "ok\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-rows.rs": {
+   "code": "// Backs the \"in Rust\" cells of the tables in lesson.mdx. Never shown.\nuse std::collections::{HashMap, HashSet};\nuse std::fmt::Display;\nuse std::ops::Add;\n\n// Go table.\nstruct Stack<T> {\n    items: Vec<T>,\n}\n\nimpl<T> Stack<T> {\n    fn push(&mut self, x: T) {\n        self.items.push(x);\n    }\n\n    fn map<U>(&self, f: impl Fn(&T) -> U) -> Vec<U> {\n        self.items.iter().map(f).collect()\n    }\n}\n\nfn map_all<T, U>(s: &[T], f: impl Fn(&T) -> U) -> Vec<U> {\n    s.iter().map(f).collect()\n}\n\nfn same<T: PartialEq>(a: T, b: T) -> bool {\n    a == b\n}\n\nfn key<T: Eq + std::hash::Hash>(x: T) -> usize {\n    let mut set = HashSet::new();\n    set.insert(x);\n    let mut map = HashMap::new();\n    map.insert(1, 2);\n    set.len() + map.len()\n}\n\nfn double<T: Add<Output = T> + Copy>(x: T) -> T {\n    x + x\n}\n\n// Java, Kotlin, C# table.\nfn biggest<T: PartialOrd>(a: T, b: T) -> T {\n    if b > a { b } else { a }\n}\n\nfn both<T: Display + Clone>(x: &T) -> String {\n    format!(\"{x}{}\", x.clone())\n}\n\nfn fresh<T: Default>() -> T {\n    T::default()\n}\n\nfn describe<T: Display + PartialEq + std::hash::Hash>(x: &T) -> String {\n    format!(\"{x} {}\", x == x)\n}\n\nstruct Pair<T>(T, T);\n\nimpl<T> Pair<T> {\n    fn map<U>(self, f: impl Fn(T) -> U) -> Pair<U> {\n        Pair(f(self.0), f(self.1))\n    }\n}\n\n// Python and TypeScript table.\ntrait HasLength {\n    fn length(&self) -> usize;\n}\n\nimpl HasLength for String {\n    fn length(&self) -> usize {\n        self.len()\n    }\n}\n\nimpl<T> HasLength for Vec<T> {\n    fn length(&self) -> usize {\n        self.len()\n    }\n}\n\nenum Item {\n    Number(i32),\n    Text(&'static str),\n}\n\nfn longer<T: HasLength>(a: T, b: T) -> T {\n    if b.length() > a.length() { b } else { a }\n}\n\n// C and C++ table.\nfn show_it(x: impl PartialOrd) -> bool {\n    x < x\n}\n\nfn sum_array<T: Copy + Default + Add<Output = T>, const N: usize>(a: [T; N]) -> T {\n    let mut total = T::default();\n    for x in a {\n        total = total + x;\n    }\n    total\n}\n\nfn main() {\n    let mut stack = Stack { items: Vec::new() };\n    stack.push(4);\n    assert_eq!(stack.map(|n| n * 2), [8]);\n    assert_eq!(\n        map_all::<i32, String>(&[1, 2], |n| (n * 2).to_string()),\n        [\"2\", \"4\"]\n    );\n    assert!(same(\"a\", \"a\"));\n    assert_eq!(key(\"a\"), 2);\n    assert_eq!(double(2.5), 5.0);\n    assert_eq!(double(21), 42);\n\n    assert_eq!(biggest(\"kiwi\", \"pear\"), \"pear\");\n    assert_eq!(both(&7), \"77\");\n    assert_eq!(fresh::<String>(), \"\");\n    assert_eq!(describe(&7), \"7 true\");\n    assert_eq!(Pair(1, 2).map(|n| format!(\"#{n}\")).0, \"#1\");\n    assert!(fresh::<Vec<String>>().is_empty());\n\n    assert_eq!(longer(String::from(\"ab\"), String::from(\"abc\")), \"abc\");\n    assert_eq!(longer(vec![1], vec![1, 2]), [1, 2]);\n\n    let mixed = vec![Item::Number(1), Item::Text(\"a\")];\n    assert_eq!(mixed.len(), 2);\n    assert!(matches!(mixed[0], Item::Number(1)) && matches!(mixed[1], Item::Text(\"a\")));\n    show_it(1.5);\n\n    assert_eq!(sum_array([1, 2, 3]), 6);\n    assert_eq!(biggest::<f64>(1.0, 2.5), 2.5);\n    println!(\"ok\");\n}\n",
+   "out": "ok\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "conditional-impl.fail.rs": {
+   "code": "use std::fmt::Display;\n\nstruct Wrapper<T>(T);\n\nimpl<T: Display> Wrapper<T> {\n    fn show(&self) -> String {\n        format!(\"[{}]\", self.0)\n    }\n}\n\nfn main() {\n    println!(\"{}\", Wrapper(vec![1, 2]).show());\n}\n",
+   "error": "error[E0599]: the method `show` exists for struct `Wrapper<Vec<{integer}>>`, but its trait bounds were not satisfied\n  --> src/main.rs:12:40\n   |\n 3 | struct Wrapper<T>(T);\n   | ----------------- method `show` not found for this struct\n...\n12 |     println!(\"{}\", Wrapper(vec![1, 2]).show());\n   |                                        ^^^^ method cannot be called on `Wrapper<Vec<{integer}>>` due to unsatisfied trait bounds\n   |\nnote: trait bound `Vec<{integer}>: std::fmt::Display` was not satisfied\n  --> src/main.rs:5:9\n   |\n 5 | impl<T: Display> Wrapper<T> {\n   |         ^^^^^^^  ----------\n   |         |\n   |         unsatisfied trait bound introduced here\n",
+   "lang": "rust"
+  },
+  "conditional-impl.rs": {
+   "code": "use std::fmt::Display;\n\nstruct Wrapper<T>(T);\n\n// For every T.\nimpl<T> Wrapper<T> {\n    fn into_inner(self) -> T {\n        self.0\n    }\n}\n\n// Only when T can be displayed.\nimpl<T: Display> Wrapper<T> {\n    fn show(&self) -> String {\n        format!(\"[{}]\", self.0)\n    }\n}\n\nfn main() {\n    println!(\"number: {}\", Wrapper(42).show());\n    println!(\"text: {}\", Wrapper(\"hi\").show());\n    let list = Wrapper(vec![1, 2]);\n    println!(\"a list still unwraps: {:?}\", list.into_inner());\n}\n",
+   "out": "number: [42]\ntext: [hi]\na list still unwraps: [1, 2]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "const-generic.rs": {
+   "code": "use std::any::type_name;\n\n// N is a number the compiler knows, filled in from the array's type.\nfn sum<const N: usize>(values: [i32; N]) -> i32 {\n    println!(\"  an array of {N}\");\n    values.iter().sum()\n}\n\nstruct Buffer<const N: usize> {\n    data: [u8; N],\n}\n\nimpl<const N: usize> Buffer<N> {\n    fn new() -> Buffer<N> {\n        Buffer { data: [0; N] }\n    }\n\n    fn capacity(&self) -> usize {\n        self.data.len()\n    }\n}\n\nfn main() {\n    println!(\"sum: {}\", sum([1, 2, 3]));\n    println!(\"sum: {}\", sum([10, 20, 30, 40, 50]));\n    println!(\"sum of none: {}\", sum([]));\n    println!(\"capacity: {}\", Buffer::<16>::new().capacity());\n    println!(\"type of [i32; 3]: {}\", type_name::<[i32; 3]>());\n    println!(\"type of [i32; 4]: {}\", type_name::<[i32; 4]>());\n}\n",
+   "out": "  an array of 3\nsum: 6\n  an array of 5\nsum: 150\n  an array of 0\nsum of none: 0\ncapacity: 16\ntype of [i32; 3]: [i32; 3]\ntype of [i32; 4]: [i32; 4]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "default-param.rs": {
+   "code": "use std::ops::Add;\n\n#[derive(Debug, Clone, Copy)]\nstruct Meters(f64);\n\n// `Add` is declared `Add<Rhs = Self>`: a type parameter with a default.\n// Writing `Add` alone means `Add<Meters>`.\nimpl Add for Meters {\n    type Output = Meters;\n    fn add(self, other: Meters) -> Meters {\n        Meters(self.0 + other.0)\n    }\n}\n\n// The same type can implement it again for another right-hand side.\nimpl Add<f64> for Meters {\n    type Output = Meters;\n    fn add(self, other: f64) -> Meters {\n        Meters(self.0 + other)\n    }\n}\n\nfn main() {\n    println!(\"Meters + Meters: {:?}\", Meters(1.0) + Meters(2.0));\n    println!(\"Meters + f64: {:?}\", Meters(1.0) + 0.5);\n}\n",
+   "out": "Meters + Meters: Meters(3.0)\nMeters + f64: Meters(1.5)\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "fallback.rs": {
+   "code": "trait Describe {\n    // The default method is the fallback.\n    fn describe(&self) -> String {\n        \"something\".to_string()\n    }\n}\n\nimpl Describe for i32 {\n    fn describe(&self) -> String {\n        \"an integer\".to_string()\n    }\n}\n\nimpl Describe for char {} // takes the fallback\n\nfn main() {\n    println!(\"5: {}\", 5_i32.describe());\n    println!(\"'x': {}\", 'x'.describe());\n}\n",
+   "out": "5: an integer\n'x': something\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "generic-fn.rs": {
+   "code": "// T is a placeholder: the compiler fills it in at each call.\nfn first_and_last<T>(items: &[T]) -> Option<(&T, &T)> {\n    Some((items.first()?, items.last()?))\n}\n\n// T appears only in the result, so the caller has to say which one.\nfn zero<T: Default>() -> T {\n    T::default()\n}\n\nfn main() {\n    println!(\"numbers: {:?}\", first_and_last(&[4, 8, 15, 16]));\n    println!(\"words: {:?}\", first_and_last(&[\"ant\", \"bee\", \"cat\"]));\n    println!(\"nothing: {:?}\", first_and_last::<f64>(&[]));\n    println!(\"zero::<i32>(): {}\", zero::<i32>());\n    let name: String = zero();\n    println!(\"zero() as a String: {name:?}\");\n}\n",
+   "out": "numbers: Some((4, 16))\nwords: Some((\"ant\", \"cat\"))\nnothing: None\nzero::<i32>(): 0\nzero() as a String: \"\"\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "generic-trait.rs": {
+   "code": "// A trait can take a type parameter too.\ntrait Convert<T> {\n    fn convert(&self) -> T;\n}\n\nstruct Celsius(f64);\n\nimpl Convert<f64> for Celsius {\n    fn convert(&self) -> f64 {\n        self.0 * 9.0 / 5.0 + 32.0\n    }\n}\n\nimpl Convert<String> for Celsius {\n    fn convert(&self) -> String {\n        format!(\"{} degrees C\", self.0)\n    }\n}\n\nfn main() {\n    let temp = Celsius(100.0);\n    // The type you ask for picks the impl.\n    let fahrenheit: f64 = temp.convert();\n    let label: String = temp.convert();\n    println!(\"as f64: {fahrenheit}\");\n    println!(\"as String: {label}\");\n}\n",
+   "out": "as f64: 212\nas String: 100 degrees C\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "generic-types.rs": {
+   "code": "#[derive(Debug)]\nstruct Pair<T> {\n    first: T,\n    second: T,\n}\n\n// `impl<T>` declares T, then `Pair<T>` uses it: every Pair gets these methods.\nimpl<T> Pair<T> {\n    fn new(first: T, second: T) -> Pair<T> {\n        Pair { first, second }\n    }\n\n    fn swapped(self) -> Pair<T> {\n        Pair::new(self.second, self.first)\n    }\n\n    // A method can add parameters of its own, after its name.\n    fn map<U>(self, f: impl Fn(T) -> U) -> Pair<U> {\n        Pair::new(f(self.first), f(self.second))\n    }\n}\n\n// No T here: this method exists only on Pair<f64>.\nimpl Pair<f64> {\n    fn sum(&self) -> f64 {\n        self.first + self.second\n    }\n}\n\n// Two parameters, which may be different types.\nstruct Entry<K, V> {\n    key: K,\n    value: V,\n}\n\n#[derive(Debug)]\nenum Maybe<T> {\n    Nothing,\n    Just(T),\n}\n\nfn main() {\n    println!(\"ints: {:?}\", Pair::new(1, 2).swapped());\n    println!(\"mapped: {:?}\", Pair::new(1, 2).map(|n| format!(\"#{n}\")));\n    println!(\"words: {:?}\", Pair::new(\"a\", \"b\"));\n    println!(\"sum: {}\", Pair::new(1.5, 2.0).sum());\n    let entry = Entry {\n        key: \"id\",\n        value: 7,\n    };\n    println!(\"entry: {} -> {}\", entry.key, entry.value);\n    let found: Maybe<char> = Maybe::Just('x');\n    let missing: Maybe<char> = Maybe::Nothing;\n    println!(\"maybe: {found:?} and {missing:?}\");\n}\n",
+   "out": "ints: Pair { first: 2, second: 1 }\nmapped: Pair { first: \"#1\", second: \"#2\" }\nwords: Pair { first: \"a\", second: \"b\" }\nsum: 3.5\nentry: id -> 7\nmaybe: Just('x') and Nothing\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "grow.fail.rs": {
+   "code": "// N is a value inside the body, but a type may use it only as a bare `N`.\nfn grow<const N: usize>(items: [i32; N]) -> [i32; N + 1] {\n    todo!(\"{items:?}\")\n}\n\nfn main() {\n    println!(\"{:?}\", grow([1, 2]));\n}\n",
+   "error": "error: generic parameters may not be used in const operations\n --> src/main.rs:2:51\n  |\n2 | fn grow<const N: usize>(items: [i32; N]) -> [i32; N + 1] {\n  |                                                   ^ cannot perform const operation using `N`\n  |\n  = help: const parameters may only be used as standalone arguments here, i.e. `N`",
+   "lang": "rust"
+  },
+  "impl-turbofish.fail.rs": {
+   "code": "use std::fmt::Display;\n\nfn named<T: Display>(x: T) -> String {\n    format!(\"{x}\")\n}\n\nfn hidden(x: impl Display) -> String {\n    format!(\"{x}\")\n}\n\nfn main() {\n    println!(\"{}\", named::<i32>(1));\n    println!(\"{}\", hidden::<i32>(1));\n}\n",
+   "error": "error[E0107]: function takes 0 generic arguments but 1 generic argument was supplied\n  --> src/main.rs:13:20\n   |\n13 |     println!(\"{}\", hidden::<i32>(1));\n   |                    ^^^^^^------- help: remove the unnecessary generics\n   |                    |\n   |                    expected 0 generic arguments\n   |\nnote: function defined here, with 0 generic parameters\n  --> src/main.rs:7:4\n   |\n 7 | fn hidden(x: impl Display) -> String {\n   |    ^^^^^^\n   = note: `impl Trait` cannot be explicitly specified as a generic argument\n",
+   "lang": "rust"
+  },
+  "layout.rs": {
+   "code": "use std::mem::size_of;\n\nstruct Pair<T> {\n    first: T,\n    second: T,\n}\n\nfn main() {\n    println!(\"size_of::<i32>(): {}\", size_of::<i32>());\n    println!(\"size_of::<Pair<i32>>(): {}\", size_of::<Pair<i32>>());\n    println!(\"size_of::<String>(): {}\", size_of::<String>());\n    println!(\"size_of::<Pair<String>>(): {}\", size_of::<Pair<String>>());\n\n    let numbers = Pair {\n        first: 1,\n        second: 2,\n    };\n    let names = Pair {\n        first: String::from(\"ana\"),\n        second: String::from(\"bo\"),\n    };\n    println!(\"numbers: {} and {}\", numbers.first, numbers.second);\n    println!(\"names: {} and {}\", names.first, names.second);\n    println!(\n        \"first name: len {}, capacity {}\",\n        names.first.len(),\n        names.first.capacity()\n    );\n    println!(\n        \"second name: len {}, capacity {}\",\n        names.second.len(),\n        names.second.capacity()\n    );\n}\n",
+   "out": "size_of::<i32>(): 4\nsize_of::<Pair<i32>>(): 8\nsize_of::<String>(): 24\nsize_of::<Pair<String>>(): 48\nnumbers: 1 and 2\nnames: ana and bo\nfirst name: len 3, capacity 3\nsecond name: len 2, capacity 2\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "mono.rs": {
+   "code": "use std::any::type_name;\nuse std::mem::size_of;\n\nfn describe<T>() {\n    println!(\n        \"T = {:<30} size_of::<T>() = {}\",\n        type_name::<T>(),\n        size_of::<T>()\n    );\n}\n\nfn largest<T: PartialOrd>(items: &[T]) -> &T {\n    let mut best = &items[0];\n    for item in items {\n        if item > best {\n            best = item;\n        }\n    }\n    best\n}\n\nfn main() {\n    // The same function body, once per T, and each copy knows its T.\n    describe::<u8>();\n    describe::<u64>();\n    describe::<String>();\n    describe::<&str>();\n    describe::<Option<u32>>();\n\n    let for_ints = largest::<i32> as *const ();\n    let for_floats = largest::<f64> as *const ();\n    println!(\n        \"largest::<i32> and largest::<f64> are different functions: {}\",\n        for_ints != for_floats\n    );\n}\n",
+   "out": "T = u8                             size_of::<T>() = 1\nT = u64                            size_of::<T>() = 8\nT = alloc::string::String          size_of::<T>() = 24\nT = &str                           size_of::<T>() = 16\nT = core::option::Option<u32>      size_of::<T>() = 8\nlargest::<i32> and largest::<f64> are different functions: true\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "multiple-bounds.rs": {
+   "code": "use std::fmt::{Debug, Display};\n\n// Two bounds joined with `+`.\nfn report<T: PartialOrd + Display>(items: &[T]) -> String {\n    let mut best = &items[0];\n    for item in items {\n        if item > best {\n            best = item;\n        }\n    }\n    format!(\"largest of {}: {best}\", items.len())\n}\n\n// Two `impl` parameters are two separate hidden type parameters.\nfn pair_impl(a: impl Display, b: impl Display) -> String {\n    format!(\"{a} and {b}\")\n}\n\n// Each parameter can have its own bounds; `where` keeps the signature readable.\nfn both<A, B>(shown: A, debugged: B) -> String\nwhere\n    A: Display,\n    B: Debug,\n{\n    format!(\"{shown} and {debugged:?}\")\n}\n\nfn main() {\n    println!(\"{}\", report(&[3, 9, 2]));\n    println!(\"{}\", report(&[\"kiwi\", \"apple\", \"pear\"]));\n    println!(\"pair_impl: {}\", pair_impl(1, \"one\"));\n    println!(\"both: {}\", both(\"text\", vec![Some(1), None]));\n}\n",
+   "out": "largest of 3: 9\nlargest of 3: pear\npair_impl: 1 and one\nboth: text and [Some(1), None]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "one-type.fail.rs": {
+   "code": "fn main() {\n    let items = vec![1, \"two\", 3.0];\n    println!(\"{}\", items.len());\n}\n",
+   "error": "error[E0308]: mismatched types\n --> src/main.rs:2:25\n  |\n2 |     let items = vec![1, \"two\", 3.0];\n  |                         ^^^^^ expected integer, found `&str`\n",
+   "lang": "rust"
+  },
+  "return-only.fail.rs": {
+   "code": "fn zero<T: Default>() -> T {\n    T::default()\n}\n\nfn main() {\n    let n = zero();\n    println!(\"{n}\");\n}\n",
+   "error": "error[E0283]: type annotations needed\n --> src/main.rs:6:9\n  |\n6 |     let n = zero();\n  |         ^   ------ type must be known at this point\n  |\n  = note: the type must implement `Default`\nnote: required by a bound in `zero`\n --> src/main.rs:1:12\n  |\n1 | fn zero<T: Default>() -> T {\n  |            ^^^^^^^ required by this bound in `zero`\nhelp: consider giving `n` an explicit type\n  |\n6 |     let n: /* Type */ = zero();\n  |          ++++++++++++\n",
+   "lang": "rust"
+  },
+  "same-name.fail.rs": {
+   "code": "use std::fmt::{Debug, Display};\n\nstruct Wrapper<T>(T);\n\nimpl<T: Display> Wrapper<T> {\n    fn show(&self) -> String {\n        format!(\"{}\", self.0)\n    }\n}\n\nimpl<T: Debug> Wrapper<T> {\n    fn show(&self) -> String {\n        format!(\"{:?}\", self.0)\n    }\n}\n\nfn main() {\n    println!(\"{}\", Wrapper(1).show());\n}\n",
+   "error": "error[E0592]: duplicate definitions with name `show`\n  --> src/main.rs:6:5\n   |\n 6 |     fn show(&self) -> String {\n   |     ^^^^^^^^^^^^^^^^^^^^^^^^ duplicate definitions for `show`\n...\n12 |     fn show(&self) -> String {\n   |     ------------------------ other definition for `show`\n\nerror[E0034]: multiple applicable items in scope\n  --> src/main.rs:18:31\n   |\n18 |     println!(\"{}\", Wrapper(1).show());\n   |                               ^^^^ multiple `show` found\n   |\nnote: candidate #1 is defined in an impl for the type `Wrapper<T>`\n  --> src/main.rs:6:5\n   |\n 6 |     fn show(&self) -> String {\n   |     ^^^^^^^^^^^^^^^^^^^^^^^^\nnote: candidate #2 is defined in an impl for the type `Wrapper<T>`\n  --> src/main.rs:12:5\n   |\n12 |     fn show(&self) -> String {\n   |     ^^^^^^^^^^^^^^^^^^^^^^^^\n\nSome errors have detailed explanations: E0034, E0592.",
+   "lang": "rust"
+  },
+  "same-type.fail.rs": {
+   "code": "use std::fmt::Display;\n\n// One T for both parameters: the two arguments must have the same type.\nfn pair<T: Display>(a: T, b: T) -> String {\n    format!(\"{a} and {b}\")\n}\n\nfn main() {\n    println!(\"{}\", pair(1, \"one\"));\n}\n",
+   "error": "error[E0308]: mismatched types\n --> src/main.rs:9:28\n  |\n9 |     println!(\"{}\", pair(1, \"one\"));\n  |                    ---- -  ^^^^^ expected integer, found `&str`\n  |                    |    |\n  |                    |    expected all arguments to be this integer type because they need to match the type of this parameter\n  |                    arguments to this function are incorrect\n  |\nnote: function defined here\n --> src/main.rs:4:4\n  |\n4 | fn pair<T: Display>(a: T, b: T) -> String {\n  |    ^^^^ -           ----  ---- this parameter needs to match the integer type of `a`\n  |         |           |\n  |         |           `b` needs to match the integer type of this parameter\n  |         `a` and `b` both reference this parameter `T`\n",
+   "lang": "rust"
+  },
+  "sized.fail.rs": {
+   "code": "use std::fmt::Display;\n\nfn show<T: Display>(item: &T) -> String {\n    format!(\"<{item}>\")\n}\n\nfn main() {\n    println!(\"{}\", show(\"hello\"));\n}\n",
+   "error": "error[E0277]: the size for values of type `str` cannot be known at compilation time\n --> src/main.rs:8:25\n  |\n8 |     println!(\"{}\", show(\"hello\"));\n  |                    ---- ^^^^^^^ doesn't have a size known at compile-time\n  |                    |\n  |                    required by a bound introduced by this call\n  |\n  = help: the trait `Sized` is not implemented for `str`\nnote: required by an implicit `Sized` bound in `show`\n --> src/main.rs:3:9\n  |\n3 | fn show<T: Display>(item: &T) -> String {\n  |         ^ required by the implicit `Sized` requirement on this type parameter in `show`\nhelp: consider relaxing the implicit `Sized` restriction\n  |\n3 | fn show<T: Display + ?Sized>(item: &T) -> String {\n  |                    ++++++++\n",
+   "lang": "rust"
+  },
+  "sized.rs": {
+   "code": "use std::fmt::Display;\nuse std::mem::size_of_val;\n\n// `?Sized` lifts the hidden \"T has a known size\" rule.\nfn show<T: Display + ?Sized>(item: &T) -> String {\n    format!(\"<{item}> is {} bytes\", size_of_val(item))\n}\n\nfn main() {\n    println!(\"{}\", show(\"hello\"));\n    println!(\"{}\", show(&5_i64));\n}\n",
+   "out": "<hello> is 5 bytes\n<5> is 8 bytes\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "specialization.fail.rs": {
+   "code": "trait Describe {\n    fn describe(&self) -> String;\n}\n\n// The general case, like the primary template in C++.\nimpl<T> Describe for T {\n    fn describe(&self) -> String {\n        \"something\".to_string()\n    }\n}\n\n// The special case, like `template <> struct Describe<int>`.\nimpl Describe for i32 {\n    fn describe(&self) -> String {\n        \"an integer\".to_string()\n    }\n}\n\nfn main() {\n    println!(\"{}\", 5_i32.describe());\n}\n",
+   "error": "error[E0119]: conflicting implementations of trait `Describe` for type `i32`\n  --> src/main.rs:13:1\n   |\n 6 | impl<T> Describe for T {\n   | ---------------------- first implementation here\n...\n13 | impl Describe for i32 {\n   | ^^^^^^^^^^^^^^^^^^^^^ conflicting implementation for `i32`\n",
+   "lang": "rust"
+  },
+  "struct-bound.fail.rs": {
+   "code": "use std::fmt::Display;\n\n// The bound is on the struct, so every impl has to repeat it.\nstruct Labeled<T: Display> {\n    value: T,\n}\n\nimpl<T> Labeled<T> {\n    fn value(&self) -> &T {\n        &self.value\n    }\n}\n\nfn main() {\n    let label = Labeled { value: 7 };\n    println!(\"{}\", label.value());\n}\n",
+   "error": "error[E0277]: `T` doesn't implement `std::fmt::Display`\n --> src/main.rs:8:9\n  |\n8 | impl<T> Labeled<T> {\n  |         ^^^^^^^^^^ the trait `std::fmt::Display` is not implemented for `T`\n  |\nnote: required by a bound in `Labeled`\n --> src/main.rs:4:19\n  |\n4 | struct Labeled<T: Display> {\n  |                   ^^^^^^^ required by this bound in `Labeled`\nhelp: consider restricting type parameter `T` with trait `Display`\n  |\n8 | impl<T: std::fmt::Display> Labeled<T> {\n  |       +++++++++++++++++++\n\nerror[E0277]: `T` doesn't implement `std::fmt::Display`\n --> src/main.rs:9:15\n  |\n9 |     fn value(&self) -> &T {\n  |               ^^^^ the trait `std::fmt::Display` is not implemented for `T`\n  |\nnote: required by a bound in `Labeled`\n --> src/main.rs:4:19\n  |\n4 | struct Labeled<T: Display> {\n  |                   ^^^^^^^ required by this bound in `Labeled`\nhelp: consider restricting type parameter `T` with trait `Display`\n  |\n8 | impl<T: std::fmt::Display> Labeled<T> {\n  |       +++++++++++++++++++\n",
+   "lang": "rust"
+  },
+  "type-id.rs": {
+   "code": "use std::any::{Any, TypeId};\n\n// `T: 'static` means T holds no borrowed data. TypeId works for such types.\nfn same_type<A: 'static, B: 'static>() -> bool {\n    TypeId::of::<A>() == TypeId::of::<B>()\n}\n\nfn is_a<T: 'static>(value: &dyn Any) -> bool {\n    value.is::<T>()\n}\n\nfn main() {\n    println!(\"same_type::<i32, i32>(): {}\", same_type::<i32, i32>());\n    println!(\"same_type::<i32, u8>(): {}\", same_type::<i32, u8>());\n    println!(\"is_a::<i32>(&3i32): {}\", is_a::<i32>(&3i32));\n    println!(\"is_a::<i32>(&\\\"x\\\"): {}\", is_a::<i32>(&\"x\"));\n}\n",
+   "out": "same_type::<i32, i32>(): true\nsame_type::<i32, u8>(): false\nis_a::<i32>(&3i32): true\nis_a::<i32>(&\"x\"): false\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "variance.fail.rs": {
+   "code": "trait Animal {}\n\nstruct Dog;\n\nimpl Animal for Dog {}\n\nfn main() {\n    let _one: Box<dyn Animal> = Box::new(Dog); // a Dog is an Animal\n    let dogs: Vec<Box<Dog>> = vec![Box::new(Dog)];\n    let animals: Vec<Box<dyn Animal>> = dogs; // a list of Dogs is not a list of Animals\n    println!(\"{}\", animals.len());\n}\n",
+   "error": "error[E0308]: mismatched types\n  --> src/main.rs:10:41\n   |\n10 |     let animals: Vec<Box<dyn Animal>> = dogs; // a list of Dogs is not a list of Animals\n   |                  --------------------   ^^^^ expected `Vec<Box<dyn Animal>>`, found `Vec<Box<Dog>>`\n   |                  |\n   |                  expected due to this\n   |\n   = note: expected struct `Vec<Box<dyn Animal>>`\n              found struct `Vec<Box<Dog>>`\n   = help: `Dog` implements `Animal` so you could box the found value and coerce it to the trait object `Box<dyn Animal>`, you will have to change the expected type as well\n",
+   "lang": "rust"
+  },
+  "boxing.java": {
+   "code": "public class Main {\n    record Pair<T>(T first, T second) {}\n\n    public static void main(String[] args) {\n        Pair<Integer> pair = new Pair<>(1000, 1000);\n        Object first = pair.first();\n        System.out.println(\"first is a \" + first.getClass().getName());\n        System.out.println(\"first and second are the same object: \" + (pair.first() == pair.second()));\n    }\n}\n",
+   "out": "first is a java.lang.Integer\nfirst and second are the same object: false\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "boxing.kt": {
+   "code": "fun main() {\n    val list: List<Int> = listOf(1000, 1000)\n    val first: Any = list[0]\n    println(\"element of a List<Int>: ${first.javaClass.name}\")\n    println(\"same object twice: ${(list[0] as Any) === (list[1] as Any)}\")\n    // IntArray is the unboxed form.\n    println(\"IntArray: ${intArrayOf(1000, 1000).javaClass.name}\")\n}\n",
+   "out": "element of a List<Int>: java.lang.Integer\nsame object twice: false\nIntArray: [I\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "check-c.c": {
+   "code": "#include <stdlib.h>\n#include <stdio.h>\n\n// Backs the C cells of the table in lesson.mdx. Never shown.\nstatic int by_int(const void *a, const void *b) {\n    return *(const int *)a - *(const int *)b;\n}\n\nint main(void) {\n    int nums[] = {3, 1, 2};\n    qsort(nums, 3, sizeof nums[0], by_int);\n    if (nums[0] != 1 || nums[2] != 3) return 1;\n    printf(\"ok\\n\");\n    return 0;\n}\n",
+   "out": "ok\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "check-cpp.cpp": {
+   "code": "#include <array>\n#include <cstddef>\n#include <cassert>\n#include <concepts>\n#include <iostream>\n#include <string>\n\n// Backs the C++ cells of the table in lesson.mdx. Never shown.\ntemplate <typename T, std::size_t N>\nT sum(const std::array<T, N>& values) {\n    T total{};\n    for (const T& v : values) total += v;\n    return total;\n}\n\ntemplate <typename T>\nT biggest(T a, T b) { return a > b ? a : b; }\n\ntemplate <typename T>\nstruct Describe { static const char* name() { return \"any\"; } };\n\ntemplate <>\nstruct Describe<int> { static const char* name() { return \"int\"; } };\n\n// C++20 abbreviated function template: a hidden type parameter.\nvoid show(std::totally_ordered auto x) { std::cout << x << \"\\n\"; }\n\nint main() {\n    show(1);\n    assert((sum(std::array<int, 3>{1, 2, 3}) == 6));\n    assert(biggest<double>(1, 2.5) == 2.5);\n    assert(std::string(Describe<int>::name()) == \"int\");\n    assert(std::string(Describe<char>::name()) == \"any\");\n    std::cout << \"ok\\n\";\n}\n",
+   "out": "1\nok\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "check-cs.cs": {
+   "code": "using System.Numerics;\n\n// Backs the C# cells of the table in lesson.mdx. Never shown.\nvoid Must(bool ok, string what)\n{\n    if (!ok) throw new Exception(what);\n}\n\nMust(Bigger(3, 9) == 9, \"two bounds\");\nMust(Make<List<int>>().Count == 0, \"new() constraint\");\nMust(Total([1, 2, 3]) == 6, \"INumber\");\nMust(Total([1.5, 2.5]) == 4.0, \"INumber double\");\nIEnumerable<object> objects = new List<string> { \"x\" };\nMust(objects.Count() == 1, \"out T variance\");\nMust(new List<int> { 1 }.Count == 1, \"primitive type argument\");\nMust(Describe(7) == \"7 True 7\", \"unbounded T\");\nMust(new Pair<int>(1, 2).Map(n => \"#\" + n).First == \"#1\", \"generic method\");\nMust(Array.Empty<string>().Length == 0, \"explicit type argument\");\nConsole.WriteLine(\"ok\");\n\nstatic T Bigger<T>(T a, T b) where T : IComparable<T>, IFormattable => a.CompareTo(b) > 0 ? a : b;\n\nstatic string Describe<T>(T x) => x?.ToString() + \" \" + x?.Equals(x) + \" \" + x?.GetHashCode();\n\nstatic T Make<T>() where T : new() => new T();\n\nstatic T Total<T>(T[] xs) where T : INumber<T>\n{\n    T sum = T.Zero;\n    foreach (var x in xs) sum += x;\n    return sum;\n}\n\nrecord Pair<T>(T First, T Second)\n{\n    public Pair<R> Map<R>(Func<T, R> f) => new Pair<R>(f(First), f(Second));\n}\n",
+   "out": "ok\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "check-go.go": {
+   "code": "package main\n\nimport (\n\t\"cmp\"\n\t\"fmt\"\n\t\"runtime\"\n)\n\n// Backs the Go column of the table in lesson.mdx. Never shown.\n\ntype Stack[T any] struct{ items []T }\n\nfunc (s *Stack[T]) Push(x T) { s.items = append(s.items, x) }\n\nfunc Index[T comparable](s []T, x T) int {\n\tfor i, y := range s {\n\t\tif y == x {\n\t\t\treturn i\n\t\t}\n\t}\n\treturn -1\n}\n\nfunc Max[T cmp.Ordered](a, b T) T {\n\tif b > a {\n\t\treturn b\n\t}\n\treturn a\n}\n\ntype Number interface{ ~int | ~float64 }\n\ntype MyInt int\n\nfunc Sum[T Number](xs []T) T {\n\tvar total T\n\tfor _, x := range xs {\n\t\ttotal += x\n\t}\n\treturn total\n}\n\ntype Point struct{ X, Y int }\n\nfunc (p Point) String() string { return fmt.Sprintf(\"(%d,%d)\", p.X, p.Y) }\n\nfunc (p Point) Less(other Point) bool { return p.X < other.X }\n\n// A constraint can require a method: fmt.Stringer, or one of your own.\nfunc Show[T fmt.Stringer](x T) string { return \"<\" + x.String() + \">\" }\n\nfunc Smaller[T interface{ Less(T) bool }](a, b T) T {\n\tif b.Less(a) {\n\t\treturn b\n\t}\n\treturn a\n}\n\n// Methods with their own type parameters need Go 1.27.\nfunc (s Stack[T]) Map[U any](f func(T) U) []U {\n\tout := []U{}\n\tfor _, x := range s.items {\n\t\tout = append(out, f(x))\n\t}\n\treturn out\n}\n\nfunc Map[T, U any](s []T, f func(T) U) []U {\n\tout := []U{}\n\tfor _, x := range s {\n\t\tout = append(out, f(x))\n\t}\n\treturn out\n}\n\nfunc main() {\n\tfmt.Println(\"toolchain:\", runtime.Version())\n\tfmt.Println(\"Show with fmt.Stringer:\", Show(Point{1, 2}))\n\tfmt.Println(\"Smaller with a Less method:\", Smaller(Point{3, 0}, Point{1, 9}))\n\tfmt.Println(\"Max of MyInt:\", Max(MyInt(3), MyInt(5)))\n\tvar s Stack[int]\n\ts.Push(4)\n\tfmt.Println(\"stack:\", s.items)\n\tfmt.Println(\"method with its own type parameter:\", s.Map(func(n int) string { return fmt.Sprint(n * 2) }))\n\tfmt.Println(\"Index:\", Index([]string{\"a\", \"b\"}, \"b\"))\n\tfmt.Println(\"Max:\", Max(\"kiwi\", \"pear\"))\n\tfmt.Println(\"Sum of MyInt:\", Sum([]MyInt{1, 2, 3}))\n\tfmt.Println(\"Map explicit:\", Map[int, string]([]int{1, 2}, func(n int) string { return fmt.Sprint(n * 2) }))\n}\n",
+   "out": "toolchain: go1.27.3\nShow with fmt.Stringer: <(1,2)>\nSmaller with a Less method: (1,9)\nMax of MyInt: 5\nstack: [4]\nmethod with its own type parameter: [8]\nIndex: 1\nMax: pear\nSum of MyInt: 6\nMap explicit: [2 4]\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "check-java.java": {
+   "code": "import java.io.Serializable;\nimport java.util.Collections;\nimport java.util.List;\nimport java.util.function.Function;\n\n// Backs the Java cells of the table in lesson.mdx. Never shown.\npublic class Main {\n    static void must(boolean ok, String what) {\n        if (!ok) throw new AssertionError(what);\n    }\n\n    static <T extends Comparable<T> & Serializable> T bigger(T a, T b) {\n        return a.compareTo(b) > 0 ? a : b;\n    }\n\n    static double total(List<? extends Number> xs) {\n        double sum = 0;\n        for (Number n : xs) sum += n.doubleValue();\n        return sum;\n    }\n\n    // An unbounded T still has toString, equals and hashCode.\n    static <T> String describe(T x) {\n        return x.toString() + \" \" + x.equals(x) + \" \" + x.hashCode();\n    }\n\n    record Pair<T>(T first, T second) {\n        <R> Pair<R> map(Function<? super T, ? extends R> f) {\n            return new Pair<>(f.apply(first), f.apply(second));\n        }\n    }\n\n    public static void main(String[] args) {\n        must(describe(7).equals(\"7 true 7\"), \"unbounded T\");\n        must(new Pair<>(1, 2).map(n -> \"#\" + n).first().equals(\"#1\"), \"generic method\");\n        must(Collections.<String>emptyList().isEmpty(), \"explicit type argument\");\n        must(bigger(\"a\", \"b\").equals(\"b\"), \"two bounds\");\n        List<Integer> ints = List.of(1, 2);\n        must(total(ints) == 3.0, \"wildcard\");\n        System.out.println(\"ok\");\n    }\n}\n",
+   "out": "ok\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "check-kt.kt": {
+   "code": "// Backs the Kotlin cells of the table in lesson.mdx. Never shown.\nfun must(ok: Boolean, what: String) {\n    if (!ok) throw AssertionError(what)\n}\n\nfun <T> bigger(a: T, b: T): T where T : Comparable<T>, T : java.io.Serializable = if (a > b) a else b\n\nfun total(xs: MutableList<out Number>): Double = xs.sumOf { it.toDouble() }\n\nfun <T> describe(x: T): String = \"${x.toString()} ${x == x} ${x.hashCode()}\"\n\nclass Pair<T>(val first: T, val second: T) {\n    fun <R> map(f: (T) -> R): Pair<R> = Pair(f(first), f(second))\n}\n\nfun main() {\n    must(describe(7) == \"7 true 7\", \"unbounded T\")\n    must(Pair(1, 2).map { \"#$it\" }.first == \"#1\", \"generic method\")\n    must(emptyList<String>().isEmpty(), \"explicit type argument\")\n    must(bigger(\"a\", \"b\") == \"b\", \"two bounds\")\n    val ints: List<Int> = listOf(1, 2)\n    must(ints.sum() == 3, \"primitive type argument\")\n    val doubles: MutableList<Double> = mutableListOf(1.5, 2.5)\n    must(total(doubles) == 4.0, \"out projection\")\n    println(\"ok\")\n}\n",
+   "out": "ok\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "check-py.py": {
+   "code": "# Backs the Python and TypeScript cells of the table in lesson.mdx. Never shown.\nfrom typing import Protocol, Self\n\n\nclass Comparable(Protocol):\n    def __gt__(self, other: Self, /) -> bool: ...\n\n\nclass Stack[T]:\n    def __init__(self) -> None:\n        self.items: list[T] = []\n\n    def push(self, item: T) -> None:\n        self.items.append(item)\n\n\ns = Stack[int]()\ns.push(1)\nassert s.items == [1]\nassert type(s) is type(Stack[str]())\nassert type([1]) is type([\"a\"])\nmixed: list[int | str] = [1, \"a\"]\nassert len(mixed) == 2\nprint(\"ok\")\n",
+   "out": "ok\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "check-ts.ts": {
+   "code": "// Backs the TypeScript cells of the table in lesson.mdx. Never shown.\nclass Stack<T> {\n  items: T[] = [];\n  push(item: T): void {\n    this.items.push(item);\n  }\n}\n\ninterface HasLength {\n  length: number;\n}\n\nconst mixed: (number | string)[] = [1, \"a\"];\n\nfunction longest<T extends HasLength>(a: T, b: T): T {\n  return a.length >= b.length ? a : b;\n}\n\nconst s = new Stack<number>();\ns.push(1);\nconsole.log(longest(\"ab\", \"abc\"), longest([1], [1, 2]), s.items);\nconsole.log(mixed.length);\nconsole.log(\"ok\");\n",
+   "out": "abc [ 1, 2 ] [ 1 ]\n2\nok\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "concept-body.cpp": {
+   "code": "#include <compare>\n#include <concepts>\n#include <iostream>\n\n// The concept promises ordering. The body also uses `+`, which it never promised.\ntemplate <std::totally_ordered T>\nT twice(T a) {\n    return a + a;\n}\n\n// Orderable, but no `+`.\nstruct Point {\n    int x;\n    auto operator<=>(const Point&) const = default;\n};\n\nint main() {\n    std::cout << \"twice(2) = \" << twice(2) << \"\\n\";\n    // twice(Point{1}) is never written, so the template is never instantiated with\n    // a Point: the program compiles.\n}\n",
+   "out": "twice(2) = 4\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "concept-body.fail.cpp": {
+   "code": "#include <compare>\n#include <concepts>\n#include <iostream>\n\n// The concept promises ordering. The body also uses `+`, which it never promised.\ntemplate <std::totally_ordered T>\nT twice(T a) {\n    return a + a;\n}\n\n// Orderable, but no `+`.\nstruct Point {\n    int x;\n    auto operator<=>(const Point&) const = default;\n};\n\nint main() {\n    std::cout << \"twice(2) = \" << twice(2) << \"\\n\";\n    std::cout << twice(Point{1}).x << \"\\n\"; // Point has no +\n}\n",
+   "error": "main.cpp: In instantiation of ‘T twice(T) [with T = Point]’:\nmain.cpp:19:23:   required from here\n   19 |     std::cout << twice(Point{1}).x << \"\\n\"; // Point has no +\n      |                  ~~~~~^~~~~~~~~~\nmain.cpp:8:14: error: no match for ‘operator+’ (operand types are ‘Point’ and ‘Point’)\n    8 |     return a + a;\n      |            ~~^~~",
+   "lang": "cpp"
+  },
+  "erased.fail.kt": {
+   "code": "fun <T> isA(value: Any): Boolean = value is T\n\nfun main() {\n    println(isA<Int>(3))\n}\n",
+   "error": "Main.kt:1:45: error: cannot check for instance of erased type 'T (of fun <T> isA)'.\nfun <T> isA(value: Any): Boolean = value is T\n                                            ^",
+   "lang": "kotlin"
+  },
+  "erased.ts": {
+   "code": "function identity<T>(value: T): T {\n  return value;\n}\n\n// The compiled JavaScript has no trace of T.\nconsole.log(identity.toString());\nconsole.log(identity<number>(5), identity<string>(\"five\"));\n",
+   "out": "function identity(value) {\n    return value;\n}\n5 five\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "erasure.java": {
+   "code": "import java.util.ArrayList;\nimport java.util.List;\n\npublic class Main {\n    @SuppressWarnings({\"rawtypes\", \"unchecked\"})\n    public static void main(String[] args) {\n        List<String> strings = new ArrayList<>();\n        List<Integer> ints = new ArrayList<>();\n        System.out.println(\"class of strings: \" + strings.getClass().getName());\n        System.out.println(\"class of ints: \" + ints.getClass().getName());\n        System.out.println(\"same class at run time: \" + (strings.getClass() == ints.getClass()));\n\n        // The type argument is gone at run time, so a raw list accepts anything.\n        List raw = strings;\n        raw.add(42);\n        System.out.println(\"strings now holds: \" + strings);\n        try {\n            String first = strings.get(0);\n            System.out.println(first);\n        } catch (ClassCastException e) {\n            System.out.println(\"reading it as a String fails: \" + e.getMessage());\n        }\n    }\n}\n",
+   "out": "class of strings: java.util.ArrayList\nclass of ints: java.util.ArrayList\nsame class at run time: true\nstrings now holds: [42]\nreading it as a String fails: class java.lang.Integer cannot be cast to class java.lang.String (java.lang.Integer and java.lang.String are in module java.base of loader 'bootstrap')\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "instances.cpp": {
+   "code": "#include <iostream>\n#include <vector>\n\ntemplate <typename T>\nconst T& largest(const std::vector<T>& items) {\n    std::cout << __PRETTY_FUNCTION__ << \"\\n\";\n    const T* best = &items[0];\n    for (const T& item : items) {\n        if (item > *best) {\n            best = &item;\n        }\n    }\n    return *best;\n}\n\nint main() {\n    largest(std::vector<int>{3, 9, 2});\n    largest(std::vector<double>{1.5, 0.5});\n}\n",
+   "out": "const T& largest(const std::vector<T>&) [with T = int]\nconst T& largest(const std::vector<T>&) [with T = double]\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "max-macro.c": {
+   "code": "#include <stdio.h>\n\n// One \"generic\" max, by pasting text. It works for int and for double.\n#define MAX(a, b) ((a) > (b) ? (a) : (b))\n\nint main(void) {\n    printf(\"MAX(3, 9) = %d\\n\", MAX(3, 9));\n    printf(\"MAX(2.5, 1.5) = %g\\n\", MAX(2.5, 1.5));\n\n    int i = 5;\n    int j = 3;\n    int bigger = MAX(i++, j);\n    printf(\"MAX(i++, j) = %d, and i is now %d\\n\", bigger, i);\n    return 0;\n}\n",
+   "out": "MAX(3, 9) = 9\nMAX(2.5, 1.5) = 2.5\nMAX(i++, j) = 6, and i is now 7\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "new-t.fail.java": {
+   "code": "public class Main {\n    static <T> T make() {\n        return new T();\n    }\n\n    public static void main(String[] args) {\n        make();\n    }\n}\n",
+   "error": "Main.java:3: error: unexpected type\n        return new T();\n                   ^\n  required: class\n  found:    type parameter T\n  where T is a type-variable:\n    T extends Object declared in method <T>make()\n1 error",
+   "lang": "java"
+  },
+  "primitive-arg.fail.java": {
+   "code": "import java.util.List;\n\npublic class Main {\n    public static void main(String[] args) {\n        List<int> numbers = List.of(3, 9, 2);\n        System.out.println(numbers);\n    }\n}\n",
+   "error": "Main.java:5: error: unexpected type\n        List<int> numbers = List.of(3, 9, 2);\n             ^\n  required: reference\n  found:    int\n1 error",
+   "lang": "java"
+  },
+  "reified.cs": {
+   "code": "using System;\nusing System.Collections.Generic;\n\nConsole.WriteLine(\"List<int> is List<string>: \" + (typeof(List<int>) == typeof(List<string>)));\nConsole.WriteLine(\"type of a List<int>: \" + new List<int>().GetType());\nConsole.WriteLine(\"T in Name<int>(): \" + Name<int>());\nConsole.WriteLine(\"T in Name<string>(): \" + Name<string>());\nConsole.WriteLine(\"new T[2] has length \" + Make<string>().Length);\n\n// T is a real type while the program runs.\nstatic string Name<T>() => typeof(T).Name;\n\nstatic T[] Make<T>() => new T[2];\n",
+   "out": "List<int> is List<string>: False\ntype of a List<int>: System.Collections.Generic.List`1[System.Int32]\nT in Name<int>(): Int32\nT in Name<string>(): String\nnew T[2] has length 2\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "reified.kt": {
+   "code": "// `reified` keeps T at run time. Without it, Kotlin erases T like Java does.\ninline fun <reified T> isA(value: Any): Boolean = value is T\n\nfun main() {\n    println(\"3 is an Int: ${isA<Int>(3)}\")\n    println(\"\\\"3\\\" is an Int: ${isA<Int>(\"3\")}\")\n}\n",
+   "out": "3 is an Int: true\n\"3\" is an Int: false\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "runtime-type.go": {
+   "code": "package main\n\nimport \"fmt\"\n\n// The zero value of a T carries its type, which %T can print.\nfunc Name[T any]() string {\n\tvar zero T\n\treturn fmt.Sprintf(\"%T\", zero)\n}\n\ntype MyInt int\n\nfunc main() {\n\tfmt.Println(\"Name[int]():\", Name[int]())\n\tfmt.Println(\"Name[[]string]():\", Name[[]string]())\n\tfmt.Println(\"Name[MyInt]():\", Name[MyInt]())\n\t// The zero value of an interface type is nil, which has no type to print.\n\tfmt.Println(\"Name[error]():\", Name[error]())\n}\n",
+   "out": "Name[int](): int\nName[[]string](): []string\nName[MyInt](): main.MyInt\nName[error](): <nil>\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "shape.go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"runtime\"\n)\n\n// entry returns the address where the running copy of Id starts.\n//\n//go:noinline\nfunc Id[T any](x T) (T, uintptr) {\n\tpc, _, _, _ := runtime.Caller(0)\n\treturn x, runtime.FuncForPC(pc).Entry()\n}\n\nfunc main() {\n\ti, s := 1, \"x\"\n\t_, forIntPtr := Id(&i)\n\t_, forStrPtr := Id(&s)\n\t_, forInt := Id(1)\n\t_, forInt64 := Id(int64(1))\n\tfmt.Println(\"Id[*int] and Id[*string] run the same code:\", forIntPtr == forStrPtr)\n\tfmt.Println(\"Id[int] and Id[int64] run the same code:\", forInt == forInt64)\n}\n",
+   "out": "Id[*int] and Id[*string] run the same code: true\nId[int] and Id[int64] run the same code: false\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "two-args.cs": {
+   "code": "using System;\n\n// C# allows one class to implement IComparable<T> for two different T.\nConsole.WriteLine(\"compared with an int: \" + new Length().CompareTo(5));\nConsole.WriteLine(\"compared with a string: \" + new Length().CompareTo(\"abc\"));\n\nclass Length : IComparable<int>, IComparable<string>\n{\n    public int CompareTo(int other) => 1;\n\n    public int CompareTo(string? other) => 2;\n}\n",
+   "out": "compared with an int: 1\ncompared with a string: 2\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "two-args.fail.java": {
+   "code": "public class Main {\n    // One class, two Comparable<...>: Java refuses.\n    static class Length implements Comparable<Length>, Comparable<String> {\n        public int compareTo(Length other) {\n            return 0;\n        }\n\n        public int compareTo(String other) {\n            return 0;\n        }\n    }\n\n    public static void main(String[] args) {\n        System.out.println(new Length().compareTo(\"x\"));\n    }\n}\n",
+   "error": "Main.java:3: error: repeated interface\n    static class Length implements Comparable<Length>, Comparable<String> {\n                                                                 ^\nMain.java:3: error: Comparable cannot be inherited with different arguments: <Main.Length> and <java.lang.String>\n    static class Length implements Comparable<Length>, Comparable<String> {\n           ^\n2 errors",
+   "lang": "java"
+  },
+  "typing.fail.py": {
+   "code": "from typing import Protocol, Self\n\n\nclass Comparable(Protocol):\n    def __gt__(self, other: Self, /) -> bool: ...\n\n\ndef largest[T: Comparable](items: list[T]) -> T:\n    best = items[0]\n    for item in items:\n        if item > best:\n            best = item\n    return best\n\n\nprint(largest([3, 9, 2]))\n# The hints are not checked when the program runs.\nprint(largest([3, \"kiwi\", 2]))\n",
+   "out": "9\nTraceback (most recent call last):\n  File \"main.py\", line 18, in <module>\n    print(largest([3, \"kiwi\", 2]))\n          ~~~~~~~^^^^^^^^^^^^^^^^\n  File \"main.py\", line 11, in largest\n    if item > best:\n       ^^^^^^^^^^^\nTypeError: '>' not supported between instances of 'str' and 'int'\n",
+   "lang": "python",
+   "exit": 1
+  },
+  "variance.fail.kt": {
+   "code": "open class Animal\n\nclass Dog : Animal()\n\nfun main() {\n    val dogs: MutableList<Dog> = mutableListOf(Dog())\n    val animals: MutableList<Animal> = dogs // could add a Cat to it\n    println(animals.size)\n}\n",
+   "error": "Main.kt:7:38: error: initializer type mismatch: expected 'MutableList<Animal>', actual 'MutableList<Dog>'.\n    val animals: MutableList<Animal> = dogs // could add a Cat to it\n                                     ^",
+   "lang": "kotlin"
+  },
+  "variance.kt": {
+   "code": "open class Animal\n\nclass Dog : Animal()\n\nfun main() {\n    val dogs: List<Dog> = listOf(Dog())\n    val animals: List<Animal> = dogs // fine: List<out E> only gives items out\n    println(\"read-only list of dogs used as animals: ${animals.size}\")\n}\n",
+   "out": "read-only list of dogs used as animals: 1\n",
+   "lang": "kotlin",
+   "exit": 0
+  }
+ },
+ "exercises": {
+  "first-n": {
+   "starter": "// The first N items of a slice as an array; if the slice is shorter, the rest is\n// the default value. The caller picks N, usually with a type: `let a: [i32; 3] = ...`.\nfn first_n<T, const N: usize>(items: &[T]) -> [T; N] {\n    todo!(\"`std::array::from_fn(|i| ...)` builds an array of length N\")\n}\n\n// A type with very few traits: no Copy, no Debug, no PartialEq.\n#[derive(Clone, Default)]\nstruct Tally(u32);\n\nfn main() {\n    let a: [i32; 3] = first_n(&[1, 2, 3, 4, 5]);\n    assert_eq!(a, [1, 2, 3]);\n    let b: [i32; 4] = first_n(&[7]);\n    assert_eq!(b, [7, 0, 0, 0]);\n    let c: [char; 3] = first_n(&['x', 'y', 'z']);\n    assert_eq!(c, ['x', 'y', 'z']);\n    let none: [char; 0] = first_n(&['x']);\n    assert_eq!(none, []);\n    // Strings are Clone but not Copy; the default is the empty string.\n    let d: [String; 2] = first_n(&[String::from(\"ana\")]);\n    assert_eq!(d, [\"ana\", \"\"]);\n    let e: [Tally; 2] = first_n(&[Tally(5)]);\n    assert_eq!((e[0].0, e[1].0), (5, 0));\n    // N can also be named with the turbofish.\n    assert_eq!(first_n::<f64, 2>(&[1.5, 2.5, 3.5]), [1.5, 2.5]);\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "// The first N items of a slice as an array; if the slice is shorter, the rest is\n// the default value. The caller picks N, usually with a type: `let a: [i32; 3] = ...`.\nfn first_n<T: Clone + Default, const N: usize>(items: &[T]) -> [T; N] {\n    std::array::from_fn(|i| items.get(i).cloned().unwrap_or_default())\n}\n\n// A type with very few traits: no Copy, no Debug, no PartialEq.\n#[derive(Clone, Default)]\nstruct Tally(u32);\n\nfn main() {\n    let a: [i32; 3] = first_n(&[1, 2, 3, 4, 5]);\n    assert_eq!(a, [1, 2, 3]);\n    let b: [i32; 4] = first_n(&[7]);\n    assert_eq!(b, [7, 0, 0, 0]);\n    let c: [char; 3] = first_n(&['x', 'y', 'z']);\n    assert_eq!(c, ['x', 'y', 'z']);\n    let none: [char; 0] = first_n(&['x']);\n    assert_eq!(none, []);\n    // Strings are Clone but not Copy; the default is the empty string.\n    let d: [String; 2] = first_n(&[String::from(\"ana\")]);\n    assert_eq!(d, [\"ana\", \"\"]);\n    let e: [Tally; 2] = first_n(&[Tally(5)]);\n    assert_eq!((e[0].0, e[1].0), (5, 0));\n    // N can also be named with the turbofish.\n    assert_eq!(first_n::<f64, 2>(&[1.5, 2.5, 3.5]), [1.5, 2.5]);\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "min-max": {
+   "starter": "// The smallest and the largest item of a slice, or None if it is empty.\n// The checks use whole numbers, decimals, &str, char and a type with almost no traits.\nfn min_max<T>(items: &[T]) -> Option<(&T, &T)> {\n    todo!(\"the compiler will name the bound you need; start from the first item\")\n}\n\n// Comparable with < and >, and nothing else: no Copy, Clone, Debug or Ord.\n#[derive(PartialEq, PartialOrd)]\nstruct Version(u32, u32);\n\nfn main() {\n    assert_eq!(min_max(&[3, 9, 2, 7]), Some((&2, &9)));\n    assert_eq!(min_max(&[1, 5, 9]), Some((&1, &9)));\n    assert_eq!(min_max(&[9, 5, 1]), Some((&1, &9)));\n    assert_eq!(min_max(&[4]), Some((&4, &4)));\n    // Decimals can be compared with < but are not Ord; all negative on purpose.\n    assert_eq!(min_max(&[-4.5, -0.5, -9.25]), Some((&-9.25, &-0.5)));\n    assert_eq!(\n        min_max(&[\"kiwi\", \"apple\", \"pear\"]),\n        Some((&\"apple\", &\"pear\"))\n    );\n    assert_eq!(min_max(&['z', 'a']), Some((&'a', &'z')));\n    assert_eq!(min_max::<i32>(&[]), None);\n\n    let versions = [Version(1, 4), Version(0, 9), Version(2, 0), Version(1, 10)];\n    let (lowest, highest) = min_max(&versions).unwrap();\n    assert_eq!((lowest.0, lowest.1), (0, 9));\n    assert_eq!((highest.0, highest.1), (2, 0));\n    // The answer is an item of the slice itself, not a copy.\n    assert!(std::ptr::eq(lowest, &versions[1]));\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "// The smallest and the largest item of a slice, or None if it is empty.\n// The checks use whole numbers, decimals, &str, char and a type with almost no traits.\nfn min_max<T: PartialOrd>(items: &[T]) -> Option<(&T, &T)> {\n    let mut smallest = items.first()?;\n    let mut largest = smallest;\n    for item in items {\n        if item < smallest {\n            smallest = item;\n        }\n        if item > largest {\n            largest = item;\n        }\n    }\n    Some((smallest, largest))\n}\n\n// Comparable with < and >, and nothing else: no Copy, Clone, Debug or Ord.\n#[derive(PartialEq, PartialOrd)]\nstruct Version(u32, u32);\n\nfn main() {\n    assert_eq!(min_max(&[3, 9, 2, 7]), Some((&2, &9)));\n    assert_eq!(min_max(&[1, 5, 9]), Some((&1, &9)));\n    assert_eq!(min_max(&[9, 5, 1]), Some((&1, &9)));\n    assert_eq!(min_max(&[4]), Some((&4, &4)));\n    // Decimals can be compared with < but are not Ord; all negative on purpose.\n    assert_eq!(min_max(&[-4.5, -0.5, -9.25]), Some((&-9.25, &-0.5)));\n    assert_eq!(\n        min_max(&[\"kiwi\", \"apple\", \"pear\"]),\n        Some((&\"apple\", &\"pear\"))\n    );\n    assert_eq!(min_max(&['z', 'a']), Some((&'a', &'z')));\n    assert_eq!(min_max::<i32>(&[]), None);\n\n    let versions = [Version(1, 4), Version(0, 9), Version(2, 0), Version(1, 10)];\n    let (lowest, highest) = min_max(&versions).unwrap();\n    assert_eq!((lowest.0, lowest.1), (0, 9));\n    assert_eq!((highest.0, highest.1), (2, 0));\n    // The answer is an item of the slice itself, not a copy.\n    assert!(std::ptr::eq(lowest, &versions[1]));\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "stack": {
+   "starter": "// A stack of any type: the last item pushed is the first one popped.\nuse std::fmt::Display;\n\nstruct Stack<T> {\n    items: Vec<T>,\n}\n\nimpl<T> Stack<T> {\n    fn new() -> Stack<T> {\n        todo!(\"an empty stack\")\n    }\n\n    fn push(&mut self, item: T) {\n        todo!(\"add to the end of items\")\n    }\n\n    fn pop(&mut self) -> Option<T> {\n        todo!(\"take from the end of items\")\n    }\n\n    fn peek(&self) -> Option<&T> {\n        todo!(\"look at the end of items without taking it\")\n    }\n\n    fn len(&self) -> usize {\n        todo!(\"how many items\")\n    }\n\n    // Looks like \"[1, 2, 3]\", bottom of the stack first.\n    fn show(&self) -> String {\n        todo!(\"join the items with \\\", \\\" inside brackets\")\n    }\n}\n\n// No Display, Clone or Debug: a Stack must still hold it.\nstruct Token {\n    id: u32,\n}\n\nfn main() {\n    let mut numbers = Stack::new();\n    assert_eq!(numbers.pop(), None);\n    numbers.push(1);\n    numbers.push(2);\n    numbers.push(3);\n    assert_eq!(numbers.len(), 3);\n    assert_eq!(numbers.peek(), Some(&3));\n    assert_eq!(numbers.len(), 3);\n    assert_eq!(numbers.show(), \"[1, 2, 3]\");\n    assert_eq!(numbers.pop(), Some(3));\n    assert_eq!(numbers.show(), \"[1, 2]\");\n    for n in 3..=6 {\n        numbers.push(n);\n    }\n    assert_eq!(numbers.len(), 6);\n    assert_eq!(numbers.show(), \"[1, 2, 3, 4, 5, 6]\");\n\n    let mut words = Stack::new();\n    words.push(String::from(\"ana\"));\n    words.push(String::from(\"bo\"));\n    assert_eq!(words.show(), \"[ana, bo]\");\n    assert_eq!(words.pop(), Some(String::from(\"bo\")));\n\n    let empty: Stack<char> = Stack::new();\n    assert_eq!(empty.show(), \"[]\");\n\n    let mut tokens = Stack::new();\n    tokens.push(Token { id: 7 });\n    assert_eq!(tokens.peek().map(|t| t.id), Some(7));\n    let token = tokens.pop().unwrap();\n    assert_eq!(token.id, 7);\n    assert_eq!(tokens.len(), 0);\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "// A stack of any type: the last item pushed is the first one popped.\nuse std::fmt::Display;\n\nstruct Stack<T> {\n    items: Vec<T>,\n}\n\nimpl<T> Stack<T> {\n    fn new() -> Stack<T> {\n        Stack { items: Vec::new() }\n    }\n\n    fn push(&mut self, item: T) {\n        self.items.push(item);\n    }\n\n    fn pop(&mut self) -> Option<T> {\n        self.items.pop()\n    }\n\n    fn peek(&self) -> Option<&T> {\n        self.items.last()\n    }\n\n    fn len(&self) -> usize {\n        self.items.len()\n    }\n}\n\n// Only stacks of displayable items get `show`.\nimpl<T: Display> Stack<T> {\n    fn show(&self) -> String {\n        let mut text = String::from(\"[\");\n        for (i, item) in self.items.iter().enumerate() {\n            if i > 0 {\n                text.push_str(\", \");\n            }\n            text.push_str(&item.to_string());\n        }\n        text.push(']');\n        text\n    }\n}\n\n// No Display, Clone or Debug: a Stack must still hold it.\nstruct Token {\n    id: u32,\n}\n\nfn main() {\n    let mut numbers = Stack::new();\n    assert_eq!(numbers.pop(), None);\n    numbers.push(1);\n    numbers.push(2);\n    numbers.push(3);\n    assert_eq!(numbers.len(), 3);\n    assert_eq!(numbers.peek(), Some(&3));\n    assert_eq!(numbers.len(), 3);\n    assert_eq!(numbers.show(), \"[1, 2, 3]\");\n    assert_eq!(numbers.pop(), Some(3));\n    assert_eq!(numbers.show(), \"[1, 2]\");\n    for n in 3..=6 {\n        numbers.push(n);\n    }\n    assert_eq!(numbers.len(), 6);\n    assert_eq!(numbers.show(), \"[1, 2, 3, 4, 5, 6]\");\n\n    let mut words = Stack::new();\n    words.push(String::from(\"ana\"));\n    words.push(String::from(\"bo\"));\n    assert_eq!(words.show(), \"[ana, bo]\");\n    assert_eq!(words.pop(), Some(String::from(\"bo\")));\n\n    let empty: Stack<char> = Stack::new();\n    assert_eq!(empty.show(), \"[]\");\n\n    let mut tokens = Stack::new();\n    tokens.push(Token { id: 7 });\n    assert_eq!(tokens.peek().map(|t| t.id), Some(7));\n    let token = tokens.pop().unwrap();\n    assert_eq!(token.id, 7);\n    assert_eq!(tokens.len(), 0);\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}

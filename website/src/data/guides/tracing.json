@@ -1,0 +1,239 @@
+{
+ "id": "tracing",
+ "files": {
+  "go": {
+   "go.mod": "module logging\n\ngo 1.27\n",
+   "main.go": "package main\n\nimport (\n\t\"log/slog\"\n\t\"os\"\n)\n\nfunc main() {\n\t// Drop the time so this page's output stays stable.\n\tlogger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{\n\t\tReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {\n\t\t\tif a.Key == slog.TimeKey {\n\t\t\t\treturn slog.Attr{}\n\t\t\t}\n\t\t\treturn a\n\t\t},\n\t}))\n\n\tlogger.Info(\"server starting\", \"port\", 3000)\n\n\treq := logger.With(\"method\", \"GET\", \"path\", \"/notes\")\n\treq.Info(\"listed notes\", \"count\", 2)\n\treq.Warn(\"slow response\", \"user\", \"ana\")\n}\n"
+  },
+  "gotcha": {
+   "fixed.rs": "use std::sync::Mutex;\n\nfn main() {\n    let counter = Mutex::new(0);\n\n    // A name, even one starting with an underscore, keeps the guard alive to the end of main.\n    let _guard = counter.lock().unwrap();\n\n    println!(\"lock is held: {}\", counter.try_lock().is_err());\n}\n",
+   "main.rs": "use std::sync::Mutex;\n\nfn main() {\n    let counter = Mutex::new(0);\n\n    // Meant to hold the lock for the rest of main.\n    let _ = counter.lock().unwrap();\n\n    println!(\"lock is held: {}\", counter.try_lock().is_err());\n}\n"
+  },
+  "gotcha-cpp": {
+   "main.cpp": "#include <iostream>\n#include <string>\n\nstruct Span {\n    std::string name;\n    explicit Span(std::string n) : name(std::move(n)) { std::cout << \"enter \" << name << \"\\n\"; }\n    ~Span() { std::cout << \"exit \" << name << \"\\n\"; }\n};\n\nint main() {\n    {\n        Span span(\"request\");  // a named object lives to the end of the block\n        std::cout << \"listed notes\\n\";\n    }\n    {\n        Span(\"temporary\");  // no name: destroyed at the end of this statement\n        std::cout << \"listed notes\\n\";\n    }\n}\n"
+  },
+  "gotcha-cs": {
+   "cs.sh": "#!/bin/bash\n# build one C# file the way the lessons do (the image's restored project), but keep\n# the build's own output (timing lines) off the page unless the build fails\nset -e\nrm -rf /tmp/cs && cp -r /opt/templates/csharp /tmp/cs && cp \"$1\" /tmp/cs/Program.cs\ncd /tmp/cs\ndotnet build --no-restore -v q -nologo -clp:NoSummary > /tmp/cs-build.log 2>&1 || { cat /tmp/cs-build.log; exit 1; }\ndotnet bin/Debug/net10.0/Program.dll\n",
+   "main.cs": "using System;\n\nclass Span : IDisposable\n{\n    private readonly string name;\n\n    public Span(string name)\n    {\n        this.name = name;\n        Console.WriteLine(\"enter \" + name);\n    }\n\n    public void Dispose() => Console.WriteLine(\"exit \" + name);\n}\n\nclass Program\n{\n    static void Main()\n    {\n        using (var span = new Span(\"request\"))\n        {\n            Console.WriteLine(\"listed notes\"); // Dispose() runs when the block ends\n        }\n        _ = new Span(\"forgotten\"); // `_` discards it; nothing ever calls Dispose\n        Console.WriteLine(\"after\");\n    }\n}\n"
+  },
+  "gotcha-go": {
+   "main.go": "package main\n\nimport \"fmt\"\n\ntype Span struct{ name string }\n\nfunc Start(name string) *Span {\n\tfmt.Println(\"enter\", name)\n\treturn &Span{name}\n}\n\nfunc (s *Span) End() { fmt.Println(\"exit\", s.name) }\n\nfunc handle() {\n\tspan := Start(\"request\")\n\tdefer span.End() // runs when handle returns\n\tfmt.Println(\"listed notes\")\n}\n\nfunc main() {\n\thandle()\n\t_ = Start(\"forgotten\") // `_` throws the *Span away; nothing ever calls End\n\tfmt.Println(\"after\")\n}\n"
+  },
+  "gotcha-java": {
+   "Main.java": "public class Main {\n    static class Span implements AutoCloseable {\n        private final String name;\n\n        Span(String name) {\n            this.name = name;\n            System.out.println(\"enter \" + name);\n        }\n\n        @Override\n        public void close() {\n            System.out.println(\"exit \" + name);\n        }\n    }\n\n    public static void main(String[] args) {\n        try (Span span = new Span(\"request\")) {\n            System.out.println(\"listed notes\"); // close() runs when the block ends\n        }\n        new Span(\"forgotten\"); // nothing ever calls close()\n        System.out.println(\"after\");\n    }\n}\n"
+  },
+  "gotcha-kotlin": {
+   "main.kt": "class Span(private val name: String) : AutoCloseable {\n    init { println(\"enter $name\") }\n    override fun close() { println(\"exit $name\") }\n}\n\nfun main() {\n    Span(\"request\").use { println(\"listed notes\") } // close() runs when the block ends\n    Span(\"forgotten\") // nothing ever calls close()\n    println(\"after\")\n}\n"
+  },
+  "gotcha-python": {
+   "main.py": "class Span:\n    def __init__(self, name):\n        self.name = name\n\n    def __enter__(self):\n        print(\"enter\", self.name)\n        return self\n\n    def __exit__(self, *exc):\n        print(\"exit\", self.name)\n\n\nwith Span(\"request\"):\n    print(\"listed notes\")  # __exit__ runs when the with block ends\n\n_ = Span(\"forgotten\").__enter__()  # nothing ever calls __exit__\nprint(\"after\")\n"
+  },
+  "gotcha-ts": {
+   "main.ts": "class Span implements Disposable {\n  name: string;\n\n  constructor(name: string) {\n    this.name = name;\n    console.log(\"enter\", name);\n  }\n\n  [Symbol.dispose]() {\n    console.log(\"exit\", this.name);\n  }\n}\n\n{\n  using span = new Span(\"request\");\n  console.log(\"listed notes\"); // [Symbol.dispose] runs when the block ends\n}\nnew Span(\"forgotten\"); // nothing ever calls [Symbol.dispose]\nconsole.log(\"after\");\n"
+  },
+  "rust": {
+   "Cargo.lock": "# This file is automatically @generated by Cargo.\n# It is not intended for manual editing.\nversion = 4\n\n[[package]]\nname = \"cfg-if\"\nversion = \"1.0.5\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600\"\n\n[[package]]\nname = \"lazy_static\"\nversion = \"1.5.1\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"20870f649af7073d53e38067b2a84312175d56ea15217e1b15bc83506ec50afb\"\n\n[[package]]\nname = \"log\"\nversion = \"0.4.34\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6\"\n\n[[package]]\nname = \"logging\"\nversion = \"0.1.0\"\ndependencies = [\n \"tracing\",\n \"tracing-subscriber\",\n]\n\n[[package]]\nname = \"nu-ansi-term\"\nversion = \"0.50.3\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5\"\ndependencies = [\n \"windows-sys\",\n]\n\n[[package]]\nname = \"once_cell\"\nversion = \"1.21.4\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50\"\n\n[[package]]\nname = \"pin-project-lite\"\nversion = \"0.2.17\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd\"\n\n[[package]]\nname = \"proc-macro2\"\nversion = \"1.0.107\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9\"\ndependencies = [\n \"unicode-ident\",\n]\n\n[[package]]\nname = \"quote\"\nversion = \"1.0.47\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"1fbf4db142a473a8d80c26bbf18454ed458bf8d26c8219c331daecfdbd079001\"\ndependencies = [\n \"proc-macro2\",\n]\n\n[[package]]\nname = \"sharded-slab\"\nversion = \"0.1.7\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"f40ca3c46823713e0d4209592e8d6e826aa57e928f09752619fc696c499637f6\"\ndependencies = [\n \"lazy_static\",\n]\n\n[[package]]\nname = \"smallvec\"\nversion = \"1.16.4\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"d0d5d4b1981b8bbbb7aed204cae5726d683d5d6ac7e74ec54122ea28f315e7c8\"\n\n[[package]]\nname = \"syn\"\nversion = \"2.0.119\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"872831b642d1a07999a962a351ed35b955ea2cfc8f3862091e2a240a84f17297\"\ndependencies = [\n \"proc-macro2\",\n \"quote\",\n \"unicode-ident\",\n]\n\n[[package]]\nname = \"thread_local\"\nversion = \"1.1.10\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"1ad99c4c6d32803332c548b1af0540b357b3f5fc0be8f6c6bfe8b2e6ae784070\"\ndependencies = [\n \"cfg-if\",\n]\n\n[[package]]\nname = \"tracing\"\nversion = \"0.1.44\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"63e71662fa4b2a2c3a26f570f037eb95bb1f85397f3cd8076caed2f026a6d100\"\ndependencies = [\n \"pin-project-lite\",\n \"tracing-attributes\",\n \"tracing-core\",\n]\n\n[[package]]\nname = \"tracing-attributes\"\nversion = \"0.1.31\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"7490cfa5ec963746568740651ac6781f701c9c5ea257c58e057f3ba8cf69e8da\"\ndependencies = [\n \"proc-macro2\",\n \"quote\",\n \"syn\",\n]\n\n[[package]]\nname = \"tracing-core\"\nversion = \"0.1.36\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a\"\ndependencies = [\n \"once_cell\",\n \"valuable\",\n]\n\n[[package]]\nname = \"tracing-log\"\nversion = \"0.2.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"ee855f1f400bd0e5c02d150ae5de3840039a3f54b025156404e34c23c03f47c3\"\ndependencies = [\n \"log\",\n \"once_cell\",\n \"tracing-core\",\n]\n\n[[package]]\nname = \"tracing-subscriber\"\nversion = \"0.3.23\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"cb7f578e5945fb242538965c2d0b04418d38ec25c79d160cd279bf0731c8d319\"\ndependencies = [\n \"nu-ansi-term\",\n \"sharded-slab\",\n \"smallvec\",\n \"thread_local\",\n \"tracing-core\",\n \"tracing-log\",\n]\n\n[[package]]\nname = \"unicode-ident\"\nversion = \"1.0.27\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563\"\n\n[[package]]\nname = \"valuable\"\nversion = \"0.1.1\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65\"\n\n[[package]]\nname = \"windows-link\"\nversion = \"0.2.1\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"f0805222e57f7521d6a62e36fa9163bc891acd422f971defe97d64e70d0a4fe5\"\n\n[[package]]\nname = \"windows-sys\"\nversion = \"0.61.2\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"ae137229bcbd6cdf0f7b80a31df61766145077ddf49416a728b02cb3921ff3fc\"\ndependencies = [\n \"windows-link\",\n]\n",
+   "Cargo.toml": "[package]\nname = \"logging\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\ntracing = \"0.1.44\"\ntracing-subscriber = \"0.3.23\"\n",
+   "src/main.rs": "use tracing::{info, info_span, warn};\n\nfn main() {\n    // Print events to the terminal. without_time() keeps this page's output stable.\n    tracing_subscriber::fmt()\n        .without_time()\n        .with_target(false)\n        .init();\n\n    info!(port = 3000, \"server starting\");\n\n    let span = info_span!(\"request\", method = \"GET\", path = \"/notes\");\n    let _guard = span.enter(); // everything until _guard is dropped is inside the span\n    info!(count = 2, \"listed notes\");\n    warn!(user = \"ana\", \"slow response\");\n}\n"
+  },
+  "snippet-env": {
+   "Cargo.lock": "# This file is automatically @generated by Cargo.\n# It is not intended for manual editing.\nversion = 4\n\n[[package]]\nname = \"aho-corasick\"\nversion = \"1.1.5\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"c982642fa9e8606056828ee9a8505737230110bb1099153c79efe865c59d12ba\"\ndependencies = [\n \"memchr\",\n]\n\n[[package]]\nname = \"cfg-if\"\nversion = \"1.0.5\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600\"\n\n[[package]]\nname = \"lazy_static\"\nversion = \"1.5.1\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"20870f649af7073d53e38067b2a84312175d56ea15217e1b15bc83506ec50afb\"\n\n[[package]]\nname = \"log\"\nversion = \"0.4.34\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6\"\n\n[[package]]\nname = \"logging\"\nversion = \"0.1.0\"\ndependencies = [\n \"tracing\",\n \"tracing-subscriber\",\n]\n\n[[package]]\nname = \"matchers\"\nversion = \"0.2.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"d1525a2a28c7f4fa0fc98bb91ae755d1e2d1505079e05539e35bc876b5d65ae9\"\ndependencies = [\n \"regex-automata\",\n]\n\n[[package]]\nname = \"memchr\"\nversion = \"2.8.3\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98\"\n\n[[package]]\nname = \"nu-ansi-term\"\nversion = \"0.50.3\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5\"\ndependencies = [\n \"windows-sys\",\n]\n\n[[package]]\nname = \"once_cell\"\nversion = \"1.21.4\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50\"\n\n[[package]]\nname = \"pin-project-lite\"\nversion = \"0.2.17\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd\"\n\n[[package]]\nname = \"proc-macro2\"\nversion = \"1.0.107\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9\"\ndependencies = [\n \"unicode-ident\",\n]\n\n[[package]]\nname = \"quote\"\nversion = \"1.0.47\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"1fbf4db142a473a8d80c26bbf18454ed458bf8d26c8219c331daecfdbd079001\"\ndependencies = [\n \"proc-macro2\",\n]\n\n[[package]]\nname = \"regex-automata\"\nversion = \"0.4.18\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"ad8553b9b26413251cbf30e620595c7a41b3887f03da04579c0e6b0d6a06b4b2\"\ndependencies = [\n \"aho-corasick\",\n \"memchr\",\n \"regex-syntax\",\n]\n\n[[package]]\nname = \"regex-syntax\"\nversion = \"0.8.11\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4\"\n\n[[package]]\nname = \"sharded-slab\"\nversion = \"0.1.7\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"f40ca3c46823713e0d4209592e8d6e826aa57e928f09752619fc696c499637f6\"\ndependencies = [\n \"lazy_static\",\n]\n\n[[package]]\nname = \"smallvec\"\nversion = \"1.16.4\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"d0d5d4b1981b8bbbb7aed204cae5726d683d5d6ac7e74ec54122ea28f315e7c8\"\n\n[[package]]\nname = \"syn\"\nversion = \"2.0.119\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"872831b642d1a07999a962a351ed35b955ea2cfc8f3862091e2a240a84f17297\"\ndependencies = [\n \"proc-macro2\",\n \"quote\",\n \"unicode-ident\",\n]\n\n[[package]]\nname = \"thread_local\"\nversion = \"1.1.10\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"1ad99c4c6d32803332c548b1af0540b357b3f5fc0be8f6c6bfe8b2e6ae784070\"\ndependencies = [\n \"cfg-if\",\n]\n\n[[package]]\nname = \"tracing\"\nversion = \"0.1.44\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"63e71662fa4b2a2c3a26f570f037eb95bb1f85397f3cd8076caed2f026a6d100\"\ndependencies = [\n \"pin-project-lite\",\n \"tracing-attributes\",\n \"tracing-core\",\n]\n\n[[package]]\nname = \"tracing-attributes\"\nversion = \"0.1.31\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"7490cfa5ec963746568740651ac6781f701c9c5ea257c58e057f3ba8cf69e8da\"\ndependencies = [\n \"proc-macro2\",\n \"quote\",\n \"syn\",\n]\n\n[[package]]\nname = \"tracing-core\"\nversion = \"0.1.36\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a\"\ndependencies = [\n \"once_cell\",\n \"valuable\",\n]\n\n[[package]]\nname = \"tracing-log\"\nversion = \"0.2.0\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"ee855f1f400bd0e5c02d150ae5de3840039a3f54b025156404e34c23c03f47c3\"\ndependencies = [\n \"log\",\n \"once_cell\",\n \"tracing-core\",\n]\n\n[[package]]\nname = \"tracing-subscriber\"\nversion = \"0.3.23\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"cb7f578e5945fb242538965c2d0b04418d38ec25c79d160cd279bf0731c8d319\"\ndependencies = [\n \"matchers\",\n \"nu-ansi-term\",\n \"once_cell\",\n \"regex-automata\",\n \"sharded-slab\",\n \"smallvec\",\n \"thread_local\",\n \"tracing\",\n \"tracing-core\",\n \"tracing-log\",\n]\n\n[[package]]\nname = \"unicode-ident\"\nversion = \"1.0.27\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563\"\n\n[[package]]\nname = \"valuable\"\nversion = \"0.1.1\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65\"\n\n[[package]]\nname = \"windows-link\"\nversion = \"0.2.1\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"f0805222e57f7521d6a62e36fa9163bc891acd422f971defe97d64e70d0a4fe5\"\n\n[[package]]\nname = \"windows-sys\"\nversion = \"0.61.2\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"ae137229bcbd6cdf0f7b80a31df61766145077ddf49416a728b02cb3921ff3fc\"\ndependencies = [\n \"windows-link\",\n]\n",
+   "Cargo.toml": "[package]\nname = \"logging\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\ntracing = \"0.1.44\"\ntracing-subscriber = { version = \"0.3.23\", features = [\"env-filter\"] }\n",
+   "src/main.rs": "use tracing::{debug, info, warn};\nuse tracing_subscriber::EnvFilter;\n\nfn main() {\n    // RUST_LOG picks the levels. With it unset (or invalid), show info and above.\n    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(\"info\"));\n    tracing_subscriber::fmt()\n        .without_time()\n        .with_target(false)\n        .with_env_filter(filter)\n        .init();\n\n    debug!(key = \"notes\", \"cache miss\");\n    info!(port = 3000, \"server starting\");\n    warn!(user = \"ana\", \"slow response\");\n}\n"
+  },
+  "snippet-spans": {
+   "src/main.rs": "use std::fmt;\n\nuse tracing::{info, info_span, instrument};\nuse tracing_subscriber::fmt::format::FmtSpan;\n\n#[derive(Debug)]\nstruct Note {\n    id: u32,\n    title: &'static str,\n}\n\nstruct Email(&'static str);\n\nimpl fmt::Display for Email {\n    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {\n        write!(f, \"{}\", self.0)\n    }\n}\n\n// Every argument becomes a field on a span that lasts for the call.\n#[instrument]\nfn find_note(id: u32, owner: &str) -> Option<Note> {\n    info!(\"looking up\");\n    if id == 1 { Some(Note { id, title: \"milk\" }) } else { None }\n}\n\nfn main() {\n    tracing_subscriber::fmt()\n        .without_time()\n        .with_target(false)\n        // also log a line each time a span is entered and exited\n        .with_span_events(FmtSpan::ENTER | FmtSpan::EXIT)\n        .init();\n\n    let note = Note { id: 7, title: \"call Ana\" };\n    info!(id = note.id, title = note.title, \"plain values\");\n    info!(?note, email = %Email(\"ana@example.com\"), tags = ?[\"a\", \"b\"], \"Debug and Display\");\n\n    {\n        let outer = info_span!(\"outer\", user = \"ana\");\n        let _outer = outer.enter();\n        let inner = info_span!(\"inner\", step = 2);\n        let _inner = inner.enter();\n        info!(\"inside both\");\n    }\n    info!(\"outside\");\n\n    find_note(1, \"ana\");\n    find_note(2, \"bo\");\n}\n"
+  },
+  "snippet-stamps": {
+   "src/main.rs": "use tracing::info;\n\nfn main() {\n    // No without_time(): every line starts with the time it was logged.\n    tracing_subscriber::fmt().with_target(false).init();\n\n    info!(port = 3000, \"server starting\");\n}\n"
+  },
+  "snippet-underscore": {
+   "src/main.rs": "use tracing::{info, info_span, warn};\n\nfn main() {\n    // Print events to the terminal. without_time() keeps this page's output stable.\n    tracing_subscriber::fmt()\n        .without_time()\n        .with_target(false)\n        .init();\n\n    info!(port = 3000, \"server starting\");\n\n    let span = info_span!(\"request\", method = \"GET\", path = \"/notes\");\n    let _ = span.enter();\n    info!(count = 2, \"listed notes\");\n    warn!(user = \"ana\", \"slow response\");\n}\n"
+  }
+ },
+ "sessions": {
+  "run": [
+   {
+    "show": "$ cargo run",
+    "out": " INFO server starting port=3000\n INFO request{method=\"GET\" path=\"/notes\"}: listed notes count=2\n WARN request{method=\"GET\" path=\"/notes\"}: slow response user=\"ana\"\n",
+    "exit": 0
+   }
+  ],
+  "go": [
+   {
+    "show": "$ go run .",
+    "out": "level=INFO msg=\"server starting\" port=3000\nlevel=INFO msg=\"listed notes\" method=GET path=/notes count=2\nlevel=WARN msg=\"slow response\" method=GET path=/notes user=ana\n",
+    "exit": 0
+   }
+  ],
+  "underscore": [
+   {
+    "show": "$ cargo run",
+    "out": " INFO server starting port=3000\n INFO listed notes count=2\n WARN slow response user=\"ana\"\n",
+    "exit": 0
+   }
+  ],
+  "lock-underscore": [
+   {
+    "show": "$ cargo build",
+    "out": "error: non-binding let on a synchronization lock\n --> src/main.rs:7:9\n  |\n7 |     let _ = counter.lock().unwrap();\n  |         ^ this lock is not assigned to a binding and is immediately dropped\n  |\n  = note: `#[deny(let_underscore_lock)]` (part of `#[deny(let_underscore)]`) on by default\nhelp: consider binding to an unused variable to avoid immediately dropping the value\n  |\n7 |     let _unused = counter.lock().unwrap();\n  |          ++++++\nhelp: consider immediately dropping the value\n  |\n7 -     let _ = counter.lock().unwrap();\n7 +     drop(counter.lock().unwrap());\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "lock-guard": [
+   {
+    "show": "$ cargo run",
+    "out": "lock is held: true\n",
+    "exit": 0
+   }
+  ],
+  "env": [
+   {
+    "show": "$ cargo run",
+    "out": " INFO server starting port=3000\n WARN slow response user=\"ana\"\n",
+    "exit": 0
+   },
+   {
+    "show": "$ RUST_LOG=debug cargo run",
+    "out": "DEBUG cache miss key=\"notes\"\n INFO server starting port=3000\n WARN slow response user=\"ana\"\n",
+    "exit": 0
+   },
+   {
+    "show": "$ RUST_LOG=warn cargo run",
+    "out": " WARN slow response user=\"ana\"\n",
+    "exit": 0
+   }
+  ],
+  "stamps": [
+   {
+    "show": "$ cargo run | sed ...   # the timestamp replaced by <timestamp>",
+    "out": "<timestamp>  INFO server starting port=3000\n",
+    "exit": 0
+   }
+  ],
+  "spans": [
+   {
+    "show": "$ cargo run",
+    "out": " INFO plain values id=7 title=\"call Ana\"\n INFO Debug and Display note=Note { id: 7, title: \"call Ana\" } email=ana@example.com tags=[\"a\", \"b\"]\n INFO outer{user=\"ana\"}: enter\n INFO outer{user=\"ana\"}:inner{step=2}: enter\n INFO outer{user=\"ana\"}:inner{step=2}: inside both\n INFO outer{user=\"ana\"}:inner{step=2}: exit\n INFO outer{user=\"ana\"}: exit\n INFO outside\n INFO find_note{id=1 owner=\"ana\"}: enter\n INFO find_note{id=1 owner=\"ana\"}: looking up\n INFO find_note{id=1 owner=\"ana\"}: exit\n INFO find_note{id=2 owner=\"bo\"}: enter\n INFO find_note{id=2 owner=\"bo\"}: looking up\n INFO find_note{id=2 owner=\"bo\"}: exit\n",
+    "exit": 0
+   }
+  ],
+  "go-span": [
+   {
+    "show": "$ go run main.go",
+    "out": "enter request\nlisted notes\nexit request\nenter forgotten\nafter\n",
+    "exit": 0
+   }
+  ],
+  "kt-span": [
+   {
+    "show": "$ kotlinc main.kt -include-runtime -d span.jar && java -jar span.jar",
+    "out": "enter request\nlisted notes\nexit request\nenter forgotten\nafter\n",
+    "exit": 0
+   }
+  ],
+  "py-span": [
+   {
+    "show": "$ python3 main.py",
+    "out": "enter request\nlisted notes\nexit request\nenter forgotten\nafter\n",
+    "exit": 0
+   }
+  ],
+  "ts-span": [
+   {
+    "show": "$ node main.ts",
+    "out": "enter request\nlisted notes\nexit request\nenter forgotten\nafter\n",
+    "exit": 0
+   }
+  ],
+  "java-span": [
+   {
+    "show": "$ javac Main.java && java Main",
+    "out": "enter request\nlisted notes\nexit request\nenter forgotten\nafter\n",
+    "exit": 0
+   }
+  ],
+  "cs-span": [
+   {
+    "show": "$ dotnet run",
+    "out": "enter request\nlisted notes\nexit request\nenter forgotten\nafter\n",
+    "exit": 0
+   }
+  ],
+  "cpp-span": [
+   {
+    "show": "$ g++ -std=c++20 -Wall -Wextra main.cpp -o span && ./span",
+    "out": "enter request\nlisted notes\nexit request\nenter temporary\nexit temporary\nlisted notes\n",
+    "exit": 0
+   }
+  ]
+ },
+ "gotcha": {
+  "kind": "compile",
+  "title": "`let _ =` instead of `let _guard =`",
+  "verdict": "broken-elsewhere",
+  "looks_fine": "`_` is the usual name for a value you don't need: Go's `_ = x` throws a value away and Python's `_` is the convention for an unused one. So naming a guard `_` instead of `_guard` looks like a style choice.",
+  "rust_sees": "`let _ = counter.lock().unwrap();` does not bind the guard to any name, so it is dropped at the end of that statement and the lock is released at once. rustc has a lint for exactly this, `let_underscore_lock`, which is deny by default, so Rust refuses to compile it. A name like `_guard` keeps the guard alive until the end of the block.",
+  "why": "The lint exists for lock guards only. The same mistake with another guard is not caught: `let _ = span.enter();` compiles, and only the output tells you, because the span exits before the next log line (Try it yourself, task 3, shows that output). The other languages below show the scope version of the trap with a span-like object.",
+  "code": "use std::sync::Mutex;\n\nfn main() {\n    let counter = Mutex::new(0);\n\n    // Meant to hold the lock for the rest of main.\n    let _ = counter.lock().unwrap();\n\n    println!(\"lock is held: {}\", counter.try_lock().is_err());\n}\n",
+  "session": "lock-underscore",
+  "fixed": {
+   "code": "use std::sync::Mutex;\n\nfn main() {\n    let counter = Mutex::new(0);\n\n    // A name, even one starting with an underscore, keeps the guard alive to the end of main.\n    let _guard = counter.lock().unwrap();\n\n    println!(\"lock is held: {}\", counter.try_lock().is_err());\n}\n",
+   "name": "src/main.rs",
+   "out": "lock is held: true\n",
+   "cmd": "$ cargo run"
+  },
+  "langs": {
+   "go": {
+    "status": "wrong",
+    "says": "`_ = Start(...)` throws the pointer away and nothing calls `End`. What closes a scope in Go is `defer`, which runs when the function returns, not when a value goes away.",
+    "code": "package main\n\nimport \"fmt\"\n\ntype Span struct{ name string }\n\nfunc Start(name string) *Span {\n\tfmt.Println(\"enter\", name)\n\treturn &Span{name}\n}\n\nfunc (s *Span) End() { fmt.Println(\"exit\", s.name) }\n\nfunc handle() {\n\tspan := Start(\"request\")\n\tdefer span.End() // runs when handle returns\n\tfmt.Println(\"listed notes\")\n}\n\nfunc main() {\n\thandle()\n\t_ = Start(\"forgotten\") // `_` throws the *Span away; nothing ever calls End\n\tfmt.Println(\"after\")\n}\n",
+    "out": "enter request\nlisted notes\nexit request\nenter forgotten\nafter\n"
+   },
+   "kotlin": {
+    "status": "none",
+    "says": "There is no `val _ = ...` form to show: in the Kotlin version in the image it does not compile without an experimental flag. Kotlin closes a resource with `use`, at the end of its block. A value you just create, like `Span(\"forgotten\")` in the program shown, is never closed.",
+    "code": "class Span(private val name: String) : AutoCloseable {\n    init { println(\"enter $name\") }\n    override fun close() { println(\"exit $name\") }\n}\n\nfun main() {\n    Span(\"request\").use { println(\"listed notes\") } // close() runs when the block ends\n    Span(\"forgotten\") // nothing ever calls close()\n    println(\"after\")\n}\n",
+    "out": "enter request\nlisted notes\nexit request\nenter forgotten\nafter\n"
+   },
+   "python": {
+    "status": "wrong",
+    "says": "`with` calls `__exit__` at the end of its block. Calling `__enter__` yourself and keeping the result in `_` never calls `__exit__`.",
+    "code": "class Span:\n    def __init__(self, name):\n        self.name = name\n\n    def __enter__(self):\n        print(\"enter\", self.name)\n        return self\n\n    def __exit__(self, *exc):\n        print(\"exit\", self.name)\n\n\nwith Span(\"request\"):\n    print(\"listed notes\")  # __exit__ runs when the with block ends\n\n_ = Span(\"forgotten\").__enter__()  # nothing ever calls __exit__\nprint(\"after\")\n",
+    "out": "enter request\nlisted notes\nexit request\nenter forgotten\nafter\n"
+   },
+   "typescript": {
+    "status": "wrong",
+    "says": "A `using` declaration calls `[Symbol.dispose]` at the end of its block. An object that is only created is never disposed. Node 24 ran this file directly; it was not type-checked.",
+    "code": "class Span implements Disposable {\n  name: string;\n\n  constructor(name: string) {\n    this.name = name;\n    console.log(\"enter\", name);\n  }\n\n  [Symbol.dispose]() {\n    console.log(\"exit\", this.name);\n  }\n}\n\n{\n  using span = new Span(\"request\");\n  console.log(\"listed notes\"); // [Symbol.dispose] runs when the block ends\n}\nnew Span(\"forgotten\"); // nothing ever calls [Symbol.dispose]\nconsole.log(\"after\");\n",
+    "out": "enter request\nlisted notes\nexit request\nenter forgotten\nafter\n"
+   },
+   "java": {
+    "status": "wrong",
+    "says": "`try` with a resource calls `close()` at the end of its block. An object that is only created is never closed.",
+    "code": "public class Main {\n    static class Span implements AutoCloseable {\n        private final String name;\n\n        Span(String name) {\n            this.name = name;\n            System.out.println(\"enter \" + name);\n        }\n\n        @Override\n        public void close() {\n            System.out.println(\"exit \" + name);\n        }\n    }\n\n    public static void main(String[] args) {\n        try (Span span = new Span(\"request\")) {\n            System.out.println(\"listed notes\"); // close() runs when the block ends\n        }\n        new Span(\"forgotten\"); // nothing ever calls close()\n        System.out.println(\"after\");\n    }\n}\n",
+    "out": "enter request\nlisted notes\nexit request\nenter forgotten\nafter\n"
+   },
+   "csharp": {
+    "status": "wrong",
+    "says": "`using` calls `Dispose()` at the end of its block. `_ = new Span(...)` discards the object and never disposes it.",
+    "code": "using System;\n\nclass Span : IDisposable\n{\n    private readonly string name;\n\n    public Span(string name)\n    {\n        this.name = name;\n        Console.WriteLine(\"enter \" + name);\n    }\n\n    public void Dispose() => Console.WriteLine(\"exit \" + name);\n}\n\nclass Program\n{\n    static void Main()\n    {\n        using (var span = new Span(\"request\"))\n        {\n            Console.WriteLine(\"listed notes\"); // Dispose() runs when the block ends\n        }\n        _ = new Span(\"forgotten\"); // `_` discards it; nothing ever calls Dispose\n        Console.WriteLine(\"after\");\n    }\n}\n",
+    "out": "enter request\nlisted notes\nexit request\nenter forgotten\nafter\n"
+   },
+   "c": {
+    "status": "none",
+    "says": "Not run here. Standard C has no destructors, so no value ends anything when it goes away: you call the cleanup function yourself."
+   },
+   "cpp": {
+    "status": "wrong",
+    "says": "C++ has the same trap. A named object lives to the end of its block. A temporary with no name is destroyed at the end of its statement, so `exit temporary` prints before `listed notes`.",
+    "code": "#include <iostream>\n#include <string>\n\nstruct Span {\n    std::string name;\n    explicit Span(std::string n) : name(std::move(n)) { std::cout << \"enter \" << name << \"\\n\"; }\n    ~Span() { std::cout << \"exit \" << name << \"\\n\"; }\n};\n\nint main() {\n    {\n        Span span(\"request\");  // a named object lives to the end of the block\n        std::cout << \"listed notes\\n\";\n    }\n    {\n        Span(\"temporary\");  // no name: destroyed at the end of this statement\n        std::cout << \"listed notes\\n\";\n    }\n}\n",
+    "out": "enter request\nlisted notes\nexit request\nenter temporary\nexit temporary\nlisted notes\n"
+   }
+  },
+  "code_name": "src/main.rs",
+  "error": "error: non-binding let on a synchronization lock\n --> src/main.rs:7:9\n  |\n7 |     let _ = counter.lock().unwrap();\n  |         ^ this lock is not assigned to a binding and is immediately dropped\n  |\n  = note: `#[deny(let_underscore_lock)]` (part of `#[deny(let_underscore)]`) on by default\nhelp: consider binding to an unused variable to avoid immediately dropping the value\n  |\n7 |     let _unused = counter.lock().unwrap();\n  |          ++++++\nhelp: consider immediately dropping the value\n  |\n7 -     let _ = counter.lock().unwrap();\n7 +     drop(counter.lock().unwrap());",
+  "error_cmd": "$ cargo build"
+ }
+}

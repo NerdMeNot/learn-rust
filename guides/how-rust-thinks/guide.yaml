@@ -1,0 +1,137 @@
+# How Rust wants you to think
+# Ten small programs, one per idea. Each folder is its own crate; the ones that are
+# meant to be refused by the compiler are marked `expect: fail`.
+# fixes/ holds the one-line repairs the page suggests, run through `overlay`, and the
+# `new-kind` program. languages/ holds the same mistakes written in the other eight
+# languages; the page's "same mistakes" table is what those sessions printed.
+name: how-rust-thinks
+sessions:
+  prove-it:
+    dir: prove-it
+    steps:
+      - cmd: cargo build
+        expect: fail
+  shape-not-values:
+    dir: shape-not-values
+    steps:
+      - cmd: cargo build
+        expect: fail
+  one-owner:
+    dir: one-owner
+    steps:
+      - cmd: cargo run
+  readers-or-writer:
+    dir: readers-or-writer
+    steps:
+      - cmd: cargo build
+        expect: fail
+  no-silent-conversion:
+    dir: no-silent-conversion
+    steps:
+      - cmd: cargo build
+        expect: fail
+  visible-conversion:
+    dir: visible-conversion
+    steps:
+      - cmd: cargo run
+  can-fail:
+    dir: can-fail
+    steps:
+      - cmd: cargo run
+  changes-marked:
+    dir: changes-marked
+    steps:
+      - cmd: cargo build
+        expect: fail
+  wrong-states:
+    dir: wrong-states
+    steps:
+      - cmd: cargo run
+  nice-and-fast:
+    dir: nice-and-fast
+    steps:
+      - cmd: cargo run
+  pair-programmer:
+    dir: pair-programmer
+    steps:
+      - cmd: cargo build
+        expect: fail
+  fix-prove-it:
+    dir: prove-it
+    overlay:
+      src/main.rs: fixes/prove-it.rs
+    steps:
+      - cmd: cargo run
+  fix-shape-not-values:
+    dir: shape-not-values
+    overlay:
+      src/main.rs: fixes/shape-not-values.rs
+    steps:
+      - cmd: cargo run
+  fix-shape-not-values-nine:
+    dir: shape-not-values
+    overlay:
+      src/main.rs: fixes/shape-not-values-nine.rs
+    steps:
+      - cmd: cargo run
+  fix-changes-marked:
+    dir: changes-marked
+    overlay:
+      src/main.rs: fixes/changes-marked.rs
+    steps:
+      - cmd: cargo run
+  new-kind:
+    dir: wrong-states
+    overlay:
+      src/main.rs: fixes/new-kind.rs
+    steps:
+      - cmd: cargo build
+        expect: fail
+  # The same mistakes in the other languages (the table in "Why the compiler seems so
+  # strict"). One step per cell; `expect` records whether that language refused it.
+  languages:
+    dir: languages
+    steps:
+      # a variable that may not be assigned
+      - cmd: javac Unassigned.java
+        expect: fail
+      - cmd: kotlinc unassigned.kt -include-runtime -d unassigned.jar
+        expect: fail
+      - cmd: bash cs.sh unassigned.cs
+        show: "$ dotnet build"
+        expect: fail
+      - cmd: tsc --strict --module nodenext --types node unassigned.ts
+        expect: fail
+      - cmd: python3 unassigned.py
+        expect: fail
+      - cmd: go run unassigned.go
+      - cmd: gcc -Wall -Wextra unassigned.c -o unassigned_c && ./unassigned_c
+      - cmd: g++ -std=c++20 -Wall -Wextra unassigned.cpp -o unassigned_cpp && ./unassigned_cpp
+      # an int times a float
+      - cmd: javac Mix.java && java Mix
+      - cmd: kotlinc mix.kt -include-runtime -d mix.jar && java -jar mix.jar
+      - cmd: bash cs.sh mix.cs
+        show: "$ dotnet run"
+      - cmd: tsc --strict --module nodenext --types node mix.ts && node mix.js
+      - cmd: python3 mix.py
+      - cmd: go run mix.go
+        expect: fail
+      - cmd: gcc -Wall -Wextra mix.c -o mix_c && ./mix_c
+      - cmd: g++ -std=c++20 -Wall -Wextra mix.cpp -o mix_cpp && ./mix_cpp
+      # changing something you did not mark as changeable
+      - cmd: javac Reassign.java
+        expect: fail
+      - cmd: kotlinc reassign.kt -include-runtime -d reassign.jar
+        expect: fail
+      - cmd: bash cs.sh reassign.cs
+        show: "$ dotnet build"
+        expect: fail
+      - cmd: tsc --strict --module nodenext --types node reassign.ts
+        expect: fail
+      - cmd: python3 reassign.py
+      - cmd: go run reassign.go
+        expect: fail
+      - cmd: gcc -Wall -Wextra reassign.c -o reassign_c
+        expect: fail
+      - cmd: g++ -std=c++20 -Wall -Wextra reassign.cpp -o reassign_cpp
+        expect: fail

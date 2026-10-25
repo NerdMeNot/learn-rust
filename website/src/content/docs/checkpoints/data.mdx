@@ -1,0 +1,155 @@
+---
+title: "Checkpoint: Data"
+description: "Eight short programs on structs, enums, Option, Result, strings, vectors, maps and patterns. Predict what each prints or which error it gets, then open the answer and compare it with a real run."
+---
+
+import { Files, Remember, Session } from '../../../components/guide'
+
+This checkpoint is for the Data part of the course (structs, methods, enums, `Option`, errors, strings, vectors, maps, patterns) and the parts before it. Each question is a short program. Read it, decide your answer on paper, and only then open the answer. Every answer is a real run of that exact file with Rust 1.99.1 in the course image, so the compiler text is what you would see.
+
+<Remember>Guess first. A wrong guess you wrote down teaches you more than a right answer you only nodded at.</Remember>
+
+## Predict the output
+
+### Question 1: how long is a string?
+
+<Files guide="checkpoint-data" dir="rust" files={["src/bin/q1.rs"]} />
+
+Does it compile? What does it print, line by line?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-data" run="q1" />
+
+`len()` counts bytes, and `ï` and `é` take two bytes each in UTF-8, so the string is 12 bytes and 10 chars. `find` and the range `[1..4]` also use byte positions: bytes 1 to 3 are `a` and the two bytes of `ï`. A range that ended inside `ï` would panic instead; the Strings lesson runs that case. See [Characters, bytes and what a person sees](/learn/strings/#characters-bytes-and-what-a-person-sees).
+
+</details>
+
+### Question 2: a struct built from another
+
+<Files guide="checkpoint-data" dir="rust" files={["src/bin/q2.rs"]} />
+
+Does it compile? What does it print?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-data" run="q2" />
+
+`..a` supplies only the fields the new struct does not list, so only `name` moves out of `a`. `age` is a `u32` that `b` set itself, and `a.age` is a copy that is still there; only the whole of `a` and `a.name` are off limits. See [Building one struct from another](/learn/structs/#building-one-struct-from-another).
+
+</details>
+
+### Question 3: what does a map hand back?
+
+<Files guide="checkpoint-data" dir="rust" files={["src/bin/q3.rs"]} />
+
+What are the three lines of output?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-data" run="q3" />
+
+`insert` returns the value it replaced as an `Option`, so the first call gives `None` and the second gives `Some(4)`. `entry(...).or_insert(10)` stores 10 only when the key is missing and returns a `&mut` to the value, so two `+= 1` give 12. `or_default()` stores `0`, and a `BTreeMap` prints in key order. See [Creating, reading, changing](/learn/maps/#creating-reading-changing) and [the `entry` API](/learn/maps/#the-entry-api-look-up-once-then-decide).
+
+</details>
+
+## Predict the error
+
+### Question 4: a name that was never used up
+
+<Files guide="checkpoint-data" dir="rust" files={["src/bin/q4.rs"]} />
+
+Does it compile? If not, which error code, and what does the message say happened to `nickname`?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-data" run="q4" />
+
+The pattern `Some(n)` takes the `String` out of `nickname` by value, so the `Option` is only partly there afterwards. The message says "borrow of **partially** moved value": only the `String` inside `Some` moved, and that is the word to notice. Matching a reference (`&nickname` or `nickname.as_ref()`) borrows instead. See [Does a pattern move, copy or borrow?](/learn/patterns/#does-a-pattern-move-copy-or-borrow).
+
+</details>
+
+### Question 5: the missing case
+
+<Files guide="checkpoint-data" dir="rust" files={["src/bin/q5.rs"]} />
+
+Does it compile? Which pattern does the compiler say is missing?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-data" run="q5" />
+
+A `match` has to cover every combination of the tuple, and the three arms leave out `(None, false)`. The error names the case so you do not have to work it out. See [Several values at once: tuples](/learn/match/#several-values-at-once-tuples) and [Every case must be covered](/learn/match/#every-case-must-be-covered).
+
+</details>
+
+### Question 6: an `Option` is not a number
+
+<Files guide="checkpoint-data" dir="rust" files={["src/bin/q6.rs"]} />
+
+Does it compile? Which error code?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-data" run="q6" />
+
+`Option<i32>` and `i32` are different types, and `Option` has no `+`. Open it first with `match`, `if let` or a method such as `map`. See [You can't use an `Option` as the value](/learn/option/#you-cant-use-an-option-as-the-value).
+
+</details>
+
+## Fix it
+
+### Question 7: `?` in `main`
+
+<Files guide="checkpoint-data" dir="rust" files={["src/bin/q7.rs"]} />
+
+This does not compile. What is the error code? Keep the `?` and do not use `unwrap` or `expect`: what change to `main` makes it compile, so that a bad number is reported as an error and not as a panic?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-data" run="q7" />
+
+`?` returns the error to the caller, and `main` returns `()`, which cannot hold one. Give `main` a `Result` return type and finish with `Ok(())`. (`.unwrap()` in place of `?` would also compile, but a bad number would then panic.) The fixed file below also parses `"2l"` on purpose, to show what happens when an `Err` reaches `main`:
+
+<Files guide="checkpoint-data" dir="rust" files={["src/bin/q7_fixed.rs"]} run="q7-fixed" />
+
+The `42` goes to standard output. When `main` returns an `Err`, Rust prints `Error:` and the error's `Debug` form to standard error, and the program ends with exit status 1 (the session shows it). See [`?` needs a function that returns a `Result`](/learn/errors/#-needs-a-function-that-returns-a-result) and [`main` can return a `Result`](/learn/errors/#main-can-return-a-result).
+
+</details>
+
+### Question 8: a view of the list
+
+<Files guide="checkpoint-data" dir="rust" files={["src/bin/q8.rs"]} />
+
+This does not compile. Which error code? Change the program so that it prints `10 of 4`.
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-data" run="q8" />
+
+`first` is a reference into the vector, and `push` may move the vector's items to a new place, so the compiler refuses the reference to still be alive. One fix copies the number out instead of keeping a reference (moving the `push` above the `let first` line would also work, because then nothing borrows the vector when it grows):
+
+<Files guide="checkpoint-data" dir="rust" files={["src/bin/q8_fixed.rs"]} run="q8-fixed" />
+
+See [Changing a list you are reading](/learn/vectors/#changing-a-list-you-are-reading).
+
+</details>
+
+## If you missed one
+
+- Questions 1 and 8: [Strings](/learn/strings/) and [Vectors](/learn/vectors/).
+- Question 2: [Structs](/learn/structs/).
+- Question 3: [Maps](/learn/maps/).
+- Questions 4 and 5: [Patterns](/learn/patterns/) and [Enums](/learn/enums/).
+- Questions 6 and 7: [Option](/learn/option/) and [Errors](/learn/errors/).
+- A borrow-checker error you did not predict: [Borrowing](/learn/borrowing/) and [Mutable borrows](/learn/mutable-borrows/).
+
+The next checkpoint covers [collections, closures and iterators](/checkpoints/collections/).

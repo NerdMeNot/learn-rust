@@ -1,0 +1,13 @@
+console.log("2**53 + 1 === 2**53:", 2 ** 53 + 1 === 2 ** 53);
+console.log("7 / 2:", 7 / 2);
+console.log("-7 % 2:", -7 % 2);
+console.log("2n ** 100n:", 2n ** 100n);
+console.log("1e10 | 0:", 1e10 | 0);
+console.log("Math.trunc(-3.9):", Math.trunc(-3.9));
+console.log("1 / 0:", 1 / 0);
+const nan = Number("x");
+console.log("NaN === NaN:", nan === nan);
+console.log('Number(" 12 "):', Number(" 12 "));
+const s = "5" as unknown as number;
+console.log("typeof ('5' as number):", typeof s);
+console.log("'😀'.length:", "😀".length, " '€'.charCodeAt(0):", "€".charCodeAt(0));

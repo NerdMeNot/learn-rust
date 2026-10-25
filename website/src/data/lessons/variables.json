@@ -1,0 +1,437 @@
+{
+ "id": "variables",
+ "title": "Variables",
+ "part": "basics",
+ "intro": "Variables are declared with `let`. They cannot change unless you add `mut`.",
+ "coming_from": {
+  "go": "`let` is your `:=`, but the variable can't change unless you write `let mut`. Writing `let count = ...` again in the same scope is allowed and makes a new variable, where Go's `:=` would complain that nothing is new.",
+  "kotlin": "`let` is your `val` and `let mut` is your `var`, and `let` also freezes the contents: a `val` list still takes `add`, a Rust `let` list does not take `push`. The other difference is shadowing: you can write `let count = ...` again in the same scope, even with a new type, which Kotlin won't allow.",
+  "python": "Any Python name can be reassigned, but a Rust `let` can't change unless you write `let mut`. Writing `let count = ...` again makes a new variable, and its type is still checked at compile time.",
+  "typescript": "Rust's `let` is your `const` and `let mut` is your `let`. Unlike `const`, a plain `let` also stops you changing what's inside (pushing to a `Vec`, setting a field), and you may redeclare the same name in one scope. (References and `Cell`-style types are the exceptions; the page covers them.)",
+  "java": "Rust flips Java's default: `let` is `final var`, and you add `mut` to get a plain changeable local. Rust's `let` also freezes the contents, where a `final` list still takes `add`. Rust also lets you shadow a name with a new `let`, which Java forbids for locals.",
+  "csharp": "`let` is a local you cannot reassign, which C# has no keyword for (`const` only works for compile-time constants, and locals can't be `readonly`). `let mut` is your everyday `var`, and a second `let` with the same name shadows the first, which C# rejects.",
+  "c": "`let` is `const int`, and `let mut` is a plain `int`, so the default is the reverse of C. Shadowing is allowed even in the same block, where C would report a redeclaration.",
+  "cpp": "`let x` is like `const auto x`, and `let mut x` like plain `auto x`, so Rust makes `const` the default. The difference: `auto` reads only the right-hand side, and `let` can wait for a later line to decide the type. Shadowing with a second `let` is allowed in the same scope, which C++ only allows in an inner block."
+ },
+ "notes": [
+  "Plain `let` can't change. You opt in with `let mut`, so a reader can see at a glance which variables change.",
+  "Shadowing (`let count = ...` again) makes a new variable that hides the old one. It can even have a different type. It is common for steps like `let input = input.trim();`.",
+  "`const` is for a value known before the program runs. It always needs a type and may sit outside any function, and by convention its name is `SHOUTING_CASE`.",
+  "A variable you never read gets a compiler warning. Start its name with `_` to say that is on purpose."
+ ],
+ "gotcha": {
+  "title": "Changing a variable without mut",
+  "verdict": "rust-rule",
+  "looks_fine": "In Go, `count := 1` can always be changed later. (Kotlin refuses this too if you wrote `val`.)",
+  "rust_sees": "In Rust, plain `let` means \"this never changes\". You only get a changeable variable when you ask for one with `mut`.",
+  "why": "Rust chose this default so that a reader can see which variables change. The Rust Book's reason: code that assumes a value never changes can break when other code changes it. When you read `let x`, that name is not assigned again; only the `mut` ones need watching.",
+  "langs": {
+   "go": {
+    "status": "runs",
+    "says": "Go runs this and prints 2. A variable made with `:=` can always be changed later.",
+    "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tcount := 1\n\tcount += 1\n\tfmt.Println(count)\n}\n",
+    "out": "2\n"
+   },
+   "kotlin": {
+    "status": "refuses",
+    "says": "Kotlin refuses this too if you write `val count = 1`; with `var` it runs and prints 2. Rust's `let` is Kotlin's `val`, and `let mut` is `var`. What is new is that Rust's `let` also stops the `push` on a list, as the page shows.",
+    "code": "fun main() {\n    val count = 1\n    count += 1\n    println(count)\n}\n",
+    "error": "Main.kt:3:5: error: 'val' cannot be reassigned.\n    count += 1\n    ^^^^^"
+   },
+   "python": {
+    "status": "none",
+    "says": "Python has no `mut`: every variable can be reassigned, so this mistake can't happen."
+   },
+   "typescript": {
+    "status": "refuses",
+    "says": "TypeScript refuses this too if you write `const`: you cannot assign to a constant. Rust's `let` is TypeScript's `const`, and `let mut` is `let`.",
+    "code": "const count = 1;\ncount += 1;\nconsole.log(count);\n",
+    "error": "main.ts(2,1): error TS2588: Cannot assign to 'count' because it is a constant."
+   },
+   "java": {
+    "status": "runs",
+    "says": "Java locals can change by default, so this prints 2. Write `final var count = 1` and javac refuses it, like Rust's `let`.",
+    "code": "public class Main {\n    public static void main(String[] args) {\n        var count = 1;\n        count += 1;\n        System.out.println(count);\n    }\n}\n",
+    "out": "2\n"
+   },
+   "csharp": {
+    "status": "runs",
+    "says": "A plain `var` can always change in C#, so this prints 2. Only `const` and `readonly` fields are locked, and local variables can't be `readonly`.",
+    "code": "var count = 1;\ncount += 1;\nConsole.WriteLine(count);\n",
+    "out": "2\n"
+   },
+   "c": {
+    "status": "runs",
+    "says": "C variables can change unless you mark them `const`, so this prints 2. Rust flips the default: you opt in to change with `mut`.",
+    "code": "#include <stdio.h>\n\nint main(void) {\n    int count = 1;\n    count += 1;\n    printf(\"%d\\n\", count);\n    return 0;\n}\n",
+    "out": "2\n"
+   },
+   "cpp": {
+    "status": "runs",
+    "says": "C++ variables can change unless you mark them `const`, so this prints 2. Rust flips the default: you opt in to change with `mut`.",
+    "code": "#include <iostream>\n\nint main() {\n    int count = 1;\n    count += 1;\n    std::cout << count << \"\\n\";\n}\n",
+    "out": "2\n"
+   }
+  },
+  "code": "fn main() {\n    let count = 1;\n    count += 1;\n    println!(\"{count}\");\n}\n",
+  "error": "error[E0384]: cannot assign twice to immutable variable `count`\n --> src/main.rs:3:5\n  |\n2 |     let count = 1;\n  |         ----- first assignment to `count`\n3 |     count += 1;\n  |     ^^^^^^^^^^ cannot assign twice to immutable variable\n  |\nhelp: consider making this binding mutable\n  |\n2 |     let mut count = 1;\n  |         +++\n",
+  "error_code": "E0384",
+  "fixed": {
+   "code": "fn main() {\n    let mut count = 1;\n    count += 1;\n    println!(\"{count}\");\n}\n",
+   "out": "2\n"
+  }
+ },
+ "order": 8,
+ "program": {
+  "rust": {
+   "code": "fn main() {\n    let name = \"gopher\";      // cannot change\n    let mut count = 1;        // mut: can change\n    count += 1;\n\n    let count = count * 10;   // shadowing: a NEW variable with the same name\n    println!(\"{name} {count}\");\n}\n",
+   "out": "gopher 20\n"
+  },
+  "go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tname := \"gopher\"\n\tcount := 1\n\tcount += 1\n\tcount = count * 10\n\tfmt.Println(name, count)\n}\n",
+   "out": "gopher 20\n"
+  },
+  "kotlin": {
+   "code": "fun main() {\n    val name = \"gopher\"\n    var count = 1\n    count += 1\n    count = count * 10\n    println(\"$name $count\")\n}\n",
+   "out": "gopher 20\n"
+  },
+  "python": {
+   "code": "name = \"gopher\"\ncount = 1\ncount += 1\n\ncount = count * 10  # Python just reassigns; there is no separate \"shadowing\"\nprint(f\"{name} {count}\")\n",
+   "out": "gopher 20\n"
+  },
+  "typescript": {
+   "code": "const mascot = \"gopher\"; // const: cannot be reassigned\nlet count = 1;         // let: can change\ncount += 1;\n\n// TypeScript has no shadowing in the same scope, so use a new name\nconst scaled = count * 10;\nconsole.log(`${mascot} ${scaled}`);\n",
+   "out": "gopher 20\n"
+  },
+  "java": {
+   "code": "public class Main {\n    public static void main(String[] args) {\n        final var name = \"gopher\";   // final: cannot change\n        var count = 1;               // locals can change by default\n        count += 1;\n\n        count = count * 10;          // a local cannot reuse a local's name in Java: reassign instead\n        System.out.println(name + \" \" + count);\n    }\n}\n",
+   "out": "gopher 20\n"
+  },
+  "csharp": {
+   "code": "const string name = \"gopher\";   // cannot change\nvar count = 1;                  // var: can change\ncount += 1;\n\n// C# does not let a local reuse a local's name, so the new value gets a new name\nvar total = count * 10;\nConsole.WriteLine($\"{name} {total}\");\n",
+   "out": "gopher 20\n"
+  },
+  "c": {
+   "code": "#include <stdio.h>\n\nint main(void) {\n    const char *const name = \"gopher\";  // neither the pointer nor the text can change\n    int count = 1;                // C variables can change by default\n    count += 1;\n\n    count = count * 10;           // C has no shadowing in the same block: reuse it\n    printf(\"%s %d\\n\", name, count);\n    return 0;\n}\n",
+   "out": "gopher 20\n"
+  },
+  "cpp": {
+   "code": "#include <iostream>\n#include <string>\n\nint main() {\n    const std::string name = \"gopher\";  // const: cannot change\n    int count = 1;                      // plain variables can change\n    count += 1;\n\n    const int total = count * 10;       // no shadowing in the same scope: pick a new name\n    std::cout << name << \" \" << total << \"\\n\";\n}\n",
+   "out": "gopher 20\n"
+  }
+ },
+ "faq": [],
+ "snippets": {
+  "cell.rs": {
+   "code": "use std::cell::Cell;\n\nfn main() {\n    let counter = Cell::new(0); // no `mut`\n    counter.set(counter.get() + 1);\n    println!(\"counter: {}\", counter.get());\n}\n",
+   "out": "counter: 1\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-rows.rs": {
+   "code": "// Backs the table cells that show a Rust expression and its result.\nuse std::sync::Mutex;\n\nconst fn square(n: u32) -> u32 {\n    n * n\n}\n\nstatic LOG: Mutex<Vec<u32>> = Mutex::new(Vec::new());\nconst AREA: u32 = square(4);\nconst NAMES: [&str; 2] = [\"a\", \"b\"];\nconst ORIGIN: (i32, i32) = (0, 0);\n\nfn main() {\n    // `let x = x + 1` reads the OLD x, because the right side runs before the new name exists\n    let x = 5;\n    let x = x + 1;\n    assert_eq!(x, 6);\n    // a value chosen by a condition, set once\n    let c = true;\n    let a = if c { 1 } else { 2 };\n    let b;\n    if c {\n        b = 1;\n    } else {\n        b = 2;\n    }\n    assert_eq!((a, b), (1, 1));\n    // a const fn runs at compile time in a const and at run time in a call\n    let n = std::env::args().count() as u32;\n    assert_eq!(AREA, 16);\n    assert_eq!(square(n + 2), 9);\n    // a Mutex in a static changes without `mut` or `unsafe`\n    LOG.lock().unwrap().push(7);\n    assert_eq!(*LOG.lock().unwrap(), vec![7]);\n    // a const is not limited to numbers and text\n    assert_eq!((NAMES.len(), ORIGIN), (2, (0, 0)));\n}\n",
+   "out": "",
+   "lang": "rust",
+   "exit": 0
+  },
+  "const-call.rs": {
+   "code": "const fn square(n: u32) -> u32 {\n    n * n\n}\n\nconst AREA: u32 = square(4);\n\nfn main() {\n    println!(\"area: {AREA}\");\n}\n",
+   "out": "area: 16\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "const-runtime.fail.rs": {
+   "code": "fn main() {\n    let n = 3;\n    const LIMIT: i32 = n * 2;\n    println!(\"{LIMIT}\");\n}\n",
+   "error": "error[E0435]: attempt to use a non-constant value in a constant\n --> src/main.rs:3:24\n  |\n3 |     const LIMIT: i32 = n * 2;\n  |                        ^ non-constant value\n  |\nhelp: consider using `let` instead of `const`\n  |\n3 -     const LIMIT: i32 = n * 2;\n3 +     let LIMIT: i32 = n * 2;",
+   "lang": "rust"
+  },
+  "const-static.rs": {
+   "code": "const SECONDS_PER_DAY: u32 = 24 * 60 * 60;\nstatic APP_NAME: &str = \"tracker\";\n\nfn main() {\n    const LIMIT: u32 = 3; // a const may sit inside a function\n    let days = 2;\n    let seconds = days * SECONDS_PER_DAY;\n    println!(\"{APP_NAME}: {seconds} seconds in {days} days (limit {LIMIT})\");\n}\n",
+   "out": "tracker: 172800 seconds in 2 days (limit 3)\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "const-string.fail.rs": {
+   "code": "const NAME: String = String::from(\"tracker\");\n\nfn main() {\n    println!(\"{NAME}\");\n}\n",
+   "error": "error[E0015]: cannot call non-const associated function `<String as From<&str>>::from` in constants\n --> src/main.rs:1:22\n  |\n1 | const NAME: String = String::from(\"tracker\");\n  |                      ^^^^^^^^^^^^^^^^^^^^^^^\n  |\n  = note: calls in constants are limited to constant functions, tuple structs and tuple variants\n",
+   "lang": "rust"
+  },
+  "freeze.fail.rs": {
+   "code": "fn main() {\n    let mut list = Vec::new();\n    list.push(1);\n    list.push(2);\n    let list = list; // the same list, now frozen\n    list.push(3);\n}\n",
+   "error": "error[E0596]: cannot borrow `list` as mutable, as it is not declared as mutable\n --> src/main.rs:6:5\n  |\n6 |     list.push(3);\n  |     ^^^^ cannot borrow as mutable\n  |\nhelp: consider changing this to be mutable\n  |\n5 |     let mut list = list; // the same list, now frozen\n  |         +++\n",
+   "lang": "rust"
+  },
+  "frozen-vec.fail.rs": {
+   "code": "fn main() {\n    let list = Vec::new();\n    list.push(1);\n    println!(\"len: {}\", list.len());\n}\n",
+   "error": "error[E0596]: cannot borrow `list` as mutable, as it is not declared as mutable\n --> src/main.rs:3:5\n  |\n3 |     list.push(1);\n  |     ^^^^ cannot borrow as mutable\n  |\nhelp: consider changing this to be mutable\n  |\n2 |     let mut list = Vec::new();\n  |         +++\n",
+   "lang": "rust"
+  },
+  "infer-conflict.fail.rs": {
+   "code": "fn takes_u8(n: u8) -> u8 {\n    n\n}\n\nfn takes_u64(n: u64) -> u64 {\n    n\n}\n\nfn main() {\n    let a = 5;\n    takes_u8(a);\n    takes_u64(a);\n}\n",
+   "error": "error[E0308]: mismatched types\n  --> src/main.rs:12:15\n   |\n12 |     takes_u64(a);\n   |     --------- ^ expected `u64`, found `u8`\n   |     |\n   |     arguments to this function are incorrect\n   |\nnote: function defined here\n  --> src/main.rs:5:4\n   |\n 5 | fn takes_u64(n: u64) -> u64 {\n   |    ^^^^^^^^^ ------\nhelp: you can convert a `u8` to a `u64`\n   |\n12 |     takes_u64(a.into());\n   |                +++++++\n",
+   "lang": "rust"
+  },
+  "maybe-set.fail.rs": {
+   "code": "fn main() {\n    let label;\n    let n = 3;\n    if n > 2 {\n        label = \"big\";\n    }\n    println!(\"label: {label}\");\n}\n",
+   "error": "error[E0381]: used binding `label` is possibly-uninitialized\n --> src/main.rs:7:23\n  |\n2 |     let label;\n  |         ----- binding declared here but left uninitialized\n3 |     let n = 3;\n4 |     if n > 2 {\n  |        ----- if this `if` condition is `false`, `label` is not initialized\n5 |         label = \"big\";\n6 |     }\n  |      - an `else` arm might be missing here, initializing `label`\n7 |     println!(\"label: {label}\");\n  |                       ^^^^^ `label` used here but it is possibly-uninitialized\n  |\n  = note: when checking initialization, the compiler describes possible control-flow paths without evaluating whether branch conditions can actually have the values shown\n",
+   "lang": "rust"
+  },
+  "move-mut.rs": {
+   "code": "fn main() {\n    let first = String::from(\"ab\");\n    let mut second = first; // the text moves into a variable that may change\n    second.push('c');\n    println!(\"second: {second}\");\n}\n",
+   "out": "second: abc\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "mut-ref.rs": {
+   "code": "fn main() {\n    let mut v = vec![1];\n    let r = &mut v; // `r` is not `mut`, but it points at a value that is\n    r.push(2);\n    println!(\"v: {v:?}\");\n}\n",
+   "out": "v: [1, 2]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "mut-type.fail.rs": {
+   "code": "fn main() {\n    let mut speed = 90;\n    speed = speed as f64 * 1.6;\n    println!(\"{speed}\");\n}\n",
+   "error": "error[E0308]: mismatched types\n --> src/main.rs:3:13\n  |\n2 |     let mut speed = 90;\n  |                     -- expected due to this value\n3 |     speed = speed as f64 * 1.6;\n  |             ^^^^^^^^^^^^^^^^^^ expected integer, found `f64`\n",
+   "lang": "rust"
+  },
+  "set-twice.fail.rs": {
+   "code": "fn main() {\n    let label;\n    label = \"first\";\n    label = \"second\";\n    println!(\"label: {label}\");\n}\n",
+   "error": "error[E0384]: cannot assign twice to immutable variable `label`\n --> src/main.rs:4:5\n  |\n3 |     label = \"first\";\n  |     --------------- first assignment to `label`\n4 |     label = \"second\";\n  |     ^^^^^^^^^^^^^^^^ cannot assign twice to immutable variable\n  |\nhelp: consider making this binding mutable\n  |\n2 |     let mut label;\n  |         +++",
+   "lang": "rust"
+  },
+  "shadow-trap.fail.rs": {
+   "code": "#![deny(unused)]\n\nfn main() {\n    let mut total = 0;\n    for n in 1..=3 {\n        let total = total + n; // meant: total += n\n    }\n    println!(\"total: {total}\");\n}\n",
+   "error": "error: variable does not need to be mutable\n --> src/main.rs:4:9\n  |\n4 |     let mut total = 0;\n  |         ----^^^^^\n  |         |\n  |         help: remove this `mut`\n  |\nnote: the lint level is defined here\n --> src/main.rs:1:9\n  |\n1 | #![deny(unused)]\n  |         ^^^^^^\n  = note: `#[deny(unused_mut)]` implied by `#[deny(unused)]`\n\nerror: unused variable: `total`\n --> src/main.rs:6:13\n  |\n6 |         let total = total + n; // meant: total += n\n  |             ^^^^^ help: if this is intentional, prefix it with an underscore: `_total`\n  |\n  = note: `#[deny(unused_variables)]` implied by `#[deny(unused)]`",
+   "lang": "rust"
+  },
+  "shadow-trap.rs": {
+   "code": "#![allow(unused)] // warnings off, to show what the program does\n\nfn main() {\n    let mut total = 0;\n    for n in 1..=3 {\n        let total = total + n; // meant: total += n\n    }\n    println!(\"total: {total}\");\n}\n",
+   "out": "total: 0\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "shadow-type.rs": {
+   "code": "fn main() {\n    let speed = 90; // i32\n    println!(\"first: {} bytes\", size_of_val(&speed));\n    let speed = speed as f64 * 1.6; // a new variable: f64\n    println!(\"second: {} bytes, {speed}\", size_of_val(&speed));\n}\n",
+   "out": "first: 4 bytes\nsecond: 8 bytes, 144\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "shadow-vs-mut.rs": {
+   "code": "fn main() {\n    let mut a = 1;\n    let b = 1;\n    println!(\"before: a = {a}, b = {b}\");\n    {\n        a = 10; // changes the one variable\n        let b = 10; // a new variable, gone when the block ends\n        println!(\"inside: a = {a}, b = {b}\");\n    }\n    println!(\"after: a = {a}, b = {b}\");\n}\n",
+   "out": "before: a = 1, b = 1\ninside: a = 10, b = 10\nafter: a = 10, b = 1\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "static-assign.fail.rs": {
+   "code": "static COUNT: u32 = 0;\n\nfn main() {\n    COUNT += 1;\n    println!(\"{COUNT}\");\n}\n",
+   "error": "error[E0594]: cannot assign to immutable static item `COUNT`\n --> src/main.rs:4:5\n  |\n1 | static COUNT: u32 = 0;\n  | ----------------- this `static` cannot be written to\n...\n4 |     COUNT += 1;\n  |     ^^^^^^^^^^ cannot assign\n",
+   "lang": "rust"
+  },
+  "static-fn.rs": {
+   "code": "use std::sync::atomic::{AtomicU32, Ordering};\n\nfn next() -> u32 {\n    static CALLS: AtomicU32 = AtomicU32::new(0); // a static inside a function\n    CALLS.fetch_add(1, Ordering::Relaxed) + 1 // changes without `mut` or `unsafe`\n}\n\nfn main() {\n    println!(\"calls: {} {} {}\", next(), next(), next());\n}\n",
+   "out": "calls: 1 2 3\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "underscore.rs": {
+   "code": "fn main() {\n    let _scratch = 5; // never read: no warning\n    let _ = 6; // binds nothing\n    let _kept = 7; // still a real variable\n    println!(\"kept: {_kept}\");\n}\n",
+   "out": "kept: 7\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "unused.fail.rs": {
+   "code": "#![deny(unused)]\n\nfn main() {\n    let mut total = 10;\n    let scratch = 5;\n    println!(\"total: {total}\");\n}\n",
+   "error": "error: variable does not need to be mutable\n --> src/main.rs:4:9\n  |\n4 |     let mut total = 10;\n  |         ----^^^^^\n  |         |\n  |         help: remove this `mut`\n  |\nnote: the lint level is defined here\n --> src/main.rs:1:9\n  |\n1 | #![deny(unused)]\n  |         ^^^^^^\n  = note: `#[deny(unused_mut)]` implied by `#[deny(unused)]`\n\nerror: unused variable: `scratch`\n --> src/main.rs:5:9\n  |\n5 |     let scratch = 5;\n  |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_scratch`\n  |\n  = note: `#[deny(unused_variables)]` implied by `#[deny(unused)]`",
+   "lang": "rust"
+  },
+  "auto-rhs.cpp": {
+   "code": "#include <cstdint>\n#include <iostream>\n\nstd::uint8_t takes_u8(std::uint8_t n) { return n; }\n\nint main() {\n    auto a = 5; // auto looks only at the right-hand side: int\n    takes_u8(a);\n    std::cout << \"a: \" << sizeof(a) << \" byte(s)\\n\";\n}\n",
+   "out": "a: 4 byte(s)\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "const-runtime.fail.cs": {
+   "code": "var n = 3;\nconst int limit = n * 2;\nConsole.WriteLine(limit);\n",
+   "error": "Program.cs(2,19): error CS0133: The expression being assigned to 'limit' must be constant",
+   "lang": "csharp"
+  },
+  "const-shallow.ts": {
+   "code": "const list: number[] = [1];\nlist.push(2); // const stops reassigning `list`, not changing what it holds\nconsole.log(\"list:\", list);\n",
+   "out": "list: [ 1, 2 ]\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "const-val.fail.kt": {
+   "code": "const val NAMES = listOf(\"tracker\")\n\nfun main() {\n    println(NAMES)\n}\n",
+   "error": "Main.kt:1:1: error: const 'val' has type 'List<String>'. Only primitive types and 'String' are allowed.\nconst val NAMES = listOf(\"tracker\")\n^^^^^",
+   "lang": "kotlin"
+  },
+  "const.fail.go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"os\"\n)\n\nfunc main() {\n\tconst n = len(os.Args)\n\tfmt.Println(n)\n}\n",
+   "error": "# command-line-arguments\n./main.go:9:12: len(os.Args) (value of type int) is not constant",
+   "lang": "go"
+  },
+  "final-shallow.java": {
+   "code": "import java.util.ArrayList;\n\npublic class Main {\n    static final ArrayList<String> NAMES = new ArrayList<>(); // a field: any initializer\n\n    public static void main(String[] args) {\n        final var list = new ArrayList<Integer>();\n        list.add(1);\n        list.add(2);\n        NAMES.add(\"tracker\");\n        System.out.println(\"list: \" + list + \", names: \" + NAMES);\n    }\n}\n",
+   "out": "list: [1, 2], names: [tracker]\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "immutable-list.crash.java": {
+   "code": "import java.util.List;\n\npublic class Main {\n    public static void main(String[] args) {\n        var list = List.of(1); // the list object refuses changes, whatever the variable\n        list.add(2);\n        System.out.println(\"list: \" + list);\n    }\n}\n",
+   "out": "Exception in thread \"main\" java.lang.UnsupportedOperationException\n\tat java.base/java.util.ImmutableCollections.uoe(ImmutableCollections.java:159)\n\tat java.base/java.util.ImmutableCollections$AbstractImmutableCollection.add(ImmutableCollections.java:164)\n\tat Main.main(Main.java:6)\n",
+   "lang": "java",
+   "exit": 1
+  },
+  "inner-shadow.c": {
+   "code": "#include <stdio.h>\n\nint main(void) {\n    int x = 1;\n    {\n        int x = 10; // allowed: an inner block\n        printf(\"inner x: %d\\n\", x);\n    }\n    printf(\"outer x: %d\\n\", x);\n    return 0;\n}\n",
+   "out": "inner x: 10\nouter x: 1\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "listof-add.fail.kt": {
+   "code": "fun main() {\n    var list = listOf(1) // the type List has no add, even for a var\n    list.add(2)\n    println(\"list: $list\")\n}\n",
+   "error": "Main.kt:3:10: error: unresolved reference 'add' on receiver of type 'List<Int>'.\n    list.add(2)\n         ^^^",
+   "lang": "kotlin"
+  },
+  "maybe-unset.c": {
+   "code": "#include <stdio.h>\n\nint main(int argc, char **argv) {\n    (void)argv;\n    int label;\n    if (argc > 5) {\n        label = 1;\n    }\n    printf(\"label: %d\\n\", label); // the branch did not run: label was never set\n    return 0;\n}\n",
+   "out": "label: 2\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "maybe-unset.cpp": {
+   "code": "#include <cstdio>\n\nint main(int argc, char **argv) {\n    (void)argv;\n    int label;\n    if (argc > 5) {\n        label = 1;\n    }\n    printf(\"label: %d\\n\", label); // the branch did not run: label was never set\n    return 0;\n}\n",
+   "out": "label: 2\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "narrow.cpp": {
+   "code": "#include <iostream>\n\nint main() {\n    int speed = 90;\n    speed = speed * 1.6; // a double, stored into an int\n    std::cout << \"speed: \" << speed << \"\\n\";\n}\n",
+   "out": "speed: 144\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "readonly-local.fail.cs": {
+   "code": "readonly int x = 1;\nConsole.WriteLine(x);\n",
+   "error": "Program.cs(1,1): error CS0106: The modifier 'readonly' is not valid for this item",
+   "lang": "csharp"
+  },
+  "rebind.py": {
+   "code": "speed = 90\nprint(\"first:\", type(speed).__name__)\nspeed = speed * 1.6  # same name, new type: Python rebinding allows it\nprint(\"second:\", type(speed).__name__, speed)\n",
+   "out": "first: int\nsecond: float 144.0\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "redeclare.fail.c": {
+   "code": "#include <stdio.h>\n\nint main(void) {\n    int x = 1;\n    int x = 10;\n    printf(\"%d\\n\", x);\n    return 0;\n}\n",
+   "error": "main.c: In function ‘main’:\nmain.c:5:9: error: redefinition of ‘x’\n    5 |     int x = 10;\n      |         ^\nmain.c:4:9: note: previous definition of ‘x’ with type ‘int’\n    4 |     int x = 1;\n      |         ^",
+   "lang": "c"
+  },
+  "redeclare.fail.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tcount := 1\n\tcount := count * 10\n\tfmt.Println(count)\n}\n",
+   "error": "# command-line-arguments\n./main.go:7:8: no new variables on left side of :=",
+   "lang": "go"
+  },
+  "redeclare.fail.kt": {
+   "code": "fun main() {\n    val x = 1\n    val x = 10\n    println(x)\n}\n",
+   "error": "Main.kt:2:9: error: conflicting declarations:\nlocal val x: Int\nlocal val x: Int\n    val x = 1\n        ^\nMain.kt:3:9: error: conflicting declarations:\nlocal val x: Int\nlocal val x: Int\n    val x = 10\n        ^",
+   "lang": "kotlin"
+  },
+  "redeclare.fail.ts": {
+   "code": "let x = 1;\nlet x = 10;\nconsole.log(x);\n",
+   "error": "main.ts(1,5): error TS2451: Cannot redeclare block-scoped variable 'x'.\nmain.ts(2,5): error TS2451: Cannot redeclare block-scoped variable 'x'.",
+   "lang": "typescript"
+  },
+  "self-init.c": {
+   "code": "#include <stdio.h>\n\nint main(int argc, char **argv) {\n    (void)argv;\n    int x = argc + 4;\n    {\n        int x = x + 1; // this x is already in scope on the right: it reads itself\n        printf(\"inner x: %d\\n\", x);\n    }\n    printf(\"outer x: %d\\n\", x);\n    return 0;\n}\n",
+   "warnings": "main.c: In function ‘main’:\nmain.c:7:13: warning: ‘x’ is used uninitialized [-Wuninitialized]\n    7 |         int x = x + 1; // this x is already in scope on the right: it reads itself\n      |             ^\nmain.c:7:13: note: ‘x’ was declared here\n    7 |         int x = x + 1; // this x is already in scope on the right: it reads itself\n      |             ^",
+   "out": "inner x: 1\nouter x: 5\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "self-init.cpp": {
+   "code": "#include <cstdio>\n\nint main(int argc, char **argv) {\n    (void)argv;\n    int x = argc + 4;\n    {\n        int x = x + 1; // this x is already in scope on the right: it reads itself\n        printf(\"inner x: %d\\n\", x);\n    }\n    printf(\"outer x: %d\\n\", x);\n    return 0;\n}\n",
+   "warnings": "main.cpp: In function ‘int main(int, char**)’:\nmain.cpp:7:13: warning: ‘x’ is used uninitialized [-Wuninitialized]\n    7 |         int x = x + 1; // this x is already in scope on the right: it reads itself\n      |             ^\nmain.cpp:7:13: note: ‘x’ was declared here\n    7 |         int x = x + 1; // this x is already in scope on the right: it reads itself\n      |             ^",
+   "out": "inner x: 1\nouter x: 5\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "shadow.fail.cs": {
+   "code": "var x = 1;\n{\n    var x = 10;\n    Console.WriteLine(x);\n}\nConsole.WriteLine(x);\n",
+   "error": "Program.cs(3,9): error CS0136: A local or parameter named 'x' cannot be declared in this scope because that name is used in an enclosing local scope to define a local or parameter",
+   "lang": "csharp"
+  },
+  "shadow.fail.java": {
+   "code": "public class Main {\n    public static void main(String[] args) {\n        int x = 1;\n        {\n            int x = 10;\n            System.out.println(x);\n        }\n    }\n}\n",
+   "error": "Main.java:5: error: variable x is already defined in method main(String[])\n            int x = 10;\n                ^\n1 error",
+   "lang": "java"
+  },
+  "shadow.kt": {
+   "code": "fun main() {\n    val x = 1\n    run {\n        val x = 10\n        println(\"inner x: $x\")\n    }\n    println(\"outer x: $x\")\n}\n",
+   "out": "inner x: 10\nouter x: 1\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "static-local.c": {
+   "code": "#include <stdio.h>\n\nint next(void) {\n    static int calls = 0; // one variable that lives for the whole program\n    calls += 1;\n    return calls;\n}\n\nint main(void) {\n    printf(\"%d %d %d\\n\", next(), next(), next());\n    return 0;\n}\n",
+   "out": "1 2 3\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "unassigned.fail.java": {
+   "code": "public class Main {\n    public static void main(String[] args) {\n        String label;\n        if (args.length > 2) {\n            label = \"big\";\n        }\n        System.out.println(label);\n    }\n}\n",
+   "error": "Main.java:7: error: variable label might not have been initialized\n        System.out.println(label);\n                           ^\n1 error",
+   "lang": "java"
+  },
+  "unassigned.fail.kt": {
+   "code": "fun main() {\n    val label: String\n    if (System.getenv(\"X\") != null) {\n        label = \"big\"\n    }\n    println(label)\n}\n",
+   "error": "Main.kt:6:13: error: variable 'label' must be initialized.\n    println(label)\n            ^^^^^",
+   "lang": "kotlin"
+  },
+  "unassigned.fail.ts": {
+   "code": "let label: string;\nif (process.argv.length > 5) {\n    label = \"big\";\n}\nconsole.log(label);\n",
+   "error": "main.ts(5,13): error TS2454: Variable 'label' is used before being assigned.",
+   "lang": "typescript"
+  },
+  "unbound.fail.py": {
+   "code": "def describe(n):\n    if n > 2:\n        label = \"big\"\n    return label\n\nprint(describe(1))\n",
+   "out": "Traceback (most recent call last):\n  File \"main.py\", line 6, in <module>\n    print(describe(1))\n          ~~~~~~~~^^^\n  File \"main.py\", line 4, in describe\n    return label\n           ^^^^^\nUnboundLocalError: cannot access local variable 'label' where it is not associated with a value\n",
+   "lang": "python",
+   "exit": 1
+  },
+  "unused.fail.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\ttotal := 10\n\tscratch := 5\n\tfmt.Println(\"total:\", total)\n}\n",
+   "error": "# command-line-arguments\n./main.go:7:2: declared and not used: scratch",
+   "lang": "go"
+  },
+  "val-shallow.kt": {
+   "code": "fun main() {\n    val list = mutableListOf(1)\n    list.add(2)\n    println(\"list: $list\")\n}\n",
+   "out": "list: [1, 2]\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "zero-err.go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"strconv\"\n)\n\nfunc main() {\n\tvar n int\n\tvar s string\n\tfmt.Printf(\"zero values: %d %q\\n\", n, s)\n\n\ta, err := strconv.Atoi(\"1\")\n\tb, err := strconv.Atoi(\"x\") // b is new; err is reused, not redeclared\n\tfmt.Println(a, b, err)\n}\n",
+   "out": "zero values: 0 \"\"\n1 0 strconv.Atoi: parsing \"x\": invalid syntax\n",
+   "lang": "go",
+   "exit": 0
+  }
+ },
+ "exercises": {
+  "average": {
+   "starter": "/// The average of `total` spread over `count` items, as a float.\n/// With no items the average is 0.0.\nfn average(total: i32, count: i32) -> f64 {\n    todo!(\n        \"shadow both parameters with `let total = total as f64;` (and the same for count), then divide. Check count == 0 first: 0.0 / 0.0 is NaN\"\n    )\n}\n\nfn main() {\n    assert_eq!(average(7, 2), 3.5);\n    assert_eq!(average(10, 5), 2.0);\n    assert_eq!(average(-3, 2), -1.5);\n    // The case to watch: no items must give 0.0, not NaN.\n    assert_eq!(average(0, 0), 0.0);\n    assert_eq!(average(5, 0), 0.0);\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "/// The average of `total` spread over `count` items, as a float.\n/// With no items the average is 0.0.\nfn average(total: i32, count: i32) -> f64 {\n    if count == 0 {\n        return 0.0;\n    }\n    let total = total as f64;\n    let count = count as f64;\n    total / count\n}\n\nfn main() {\n    assert_eq!(average(7, 2), 3.5);\n    assert_eq!(average(10, 5), 2.0);\n    assert_eq!(average(-3, 2), -1.5);\n    // The case to watch: no items must give 0.0, not NaN.\n    assert_eq!(average(0, 0), 0.0);\n    assert_eq!(average(5, 0), 0.0);\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "multiples": {
+   "starter": "/// How many numbers from 1 to `limit` (inclusive) are multiples of `step`?\n/// A `step` of 0 has no multiples, so the answer is 0.\n/// This version compiles but gives the wrong answer. Read the compiler's warnings: they point at the bug.\nfn count_multiples(limit: u32, step: u32) -> u32 {\n    if step == 0 {\n        return 0;\n    }\n    let mut count = 0;\n    for n in 1..=limit {\n        if n % step == 0 {\n            let count = count + 1;\n        }\n    }\n    count\n}\n\nfn main() {\n    assert_eq!(count_multiples(10, 3), 3); // 3, 6, 9\n    assert_eq!(count_multiples(10, 1), 10);\n    assert_eq!(count_multiples(2, 5), 0);\n    assert_eq!(count_multiples(0, 3), 0);\n    // The case to watch: a step of 0 must not crash.\n    assert_eq!(count_multiples(10, 0), 0);\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "/// How many numbers from 1 to `limit` (inclusive) are multiples of `step`?\n/// A `step` of 0 has no multiples, so the answer is 0.\nfn count_multiples(limit: u32, step: u32) -> u32 {\n    if step == 0 {\n        return 0;\n    }\n    let mut count = 0;\n    for n in 1..=limit {\n        if n % step == 0 {\n            count += 1;\n        }\n    }\n    count\n}\n\nfn main() {\n    assert_eq!(count_multiples(10, 3), 3); // 3, 6, 9\n    assert_eq!(count_multiples(10, 1), 10);\n    assert_eq!(count_multiples(2, 5), 0);\n    assert_eq!(count_multiples(0, 3), 0);\n    // The case to watch: a step of 0 must not crash.\n    assert_eq!(count_multiples(10, 0), 0);\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}

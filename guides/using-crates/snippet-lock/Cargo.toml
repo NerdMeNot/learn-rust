@@ -1,0 +1,8 @@
+[package]
+name = "graphemes"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+itoa = "1.0.18"
+unicode-segmentation = "1.13.3"

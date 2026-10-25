@@ -1,0 +1,384 @@
+<p class="lr-layer">The toolkit</p>
+
+Three things in Rust code look like noise until someone names them: a `!` after a name (`println!`), a line that starts with `#[` (`#[derive(Debug)]`), and a comment that starts with `///`. This page names each one and maps it from your language. It does not teach what the features are for (traits, tests, modules): it says "a later lesson" or links to the lesson that does.
+
+## The `!`: a macro call
+
+An ordinary Rust function has a fixed list of parameters: there is no `*args`, no `...rest`, no `printf`-style `...`. Yet `println!` takes any number of arguments, and checks its format string against them before the program runs. It can because it is a **macro**: code that the compiler expands into other code before it checks types ([the Book](https://doc.rust-lang.org/book/ch20-05-macros.html)). The `!` is the marker; in C nothing at the call tells you a macro is involved, apart from the habit of capital letters. You will use macros constantly and write them rarely.
+
+| Macro | What it does |
+|---|---|
+| [`print!`](https://doc.rust-lang.org/std/macro.print.html) [`println!`](https://doc.rust-lang.org/std/macro.println.html) `eprintln!` | Print to standard output, with or without a newline; `eprintln!` to standard error. |
+| [`format!`](https://doc.rust-lang.org/std/macro.format.html) | Build a `String` instead of printing. |
+| [`vec!`](https://doc.rust-lang.org/std/macro.vec.html) | Build a `Vec`, a growable list ([Vectors](/learn/vectors/)). |
+| [`assert!`](https://doc.rust-lang.org/std/macro.assert.html) [`assert_eq!`](https://doc.rust-lang.org/std/macro.assert_eq.html) | Panic (stop the program with a message) if a condition is false, or two values differ. |
+| [`matches!`](https://doc.rust-lang.org/std/macro.matches.html) | `true` if a value fits a pattern ([Match](/learn/match/)). |
+| [`panic!`](https://doc.rust-lang.org/std/macro.panic.html) [`todo!`](https://doc.rust-lang.org/std/macro.todo.html) | Panic now. `todo!` marks code you have not written yet, as the exercises below do. |
+| [`dbg!`](https://doc.rust-lang.org/std/macro.dbg.html) | Print the source location, the expression and its value to standard error, and give the value back. |
+| [`write!`](https://doc.rust-lang.org/std/macro.write.html) | Like `format!`, but into something you pass in, such as a file. |
+
+<Snippet file="macro-tour.rs" />
+
+A failed `assert_eq!` shows both sides. The third argument onward is a message, printed first:
+
+<Snippet file="assert-eq.panic.rs" />
+
+## Format strings
+
+`println!`, `format!`, `write!`, `panic!` and the message of `assert!` take a **format string**: text where `{...}` marks a place for a value. What follows a colon inside the braces says how to print it.
+
+| You write | It means |
+|---|---|
+| `{}` | The next argument, in its `Display` form: the one meant for people. |
+| `{:?}` and `{:#?}` | The `Debug` form: the one meant for programmers. `#` spreads it over several lines. |
+| `{0}`, `{name}` | An argument by position or by name. `{name}` alone uses the variable `name` in scope. |
+| `{:5}` `{:<5}` `{:^5}` `{:>5}` | A width of 5, then left, centre and right alignment. `{:*^9}` picks the fill character. |
+| `{:05}` `{:+}` `{:.2}` `{:8.3}` | Zero padding. Always show the sign. Digits after the decimal point. Width, then precision. |
+| `{:x}` `{:#x}` `{:b}` | Hexadecimal, hexadecimal with `0x`, binary. Flags combine: `{:#010b}` is the `0b` prefix, zero fill and width 10. |
+| `{:w$}` `{:.p$}` | Width and precision taken from variables `w` and `p`. |
+| `{{` and `}}` | One brace each. |
+
+<Snippet file="format-specs.rs" />
+
+Text is left-aligned by default and numbers right-aligned. A value wider than its width is not cut off. Width counts `char`s (Unicode scalar values), not bytes or screen columns, and on text `.3` is a maximum length. The [std::fmt docs](https://doc.rust-lang.org/std/fmt/index.html) list the whole grammar.
+
+`Display` and `Debug` are **traits**: named abilities a type can have ([Traits](/learn/traits/)). Text has both; your own struct has neither until you add it:
+
+<Snippet file="display-missing.fail.rs" />
+
+The note offers `{:?}`, but a struct needs `Debug` first, which takes one line (`#[derive(Debug)]`, next section):
+
+<Snippet file="debug-missing.fail.rs" />
+
+The format letters of other languages do not exist; the type decides how a value prints:
+
+<Snippet file="format-verbs.fail.rs" />
+
+Slips from other languages are compile errors too. Each of these four lines is one:
+
+<Snippet file="print-slips.fail.rs" />
+
+The format string has to be a literal so the compiler can check it. So a `log(format, args...)` wrapper cannot forward them to `println!`: take a finished `String` (callers write `log(&format!(...))`) or write a macro. Forwarding with `format_args!` and `fmt::Arguments` is covered in [Printing and Formatting](/learn/formatting/#format_args-and-what-format-costs).
+
+## Attributes: `#[...]`
+
+An **attribute** is a note to the compiler about the thing after it: a function, a struct, a field, a statement. With a `!`, as in `#![...]`, the note is about the thing it sits inside, such as the file or module.
+
+| Attribute | What it does |
+|---|---|
+| `#[derive(Debug, Clone, PartialEq)]` | On a struct or enum: the compiler writes the standard code for those traits. `Debug` is what `{:?}` needs, `Clone` gives you `.clone()`, `PartialEq` is what `==` needs. |
+| `#[test]` | Marks a test function. It is built and run by `cargo test`, and left out of a normal build. |
+| `#[cfg(...)]` | Keep the item only when a condition holds, such as `target_os = "linux"` or `test`; `not(test)` is the opposite. |
+| `#[allow(...)]` `#[warn(...)]` `#[deny(...)]` | Set what a lint does. See below. |
+| `#[deprecated]` `#[must_use]` | Callers get a warning if they use the item, or ignore its result. |
+| `#[tokio::main]` `#[serde(...)]` | Attributes that crates (libraries) define. See [Macros you'll read](/learn/reading-macros/#attribute-macros). |
+
+<Snippet file="derive.rs" />
+
+A derive works on the type directly below it, every field must have the trait too, and attributes stack. `Clone` is an explicit copy of the whole value. (`Partial` in `PartialEq` is explained in [Common traits](/learn/common-traits/#equality-order-and-hashing).)
+
+<Snippet file="cfg.rs" />
+
+That is the page's runner (Linux, a debug build). `cfg!(debug_assertions)` is true when the build has no optimisation ([Reference](https://doc.rust-lang.org/reference/conditional-compilation.html)), as in a plain `cargo build`.
+
+### Lints
+
+A **lint** is a check on style or on likely mistakes. Each has a level, usually `allow` (silent), `warn` (a message, the build continues) or `deny` (an error). An attribute changes the level for the thing below it, and `#![deny(...)]` for the whole file. The naming checks in [Declarations](/learn/declarations-types/#naming) are lints. The page shows compiler messages only for failures, so this program runs plain `rustc` on a three-line file three times (as it is, with `#[allow]`, with `#![deny]`) and prints the relevant lines. You would see them with `cargo build`.
+
+<Snippet file="lint-levels.rs" />
+
+The note under the warning says `on by default`: that lint warns without any attribute.
+
+## Comments and documentation
+
+| Form | What it is |
+|---|---|
+| `// text` | A comment to the end of the line. A plain `//` above a function is only a comment, not documentation. |
+| `/* text */` | A block comment. Block comments nest. |
+| `/// text` | Documents the item below it, in Markdown. (`/** text */` works too.) |
+| `//! text` | Documents the file or module around it. It is usually the first lines of a file. |
+
+<Snippet file="comments.rs" />
+
+The [Reference](https://doc.rust-lang.org/reference/comments.html) says `/// Foo` is the same as `#[doc=" Foo"]`: a doc comment is an attribute in a friendlier form. `cargo doc --open` turns doc comments into web pages and opens them ([the Book](https://doc.rust-lang.org/book/ch14-02-publishing-to-crates-io.html#making-useful-documentation-comments)). In a library crate (`cargo new --lib`), a code block in a doc comment is also a test that `cargo test` runs. Cargo takes doc tests from the [library target only](https://doc.rust-lang.org/cargo/commands/cargo-test.html#documentation-tests), so examples in a binary crate's `main.rs` are not run.
+
+## What you write today, in Rust
+
+Each row is the closest match, not an exact one.
+
+<ForLang only="go">
+
+| You write in Go | In Rust |
+|---|---|
+| `fmt.Printf("%d %s\n", n, name)`, `Sprintf`, `Fprintf` | `println!("{} {}", n, name);` or `println!("{n} {name}");`, `format!(...)`, `write!(...)` |
+| `%5d` `%-5d` `%05d` `%+d`; `%8.3f` `%x` `%#x` | `{:5}` `{:<5}` `{:05}` `{:+}`; `{:8.3}` `{:x}` `{:#x}` |
+| `%10s` | `{:>10}`. Rust aligns text to the left unless you ask |
+| `%v` `%+v` `%#v` on any struct; a `String() string` method | `{:?}` `{:#?}`, but only after `#[derive(Debug)]` (Go prints any struct with no setup); `impl Display` ([Common traits](/learn/common-traits/#printing-debug-and-display)) for `{}` |
+| `` `json:"name"` `` (struct tag) | `#[serde(rename = "name")]`, from the [serde](https://serde.rs/field-attrs.html) crate |
+| `//go:build linux` (a whole file) | `#[cfg(target_os = "linux")]` (one item) |
+| `func TestAdd(t *testing.T)` in `x_test.go` | `#[test] fn adds()`, in the same file |
+| `//nolint:name`, `gofmt`, `go vet`, staticcheck | `#[allow(name)]`, `cargo fmt`, `cargo clippy` |
+| `// Add adds two numbers.` | `/// Adds two numbers.` in Markdown |
+
+A Go struct tag is a string that code reads at run time with `reflect`:
+
+<Snippet file="tags.go" />
+
+serde's attributes work at compile time instead: its [derive macro](https://serde.rs/derive.html) generates the encoding code while your program is built, and the attributes configure it. A second surprise is in the lints. In Go an unused variable stops the build:
+
+<Snippet file="unused-var.fail.go" />
+
+In Rust the same mistake is a warning (the `lint-levels` output above), unless you write `#![deny(unused_variables)]`. Go compares two structs with `==` for free when their fields can be compared, while a Rust struct needs `PartialEq` first.
+
+</ForLang>
+
+<ForLang only="java kotlin">
+
+| You write | In Rust |
+|---|---|
+| Java `String.format("%5d \| %-5d \| %05d", n, n, n)`, Kotlin `"%5d".format(n)` | `format!("{:5} \| {:<5} \| {:05}", n, n, n)` |
+| `%.2f`; `%10s` (right-aligns text) | `{:.2}`; `{:>10}` (Rust aligns text to the left unless you ask) |
+| `toString()`; Lombok `@ToString`, `record`, `data class` | `impl Display` for `{}` ([Common traits](/learn/common-traits/#printing-debug-and-display)); `#[derive(Debug)]` for `{:?}` |
+| Lombok `@EqualsAndHashCode`, `record`'s `equals` | `#[derive(PartialEq, Eq, Hash)]` |
+| `@Test` | `#[test]` |
+| `@Deprecated` | `#[deprecated]` |
+| `@SuppressWarnings("unused")`, `@Suppress("unused")` | `#[allow(unused)]` |
+| `@Override`, `override` | Nothing to write. See below |
+| `/** Javadoc with @param */` | `///` in Markdown, with no `@param` tags |
+| google-java-format; Checkstyle, ErrorProne | `cargo fmt`; `cargo clippy` |
+| Java `assert cond` | `debug_assert!(cond)`. `assert!` is always on: see Going deeper |
+
+A Java format string is checked when the program runs; a Rust one is checked when it compiles:
+
+<Snippet file="format-missing.crash.java" />
+
+An annotation is inert metadata: code reads it through reflection (JUnit, Jackson) or an annotation processor expands it (Lombok). A Rust attribute is read by the compiler. `#[derive]` is built in rather than an add-on, and `cargo test` builds a test program out of the `#[test]` functions. Java's `@Override` asks the compiler to check that a method really overrides something. In Rust, an `impl` block for a trait may hold only the trait's own items, so a misspelled method name is an error without any annotation ([Traits](/learn/traits/) has the details):
+
+<Snippet file="override-typo.fail.rs" />
+
+</ForLang>
+
+<ForLang only="csharp">
+
+| You write in C# | In Rust |
+|---|---|
+| `$"{n,5}"` `$"{n,-5}"` `$"{n:D5}"`; `$"{x:F2}"` | `{n:5}` `{n:<5}` `{n:05}`; `{x:.2}` |
+| `ToString()`; `record`'s printout | `impl Display` for `{}` ([Common traits](/learn/common-traits/#printing-debug-and-display)); `#[derive(Debug)]` for `{:?}` |
+| `[Fact]` or `[Test]` | `#[test]` |
+| `[Obsolete]` | `#[deprecated]` |
+| `#pragma warning disable` | `#[allow(...)]` |
+| `#if DEBUG` | `#[cfg(debug_assertions)]` |
+| `/// <summary>` XML | `///` in Markdown |
+| `dotnet format`; analyzers | `cargo fmt`; `cargo clippy` |
+
+The Rust Reference says of attributes that the syntax is "coming from ECMA-334 (C#)". The meaning is not always the same: a C# attribute is metadata that reflection can read, and a Rust attribute is read by the compiler.
+
+</ForLang>
+
+<ForLang only="python">
+
+| You write in Python | In Rust |
+|---|---|
+| `f"{x:>5} {x:05} {x:#x}"` | `{x:>5} {x:05} {x:#x}`: the specs are close to Python's |
+| `f"{x:.2f}"` | `{x:.2}`. Rust's `.2` already means two decimals |
+| `str(x)`, `repr(x)` (`__str__`, `__repr__`) | `{}` (`Display`), `{:?}` (`Debug`) |
+| `f"{a + b}"`, `f"{p.x}"` | `println!("{}", a + b)`. Only a name goes inside the braces |
+| `@dataclass` | `#[derive(Debug, Clone, PartialEq)]`, the closest match |
+| `@decorator` | The nearest thing is an attribute macro such as `#[tokio::main]`, which rewrites the function while the program is compiled |
+| `# noqa`, `# type: ignore` | `#[allow(...)]`, which covers an item, not a line |
+| `test_add()` found by pytest | `#[test] fn adds()`, usually in the same file |
+| `"""docstring"""` | `///` above the item, in Markdown |
+| `black`, `ruff format`; `ruff`, `pylint` | `cargo fmt`; `cargo clippy` |
+
+The `.2` difference is real. In Python, `.2` without the `f` means two significant digits:
+
+<Snippet file="precision.py" />
+
+Your usual slips are caught while compiling, as the `print-slips` errors above show: comma-separated arguments like `print("count:", count)`, a bare variable, and `{p.x}`.
+
+</ForLang>
+
+<ForLang only="typescript">
+
+| You write in TypeScript | In Rust |
+|---|---|
+| `` `${n} ${name}` `` | `{n} {name}`. Only a name goes inside the braces, not `a + b` or `p.x` |
+| `toFixed(2)`, `padStart(5)`, `padEnd(5)` | `{:.2}`, `{:>5}`, `{:<5}` |
+| `toString()`; what `console.log` prints for an object | `impl Display` for `{}` ([Common traits](/learn/common-traits/#printing-debug-and-display)); `#[derive(Debug)]` for `{:?}` |
+| `@Component`-style decorators | The nearest thing is an attribute macro such as `#[tokio::main]`, which rewrites code while the program is compiled. `#[derive]` generates methods |
+| `// eslint-disable-next-line`, `// @ts-ignore` | `#[allow(...)]`, which covers an item, not a line |
+| `test("adds", ...)` in Jest | `#[test] fn adds()`, usually in the same file |
+| `/** JSDoc */` | `///` in Markdown |
+| `prettier`; `eslint` | `cargo fmt`; `cargo clippy` |
+
+The slips you are likeliest to make are in the `print-slips` error above: `console.log`-style comma arguments, a bare variable, `{p.x}` and `+`.
+
+</ForLang>
+
+<ForLang only="c cpp">
+
+| You write in C or C++ | In Rust |
+|---|---|
+| `printf("%d %s\n", n, name);` | `println!("{} {}", n, name);` |
+| `%5d` `%-5d` `%05d` `%+d`; `%8.3f` `%x` `%#x` | `{:5}` `{:<5}` `{:05}` `{:+}`; `{:8.3}` `{:x}` `{:#x}` |
+| `%10s` (right-aligned), `%.3s` | `{:>10}`, `{:.3}`. Rust aligns text to the left unless you ask |
+| `#define MAX 100` | `const MAX: i32 = 100;` |
+| `#define SQUARE(x) ((x) * (x))` | An ordinary `fn`. `macro_rules!` exists for what a function cannot do |
+| `#ifdef __linux__` | `#[cfg(target_os = "linux")]` |
+| `#pragma GCC diagnostic ignored "-Wunused"`; `-Werror` | `#[allow(unused)]`; `#![deny(warnings)]` |
+| `__attribute__((...))`, `#pragma pack` | Attributes such as `#[inline]` and `#[repr(...)]` (a later lesson) |
+| Doxygen `/** ... @param x ... */` | `///` in Markdown (`/** */` works too), with no `@param` tags |
+| `clang-format`; `clang-tidy` | `cargo fmt`; `cargo clippy` |
+
+</ForLang>
+
+<ForLang only="c">
+
+The wrong type in `printf` is undefined behaviour in the C standard. GCC 14 warns under `-Wall` (the runner's flag), but the program still compiles and runs:
+
+<Snippet file="printf-mismatch.c" />
+
+In Rust a mismatch between a format string and its arguments is always an error, and the string must be a literal. `/* */` comments do not nest in C: GCC ends the one below at the first `*/` and reads the rest as code. In Rust they nest (the `comments` program above):
+
+<Snippet file="nested-comment.fail.c" />
+
+</ForLang>
+
+<ForLang only="cpp">
+
+| You write in C++ | In Rust |
+|---|---|
+| `std::format("{:>5}", n)` | `format!("{:>5}", n)`. The same grammar, with two differences: `{:d}` is legal in C++20 and an error in Rust, and `{:.2}` on a `double` means two significant digits in C++ and two decimals in Rust |
+| `operator<<`, `std::formatter` | `impl Display` ([Common traits](/learn/common-traits/#printing-debug-and-display)) |
+| `= default` for `operator==` | `#[derive(PartialEq)]` |
+| `[[nodiscard]]`, `[[deprecated]]` | `#[must_use]`, `#[deprecated]` |
+
+C++20's `std::format` also checks its format string when compiling, so Rust is not alone in that. `/* */` comments do not nest in C++ either; in Rust they do (the `comments` program above):
+
+<Snippet file="nested-comment.fail.cpp" />
+
+</ForLang>
+
+## Tidying: `cargo fmt` and `cargo clippy`
+
+`cargo fmt` rewrites your files in the standard layout, so teams do not argue about style. `cargo clippy` runs extra lints on top of the compiler's. The [Book](https://doc.rust-lang.org/book/appendix-04-useful-development-tools.html) says standard Rust installations include both (with rustup's `minimal` profile, add them with `rustup component add rustfmt clippy`). In a project folder you type `cargo fmt` or `cargo clippy`. The two programs below run the tools and print what they returned; you need not read the code, and clippy's `Checking` and `Finished` lines are left out. `rustfmt` reads standard input when given no file:
+
+<Snippet file="rustfmt.rs" />
+
+Clippy's default lints mostly warn, but the `correctness` group is an error (the Book's `approx_constant` example). These warnings are about code that works. The first links to [Statements and expressions](/learn/statements-expressions/): the last expression is the value, so a final `return` is noise.
+
+<Snippet file="clippy.rs" />
+
+<p class="lr-layer">Going deeper</p>
+
+## Writing a macro: `macro_rules!`
+
+`macro_rules!` lets you write your own macro. A parameter such as `$x:expr` stands for one whole parsed expression, and a variable the macro creates is separate from the caller's. The Reference calls this "mixed-site hygiene": loop labels, block labels and local variables are looked up where the macro was defined, other names where it is called. Hygiene does not stop a macro evaluating its argument once per use (twice here), as a function would not:
+
+<Snippet file="macro-hygiene.rs" />
+
+In `double_into!(tmp, 5)` the macro's `tmp` and the caller's `tmp` are different variables, so the caller's is set to 10. [Macros you'll read](/learn/reading-macros/) shows how to read a `macro_rules!` block.
+
+<ForLang only="c">
+
+A `#define` macro substitutes tokens, with no idea that `1 + 2` is one expression, and a variable declared inside it can hide the caller's. The same pair of macros, with GCC 14 on Linux (`-Wall -Wextra`, default dialect gnu17):
+
+<Snippet file="macro-text.c" />
+
+`SQUARE(1 + 2)` became `1 + 2 * 1 + 2`, which is 5; parentheses, `((x) * (x))`, fix that. The macro's own `tmp` hid the caller's `tmp` inside the braces, so the caller's never changed.
+
+</ForLang>
+
+<ForLang only="cpp">
+
+A `#define` macro substitutes tokens, with no idea that `1 + 2` is one expression, and a variable declared inside it can hide the caller's. The same pair of macros, with g++ 14 (`-std=c++20 -Wall -Wextra`):
+
+<Snippet file="macro-text.cpp" />
+
+`SQUARE(1 + 2)` became `1 + 2 * 1 + 2`, which is 5; parentheses, `((x) * (x))`, fix that. The macro's own `tmp` hid the caller's `tmp` inside the braces, so the caller's never changed.
+
+</ForLang>
+
+<ForLang only="c cpp">
+
+The C++ Core Guidelines advise [against macros for constants or functions](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#es31-dont-use-macros-for-constants-or-functions), and a function or template avoids both surprises.
+
+</ForLang>
+
+## `assert!` is always on
+
+The std docs say of `assert!`: "Assertions are always checked in both debug and release builds, and cannot be disabled." `debug_assert!` is the version that is off in an optimised build by default. The `debug_assertions` setting that `cfg.rs` printed is what switches it on ([Reference](https://doc.rust-lang.org/reference/conditional-compilation.html)).
+
+<ForLang only="java">
+
+Java's `assert` is the other way round: it does nothing unless the JVM is started with `-ea`. This program runs a false assertion, with no flag:
+
+<Snippet file="assert-off.java" />
+
+</ForLang>
+
+<ForLang only="python">
+
+Python's `assert` is removed when the interpreter runs with `-O`. This program starts a second Python with that flag:
+
+<Snippet file="assert-o.py" />
+
+**Attributes are not decorators.** A typical Python decorator is a function that runs when the decorated function is defined, and returns a wrapper that runs every time the function is called:
+
+<Snippet file="decorator.py" />
+
+A `derive` does its work while the program is compiled and leaves no wrapper around anything. Attributes that rewrite a function exist (an attribute macro like `#[tokio::main]`), and they rewrite the code at compile time too.
+
+</ForLang>
+
+<ForLang only="c">
+
+In C, `assert` from `<assert.h>` becomes a no-op when `NDEBUG` is defined, which a release build can do. A program that defines it first shows the effect:
+
+<Snippet file="assert-ndebug.c" />
+
+</ForLang>
+
+<ForLang only="cpp">
+
+In C++, `assert` from `<cassert>` becomes a no-op when `NDEBUG` is defined, which a release build can do. A program that defines it first shows the effect:
+
+<Snippet file="assert-ndebug.cpp" />
+
+</ForLang>
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Each exercise is a small program with checks in `main`. Open it in the Playground, replace the `todo!()`, and run it until it prints `all checks passed`.
+
+The first one asks you to read rather than write.
+
+<Exercise name="read-output" title="Read this: what does it print?">
+Six `format!` lines, a `#[derive(Debug)]` and a pair of `#[cfg]` functions. Write the exact string each line produces, spaces included; the checks run the real code and name the line you got wrong, not the right text. `#[cfg(not(test))]` is the opposite of `#[cfg(test)]`: it keeps the function when `test` is off, as in a normal run. Numbers and text align differently, and a doubled brace is one brace.
+</Exercise>
+
+<Exercise name="json-pair" title="Braces in the output">
+Return a JSON object with one entry, such as `{"age": 36}`. The braces of the object are text, not placeholders. The last check passes a key that contains braces of its own.
+</Exercise>
+
+<Exercise name="price-row" title="A receipt row">
+Format a name, a quantity and a price into fixed-width columns with one `format!`. The format table above has every spec you need. The last two checks use a value wider than its column and a name with an accented letter.
+</Exercise>
+
+<Exercise name="debug-text" title="One line or many">
+Return the `Debug` text of an optional point in its one-line or its multi-line form. Afterwards, delete the `#[derive(Debug)]` line to see the error from this page, then put it back.
+</Exercise>
+
+<Exercise name="is-hex" title="Is it a hex digit?">
+Write `is_hex_digit` with `matches!`. A pattern ([Match](/learn/match/)) can be a range such as `'a'..='f'`, and `|` joins alternatives. The last checks use look-alike digits and letters from other alphabets.
+</Exercise>
+
+## Read more
+
+- [The Rust Book, chapter 20.5: Macros](https://doc.rust-lang.org/book/ch20-05-macros.html), and [appendix D: Useful Development Tools](https://doc.rust-lang.org/book/appendix-04-useful-development-tools.html) for `cargo fmt` and `cargo clippy`.
+- [std::fmt](https://doc.rust-lang.org/std/fmt/index.html): the full format-string grammar. [Rust by Example: Formatted print](https://doc.rust-lang.org/rust-by-example/hello/print.html), [Comments](https://doc.rust-lang.org/rust-by-example/hello/comment.html) and [Attributes](https://doc.rust-lang.org/rust-by-example/attribute.html).
+- [The Rust Reference: Attributes](https://doc.rust-lang.org/reference/attributes.html), [Comments](https://doc.rust-lang.org/reference/comments.html), [Macros by example](https://doc.rust-lang.org/reference/macros-by-example.html) (the hygiene section) and [Conditional compilation](https://doc.rust-lang.org/reference/conditional-compilation.html).
+- [The rustdoc book: documentation tests](https://doc.rust-lang.org/rustdoc/write-documentation/documentation-tests.html), [rustfmt](https://rust-lang.github.io/rustfmt/) and [Clippy](https://doc.rust-lang.org/clippy/usage.html).
+- [Lint levels](https://doc.rust-lang.org/rustc/lints/levels.html) and [std::assert!](https://doc.rust-lang.org/std/macro.assert.html).

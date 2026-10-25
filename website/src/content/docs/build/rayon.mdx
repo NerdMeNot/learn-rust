@@ -1,0 +1,94 @@
+---
+title: "Data parallelism with Rayon"
+description: "Rayon runs the work of an iterator chain on a pool of threads, and the compiler checks that the closures cannot data-race. It is the Rust counterpart of parallel streams, PLINQ and OpenMP loops."
+---
+
+import { Files, GuideGotcha, Remember, Session, Tree } from '../../../components/guide'
+
+[Threads](/learn/threads/) showed how to split work across threads by hand. **Rayon** does the splitting for you. Its docs call it "a data-parallelism library that makes it easy to convert sequential computations into parallel", and say it "guarantees data-race free executions and takes advantage of parallelism when sensible, based on work-load at runtime".
+
+<Remember>Change `iter()` to `par_iter()` and the closures run on a pool of threads. Whatever they share has to be `Sync`, and the compiler checks that.</Remember>
+
+<Tree guide="rayon" dir="rust" name="parallel-sums" title="Project layout" notes={{"src/main.rs":"the program on this page","Cargo.lock":"created by Cargo","Cargo.toml":"dependencies go here"}} />
+
+<Files guide="rayon" dir="rust" files={["Cargo.toml"]} />
+
+<div class="lr-compare">
+<Files guide="rayon" dir="rust" files={["src/main.rs"]} run="run" />
+<Files guide="rayon" dir="go" files={["main.go"]} run="go" lang="go" />
+</div>
+
+- **`par_iter()`, `par_iter_mut()` and `into_par_iter()`** are the parallel versions of `iter()`, `iter_mut()` and `into_iter()`. They come from `use rayon::prelude::*`. After that you chain `map`, `filter`, `sum`, `count` and `reduce` as in [Iterators](/learn/iterators/). The program checks that the parallel sum equals the sequential one.
+- **`collect` into a `Vec`** gave the squares in input order: the program compared a million of them with the sequential result. `for_each` runs the closure on several threads, so do not count on any order there (see Sharing below).
+- **`par_sort`** sorts a slice or `Vec` on several threads. The [docs](https://docs.rs/rayon/1.12.0/rayon/slice/trait.ParallelSliceMut.html) say it is stable, like `sort`, and that "when applicable, unstable sorting is preferred because it is generally faster than stable sorting and it doesn't allocate auxiliary memory" (`par_sort_unstable`).
+- **The Go program** cuts the ranges, starts the goroutines and adds up the pieces by hand. That is the work Rayon does for you.
+
+## The pool, `join` and `scope`
+
+Rayon starts a global pool of worker threads the first time you use it. Its docs say the default size is `RAYON_NUM_THREADS` if that is set, and otherwise the number of logical CPUs, and they warn that this default may change. If your code relies on a number, set the number. This image reported one thread per CPU, and the variable overrode it:
+
+<Session guide="rayon" run="pool" />
+
+`ThreadPoolBuilder` sets the size of the global pool (once, before anything uses it) or builds a pool of your own. Inside `pool.install(...)` the parallel calls use that pool:
+
+<Files guide="rayon" dir="snippet-builder" files={["src/main.rs"]} run="builder" />
+
+`join(a, b)` runs two closures, and `scope` lets tasks borrow local variables, like [`thread::scope`](/learn/threads/#borrowing-without-move-threadscope). The docs say Rayon "attempts to only execute code in parallel when there are idle CPUs to handle it". The cutoff in `sum` (it adds directly once a piece has 1,000 items or fewer) is there because a task per element would likely cost more than the addition itself. The timing section below shows what a small input costs:
+
+<Files guide="rayon" dir="snippet-join" files={["src/main.rs"]} run="join" />
+
+## Sharing, panics and grouping
+
+Closures that all write to one place need a lock or an atomic ([Shared State](/learn/shared-state/)). Two of the five ways below need no shared state at all, which is the better shape: each piece returns a value and Rayon combines them (`sum`, or `fold` then `reduce`). The mutex works, but only one closure at a time can be inside it. Pushing into a shared `Vec` keeps every item, but promises no order, so the program sorts before comparing:
+
+<Files guide="rayon" dir="snippet-shared" files={["src/main.rs"]} run="shared" />
+
+A panic in a closure travels back to the code that called Rayon, here caught with `catch_unwind` (I silenced the default panic message so the output is the same every time). The pool kept working afterwards. The `join` and `scope` docs describe the same propagation, and say that if several closures panic, which panic value you get is not fixed for `scope`:
+
+<Files guide="rayon" dir="snippet-panic" files={["src/main.rs"]} run="panic" />
+
+`reduce` and `sum` may group the items any way they like. The `reduce` docs say that "the order in which op will be applied to reduce the result is not fully specified. So op should be associative or else the results will be non-deterministic". The `sum` docs say the same about floating-point `+`. Subtraction is not associative, so the last line depends on how the thousand numbers were split. It can differ from run to run and from machine to machine; in this run the two results were different:
+
+<Files guide="rayon" dir="snippet-grouping" files={["src/main.rs"]} run="grouping" />
+
+## When it is not worth it
+
+Parallel is not automatically faster: handing work to other threads has a cost, and for a small input that cost can be larger than the work. The `join` docs also assume the closures are CPU-bound: if one waits on the network, "the overall performance may be poor". So: big enough CPU-bound work, and no waiting inside the closures. For async code see [Rayon with Tokio](/build/rayon-tokio/), which builds on [Async with Tokio](/build/tokio/).
+
+This is the only timing on the page. It is a release build, after a warm-up call so the pool is already running, and it is one run on this VM, 8 cores (colima), varies. In this run the parallel version printed the larger time for 10 items and the smaller for a million. The program asserts that both give the same total. It says nothing about where the break-even is for your work, so measure yours:
+
+<Files guide="rayon" dir="snippet-timing" files={["src/main.rs"]} run="timing" />
+
+## The same job in your language
+
+I wrote the same job, the sum of squares of 1 to 1,000,000, the way each language usually spreads work over cores, and ran it in the image. Every row printed the same total.
+
+| Language | What you reach for | What the run showed |
+| --- | --- | --- |
+| Rust | `par_iter()` from Rayon | the program above |
+| Go | goroutines and a `WaitGroup`; you cut the chunks | the Go program above |
+| Python | `concurrent.futures.ProcessPoolExecutor`: separate processes, because the [`multiprocessing`](https://docs.python.org/3/library/multiprocessing.html) docs say it side-steps the GIL by using subprocesses | same total |
+| TypeScript | `worker_threads`, passing messages; the total is above 2<sup>53</sup>, so it uses `BigInt` | same total |
+| Java | `.parallel()` on a stream | same total |
+| Kotlin | the same Java stream (`kotlinx.coroutines` not run) | same total |
+| C# | PLINQ: `AsParallel()` | same total |
+| C | OpenMP: `#pragma omp parallel for reduction(+ : total)`, built with `gcc -fopenmp` | same total |
+| C++ | OpenMP the same way. C++17 `std::execution::par` also compiled; the libstdc++ manual says it depends on Intel TBB, which this image does not install, and the lambda ran on 1 thread | same total, and 1 thread |
+
+<Session guide="rayon" run="langs" title="the same job, nine ways" />
+
+<GuideGotcha guide="rayon" />
+
+The Python tab above says whether the race shows up depends on the size of the loop. This session runs the same program five times at each of three sizes and prints `exact` when the total was right and `lost` when updates were lost. It is a count over five runs here, not a rule about Python. In the run when this page was written, 1,000,000 numbers gave the exact total every time, 2,000,000 lost updates in some runs and not in others, and 8,000,000 lost updates every time. The counts change from run to run; earlier checks of this page showed the same pattern.
+
+<Session guide="rayon" run="python-sizes" />
+
+## Read more
+
+- [Rayon on docs.rs](https://docs.rs/rayon/1.12.0/rayon/) (the version this page pins), with [`ParallelIterator`](https://docs.rs/rayon/1.12.0/rayon/iter/trait.ParallelIterator.html), [`ThreadPoolBuilder`](https://docs.rs/rayon/1.12.0/rayon/struct.ThreadPoolBuilder.html), [`join`](https://docs.rs/rayon/1.12.0/rayon/fn.join.html) and [`scope`](https://docs.rs/rayon/1.12.0/rayon/fn.scope.html).
+- The [Rayon FAQ](https://github.com/rayon-rs/rayon/blob/main/FAQ.md): how many threads it starts and how work stealing balances the load.
+- In this course: [Threads](/learn/threads/), [Shared State](/learn/shared-state/) and [Send and Sync](/learn/send-sync/).
+- The Rust Book: [Extensible concurrency with `Sync` and `Send`](https://doc.rust-lang.org/book/ch16-04-extensible-concurrency-sync-and-send.html).
+- Other languages: [Java's `java.util.stream`](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/stream/package-summary.html) (parallelism section), [Introduction to PLINQ](https://learn.microsoft.com/en-us/dotnet/standard/parallel-programming/introduction-to-plinq), [Node's `worker_threads`](https://nodejs.org/docs/latest-v24.x/api/worker_threads.html), [Python's `concurrent.futures`](https://docs.python.org/3/library/concurrent.futures.html), [libstdc++ implementation status](https://gcc.gnu.org/onlinedocs/libstdc++/manual/status.html) (see the note on the Parallel Algorithms).
+
+<p class="lr-fine">The version this page is about is rayon 1.12.0, as pinned in <code>Cargo.lock</code>.</p>

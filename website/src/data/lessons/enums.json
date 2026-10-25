@@ -1,0 +1,410 @@
+{
+ "id": "enums",
+ "title": "Enums",
+ "part": "data",
+ "intro": "A Rust enum is a type with a fixed list of variants, and each variant can carry its own data. The compiler knows the full list, so it can check that you handled every variant.",
+ "coming_from": {
+  "go": "Go has no sum types. The closest is an interface plus a type switch (or `iota` constants, when there is no data). An interface is open: anyone can add a type, and Go does not check that a type switch covers them all. A Rust enum is a closed list of variants, and `match` won't compile until every variant is handled.",
+  "kotlin": "A Rust enum is your sealed class, and each variant is like a data subclass, with `match` checking every case the way `when` does. One difference: a variant is not its own type, so you can't have a parameter of type `Shape::Circle`.",
+  "python": "This is your union of dataclasses (`Circle | Rect`) plus `match`, in one declaration. The compiler checks that every variant is handled, and Python's `Enum` only covers variants that all hold the same kind of data, not different data per variant.",
+  "typescript": "A Rust enum is your discriminated union, but the compiler keeps the tag for you, so there is no `kind` field to write. `match` checks every variant without the `never` trick, and a `_` arm turns that check off the way `default:` does.",
+  "java": "A Rust `enum` with data is a `sealed interface` plus one `record` per variant, and `match` is the exhaustive pattern `switch`. Rust needs no separate types; the variants live inside the enum itself, as plain values rather than objects, and a variant is not a type of its own.",
+  "csharp": "A data-carrying `enum` is an `abstract record` with one derived record per case, and `match` is the positional pattern `switch`. On .NET 10 (C# 14) the compiler does not know that list is complete, so a missing case is a CS8509 warning and a run-time exception. In Rust it is a compile error. C# 15 adds `union` and `closed` types for this.",
+  "c": "A Rust `enum` is a tagged union (an `enum` tag plus a `union`) that the compiler manages for you. You can't read the wrong field for the current tag, and a `match` that forgets a variant doesn't compile.",
+  "cpp": "A Rust `enum` is a `std::variant`, except each alternative is a named variant, not a separate type, and `match` replaces `std::visit` with the `overloaded` helper. A missing case gets a short, clear error instead of a long template error."
+ },
+ "notes": [
+  "In a language without a closed list of cases, you fake it with an interface or base class plus type checks, and nothing makes sure you handled every case. In Rust, `match` checks that you did.",
+  "Rust's `match` pulls the data out of the variant: `Shape::Rect(w, h)` gives you `w` and `h`.",
+  "A variant is not a type of its own: `Shape::Circle` names a value, so a function can take a `Shape` but not a `Shape::Circle`.",
+  "An enum with no data works like a C enum: `Level::Mid as i32` gives its number.",
+  "Option and Result, in the next lessons, are ordinary enums like this one."
+ ],
+ "gotcha": {
+  "title": "Adding a variant and forgetting a case",
+  "verdict": "broken-elsewhere",
+  "looks_fine": "In Go you add `type Triangle struct{...}` and every type switch keeps compiling. A Triangle falls through to `return 0`, and the area is silently wrong.",
+  "rust_sees": "Rust knows the full list of variants, so it checks every `match` against it.",
+  "why": "This is the good kind of error. Add a variant, and the compiler gives you a to-do list of every place that needs updating.",
+  "langs": {
+   "go": {
+    "status": "wrong",
+    "says": "Go runs this and prints 0, which is wrong. The compiler does not check that a type switch is complete, so `Triangle` falls through to `return 0` with no warning. A `default:` that panics would make it loud, if you remember to write one.",
+    "code": "package main\n\nimport \"fmt\"\n\ntype Circle struct{ R float64 }\ntype Rect struct{ W, H float64 }\ntype Triangle struct{ B, H float64 } // new!\n\nfunc area(s any) float64 {\n\tswitch v := s.(type) {\n\tcase Circle:\n\t\treturn 3.14 * v.R * v.R\n\tcase Rect:\n\t\treturn v.W * v.H\n\t}\n\treturn 0\n}\n\nfunc main() {\n\tfmt.Println(area(Triangle{2.0, 3.0}))\n}\n",
+    "out": "0\n"
+   },
+   "kotlin": {
+    "status": "refuses",
+    "says": "Kotlin refuses this too: a `when` over a sealed class must cover every subclass, so adding `Triangle` breaks the build until you handle it. An `else ->` branch would silence the check.",
+    "code": "sealed class Shape {\n    data class Circle(val r: Double) : Shape()\n    data class Rect(val w: Double, val h: Double) : Shape()\n    data class Triangle(val b: Double, val h: Double) : Shape() // new!\n}\n\nfun area(s: Shape): Double = when (s) {\n    is Shape.Circle -> 3.14 * s.r * s.r\n    is Shape.Rect -> s.w * s.h\n}\n\nfun main() {\n    println(area(Shape.Triangle(2.0, 3.0)))\n}\n",
+    "error": "Main.kt:7:30: error: 'when' expression must be exhaustive. Add the 'is Triangle' branch or an 'else' branch.\nfun area(s: Shape): Double = when (s) {\n                             ^^^^"
+   },
+   "python": {
+    "status": "wrong",
+    "says": "Python prints None. No case matches the new Triangle, so `area` falls off the end and returns None instead of a number. Python itself gives no warning.",
+    "code": "from dataclasses import dataclass\n\n\n@dataclass\nclass Circle:\n    r: float\n\n\n@dataclass\nclass Rect:\n    w: float\n    h: float\n\n\n@dataclass\nclass Triangle:  # new!\n    b: float\n    h: float\n\n\ndef area(s: Circle | Rect | Triangle) -> float:\n    match s:\n        case Circle(r):\n            return 3.14 * r * r\n        case Rect(w, h):\n            return w * h\n\n\nprint(area(Triangle(2.0, 3.0)))\n",
+    "out": "None\n"
+   },
+   "typescript": {
+    "status": "refuses",
+    "says": "TypeScript refuses this too, because the `default` branch assigns the leftover value to `never` and a `triangle` is not `never` (TS2322). Without that `default` line, a function that returns a `number` still fails under `strict` (TS2366), but a function that returns nothing compiles, and the missing case goes unnoticed.",
+    "code": "type Shape =\n  | { kind: \"circle\"; r: number }\n  | { kind: \"rect\"; w: number; h: number }\n  | { kind: \"triangle\"; b: number; h: number }; // new!\n\nfunction area(s: Shape): number {\n  switch (s.kind) {\n    case \"circle\":\n      return 3.14 * s.r * s.r;\n    case \"rect\":\n      return s.w * s.h;\n    default: {\n      const unreachable: never = s; // fails to compile if a case is missing\n      return unreachable;\n    }\n  }\n}\n\nconsole.log(area({ kind: \"triangle\", b: 2.0, h: 3.0 }));\n",
+    "error": "main.ts(13,13): error TS2322: Type '{ kind: \"triangle\"; b: number; h: number; }' is not assignable to type 'never'."
+   },
+   "java": {
+    "status": "refuses",
+    "says": "Java refuses this too: a switch expression over a sealed interface must cover every permitted type, so adding Triangle breaks the build until you handle it. The javac message does not name `Triangle`; Rust's E0004 does.",
+    "code": "public class Main {\n    sealed interface Shape permits Circle, Rect, Triangle {}\n    record Circle(double r) implements Shape {}\n    record Rect(double w, double h) implements Shape {}\n    record Triangle(double b, double h) implements Shape {}   // new!\n\n    static double area(Shape s) {\n        return switch (s) {\n            case Circle c -> 3.14 * c.r() * c.r();\n            case Rect r -> r.w() * r.h();\n        };\n    }\n\n    public static void main(String[] args) {\n        System.out.println(area(new Triangle(2.0, 3.0)));\n    }\n}\n",
+    "error": "Main.java:8: error: the switch expression does not cover all possible input values\n        return switch (s) {\n               ^\n1 error"
+   },
+   "csharp": {
+    "status": "crash",
+    "says": "The compiler only warns that the switch is not exhaustive (CS8509). It cannot name `Triangle`, because a record hierarchy is not a closed list. The program builds, then throws a SwitchExpressionException when a Triangle comes in.",
+    "code": "Console.WriteLine(Area(new Triangle(2.0, 3.0)));\n\nstatic double Area(Shape s) => s switch\n{\n    Circle(var r) => 3.14 * r * r,\n    Rect(var w, var h) => w * h,\n};\n\nabstract record Shape;\nrecord Circle(double Radius) : Shape;\nrecord Rect(double Width, double Height) : Shape;\nrecord Triangle(double Base, double Height) : Shape;   // new!\n",
+    "warnings": "Program.cs(3,34): warning CS8509: The switch expression does not handle all possible values of its input type (it is not exhaustive). For example, the pattern '_' is not covered.",
+    "out": "Unhandled exception. System.Runtime.CompilerServices.SwitchExpressionException: Non-exhaustive switch expression failed to match its input.\nUnmatched value was Triangle { Base = 2, Height = 3 }.\n   at <PrivateImplementationDetails>.ThrowSwitchExpressionException(Object unmatchedValue)\n   at Program.<<Main>$>g__Area|0_0(Shape s) in Program.cs:line 3\n   at Program.<Main>$(String[] args) in Program.cs:line 1\n"
+   },
+   "c": {
+    "status": "wrong",
+    "says": "gcc warns that TRIANGLE is not handled in the switch, but builds it anyway. The triangle falls through to `return 0`, so its area is 0.",
+    "code": "#include <stdio.h>\n\nenum ShapeKind { CIRCLE, RECT, TRIANGLE };   // TRIANGLE is new!\n\nstruct Shape {\n    enum ShapeKind kind;\n    double a, b;\n};\n\ndouble area(struct Shape s) {\n    switch (s.kind) {\n    case CIRCLE: return 3.14 * s.a * s.a;\n    case RECT:   return s.a * s.b;\n    }\n    return 0;\n}\n\nint main(void) {\n    struct Shape t = {TRIANGLE, 2.0, 3.0};\n    printf(\"%g\\n\", area(t));\n    return 0;\n}\n",
+    "warnings": "main.c: In function ‘area’:\nmain.c:11:5: warning: enumeration value ‘TRIANGLE’ not handled in switch [-Wswitch]\n   11 |     switch (s.kind) {\n      |     ^~~~~~",
+    "out": "0\n"
+   },
+   "cpp": {
+    "status": "refuses",
+    "says": "C++ refuses this too when you use `std::visit`: no lambda accepts a `Triangle`, so it fails to compile, with a long template error. A plain `enum` plus `switch` would only get a `-Wswitch` warning.",
+    "code": "#include <iostream>\n#include <variant>\n\nstruct Circle { double r; };\nstruct Rect { double w, h; };\nstruct Triangle { double b, h; };   // new!\nusing Shape = std::variant<Circle, Rect, Triangle>;\n\ntemplate <class... Fs> struct overloaded : Fs... { using Fs::operator()...; };\n\ndouble area(const Shape& s) {\n    return std::visit(overloaded{\n        [](const Circle& c) { return 3.14 * c.r * c.r; },\n        [](const Rect& r) { return r.w * r.h; },\n    }, s);\n}\n\nint main() {\n    std::cout << area(Triangle{2.0, 3.0}) << \"\\n\";\n}\n",
+    "error": "In file included from /usr/include/c++/14/bits/move.h:37,\n                 from /usr/include/c++/14/bits/exception_ptr.h:41,\n                 from /usr/include/c++/14/exception:166,\n                 from /usr/include/c++/14/ios:41,\n                 from /usr/include/c++/14/ostream:40,\n                 from /usr/include/c++/14/iostream:41,\n                 from main.cpp:1:\n/usr/include/c++/14/type_traits: In substitution of ‘template<class _Fn, class ... _Args> using std::invoke_result_t = typename std::invoke_result::type [with _Fn = overloaded<area(const Shape&)::<lambda(const Circle&)>, area(const Shape&)::<lambda(const Rect&)> >; _Args = {const Triangle&}]’:\n/usr/include/c++/14/variant:1131:14:   required from ‘constexpr bool std::__detail::__variant::__check_visitor_results(std::index_sequence<_Idx ...>) [with _Visitor = overloaded<area(const Shape&)::<lambda(const Circle&)>, area(const Shape&)::<lambda(const Rect&)> >; _Variant = const std::variant<Circle, Rect, Triangle>&; long unsigned int ..._Idxs = {0, 1, 2}; std::index_sequence<_Idx ...> = std::integer_sequence<long unsigned int, 0, 1, 2>]’\n 1131 |       return __same_types<\n      |              ^~~~~~~~~~~~~\n 1132 |         invoke_result_t<_Visitor, __get_t<_Idxs, _Variant>>...\n      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n 1133 |         >;\n      |         ~     \n/usr/include/c++/14/variant:1872:44:   required from ‘constexpr std::__detail::__variant::__visit_result_t<_Visitor, _Variants ...> std::visit(_Visitor&&, _Variants&& ...) [with _Visitor = overloaded<area(const Shape&)::<lambda(const Circle&)>, area(const Shape&)::<lambda(const Rect&)> >; _Variants = {const variant<Circle, Rect, Triangle>&}; __detail::__variant::__visit_result_t<_Visitor, _Variants ...> = double]’\n 1871 |           constexpr bool __visit_rettypes_match = __detail::__variant::\n      |                                                   ~~~~~~~~~~~~~~~~~~~~~\n 1872 |             __check_visitor_results<_Visitor, _Vp>(\n      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^\n 1873 |               make_index_sequence<variant_size_v<remove_reference_t<_Vp>>>());\n      |               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\nmain.cpp:12:22:   required from here\n   12 |     return std::visit(overloaded{\n      |            ~~~~~~~~~~^~~~~~~~~~~~\n   13 |         [](const Circle& c) { return 3.14 * c.r * c.r; },\n      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n   14 |         [](const Rect& r) { return r.w * r.h; },\n      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n   15 |     }, s);\n      |     ~~~~~             \n/usr/include/c++/14/type_traits:3170:11: error: no type named ‘type’ in ‘struct std::invoke_result<overloaded<area(const Shape&)::<lambda(const Circle&)>, area(const Shape&)::<lambda(const Rect&)> >, const Triangle&>’\n 3170 |     using invoke_result_t = typename invoke_result<_Fn, _Args...>::type;\n      |           ^~~~~~~~~~~~~~~\nIn file included from main.cpp:2:\n/usr/include/c++/14/variant: In instantiation of ‘constexpr std::__detail::__variant::__visit_result_t<_Visitor, _Variants ...> std::visit(_Visitor&&, _Variants&& ...) [with _Visitor = overloaded<area(const Shape&)::<lambda(const Circle&)>, area(const Shape&)::<lambda(const Rect&)> >; _Variants = {const variant<Circle, Rect, Triangle>&}; __detail::__variant::__visit_result_t<_Visitor, _Variants ...> = double]’:\nmain.cpp:12:22:   required from here\n   12 |     return std::visit(overloaded{\n      |            ~~~~~~~~~~^~~~~~~~~~~~\n   13 |         [](const Circle& c) { return 3.14 * c.r * c.r; },\n      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n   14 |         [](const Rect& r) { return r.w * r.h; },\n      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n   15 |     }, s);\n      |     ~~~~~             \n/usr/include/c++/14/variant:1872:44:   in ‘constexpr’ expansion of ‘std::__detail::__variant::__check_visitor_results<overloaded<area(const Shape&)::<lambda(const Circle&)>, area(const Shape&)::<lambda(const Rect&)> >, const std::variant<Circle, Rect, Triangle>&, 0, 1, 2>((std::make_index_sequence<3>(), std::make_index_sequence<3>()))’\n/usr/include/c++/14/variant:1872:51: error: ‘constexpr’ call flows off the end of the function\n 1871 |           constexpr bool __visit_rettypes_match = __detail::__variant::\n      |                                                   ~~~~~~~~~~~~~~~~~~~~~\n 1872 |             __check_visitor_results<_Visitor, _Vp>(\n      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^\n 1873 |               make_index_sequence<variant_size_v<remove_reference_t<_Vp>>>());\n      |               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n/usr/include/c++/14/variant:1876:29: error: non-constant condition for static assertion\n 1876 |               static_assert(__visit_rettypes_match,\n      |                             ^~~~~~~~~~~~~~~~~~~~~~\n/usr/include/c++/14/variant:1879:15: error: return-statement with no value, in function returning ‘std::__detail::__variant::__visit_result_t<overloaded<area(const Shape&)::<lambda(const Circle&)>, area(const Shape&)::<lambda(const Rect&)> >, const std::variant<Circle, Rect, Triangle>&>’ {aka ‘double’} [-fpermissive]\n 1879 |               return;\n      |               ^~~~~~\n/usr/include/c++/14/variant: In instantiation of ‘static constexpr decltype(auto) std::__detail::__variant::__gen_vtable_impl<std::__detail::__variant::_Multi_array<_Result_type (*)(_Visitor, _Variants ...)>, std::integer_sequence<long unsigned int, __indices ...> >::__visit_invoke(_Visitor&&, _Variants ...) [with _Result_type = std::__detail::__variant::__deduce_visit_result<double>; _Visitor = overloaded<area(const Shape&)::<lambda(const Circle&)>, area(const Shape&)::<lambda(const Rect&)> >&&; _Variants = {const std::variant<Circle, Rect, Triangle>&}; long unsigned int ...__indices = {2}]’:\n/usr/include/c++/14/variant:1821:5:   required from ‘constexpr decltype(auto) std::__do_visit(_Visitor&&, _Variants&& ...) [with _Result_type = __detail::__variant::__deduce_visit_result<double>; _Visitor = overloaded<area(const Shape&)::<lambda(const Circle&)>, area(const Shape&)::<lambda(const Rect&)> >; _Variants = {const variant<Circle, Rect, Triangle>&}]’\n 1821 |                   _GLIBCXX_VISIT_CASE(2)\n      |                   ^~~~~~~~~~~~~~~~~~~\n/usr/include/c++/14/variant:1882:34:   required from ‘constexpr std::__detail::__variant::__visit_result_t<_Visitor, _Variants ...> std::visit(_Visitor&&, _Variants&& ...) [with _Visitor = overloaded<area(const Shape&)::<lambda(const Circle&)>, area(const Shape&)::<lambda(const Rect&)> >; _Variants = {const variant<Circle, Rect, Triangle>&}; __detail::__variant::__visit_result_t<_Visitor, _Variants ...> = double]’\n 1882 |             return std::__do_visit<_Tag>(\n      |                    ~~~~~~~~~~~~~~~~~~~~~^\n 1883 |               std::forward<_Visitor>(__visitor),\n      |               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n 1884 |               static_cast<_Vp>(__variants)...);\n      |               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\nmain.cpp:12:22:   required from here\n   12 |     return std::visit(overloaded{\n      |            ~~~~~~~~~~^~~~~~~~~~~~\n   13 |         [](const Circle& c) { return 3.14 * c.r * c.r; },\n      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n   14 |         [](const Rect& r) { return r.w * r.h; },\n      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n   15 |     }, s);\n      |     ~~~~~             \n/usr/include/c++/14/variant:1060:31: error: no matching function for call to ‘__invoke(overloaded<area(const Shape&)::<lambda(const Circle&)>, area(const Shape&)::<lambda(const Rect&)> >, const Triangle&)’\n 1060 |           return std::__invoke(std::forward<_Visitor>(__visitor),\n      |                  ~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n 1061 |               __element_by_index_or_cookie<__indices>(\n      |               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n 1062 |                 std::forward<_Variants>(__vars))...);\n      |                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\nIn file included from /usr/include/c++/14/bits/refwrap.h:38,\n                 from /usr/include/c++/14/string:52,\n                 from /usr/include/c++/14/bits/locale_classes.h:40,\n                 from /usr/include/c++/14/bits/ios_base.h:41,\n                 from /usr/include/c++/14/ios:44:\n/usr/include/c++/14/bits/invoke.h:90:5: note: candidate: ‘template<class _Callable, class ... _Args> constexpr typename std::__invoke_result<_Functor, _ArgTypes>::type std::__invoke(_Callable&&, _Args&& ...)’\n   90 |     __invoke(_Callable&& __fn, _Args&&... __args)\n      |     ^~~~~~~~\n/usr/include/c++/14/bits/invoke.h:90:5: note:   template argument deduction/substitution failed:\n/usr/include/c++/14/bits/invoke.h: In substitution of ‘template<class _Callable, class ... _Args> constexpr typename std::__invoke_result<_Functor, _ArgTypes>::type std::__invoke(_Callable&&, _Args&& ...) [with _Callable = overloaded<area(const Shape&)::<lambda(const Circle&)>, area(const Shape&)::<lambda(const Rect&)> >; _Args = {const Triangle&}]’:\n/usr/include/c++/14/variant:1060:24:   required from ‘static constexpr decltype(auto) std::__detail::__variant::__gen_vtable_impl<std::__detail::__variant::_Multi_array<_Result_type (*)(_Visitor, _Variants ...)>, std::integer_sequence<long unsigned int, __indices ...> >::__visit_invoke(_Visitor&&, _Variants ...) [with _Result_type = std::__detail::__variant::__deduce_visit_result<double>; _Visitor = overloaded<area(const Shape&)::<lambda(const Circle&)>, area(const Shape&)::<lambda(const Rect&)> >&&; _Variants = {const std::variant<Circle, Rect, Triangle>&}; long unsigned int ...__indices = {2}]’\n 1060 |           return std::__invoke(std::forward<_Visitor>(__visitor),\n      |                  ~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n 1061 |               __element_by_index_or_cookie<__indices>(\n      |               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n 1062 |                 std::forward<_Variants>(__vars))...);\n      |                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n/usr/include/c++/14/variant:1821:5:   required from ‘constexpr decltype(auto) std::__do_visit(_Visitor&&, _Variants&& ...) [with _Result_type = __detail::__variant::__deduce_visit_result<double>; _Visitor = overloaded<area(const Shape&)::<lambda(const Circle&)>, area(const Shape&)::<lambda(const Rect&)> >; _Variants = {const variant<Circle, Rect, Triangle>&}]’\n 1821 |                   _GLIBCXX_VISIT_CASE(2)\n      |                   ^~~~~~~~~~~~~~~~~~~\n/usr/include/c++/14/variant:1882:34:   required from ‘constexpr std::__detail::__variant::__visit_result_t<_Visitor, _Variants ...> std::visit(_Visitor&&, _Variants&& ...) [with _Visitor = overloaded<area(const Shape&)::<lambda(const Circle&)>, area(const Shape&)::<lambda(const Rect&)> >; _Variants = {const variant<Circle, Rect, Triangle>&}; __detail::__variant::__visit_result_t<_Visitor, _Variants ...> = double]’\n 1882 |             return std::__do_visit<_Tag>(\n      |                    ~~~~~~~~~~~~~~~~~~~~~^\n 1883 |               std::forward<_Visitor>(__visitor),\n      |               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n 1884 |               static_cast<_Vp>(__variants)...);\n      |               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\nmain.cpp:12:22:   required from here\n   12 |     return std::visit(overloaded{\n      |            ~~~~~~~~~~^~~~~~~~~~~~\n   13 |         [](const Circle& c) { return 3.14 * c.r * c.r; },\n      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n   14 |         [](const Rect& r) { return r.w * r.h; },\n      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n   15 |     }, s);\n      |     ~~~~~             \n/usr/include/c++/14/bits/invoke.h:90:5: error: no type named ‘type’ in ‘struct std::__invoke_result<overloaded<area(const Shape&)::<lambda(const Circle&)>, area(const Shape&)::<lambda(const Rect&)> >, const Triangle&>’\n   90 |     __invoke(_Callable&& __fn, _Args&&... __args)\n      |     ^~~~~~~~"
+   }
+  },
+  "code": "enum Shape {\n    Circle(f64),\n    Rect(f64, f64),\n    Triangle(f64, f64), // new!\n}\n\nfn area(s: &Shape) -> f64 {\n    match s {\n        Shape::Circle(r) => 3.14 * r * r,\n        Shape::Rect(w, h) => w * h,\n    }\n}\n\nfn main() {\n    println!(\"{}\", area(&Shape::Triangle(2.0, 3.0)));\n}\n",
+  "error": "error[E0004]: non-exhaustive patterns: `&Shape::Triangle(_, _)` not covered\n  --> src/main.rs:8:11\n   |\n 8 |     match s {\n   |           ^ pattern `&Shape::Triangle(_, _)` not covered\n   |\nnote: `Shape` defined here\n  --> src/main.rs:1:6\n   |\n 1 | enum Shape {\n   |      ^^^^^\n...\n 4 |     Triangle(f64, f64), // new!\n   |     -------- not covered\n   = note: the matched value is of type `&Shape`\nhelp: ensure that all possible cases are being handled by adding a match arm with a wildcard pattern or an explicit pattern as shown\n   |\n10 ~         Shape::Rect(w, h) => w * h,\n11 ~         &Shape::Triangle(_, _) => todo!(),",
+  "error_code": "E0004",
+  "fixed": {
+   "code": "enum Shape {\n    Circle(f64),\n    Rect(f64, f64),\n    Triangle(f64, f64),\n}\n\nfn area(s: &Shape) -> f64 {\n    match s {\n        Shape::Circle(r) => 3.14 * r * r,\n        Shape::Rect(w, h) => w * h,\n        Shape::Triangle(b, h) => 0.5 * b * h,\n    }\n}\n\nfn main() {\n    let shapes = [\n        Shape::Circle(1.0),\n        Shape::Rect(2.0, 3.0),\n        Shape::Triangle(2.0, 3.0),\n    ];\n    for s in &shapes {\n        println!(\"{}\", area(s));\n    }\n}\n",
+   "out": "3.14\n6\n3\n"
+  }
+ },
+ "order": 22,
+ "program": {
+  "rust": {
+   "code": "enum Shape {\n    Circle(f64),    // radius\n    Rect(f64, f64), // width, height\n}\n\nfn area(s: &Shape) -> f64 {\n    match s {\n        Shape::Circle(r) => 3.14 * r * r,\n        Shape::Rect(w, h) => w * h,\n    }\n}\n\nfn main() {\n    let shapes = [Shape::Circle(1.0), Shape::Rect(2.0, 3.0)];\n    for s in &shapes {\n        println!(\"{}\", area(s));\n    }\n}\n",
+   "out": "3.14\n6\n"
+  },
+  "go": {
+   "code": "package main\n\nimport \"fmt\"\n\ntype Shape interface{}\ntype Circle struct{ R float64 }\ntype Rect struct{ W, H float64 }\n\nfunc area(s Shape) float64 {\n\tswitch v := s.(type) {\n\tcase Circle:\n\t\treturn 3.14 * v.R * v.R\n\tcase Rect:\n\t\treturn v.W * v.H\n\t}\n\treturn 0\n}\n\nfunc main() {\n\tshapes := []Shape{Circle{1.0}, Rect{2.0, 3.0}}\n\tfor _, s := range shapes {\n\t\tfmt.Println(area(s))\n\t}\n}\n",
+   "out": "3.14\n6\n"
+  },
+  "kotlin": {
+   "code": "sealed class Shape {\n    data class Circle(val r: Double) : Shape()\n    data class Rect(val w: Double, val h: Double) : Shape()\n}\n\nfun area(s: Shape): Double = when (s) {\n    is Shape.Circle -> 3.14 * s.r * s.r\n    is Shape.Rect -> s.w * s.h\n}\n\nfun main() {\n    val shapes = listOf(Shape.Circle(1.0), Shape.Rect(2.0, 3.0))\n    for (s in shapes) {\n        println(area(s))\n    }\n}\n",
+   "out": "3.14\n6.0\n"
+  },
+  "python": {
+   "code": "from dataclasses import dataclass\n\n\n@dataclass\nclass Circle:\n    r: float\n\n\n@dataclass\nclass Rect:\n    w: float\n    h: float\n\n\nShape = Circle | Rect\n\n\ndef area(s: Shape) -> float:\n    match s:\n        case Circle(r):\n            return 3.14 * r * r\n        case Rect(w, h):\n            return w * h\n\n\nfor s in [Circle(1.0), Rect(2.0, 3.0)]:\n    print(area(s))\n",
+   "out": "3.14\n6.0\n"
+  },
+  "typescript": {
+   "code": "// a discriminated union: `kind` says which variant it is\ntype Shape =\n  | { kind: \"circle\"; r: number }\n  | { kind: \"rect\"; w: number; h: number };\n\nfunction area(s: Shape): number {\n  switch (s.kind) {\n    case \"circle\":\n      return 3.14 * s.r * s.r;\n    case \"rect\":\n      return s.w * s.h;\n    default: {\n      const unreachable: never = s; // fails to compile if a case is missing\n      return unreachable;\n    }\n  }\n}\n\nconst shapes: Shape[] = [{ kind: \"circle\", r: 1.0 }, { kind: \"rect\", w: 2.0, h: 3.0 }];\nfor (const s of shapes) {\n  console.log(area(s));\n}\n",
+   "out": "3.14\n6\n"
+  },
+  "java": {
+   "code": "import java.util.List;\n\npublic class Main {\n    sealed interface Shape permits Circle, Rect {}\n    record Circle(double r) implements Shape {}\n    record Rect(double w, double h) implements Shape {}\n\n    static double area(Shape s) {\n        return switch (s) {\n            case Circle c -> 3.14 * c.r() * c.r();\n            case Rect(double w, double h) -> w * h;\n        };\n    }\n\n    public static void main(String[] args) {\n        List<Shape> shapes = List.of(new Circle(1.0), new Rect(2.0, 3.0));\n        for (var s : shapes) {\n            System.out.println(area(s));\n        }\n    }\n}\n",
+   "out": "3.14\n6.0\n"
+  },
+  "csharp": {
+   "code": "Shape[] shapes = [new Circle(1.0), new Rect(2.0, 3.0)];\nforeach (var s in shapes)\n{\n    Console.WriteLine(Area(s));\n}\n\nstatic double Area(Shape s) => s switch\n{\n    Circle(var r) => 3.14 * r * r,\n    Rect(var w, var h) => w * h,\n    _ => throw new ArgumentException(\"unknown shape\"),\n};\n\nabstract record Shape;\nrecord Circle(double Radius) : Shape;\nrecord Rect(double Width, double Height) : Shape;\n",
+   "out": "3.14\n6\n"
+  },
+  "c": {
+   "code": "#include <stdio.h>\n\n// C enums hold no data, so pair a tag with a union (a \"tagged union\")\nenum ShapeKind { CIRCLE, RECT };\n\nstruct Shape {\n    enum ShapeKind kind;\n    union {\n        double r;                       // CIRCLE: radius\n        struct { double w, h; } rect;   // RECT: width, height\n    };\n};\n\ndouble area(const struct Shape *s) {\n    switch (s->kind) {\n    case CIRCLE: return 3.14 * s->r * s->r;\n    case RECT:   return s->rect.w * s->rect.h;\n    }\n    return 0;\n}\n\nint main(void) {\n    struct Shape shapes[] = {\n        {.kind = CIRCLE, .r = 1.0},\n        {.kind = RECT, .rect = {2.0, 3.0}},\n    };\n    for (int i = 0; i < 2; i++) {\n        printf(\"%g\\n\", area(&shapes[i]));\n    }\n    return 0;\n}\n",
+   "out": "3.14\n6\n"
+  },
+  "cpp": {
+   "code": "#include <iostream>\n#include <variant>\n#include <vector>\n\nstruct Circle { double r; };\nstruct Rect { double w, h; };\nusing Shape = std::variant<Circle, Rect>;\n\n// a small helper: one lambda per alternative\ntemplate <class... Fs> struct overloaded : Fs... { using Fs::operator()...; };\n\ndouble area(const Shape& s) {\n    return std::visit(overloaded{\n        [](const Circle& c) { return 3.14 * c.r * c.r; },\n        [](const Rect& r) { return r.w * r.h; },\n    }, s);\n}\n\nint main() {\n    std::vector<Shape> shapes{Circle{1.0}, Rect{2.0, 3.0}};\n    for (const auto& s : shapes) {\n        std::cout << area(s) << \"\\n\";\n    }\n}\n",
+   "out": "3.14\n6\n"
+  }
+ },
+ "faq": [],
+ "snippets": {
+  "bare-variant.fail.rs": {
+   "code": "enum Direction {\n    North,\n    South,\n}\n\nfn is_north(d: Direction) -> bool {\n    match d {\n        North => true,\n        South => false,\n    }\n}\n\nfn main() {\n    println!(\"{}\", is_north(Direction::South));\n}\n",
+   "error": "error[E0170]: pattern binding `North` is named the same as one of the variants of the type `Direction`\n --> src/main.rs:8:9\n  |\n8 |         North => true,\n  |         ^^^^^ help: to match on the variant, qualify the path: `Direction::North`\n  |\n  = note: `#[deny(bindings_with_variant_name)]` on by default\n\nerror[E0170]: pattern binding `South` is named the same as one of the variants of the type `Direction`\n --> src/main.rs:9:9\n  |\n9 |         South => false,\n  |         ^^^^^ help: to match on the variant, qualify the path: `Direction::South`",
+   "lang": "rust"
+  },
+  "c-like.rs": {
+   "code": "#[derive(Debug, Clone, Copy)]\nenum Level {\n    Low = 1,\n    Mid = 5,\n    High = 10,\n}\n\n#[derive(Debug, Clone, Copy)]\nenum Weekday {\n    Mon, // 0\n    Tue, // 1\n    Wed = 10,\n    Thu, // 11\n}\n\nimpl Level {\n    // there is no cast from a number to an enum, so write the check yourself\n    fn from_number(n: i32) -> Option<Level> {\n        match n {\n            1 => Some(Level::Low),\n            5 => Some(Level::Mid),\n            10 => Some(Level::High),\n            _ => None,\n        }\n    }\n}\n\nfn main() {\n    println!(\"Mid as i32: {}\", Level::Mid as i32);\n    println!(\"High as u8: {}\", Level::High as u8);\n    println!(\"Tue as i32: {}\", Weekday::Tue as i32);\n    println!(\"Wed as i32: {}\", Weekday::Wed as i32);\n    println!(\"Thu as i32: {}\", Weekday::Thu as i32);\n    println!(\"from_number(5): {:?}\", Level::from_number(5));\n    println!(\"from_number(7): {:?}\", Level::from_number(7));\n    println!(\"{:?} {:?}\", Level::Low, Weekday::Mon);\n}\n",
+   "out": "Mid as i32: 5\nHigh as u8: 10\nTue as i32: 1\nWed as i32: 10\nThu as i32: 11\nfrom_number(5): Some(Mid)\nfrom_number(7): None\nLow Mon\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-derive.rs": {
+   "code": "use std::collections::HashSet;\n\n#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]\nenum Priority {\n    Low,\n    #[default]\n    Normal,\n    Urgent,\n}\n\nfn main() {\n    // Hash + Eq: usable in a set\n    let set: HashSet<Priority> = [Priority::Low, Priority::Low, Priority::Urgent]\n        .into_iter()\n        .collect();\n    assert_eq!(set.len(), 2);\n    // Ord: sorting goes by declaration order\n    let mut v = vec![Priority::Urgent, Priority::Low, Priority::Normal];\n    v.sort();\n    assert_eq!(v, [Priority::Low, Priority::Normal, Priority::Urgent]);\n    // Default: the variant marked #[default]\n    assert_eq!(Priority::default(), Priority::Normal);\n    // Copy: using q does not move p\n    let p = Priority::Low;\n    let q = p;\n    assert_eq!(p, q);\n    // explicit numbers decide the order, not the order of writing\n    #[derive(PartialEq, PartialOrd)]\n    enum Rank {\n        Top = 2,\n        Bottom = 1,\n    }\n    assert!(Rank::Bottom < Rank::Top);\n    // PartialOrd with data: the variant comes first, then the fields\n    #[derive(PartialEq, PartialOrd)]\n    enum Reply {\n        Ok,\n        Number(f64),\n    }\n    assert!(Reply::Ok < Reply::Number(-1.0));\n    assert!(Reply::Number(1.0) < Reply::Number(2.0));\n}\n",
+   "out": "",
+   "lang": "rust",
+   "exit": 0
+  },
+  "data-variants.rs": {
+   "code": "#[derive(Debug)]\nenum Command {\n    Quit,                    // no data\n    Say(String),             // one value\n    Paint(u8, u8, u8),       // three values, by position\n    Move { x: i32, y: i32 }, // named fields, like a struct\n}\n\nfn run(cmd: Command) {\n    match cmd {\n        Command::Quit => println!(\"quitting\"),\n        Command::Say(text) => println!(\"saying {text:?}\"),\n        Command::Paint(r, g, b) => println!(\"painting rgb({r}, {g}, {b})\"),\n        Command::Move { x, y } => println!(\"moving by ({x}, {y})\"),\n    }\n}\n\nfn main() {\n    let cmds = vec![\n        Command::Say(String::from(\"hi\")),\n        Command::Paint(255, 128, 0),\n        Command::Move { x: 3, y: -4 },\n        Command::Quit,\n    ];\n    println!(\"debug: {:?}\", cmds[1]);\n    for cmd in cmds {\n        run(cmd);\n    }\n}\n",
+   "out": "debug: Paint(255, 128, 0)\nsaying \"hi\"\npainting rgb(255, 128, 0)\nmoving by (3, -4)\nquitting\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "derive.rs": {
+   "code": "#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]\nenum Priority {\n    Low,\n    #[default]\n    Normal,\n    Urgent,\n}\n\n#[derive(Debug, Clone, PartialEq)]\nenum Reply {\n    Ok,\n    Text(String),\n    Number(f64),\n}\n\nfn main() {\n    let p = Priority::default();\n    let q = p; // Copy: p is still usable\n    println!(\"default: {p:?}, copy: {q:?}\");\n    println!(\"Low < Urgent: {}\", Priority::Low < Priority::Urgent);\n    println!(\"max: {:?}\", Priority::Low.max(Priority::Urgent));\n\n    let r = Reply::Text(String::from(\"hi\"));\n    println!(\"clone equal: {}\", r.clone() == r);\n    println!(\n        \"same variant, other data: {}\",\n        r == Reply::Text(String::from(\"ho\"))\n    );\n    println!(\"other variant: {}\", r == Reply::Ok);\n    println!(\"{:?} / {:?}\", Reply::Number(1.5), Reply::Ok);\n    println!(\"{:#?}\", Reply::Text(String::from(\"pretty\")));\n}\n",
+   "out": "default: Normal, copy: Normal\nLow < Urgent: true\nmax: Urgent\nclone equal: true\nsame variant, other data: false\nother variant: false\nNumber(1.5) / Ok\nText(\n    \"pretty\",\n)\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "if-let.rs": {
+   "code": "enum Command {\n    Quit,\n    Say(String),\n    Move { x: i32, y: i32 },\n}\n\nfn shout(cmd: &Command) {\n    // `if let` for the one variant you care about\n    if let Command::Say(text) = cmd {\n        println!(\"SAY: {}\", text.to_uppercase());\n    } else {\n        println!(\"not a Say\");\n    }\n}\n\nfn distance(cmd: &Command) -> i32 {\n    // `let ... else` keeps the happy path unindented\n    let Command::Move { x, y } = cmd else {\n        return 0;\n    };\n    x.abs() + y.abs()\n}\n\nfn main() {\n    let a = Command::Say(String::from(\"hello\"));\n    let b = Command::Move { x: 3, y: -4 };\n    let c = Command::Quit;\n    shout(&a);\n    shout(&b);\n    println!(\"distance of a: {}\", distance(&a));\n    println!(\"distance of b: {}\", distance(&b));\n    // `matches!` gives a bool, without binding anything\n    println!(\"c is Quit: {}\", matches!(c, Command::Quit));\n    println!(\"b is Move: {}\", matches!(b, Command::Move { .. }));\n}\n",
+   "out": "SAY: HELLO\nnot a Say\ndistance of a: 0\ndistance of b: 7\nc is Quit: true\nb is Move: true\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "impl-enum.rs": {
+   "code": "enum Shape {\n    Circle { radius: f64 },\n    Rect { width: f64, height: f64 },\n    Triangle { base: f64, height: f64 },\n}\n\nimpl Shape {\n    fn area(&self) -> f64 {\n        match self {\n            Shape::Circle { radius } => 3.14 * radius * radius,\n            Shape::Rect { width, height } => width * height,\n            Shape::Triangle { base, height } => 0.5 * base * height,\n        }\n    }\n\n    fn name(&self) -> &str {\n        match self {\n            Shape::Circle { .. } => \"circle\",\n            Shape::Rect { .. } => \"rectangle\",\n            Shape::Triangle { .. } => \"triangle\",\n        }\n    }\n\n    // an \"associated function\", called as Shape::square(2.0)\n    fn square(side: f64) -> Shape {\n        Shape::Rect {\n            width: side,\n            height: side,\n        }\n    }\n}\n\nfn main() {\n    let shapes = [\n        Shape::Circle { radius: 1.0 },\n        Shape::square(2.0),\n        Shape::Triangle {\n            base: 3.0,\n            height: 4.0,\n        },\n    ];\n    for s in &shapes {\n        println!(\"{}: area {}\", s.name(), s.area());\n    }\n}\n",
+   "out": "circle: area 3.14\nrectangle: area 4\ntriangle: area 6\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "int-to-enum.fail.rs": {
+   "code": "#[derive(Debug)]\nenum Level {\n    Low = 1,\n    High = 10,\n}\n\nfn main() {\n    let n = 10;\n    let level = n as Level;\n    println!(\"{level:?}\");\n}\n",
+   "error": "error[E0605]: non-primitive cast: `i32` as `Level`\n --> src/main.rs:9:17\n  |\n9 |     let level = n as Level;\n  |                 ^^^^^^^^^^ an `as` expression can only be used to convert between primitive types or to coerce to a specific trait object\n",
+   "lang": "rust"
+  },
+  "job-record.rs": {
+   "code": "// One struct: every field exists in every state, so nonsense can be written.\nstruct JobRecord {\n    running: bool,\n    done: bool,\n    percent: u8,   // only meaningful while running\n    error: String, // only meaningful if the job failed\n}\n\nfn main() {\n    let odd = JobRecord {\n        running: true,\n        done: true,\n        percent: 250,\n        error: String::from(\"boom\"),\n    };\n    println!(\"running: {}, done: {}\", odd.running, odd.done);\n    println!(\"percent: {}, error: {:?}\", odd.percent, odd.error);\n}\n",
+   "out": "running: true, done: true\npercent: 250, error: \"boom\"\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "layout.rs": {
+   "code": "// This program only measures sizes, so it never builds the variants.\n#![allow(dead_code)]\n\nuse std::mem::{align_of, size_of};\n\nenum Plain {\n    A,\n    B,\n    C,\n}\n\nenum Small {\n    Byte(u8),\n    Nothing,\n}\n\nenum Shape {\n    Circle(f64),\n    Rect(f64, f64),\n}\n\nenum Command {\n    Quit,\n    Say(String),\n    Paint(u8, u8, u8),\n}\n\nenum Big {\n    Quit,\n    Say(String),\n    Paint(u64, u64, u64),\n}\n\nfn main() {\n    println!(\"Plain (3 variants, no data): {} byte\", size_of::<Plain>());\n    println!(\"Small (u8 or nothing):       {} bytes\", size_of::<Small>());\n    println!(\"Shape (f64, or two f64):     {} bytes\", size_of::<Shape>());\n    println!(\n        \"  its biggest variant data:  {} bytes\",\n        size_of::<(f64, f64)>()\n    );\n    println!(\"  its alignment:             {} bytes\", align_of::<Shape>());\n    println!(\n        \"Command (String, 3 u8, none): {} bytes\",\n        size_of::<Command>()\n    );\n    println!(\"  a String alone:            {} bytes\", size_of::<String>());\n    println!(\"Big (String, 3 u64, none):   {} bytes\", size_of::<Big>());\n}\n",
+   "out": "Plain (3 variants, no data): 1 byte\nSmall (u8 or nothing):       2 bytes\nShape (f64, or two f64):     24 bytes\n  its biggest variant data:  16 bytes\n  its alignment:             8 bytes\nCommand (String, 3 u8, none): 24 bytes\n  a String alone:            24 bytes\nBig (String, 3 u64, none):   32 bytes\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "match-ref.rs": {
+   "code": "enum Shape {\n    Circle(f64),\n    Rect(f64, f64),\n}\n\nfn describe(s: &Shape) -> String {\n    match s {\n        // s is a reference, so the fields are references too: r is a &f64\n        Shape::Circle(r) => {\n            let radius: f64 = *r; // `*` follows the reference to the number\n            format!(\"circle, radius {radius}\")\n        }\n        Shape::Rect(w, h) => {\n            // arithmetic and comparison between two references work as they are\n            let kind = if w == h { \"square\" } else { \"rectangle\" };\n            format!(\"{kind}, area {}\", w * h)\n        }\n    }\n}\n\nfn main() {\n    println!(\"{}\", describe(&Shape::Circle(1.5)));\n    println!(\"{}\", describe(&Shape::Rect(2.0, 2.0)));\n}\n",
+   "out": "circle, radius 1.5\nsquare, area 4\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "missing-variant.fail.rs": {
+   "code": "enum Shape {\n    Circle(f64),\n    Rect(f64, f64),\n    Triangle(f64, f64),\n}\n\nfn area(s: &Shape) -> f64 {\n    match s {\n        Shape::Circle(r) => 3.14 * r * r,\n        Shape::Rect(w, h) => w * h,\n    }\n}\n\nfn main() {\n    println!(\"{}\", area(&Shape::Triangle(3.0, 4.0)));\n}\n",
+   "error": "error[E0004]: non-exhaustive patterns: `&Shape::Triangle(_, _)` not covered\n  --> src/main.rs:8:11\n   |\n 8 |     match s {\n   |           ^ pattern `&Shape::Triangle(_, _)` not covered\n   |\nnote: `Shape` defined here\n  --> src/main.rs:1:6\n   |\n 1 | enum Shape {\n   |      ^^^^^\n...\n 4 |     Triangle(f64, f64),\n   |     -------- not covered\n   = note: the matched value is of type `&Shape`\nhelp: ensure that all possible cases are being handled by adding a match arm with a wildcard pattern or an explicit pattern as shown\n   |\n10 ~         Shape::Rect(w, h) => w * h,\n11 ~         &Shape::Triangle(_, _) => todo!(),",
+   "lang": "rust"
+  },
+  "move-out.fail.rs": {
+   "code": "enum Job {\n    Waiting,\n    Failed(String),\n}\n\nstruct Runner {\n    job: Job,\n}\n\nimpl Runner {\n    fn reason(&self) -> String {\n        match self.job {\n            Job::Failed(msg) => msg, // tries to take the String out of &self\n            Job::Waiting => String::new(),\n        }\n    }\n}\n\nfn main() {\n    let r = Runner {\n        job: Job::Failed(String::from(\"boom\")),\n    };\n    println!(\"{}\", r.reason());\n    let _ = Job::Waiting;\n}\n",
+   "error": "error[E0507]: cannot move out of `self.job` as enum variant `Failed` which is behind a shared reference\n  --> src/main.rs:12:15\n   |\n12 |         match self.job {\n   |               ^^^^^^^^\n13 |             Job::Failed(msg) => msg, // tries to take the String out of &self\n   |                         --- data moved here because `msg` has type `String`, which does not implement the `Copy` trait\n   |\nhelp: consider borrowing the pattern binding\n   |\n13 |             Job::Failed(ref msg) => msg, // tries to take the String out of &self\n   |                         +++\n",
+   "lang": "rust"
+  },
+  "niche.rs": {
+   "code": "use std::mem::{size_of, transmute};\nuse std::num::NonZeroU32;\n\nfn main() {\n    println!(\"--- Option costs nothing extra here ---\");\n    println!(\"&u8:               {}\", size_of::<&u8>());\n    println!(\"Option<&u8>:       {}\", size_of::<Option<&u8>>());\n    println!(\"Box<i32>:          {}\", size_of::<Box<i32>>());\n    println!(\"Option<Box<i32>>:  {}\", size_of::<Option<Box<i32>>>());\n    println!(\"NonZeroU32:        {}\", size_of::<NonZeroU32>());\n    println!(\"Option<NonZeroU32>: {}\", size_of::<Option<NonZeroU32>>());\n    println!(\"bool:              {}\", size_of::<bool>());\n    println!(\"Option<bool>:      {}\", size_of::<Option<bool>>());\n    println!(\"String:            {}\", size_of::<String>());\n    println!(\"Option<String>:    {}\", size_of::<Option<String>>());\n\n    println!(\"--- Here it does, because every bit pattern is a real value ---\");\n    println!(\"u32:               {}\", size_of::<u32>());\n    println!(\"Option<u32>:       {}\", size_of::<Option<u32>>());\n    println!(\"u64:               {}\", size_of::<u64>());\n    println!(\"Option<u64>:       {}\", size_of::<Option<u64>>());\n\n    println!(\"--- What None looks like ---\");\n    let value = 7u8;\n    let none: Option<&u8> = None;\n    let some: Option<&u8> = Some(&value);\n    // unsafe: reinterpret the 8 bytes of each Option as a number, only to look at them\n    let none_bits: usize = unsafe { transmute(none) };\n    let some_bits: usize = unsafe { transmute(some) };\n    println!(\"None as a number:  {none_bits}\");\n    println!(\"Some as a number is not zero: {}\", some_bits != 0);\n}\n",
+   "out": "--- Option costs nothing extra here ---\n&u8:               8\nOption<&u8>:       8\nBox<i32>:          8\nOption<Box<i32>>:  8\nNonZeroU32:        4\nOption<NonZeroU32>: 4\nbool:              1\nOption<bool>:      1\nString:            24\nOption<String>:    24\n--- Here it does, because every bit pattern is a real value ---\nu32:               4\nOption<u32>:       8\nu64:               8\nOption<u64>:       16\n--- What None looks like ---\nNone as a number:  0\nSome as a number is not zero: true\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "no-derive.fail.rs": {
+   "code": "enum Color {\n    Red,\n    Green,\n}\n\nfn main() {\n    let c = Color::Red;\n    if c == Color::Green {\n        println!(\"green\");\n    }\n    println!(\"{c:?}\");\n}\n",
+   "error": "error[E0369]: binary operation `==` cannot be applied to type `Color`\n --> src/main.rs:8:10\n  |\n8 |     if c == Color::Green {\n  |        - ^^ ------------ Color\n  |        |\n  |        Color\n  |\nnote: an implementation of `PartialEq` might be missing for `Color`\n --> src/main.rs:1:1\n  |\n1 | enum Color {\n  | ^^^^^^^^^^ must implement `PartialEq`\nhelp: consider annotating `Color` with `#[derive(PartialEq)]`\n  |\n1 + #[derive(PartialEq)]\n2 | enum Color {\n\nerror[E0277]: `Color` doesn't implement `Debug`\n  --> src/main.rs:11:15\n   |\n11 |     println!(\"{c:?}\");\n   |               ^^^^^ `Color` cannot be formatted using `{:?}` because it doesn't implement `Debug`\n   |\n   = help: the trait `Debug` is not implemented for `Color`\nhelp: consider annotating `Color` with `#[derive(Debug)]`\n   |\n 1 + #[derive(Debug)]\n 2 | enum Color {\n   |\n\nSome errors have detailed explanations: E0277, E0369.",
+   "lang": "rust"
+  },
+  "patterns.rs": {
+   "code": "enum Shape {\n    Circle { radius: f64 },\n    Rect { width: f64, height: f64 },\n    Triangle { base: f64, height: f64 },\n}\n\nfn describe(s: &Shape) -> String {\n    match s {\n        // a guard: the arm applies only when the condition is true\n        Shape::Circle { radius } if *radius == 0.0 => String::from(\"a dot\"),\n        Shape::Circle { radius } => format!(\"a circle, radius {radius}\"),\n        // a pattern can test a field against a value\n        Shape::Rect { width, height: 1.0 } => format!(\"a strip, {width} wide\"),\n        Shape::Rect { width, height } if width == height => format!(\"a square, side {width}\"),\n        // `..` means \"I don't care about the other fields\"\n        Shape::Rect { width, .. } => format!(\"a rectangle, {width} wide\"),\n        Shape::Triangle { base, height } => format!(\"a triangle, {base} by {height}\"),\n    }\n}\n\nfn main() {\n    let shapes = [\n        Shape::Circle { radius: 0.0 },\n        Shape::Circle { radius: 2.5 },\n        Shape::Rect {\n            width: 7.0,\n            height: 1.0,\n        },\n        Shape::Rect {\n            width: 3.0,\n            height: 3.0,\n        },\n        Shape::Rect {\n            width: 3.0,\n            height: 4.0,\n        },\n        Shape::Triangle {\n            base: 1.0,\n            height: 2.0,\n        },\n    ];\n    for s in &shapes {\n        println!(\"{}\", describe(s));\n    }\n}\n",
+   "out": "a dot\na circle, radius 2.5\na strip, 7 wide\na square, side 3\na rectangle, 3 wide\na triangle, 1 by 2\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "peek-tag.rs": {
+   "code": "// The fields are read through raw pointers, which the compiler cannot see.\n#![allow(dead_code)]\n\n// With #[repr(u8)] the layout is fixed by the language: a one-byte tag first,\n// then the variant's fields. That lets us look at the bytes.\n#[repr(u8)]\nenum Shape {\n    Circle(f64),\n    Rect(f64, f64),\n}\n\nfn tag(s: &Shape) -> u8 {\n    // unsafe: we promise that byte 0 of a Shape is inside the value (it is)\n    unsafe { *(s as *const Shape as *const u8) }\n}\n\nfn f64_at(s: &Shape, offset: usize) -> f64 {\n    // unsafe: we promise that there is an f64 stored at this offset\n    unsafe { *((s as *const Shape as *const u8).add(offset) as *const f64) }\n}\n\nfn main() {\n    println!(\"size of Shape: {} bytes\", size_of::<Shape>());\n\n    let circle = Shape::Circle(1.0);\n    println!(\n        \"Circle(1.0): tag {}, f64 at byte 8: {}\",\n        tag(&circle),\n        f64_at(&circle, 8)\n    );\n\n    let rect = Shape::Rect(2.0, 3.0);\n    println!(\n        \"Rect(2.0, 3.0): tag {}, f64 at byte 8: {}, f64 at byte 16: {}\",\n        tag(&rect),\n        f64_at(&rect, 8),\n        f64_at(&rect, 16)\n    );\n}\n",
+   "out": "size of Shape: 24 bytes\nCircle(1.0): tag 0, f64 at byte 8: 1\nRect(2.0, 3.0): tag 1, f64 at byte 8: 2, f64 at byte 16: 3\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "plain.rs": {
+   "code": "#[derive(Debug)]\nenum Direction {\n    North,\n    East,\n    South,\n    West,\n}\n\nfn turn_right(d: Direction) -> Direction {\n    match d {\n        Direction::North => Direction::East,\n        Direction::East => Direction::South,\n        Direction::South => Direction::West,\n        Direction::West => Direction::North,\n    }\n}\n\nfn main() {\n    let heading = Direction::North;\n    println!(\"start: {:?}\", heading);\n    let heading = turn_right(heading);\n    println!(\"after one turn: {:?}\", heading);\n}\n",
+   "out": "start: North\nafter one turn: East\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "recursive.fail.rs": {
+   "code": "enum Expr {\n    Num(i64),\n    Add(Expr, Expr),\n}\n\nfn main() {\n    let _ = Expr::Num(1);\n}\n",
+   "error": "error[E0072]: recursive type `Expr` has infinite size\n --> src/main.rs:1:1\n  |\n1 | enum Expr {\n  | ^^^^^^^^^\n2 |     Num(i64),\n3 |     Add(Expr, Expr),\n  |         ---- recursive without indirection\n  |\nhelp: insert some indirection (e.g., a `Box`, `Rc`, or `&`) to break the cycle\n  |\n3 |     Add(Box<Expr>, Expr),\n  |         ++++    +\n",
+   "lang": "rust"
+  },
+  "recursive.rs": {
+   "code": "use std::mem::size_of;\n\nenum Expr {\n    Num(i64),\n    Add(Box<Expr>, Box<Expr>), // a Box is a pointer to the heap\n    Mul(Box<Expr>, Box<Expr>),\n}\n\nfn eval(e: &Expr) -> i64 {\n    match e {\n        Expr::Num(n) => *n,\n        Expr::Add(a, b) => eval(a) + eval(b),\n        Expr::Mul(a, b) => eval(a) * eval(b),\n    }\n}\n\nfn main() {\n    // (1 + 2) * 4\n    let e = Expr::Mul(\n        Box::new(Expr::Add(Box::new(Expr::Num(1)), Box::new(Expr::Num(2)))),\n        Box::new(Expr::Num(4)),\n    );\n    println!(\"(1 + 2) * 4 = {}\", eval(&e));\n    println!(\"size of Box<Expr>: {} bytes\", size_of::<Box<Expr>>());\n    println!(\"size of Expr: {} bytes\", size_of::<Expr>());\n}\n",
+   "out": "(1 + 2) * 4 = 12\nsize of Box<Expr>: 8 bytes\nsize of Expr: 24 bytes\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "state-machine.rs": {
+   "code": "enum Job {\n    Waiting,\n    Running { percent: u8 },\n    Done { lines: u32 },\n    Failed(String),\n}\n\nenum Event {\n    Start,\n    Progress(u8),\n    Finish(u32),\n    Crash(String),\n}\n\nimpl Job {\n    // takes the old state by value and returns the new one\n    fn next(self, event: Event) -> Job {\n        match (self, event) {\n            (Job::Waiting, Event::Start) => Job::Running { percent: 0 },\n            (Job::Running { .. }, Event::Progress(p)) => Job::Running { percent: p },\n            (Job::Running { .. }, Event::Finish(lines)) => Job::Done { lines },\n            (Job::Running { .. }, Event::Crash(why)) => Job::Failed(why),\n            // any other pair is not a legal move: stay where we are\n            (state, _) => state,\n        }\n    }\n\n    fn show(&self) -> String {\n        match self {\n            Job::Waiting => String::from(\"waiting\"),\n            Job::Running { percent } => format!(\"running, {percent}%\"),\n            Job::Done { lines } => format!(\"done, {lines} lines\"),\n            Job::Failed(why) => format!(\"failed: {why}\"),\n        }\n    }\n}\n\nfn main() {\n    let events = [\n        Event::Progress(50), // too early: the job has not started\n        Event::Start,\n        Event::Progress(50),\n        Event::Finish(120),\n        Event::Crash(String::from(\"late\")), // too late: already done\n    ];\n    let mut job = Job::Waiting;\n    println!(\"{}\", job.show());\n    for event in events {\n        job = job.next(event);\n        println!(\"{}\", job.show());\n    }\n}\n",
+   "out": "waiting\nwaiting\nrunning, 0%\nrunning, 50%\ndone, 120 lines\ndone, 120 lines\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "std-enums.rs": {
+   "code": "// std defines Option and Result as ordinary enums. Here is the same idea by hand.\n// (`<T>` means \"any type here\"; generics come in a later lesson.)\n#[derive(Debug)]\nenum Maybe<T> {\n    Nothing,\n    Just(T),\n}\n\nfn first_even(numbers: &[i32]) -> Option<i32> {\n    for &n in numbers {\n        if n % 2 == 0 {\n            return Some(n);\n        }\n    }\n    None\n}\n\nfn main() {\n    // the real Option: matched like any other enum\n    match first_even(&[1, 3, 4, 5]) {\n        Some(n) => println!(\"found {n}\"),\n        None => println!(\"no even number\"),\n    }\n\n    // the real Result: Ok(value) or Err(error)\n    let parsed: Result<i32, _> = \"12x\".parse::<i32>();\n    match parsed {\n        Ok(n) => println!(\"parsed {n}\"),\n        Err(e) => println!(\"could not parse: {e}\"),\n    }\n\n    // our own copy works the same way\n    let a: Maybe<i32> = Maybe::Just(7);\n    let b: Maybe<i32> = Maybe::Nothing;\n    println!(\"{a:?} and {b:?}\");\n}\n",
+   "out": "found 4\ncould not parse: invalid digit found in string\nJust(7) and Nothing\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "text.rs": {
+   "code": "use std::fmt;\n\n#[derive(Debug)]\nenum Direction {\n    North,\n    South,\n}\n\n// `impl fmt::Display` is how you say what `{}` prints. Traits come in a later\n// lesson: for now, copy the shape.\nimpl fmt::Display for Direction {\n    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {\n        let text = match self {\n            Direction::North => \"north\",\n            Direction::South => \"south\",\n        };\n        write!(f, \"{text}\")\n    }\n}\n\nimpl Direction {\n    // text in: a name we know, or None\n    fn parse(text: &str) -> Option<Direction> {\n        match text {\n            \"north\" => Some(Direction::North),\n            \"south\" => Some(Direction::South),\n            _ => None,\n        }\n    }\n}\n\nfn main() {\n    let d = Direction::North;\n    println!(\"Display: {d}\");\n    println!(\"Debug: {d:?}\");\n    println!(\"parse(\\\"south\\\"): {:?}\", Direction::parse(\"south\"));\n    println!(\"parse(\\\"up\\\"): {:?}\", Direction::parse(\"up\"));\n}\n",
+   "out": "Display: north\nDebug: North\nparse(\"south\"): Some(South)\nparse(\"up\"): None\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "use-variants.rs": {
+   "code": "#[derive(Debug)]\nenum Direction {\n    North,\n    East,\n    South,\n    West,\n}\n\nfn opposite(d: Direction) -> Direction {\n    // `use` inside the function brings the variant names into scope here only\n    use Direction::*;\n    match d {\n        North => South,\n        South => North,\n        East => West,\n        West => East,\n    }\n}\n\nfn main() {\n    println!(\"opposite of East: {:?}\", opposite(Direction::East));\n}\n",
+   "out": "opposite of East: West\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "variant-not-type.fail.rs": {
+   "code": "enum Shape {\n    Circle(f64),\n    Rect(f64, f64),\n}\n\n// Circle is a variant of Shape, not a type of its own\nfn radius(c: Shape::Circle) -> f64 {\n    c.0\n}\n\nfn main() {\n    let _ = Shape::Rect(2.0, 3.0);\n    println!(\"{}\", radius(Shape::Circle(1.0)));\n}\n",
+   "error": "error[E0573]: expected type, found variant `Shape::Circle`\n --> src/main.rs:7:14\n  |\n7 | fn radius(c: Shape::Circle) -> f64 {\n  |              ^^^^^^^^^^^^^ not a type\n  |\nhelp: try using the variant's enum\n  |\n7 - fn radius(c: Shape::Circle) -> f64 {\n7 + fn radius(c: crate::Shape) -> f64 {",
+   "lang": "rust"
+  },
+  "wildcard-hides.rs": {
+   "code": "enum Shape {\n    Circle(f64),\n    Rect(f64, f64),\n    Triangle(f64, f64), // added later\n}\n\nfn area(s: &Shape) -> f64 {\n    match s {\n        Shape::Circle(r) => 3.14 * r * r,\n        Shape::Rect(w, h) => w * h,\n        _ => 0.0, // \"everything else\": this now includes Triangle\n    }\n}\n\n// no wildcard: adding Triangle made the compiler send us here\nfn perimeter(s: &Shape) -> f64 {\n    match s {\n        Shape::Circle(r) => 2.0 * 3.14 * r,\n        Shape::Rect(w, h) => 2.0 * (w + h),\n        Shape::Triangle(a, b) => a + b + (a * a + b * b).sqrt(), // right triangle\n    }\n}\n\nfn main() {\n    let shapes = [\n        Shape::Circle(1.0),\n        Shape::Rect(2.0, 3.0),\n        Shape::Triangle(3.0, 4.0),\n    ];\n    for s in &shapes {\n        println!(\"area: {}, perimeter: {}\", area(s), perimeter(s));\n    }\n}\n",
+   "out": "area: 3.14, perimeter: 6.28\narea: 6, perimeter: 10\narea: 0, perimeter: 12\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "color-enum.py": {
+   "code": "from enum import Enum, auto\n\n\nclass Color(Enum):\n    RED = auto()\n    GREEN = auto()\n\n\nprint(\"RED:\", Color.RED, \"value:\", Color.RED.value)\nprint(\"Color(2):\", Color(2))\ntry:\n    Color(7)\nexcept ValueError as e:\n    print(\"Color(7):\", e)\n",
+   "out": "RED: Color.RED value: 1\nColor(2): Color.GREEN\nColor(7): 7 is not a valid Color\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "default-hides.java": {
+   "code": "public class Main {\n    sealed interface Shape permits Circle, Rect, Triangle {}\n    record Circle(double r) implements Shape {}\n    record Rect(double w, double h) implements Shape {}\n    record Triangle(double b, double h) implements Shape {} // new!\n\n    static double area(Shape s) {\n        return switch (s) {\n            case Circle c -> 3.14 * c.r() * c.r();\n            case Rect r -> r.w() * r.h();\n            default -> 0.0; // compiles, and now covers Triangle too\n        };\n    }\n\n    public static void main(String[] args) {\n        System.out.println(\"triangle area: \" + area(new Triangle(3.0, 4.0)));\n    }\n}\n",
+   "out": "triangle area: 0.0\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "default-hides.ts": {
+   "code": "type Shape =\n  | { kind: \"circle\"; r: number }\n  | { kind: \"rect\"; w: number; h: number }\n  | { kind: \"triangle\"; b: number; h: number }; // new!\n\nfunction area(s: Shape): number {\n  switch (s.kind) {\n    case \"circle\":\n      return 3.14 * s.r * s.r;\n    case \"rect\":\n      return s.w * s.h;\n    default:\n      return 0; // compiles, and now covers triangle too\n  }\n}\n\nconsole.log(\"triangle area:\", area({ kind: \"triangle\", b: 3, h: 4 }));\n",
+   "out": "triangle area: 0\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "else-hides.kt": {
+   "code": "sealed class Shape {\n    data class Circle(val r: Double) : Shape()\n    data class Rect(val w: Double, val h: Double) : Shape()\n    data class Triangle(val b: Double, val h: Double) : Shape() // new!\n}\n\nfun area(s: Shape): Double = when (s) {\n    is Shape.Circle -> 3.14 * s.r * s.r\n    is Shape.Rect -> s.w * s.h\n    else -> 0.0 // compiles, and now covers Triangle too\n}\n\nfun main() {\n    println(\"triangle area: ${area(Shape.Triangle(3.0, 4.0))}\")\n}\n",
+   "out": "triangle area: 0.0\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "enum-cast.cs": {
+   "code": "Color c = (Color)42; // compiles, and runs\nConsole.WriteLine($\"(Color)42 prints as: {c}\");\nConsole.WriteLine($\"Enum.IsDefined: {Enum.IsDefined(c)}\");\n\nenum Color { Red, Green, Blue }\n",
+   "out": "(Color)42 prints as: 42\nEnum.IsDefined: False\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "enum-switch.java": {
+   "code": "public class Main {\n    enum Level {\n        LOW(1), MID(5), HIGH(10);\n\n        final int code;\n\n        Level(int code) {\n            this.code = code;\n        }\n    }\n\n    static String label(Level l) {\n        return switch (l) { // no default: the compiler checks every constant\n            case LOW -> \"low\";\n            case MID -> \"mid\";\n            case HIGH -> \"high\";\n        };\n    }\n\n    public static void main(String[] args) {\n        Level m = Level.MID;\n        System.out.println(m + \" code \" + m.code + \" ordinal \" + m.ordinal() + \" label \" + label(m));\n        try {\n            Level.valueOf(\"NOPE\");\n        } catch (IllegalArgumentException e) {\n            System.out.println(\"valueOf(\\\"NOPE\\\"): \" + e.getMessage());\n        }\n    }\n}\n",
+   "out": "MID code 5 ordinal 1 label mid\nvalueOf(\"NOPE\"): No enum constant Main.Level.NOPE\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "interface-method.fail.go": {
+   "code": "package main\n\nimport \"fmt\"\n\ntype Shape interface{ Area() float64 }\n\ntype Circle struct{ R float64 }\n\nfunc (c Circle) Area() float64 { return 3.14 * c.R * c.R }\n\ntype Triangle struct{ B, H float64 } // new, and no Area method yet\n\nfunc main() {\n\tshapes := []Shape{Circle{1.0}, Triangle{2.0, 3.0}}\n\tfor _, s := range shapes {\n\t\tfmt.Println(s.Area())\n\t}\n}\n",
+   "error": "# command-line-arguments\n./main.go:14:33: cannot use Triangle{…} (value of struct type Triangle) as Shape value in array or slice literal: Triangle does not implement Shape (missing method Area)",
+   "lang": "go"
+  },
+  "iota.go": {
+   "code": "package main\n\nimport \"fmt\"\n\ntype Color int\n\nconst (\n\tRed   Color = iota // 0\n\tGreen              // 1\n\tBlue               // 2\n)\n\nfunc (c Color) String() string {\n\tswitch c {\n\tcase Red:\n\t\treturn \"Red\"\n\tcase Green:\n\t\treturn \"Green\"\n\tcase Blue:\n\t\treturn \"Blue\"\n\t}\n\treturn \"unknown\"\n}\n\nfunc main() {\n\tfmt.Println(\"Green:\", Green, \"as int:\", int(Green))\n\tvar c Color = 42 // compiles: every int is a Color\n\tfmt.Println(\"Color(42):\", c)\n\tvar zero Color // the zero value is the first constant\n\tfmt.Println(\"zero value:\", zero)\n}\n",
+   "out": "Green: Green as int: 1\nColor(42): unknown\nzero value: Red\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "json-tag.ts": {
+   "code": "type Shape =\n  | { kind: \"circle\"; r: number }\n  | { kind: \"rect\"; w: number; h: number };\n\nfunction area(s: Shape): number {\n  switch (s.kind) {\n    case \"circle\":\n      return 3.14 * s.r * s.r;\n    case \"rect\":\n      return s.w * s.h;\n  }\n}\n\n// the tag says \"rect\", but the fields were never checked\nconst s = JSON.parse('{\"kind\": \"rect\", \"w\": 2}') as Shape;\nconsole.log(\"area:\", area(s));\n",
+   "out": "area: NaN\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "named-members.ts": {
+   "code": "type Circle = { kind: \"circle\"; r: number };\ntype Rect = { kind: \"rect\"; w: number; h: number };\ntype Shape = Circle | Rect;\n\n// each member is a type of its own, so a function can ask for just one\nfunction radius(c: Circle): number {\n  return c.r;\n}\n\nconst shapes: Shape[] = [{ kind: \"circle\", r: 1 }, { kind: \"rect\", w: 2, h: 3 }];\nconsole.log(\"radius:\", radius({ kind: \"circle\", r: 1 }), \"shapes:\", shapes.length);\n",
+   "out": "radius: 1 shapes: 2\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "number-enum.ts": {
+   "code": "enum Color {\n  Red,\n  Green,\n  Blue,\n}\n\nconst n: number = 42;\nconst c: Color = n; // compiles: any number is accepted\nconsole.log(\"Color.Green:\", Color.Green, \"name of 1:\", Color[1]);\nconsole.log(\"a Color holding 42:\", c, \"name:\", Color[c]);\n\n// the usual alternative: a union of string literals\ntype Dir = \"north\" | \"south\";\nfunction flip(d: Dir): Dir {\n  return d === \"north\" ? \"south\" : \"north\";\n}\nconsole.log(\"flip:\", flip(\"north\"));\n",
+   "out": "Color.Green: 1 name of 1: Green\na Color holding 42: 42 name: undefined\nflip: south\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "tagged-size.c": {
+   "code": "#include <stdio.h>\n\nenum ShapeKind { CIRCLE, RECT };\n\nstruct Shape {\n    enum ShapeKind kind;\n    union {\n        double r;\n        struct { double w, h; } rect;\n    };\n};\n\nint main(void) {\n    printf(\"sizeof(struct Shape): %zu\\n\", sizeof(struct Shape));\n    return 0;\n}\n",
+   "out": "sizeof(struct Shape): 24\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "union.fail.cs": {
+   "code": "union Shape(Circle, Rect);\n\nrecord Circle(double R);\nrecord Rect(double W, double H);\n",
+   "error": "Program.cs(1,19): error CS1001: Identifier expected\nProgram.cs(1,25): error CS1001: Identifier expected",
+   "lang": "csharp"
+  },
+  "variant-get.cpp": {
+   "code": "#include <iostream>\n#include <variant>\n\nstruct Circle { double r; };\nstruct Rect { double w, h; };\nusing Shape = std::variant<Circle, Rect>;\n\nint main() {\n    Shape s = Circle{1.0};\n    std::cout << \"sizeof(Shape): \" << sizeof(Shape) << \"\\n\";\n    std::cout << \"index: \" << s.index() << \"\\n\";\n    try {\n        std::cout << std::get<Rect>(s).w << \"\\n\";\n    } catch (const std::bad_variant_access& e) {\n        std::cout << \"get<Rect>: \" << e.what() << \"\\n\";\n    }\n    if (auto* c = std::get_if<Circle>(&s)) {\n        std::cout << \"radius: \" << c->r << \"\\n\";\n    }\n}\n",
+   "out": "sizeof(Shape): 24\nindex: 0\nget<Rect>: std::get: wrong index for variant\nradius: 1\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "variant-type.cs": {
+   "code": "Console.WriteLine($\"radius: {Radius(new Circle(1.0))}\");\n\n// each case is its own type, so a method can ask for exactly one\nstatic double Radius(Circle c) => c.R;\n\nabstract record Shape;\nrecord Circle(double R) : Shape;\nrecord Rect(double W, double H) : Shape;\n",
+   "out": "radius: 1\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "variant-type.java": {
+   "code": "public class Main {\n    sealed interface Shape permits Circle, Rect {}\n    record Circle(double r) implements Shape {}\n    record Rect(double w, double h) implements Shape {}\n\n    // each case is its own type, so a method can ask for exactly one\n    static double radius(Circle c) {\n        return c.r();\n    }\n\n    public static void main(String[] args) {\n        System.out.println(\"radius: \" + radius(new Circle(1.0)));\n    }\n}\n",
+   "out": "radius: 1.0\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "variant-type.kt": {
+   "code": "sealed class Shape {\n    data class Circle(val r: Double) : Shape()\n    data class Rect(val w: Double, val h: Double) : Shape()\n}\n\n// each case is its own type, so a function can ask for exactly one\nfun radius(c: Shape.Circle): Double = c.r\n\nfun main() {\n    println(\"radius: ${radius(Shape.Circle(1.0))}\")\n}\n",
+   "out": "radius: 1.0\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "wrong-tag.c": {
+   "code": "#include <stdio.h>\n\nenum Kind { INT, FLOAT };\n\nstruct Value {\n    enum Kind kind;\n    union {\n        int i;\n        float f;\n    };\n};\n\nvoid show(const struct Value *v) {\n    switch (v->kind) {\n    case INT:   printf(\"int %d\\n\", v->i); break;\n    case FLOAT: printf(\"float %g\\n\", v->f); break;\n    }\n}\n\nint main(void) {\n    struct Value v = {.kind = FLOAT, .f = 1.0f};\n    show(&v);\n    v.kind = INT; // the tag changed, the bytes did not\n    show(&v);\n    return 0;\n}\n",
+   "out": "float 1\nint 1065353216\n",
+   "lang": "c",
+   "exit": 0
+  }
+ },
+ "exercises": {
+  "door": {
+   "starter": "#[derive(Debug, PartialEq)]\nenum Door {\n    Open,\n    Closed,\n    Locked(u32), // the code that locks it\n}\n\nenum Action {\n    Open,\n    Close,\n    Lock(u32),   // lock with this code\n    Unlock(u32), // try to unlock with this code\n}\n\n/// The rules:\n///   Closed + Open        -> Open\n///   Open + Close         -> Closed\n///   Closed + Lock(code)  -> Locked(code)\n///   Locked(code) + Unlock(same code) -> Closed\n/// Anything else (an open door cannot be locked, a locked door cannot be\n/// opened, a wrong code does nothing) leaves the door as it is.\nfn apply(door: Door, action: Action) -> Door {\n    todo!(\"match on the pair (door, action)\")\n}\n\nfn main() {\n    assert_eq!(apply(Door::Closed, Action::Open), Door::Open);\n    assert_eq!(apply(Door::Open, Action::Close), Door::Closed);\n    assert_eq!(apply(Door::Closed, Action::Lock(1234)), Door::Locked(1234));\n    assert_eq!(\n        apply(Door::Locked(1234), Action::Unlock(1234)),\n        Door::Closed\n    );\n    // moves that are not allowed\n    assert_eq!(apply(Door::Open, Action::Lock(1)), Door::Open);\n    assert_eq!(apply(Door::Locked(7), Action::Open), Door::Locked(7));\n    assert_eq!(apply(Door::Locked(7), Action::Unlock(8)), Door::Locked(7));\n    assert_eq!(apply(Door::Closed, Action::Unlock(7)), Door::Closed);\n    // a whole story\n    let mut door = Door::Open;\n    for action in [\n        Action::Close,\n        Action::Lock(42),\n        Action::Open,\n        Action::Unlock(42),\n        Action::Open,\n    ] {\n        door = apply(door, action);\n    }\n    assert_eq!(door, Door::Open);\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "#[derive(Debug, PartialEq)]\nenum Door {\n    Open,\n    Closed,\n    Locked(u32), // the code that locks it\n}\n\nenum Action {\n    Open,\n    Close,\n    Lock(u32),   // lock with this code\n    Unlock(u32), // try to unlock with this code\n}\n\n/// The rules:\n///   Closed + Open        -> Open\n///   Open + Close         -> Closed\n///   Closed + Lock(code)  -> Locked(code)\n///   Locked(code) + Unlock(same code) -> Closed\n/// Anything else (an open door cannot be locked, a locked door cannot be\n/// opened, a wrong code does nothing) leaves the door as it is.\nfn apply(door: Door, action: Action) -> Door {\n    match (door, action) {\n        (Door::Closed, Action::Open) => Door::Open,\n        (Door::Open, Action::Close) => Door::Closed,\n        (Door::Closed, Action::Lock(code)) => Door::Locked(code),\n        (Door::Locked(code), Action::Unlock(tried)) if code == tried => Door::Closed,\n        (door, _) => door,\n    }\n}\n\nfn main() {\n    assert_eq!(apply(Door::Closed, Action::Open), Door::Open);\n    assert_eq!(apply(Door::Open, Action::Close), Door::Closed);\n    assert_eq!(apply(Door::Closed, Action::Lock(1234)), Door::Locked(1234));\n    assert_eq!(\n        apply(Door::Locked(1234), Action::Unlock(1234)),\n        Door::Closed\n    );\n    // moves that are not allowed\n    assert_eq!(apply(Door::Open, Action::Lock(1)), Door::Open);\n    assert_eq!(apply(Door::Locked(7), Action::Open), Door::Locked(7));\n    assert_eq!(apply(Door::Locked(7), Action::Unlock(8)), Door::Locked(7));\n    assert_eq!(apply(Door::Closed, Action::Unlock(7)), Door::Closed);\n    // a whole story\n    let mut door = Door::Open;\n    for action in [\n        Action::Close,\n        Action::Lock(42),\n        Action::Open,\n        Action::Unlock(42),\n        Action::Open,\n    ] {\n        door = apply(door, action);\n    }\n    assert_eq!(door, Door::Open);\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "expr": {
+   "starter": "enum Expr {\n    Num(i64),\n    Neg(Box<Expr>),\n    Add(Box<Expr>, Box<Expr>),\n    Mul(Box<Expr>, Box<Expr>),\n}\n\nuse Expr::*;\n\nfn num(n: i64) -> Box<Expr> {\n    Box::new(Num(n))\n}\n\n/// Num(5) is 5. Neg(x) is minus x. Add and Mul work as you expect.\nfn eval(e: &Expr) -> i64 {\n    todo!(\"one arm per variant; the Boxed parts are evaluated by calling eval again\")\n}\n\n/// Fully bracketed text: Num(5) -> \"5\", Neg(x) -> \"-x\",\n/// Add(a, b) -> \"(a + b)\", Mul(a, b) -> \"(a * b)\".\nfn show(e: &Expr) -> String {\n    todo!(\"same shape as eval, but build a String\")\n}\n\nfn main() {\n    // (1 + 2) * 4\n    let e = Mul(Box::new(Add(num(1), num(2))), num(4));\n    assert_eq!(eval(&e), 12);\n    assert_eq!(show(&e), \"((1 + 2) * 4)\");\n    // a lone number, and a negative one\n    assert_eq!(eval(&Num(5)), 5);\n    assert_eq!(show(&Num(-5)), \"-5\");\n    // Neg of Neg, with a negative number inside\n    let n = Neg(Box::new(Neg(num(-3))));\n    assert_eq!(eval(&n), -3);\n    assert_eq!(show(&n), \"---3\");\n    // deep on the left: ((((0 + 1) + 2) + 3) + 4)\n    let mut deep = Num(0);\n    for i in 1..=4 {\n        deep = Add(Box::new(deep), num(i));\n    }\n    assert_eq!(eval(&deep), 10);\n    assert_eq!(show(&deep), \"((((0 + 1) + 2) + 3) + 4)\");\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "enum Expr {\n    Num(i64),\n    Neg(Box<Expr>),\n    Add(Box<Expr>, Box<Expr>),\n    Mul(Box<Expr>, Box<Expr>),\n}\n\nuse Expr::*;\n\nfn num(n: i64) -> Box<Expr> {\n    Box::new(Num(n))\n}\n\n/// Num(5) is 5. Neg(x) is minus x. Add and Mul work as you expect.\nfn eval(e: &Expr) -> i64 {\n    match e {\n        Num(n) => *n,\n        Neg(x) => -eval(x),\n        Add(a, b) => eval(a) + eval(b),\n        Mul(a, b) => eval(a) * eval(b),\n    }\n}\n\n/// Fully bracketed text: Num(5) -> \"5\", Neg(x) -> \"-x\",\n/// Add(a, b) -> \"(a + b)\", Mul(a, b) -> \"(a * b)\".\nfn show(e: &Expr) -> String {\n    match e {\n        Num(n) => n.to_string(),\n        Neg(x) => format!(\"-{}\", show(x)),\n        Add(a, b) => format!(\"({} + {})\", show(a), show(b)),\n        Mul(a, b) => format!(\"({} * {})\", show(a), show(b)),\n    }\n}\n\nfn main() {\n    // (1 + 2) * 4\n    let e = Mul(Box::new(Add(num(1), num(2))), num(4));\n    assert_eq!(eval(&e), 12);\n    assert_eq!(show(&e), \"((1 + 2) * 4)\");\n    // a lone number, and a negative one\n    assert_eq!(eval(&Num(5)), 5);\n    assert_eq!(show(&Num(-5)), \"-5\");\n    // Neg of Neg, with a negative number inside\n    let n = Neg(Box::new(Neg(num(-3))));\n    assert_eq!(eval(&n), -3);\n    assert_eq!(show(&n), \"---3\");\n    // deep on the left: ((((0 + 1) + 2) + 3) + 4)\n    let mut deep = Num(0);\n    for i in 1..=4 {\n        deep = Add(Box::new(deep), num(i));\n    }\n    assert_eq!(eval(&deep), 10);\n    assert_eq!(show(&deep), \"((((0 + 1) + 2) + 3) + 4)\");\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "shape-area": {
+   "starter": "enum Shape {\n    Circle { radius: f64 },\n    Rect { width: f64, height: f64 },\n    Triangle { a: f64, b: f64, c: f64 }, // the three side lengths\n}\n\nimpl Shape {\n    /// Circle: 3.14 * r * r. Rect: width * height.\n    /// Triangle: Heron's formula, sqrt(s * (s - a) * (s - b) * (s - c)) with\n    /// s = (a + b + c) / 2. If the sides cannot make a triangle (one side is\n    /// at least as long as the other two together), the area is 0.0.\n    fn area(&self) -> f64 {\n        todo!(\"match on self, one arm per variant\")\n    }\n}\n\nfn close(x: f64, y: f64) -> bool {\n    (x - y).abs() < 1e-9\n}\n\nfn main() {\n    assert!(close(Shape::Circle { radius: 1.0 }.area(), 3.14));\n    assert!(close(Shape::Circle { radius: 0.0 }.area(), 0.0));\n    assert!(close(\n        Shape::Rect {\n            width: 2.0,\n            height: 3.0\n        }\n        .area(),\n        6.0\n    ));\n    assert!(close(\n        Shape::Triangle {\n            a: 3.0,\n            b: 4.0,\n            c: 5.0\n        }\n        .area(),\n        6.0\n    ));\n    // sides that cannot make a triangle\n    assert!(close(\n        Shape::Triangle {\n            a: 1.0,\n            b: 2.0,\n            c: 3.0\n        }\n        .area(),\n        0.0\n    ));\n    assert!(close(\n        Shape::Triangle {\n            a: 1.0,\n            b: 1.0,\n            c: 5.0\n        }\n        .area(),\n        0.0\n    ));\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "enum Shape {\n    Circle { radius: f64 },\n    Rect { width: f64, height: f64 },\n    Triangle { a: f64, b: f64, c: f64 }, // the three side lengths\n}\n\nimpl Shape {\n    /// Circle: 3.14 * r * r. Rect: width * height.\n    /// Triangle: Heron's formula, sqrt(s * (s - a) * (s - b) * (s - c)) with\n    /// s = (a + b + c) / 2. If the sides cannot make a triangle (one side is\n    /// at least as long as the other two together), the area is 0.0.\n    fn area(&self) -> f64 {\n        match self {\n            Shape::Circle { radius } => 3.14 * radius * radius,\n            Shape::Rect { width, height } => width * height,\n            Shape::Triangle { a, b, c } => {\n                // without this check, sqrt of a negative number would give NaN\n                if a + b <= *c || a + c <= *b || b + c <= *a {\n                    return 0.0;\n                }\n                let s = (a + b + c) / 2.0;\n                (s * (s - a) * (s - b) * (s - c)).sqrt()\n            }\n        }\n    }\n}\n\nfn close(x: f64, y: f64) -> bool {\n    (x - y).abs() < 1e-9\n}\n\nfn main() {\n    assert!(close(Shape::Circle { radius: 1.0 }.area(), 3.14));\n    assert!(close(Shape::Circle { radius: 0.0 }.area(), 0.0));\n    assert!(close(\n        Shape::Rect {\n            width: 2.0,\n            height: 3.0\n        }\n        .area(),\n        6.0\n    ));\n    assert!(close(\n        Shape::Triangle {\n            a: 3.0,\n            b: 4.0,\n            c: 5.0\n        }\n        .area(),\n        6.0\n    ));\n    // sides that cannot make a triangle\n    assert!(close(\n        Shape::Triangle {\n            a: 1.0,\n            b: 2.0,\n            c: 3.0\n        }\n        .area(),\n        0.0\n    ));\n    assert!(close(\n        Shape::Triangle {\n            a: 1.0,\n            b: 1.0,\n            c: 5.0\n        }\n        .area(),\n        0.0\n    ));\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}

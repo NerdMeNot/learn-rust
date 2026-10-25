@@ -1,0 +1,41 @@
+---
+// A project's layout, drawn from the files that are really in it, so it cannot drift
+// from the project. `notes` annotates a path; `extra` lists paths Cargo creates
+// (Cargo.lock, target/) that are not committed with the guide.
+//
+//   <Tree guide="axum" dir="rust" name="notes-api" notes={{ 'src/main.rs': 'the server' }} />
+import { guide } from './data'
+
+interface Props {
+  guide: string; dir: string; name: string; title?: string
+  notes?: Record<string, string>; extra?: string[]; hide?: string[]
+}
+const { guide: id, dir, name, title = 'Project layout', notes = {}, extra = ['Cargo.lock'], hide = [] } = Astro.props
+const paths = [...Object.keys(guide(id).files[dir] ?? {}), ...extra].filter(p => !hide.includes(p))
+
+type Node = { [k: string]: Node }
+const root: Node = {}
+for (const p of paths) {
+  let n = root
+  for (const part of p.replace(/\/$/, '').split('/')) n = n[part] ??= {}
+}
+// Directories first, then files, each alphabetical: what `tree --dirsfirst` prints.
+const isDir = (n: Node, k: string, prefix: string) => Object.keys(n[k]).length > 0 || paths.includes(prefix + k + '/')
+const lines: string[] = [`${name}/`]
+function walk(n: Node, indent: string, prefix: string) {
+  const keys = Object.keys(n).sort((a, b) => Number(isDir(n, b, prefix)) - Number(isDir(n, a, prefix)) || a.localeCompare(b))
+  keys.forEach((k, i) => {
+    const last = i === keys.length - 1
+    const dir = isDir(n, k, prefix)
+    const label = `${indent}${last ? '└── ' : '├── '}${k}${dir ? '/' : ''}`
+    const note = notes[prefix + k] ?? notes[prefix + k + '/']
+    lines.push(note ? label.padEnd(32) + note : label)
+    if (dir) walk(n[k], indent + (last ? '    ' : '│   '), prefix + k + '/')
+  })
+}
+walk(root, '', '')
+---
+<div class="lr-tree not-content">
+  <div class="lr-panel-head"><span class="lr-lang" style="--c:var(--lr-muted)">{title}</span></div>
+  <pre>{lines.join('\n')}</pre>
+</div>

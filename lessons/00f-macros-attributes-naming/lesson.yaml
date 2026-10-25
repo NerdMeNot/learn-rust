@@ -1,0 +1,116 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Macros, attributes and comments"
+part: "syntax"
+intro: >-
+  A name followed by `!`, such as `println!` or `vec!`, is a macro call: the compiler expands it into
+  other code first. An ordinary Rust function has a fixed list of parameters, so this is how
+  `println!` takes any number of arguments and checks its format string before the program runs.
+  A line that starts with `#[...]` is an attribute, a note to the compiler about the item below
+  it. Comments start with `//`, and `///` turns a comment into documentation. `cargo fmt` and
+  `cargo clippy` format and check the code.
+coming_from:
+  go: >-
+    `fmt.Printf("%d %s", n, s)` is `println!("{} {}", n, s)`: `{}` replaces the verbs, and the
+    compiler checks the string against the arguments. Struct tags like `json:"name"` become
+    attributes such as `#[serde(rename = "name")]` (from the serde crate). The nearest thing to
+    `//go:build linux` is `#[cfg(target_os = "linux")]`, which applies to one item, not a whole file.
+    `cargo fmt` is `gofmt`.
+  kotlin: >-
+    `println("$name is $age")` is `println!("{name} is {age}")`, and `"%5d".format(n)` becomes
+    `{:5}` inside the same macro. `@Test` is `#[test]`, `@Suppress("unused")` is `#[allow(unused)]`,
+    and what a `data class` writes for you (`toString`, `equals`) comes from `#[derive(Debug, PartialEq)]`.
+  python: >-
+    `print(f"{name} is {age}")` is `println!("{name} is {age}")`, and the specs after the colon are
+    close to yours (`{x:>5}`, `{x:05}`). One difference: Rust's `{x:.2}` means two decimals, where
+    Python's `.2` alone means two significant digits. `@dataclass` is closest to `#[derive(...)]`;
+    a decorator that wraps a function has no direct equivalent, because attributes act while the
+    program is compiled, not when it runs.
+  typescript: >-
+    A template literal `${name}` is `{name}` inside `println!` or `format!`, but only a plain name
+    goes inside the braces, not `a + b`. `/** JSDoc */` becomes `///`, and Prettier and ESLint are
+    closest to `cargo fmt` and `cargo clippy`.
+  java: >-
+    `System.out.printf("%5d%n", n)` is `println!("{:5}", n)`, and `println!` adds the newline for you.
+    Annotations become attributes: `@Test` is `#[test]`, `@Deprecated` is `#[deprecated]`,
+    `@SuppressWarnings` is `#[allow(...)]`. There is no `@Override`, and `assert!` is always on,
+    unlike Java's `assert`.
+  csharp: >-
+    Attributes are in the family you know: the Rust Reference says its `#[...]` syntax comes from C#.
+    `[Fact]` is `#[test]`, `[Obsolete]` is `#[deprecated]`, `#if DEBUG` is `#[cfg(debug_assertions)]`,
+    and `$"{n,5}"` is `{n:5}` inside `println!`.
+  c: >-
+    `printf("%5.2f %d\n", x, n)` is `println!("{:5.2} {}", x, n)`: there is no `%d` or `%s`, and the
+    compiler checks the string against the arguments, so a mismatch is always an error. (GCC warns
+    about `printf` mismatches under `-Wall`, but the C standard still calls them undefined behaviour.)
+    `#define` macros substitute tokens; Rust's `name!` macros receive parsed syntax.
+  cpp: >-
+    C++20's `std::format("{:>5}", n)` already uses `{}` placeholders like `println!` (though `{:d}`
+    is legal there and an error in Rust). `#define` macros substitute tokens; Rust's `name!` macros
+    receive parsed syntax. `[[nodiscard]]` and `[[deprecated]]` are `#[must_use]` and `#[deprecated]`.
+notes:
+  - >-
+    `name!(...)` is a macro call, not a function call. The compiler expands it before it checks types,
+    which is how `println!` accepts any number of arguments although Rust functions cannot.
+  - >-
+    In a format string, `{}` prints with `Display`, `{:?}` with `Debug`, and a spec after the colon sets
+    width, alignment and precision. `{{` and `}}` print one brace each.
+  - >-
+    `#[...]` applies to the item after it, and `#![...]` to the file or module it sits in. The common
+    ones are `derive`, `test`, `allow` and `cfg`.
+  - >-
+    `//` and `/* */` are comments (block comments nest). `///` documents the item below it and `//!` the
+    file around it; `cargo doc` builds web pages from them.
+  - >-
+    `cargo fmt` rewrites your code in the standard style, and `cargo clippy` adds more checks than the
+    compiler runs.
+gotcha:
+  title: "Using %d in a format string"
+  verdict: "rust-rule"
+  looks_fine: >-
+    In C, Go, Java, Kotlin and Python, `%d` marks where a number goes. It is the format string you
+    already know.
+  rust_sees: >-
+    `println!` uses braces for placeholders. It sees `%d` as plain text, finds an argument with no
+    placeholder, and stops with `argument never used`. It even points at the fix: `{}`.
+  why: >-
+    Rust's format strings use `{}`, and the compiler checks that every argument has a placeholder and
+    every placeholder has an argument. It does not know that `%d` means anything: `%d` is plain text
+    to it, so an argument aimed at a `%d` is left without a placeholder and is rejected. (A `%d` with no
+    argument at all compiles and prints `%d`.) The fix is `{}` with no letter: the argument's type
+    decides how it prints, and `{:?}` asks for the debugging form. Most other languages run this
+    program; the C# outputs show a version that runs but prints the wrong thing.
+  langs:
+    go:
+      status: "runs"
+      says: >-
+        Go prints `count: 5`. `Printf` takes verbs such as `%d`.
+    kotlin:
+      status: "runs"
+      says: >-
+        Kotlin prints `count: 5`. `"count: %d".format(count)` uses Java's format syntax.
+    python:
+      status: "runs"
+      says: >-
+        Python prints `count: 5`. The `%` operator on a string is Python's older formatting style.
+    typescript:
+      status: "runs"
+      says: >-
+        TypeScript prints `count: 5`. Node's `console.log` treats `%d` in the first argument as a placeholder.
+    java:
+      status: "runs"
+      says: >-
+        Java prints `count: 5`. `printf` takes `%d`, and `%n` is the newline.
+    csharp:
+      status: "wrong"
+      says: >-
+        C# compiles this and prints `count: %d`. Its composite format strings use `{0}`, so `%d` is plain
+        text and the extra argument is ignored, with no compiler message by default.
+    c:
+      status: "runs"
+      says: >-
+        C prints `count: 5`. `printf` is where `%d` comes from.
+    cpp:
+      status: "runs"
+      says: >-
+        C++ prints `count: 5` with `printf`. `std::format` (C++20) uses `{}` as Rust does, though it
+        accepts `{:d}`, which Rust does not.

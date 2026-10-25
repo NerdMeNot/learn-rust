@@ -1,0 +1,386 @@
+{
+ "id": "formatting",
+ "title": "Printing and Formatting",
+ "part": "std",
+ "intro": "`println!`, `format!` and `write!` share one mini-language inside the `{}`: width, alignment, precision, hex. Two traits decide how a value prints. `Display` (`{}`) is for people, and you write it yourself. `Debug` (`{:?}`) is for developers, and `#[derive(Debug)]` writes it for you.",
+ "coming_from": {
+  "go": "`{}` uses `Display`, close to your `String()` method, and `{:?}` uses `Debug`, which is what `%+v` prints for a struct with no `String()`. Go has one hook (`%v`, `%+v` and `%s` all call `String()`); Rust has two traits, and `{:?}` never uses your `Display`. Go prints any struct by default, but Rust only prints types that implement one of these traits.",
+  "kotlin": "`Display` is your `toString()` override, and `#[derive(Debug)]` is like the `toString` a data class writes for you. A Rust struct has neither until you add one, and width and precision go inside `{}` (`{n:>6}`) instead of `\"%6d\".format(n)`.",
+  "python": "The mini-language is close to Python's: `{n:>6}`, `{n:06}`, `{n:#x}`, with differences the page lists. `Display` is `__str__` and `Debug` is `__repr__`, but Rust has no default for either, and `{:.2}` means two decimal places, like Python's `.2f`, not two significant digits.",
+  "typescript": "`format!` is a template literal, and `{n:>6}` does what `padStart(6)` does. `Display` is your `toString()`, and `{:?}` is like `console.log(obj)`, but only for types with `#[derive(Debug)]`.",
+  "java": "`impl Display` is your `toString()`, and `#[derive(Debug)]` is like the `toString` a `record` writes for you. The format string is checked at compile time, where `String.format` checks it at run time.",
+  "csharp": "`impl Display` is overriding `ToString()`. `#[derive(Debug)]` is close to the `ToString` a `record` gives you, but only for `{:?}`: `Display` has no default. `{n:>6}` is `{n,6}`. C# checks the arguments of `$\"...\"` at compile time but not the letter after the colon (`$\"{n:Q}\"` fails at run time); Rust checks both.",
+  "c": "`{:>6}`, `{:.2}` and `{:#x}` cover what `%6d`, `%.2f` and `%#x` do, but the argument type comes from the value, so a letter that disagrees with the argument is a compile error. `impl Display` is your `money_str` function, and `derive(Debug)` writes the field-by-field print for you.",
+  "cpp": "The `{}` mini-language is almost the same as C++20 `std::format`, and `impl Display` is a `std::formatter` specialization. The difference is `#[derive(Debug)]`: Rust writes a developer print for your struct, where C++ makes you write `operator<<` by hand."
+ },
+ "notes": [
+  "Inside `{}`: `>6` right-aligns in 6 columns, `<6` left, `^6` centers, `06` pads with zeros, `.2` is decimal places, `x`/`b`/`e` are hex, binary and scientific, and `#` adds the `0x`/`0b` prefix.",
+  "You can name variables right in the braces: `{n:>6}`, `{price}`. Expressions like `{a + b}` aren't allowed; pass them as arguments instead.",
+  "Implementing `Display` decides how your type prints with `{}`, much like `toString()` or `__str__` in other languages. You also get `.to_string()` for free once `Display` exists. A width such as `{:>8}` reaches your `fmt` as data, and it is ignored unless your code uses it (`f.pad`).",
+  "`write!(f, ...)` inside `fmt` writes into the `Formatter`, which wraps the real destination. `Display` takes a `Formatter` instead of returning a `String`, so the text can go into stdout, a `String` or a buffer you own.",
+  "`{:?}` works on anything that implements `Debug`, and nearly every std type does: Vec, HashMap, Option, Result, tuples. Add `#[derive(Debug)]` to your own types and you're done.",
+  "`eprintln!` works like `println!` but prints to stderr. `print!` and `eprint!` don't add a newline.",
+  "The format string is checked at compile time. A wrong letter, a missing argument or a typo like `{nmae}` is a compile error. Go builds the mistake and writes it into the output, and C's `printf` has undefined behaviour; C++20 `std::format` checks at compile time too."
+ ],
+ "gotcha": {
+  "title": "Printing your own struct with {}",
+  "verdict": "rust-rule",
+  "looks_fine": "`fmt.Println(p)` prints `{1 2}`. Every value in Go has a default print form, and so does a Kotlin data class.",
+  "rust_sees": "`{}` uses the `Display` trait, and Rust never writes `Display` for you. It can't guess whether a point should look like `(1, 2)`, `1,2` or `x=1 y=2`.",
+  "why": "Display is the version your users see, so Rust makes you write it. For a quick look while debugging, `#[derive(Debug)]` plus `{:?}` gives you `Point { x: 1, y: 2 }` with one line of code. For real output, implement `Display`, as in the fix.",
+  "langs": {
+   "go": {
+    "status": "runs",
+    "says": "Go runs this and prints {1 2}. Every struct has a default format, so you never have to write one.",
+    "code": "package main\n\nimport \"fmt\"\n\ntype Point struct {\n\tX, Y int\n}\n\nfunc main() {\n\tp := Point{1, 2}\n\tfmt.Println(p)\n}\n",
+    "out": "{1 2}\n"
+   },
+   "kotlin": {
+    "status": "runs",
+    "says": "Kotlin runs this and prints Point(x=1, y=2), because a data class writes `toString` for you. A plain class would print something like `Point@1b6d3586`.",
+    "code": "data class Point(val x: Int, val y: Int)\n\nfun main() {\n    val p = Point(1, 2)\n    println(p)\n}\n",
+    "out": "Point(x=1, y=2)\n"
+   },
+   "python": {
+    "status": "runs",
+    "says": "Python prints Point(x=1, y=2), because `@dataclass` writes a `__repr__` for you. A plain class without one prints something like `<__main__.Point object at 0x7f...>`.",
+    "code": "from dataclasses import dataclass\n\n\n@dataclass\nclass Point:\n    x: int\n    y: int\n\n\np = Point(1, 2)\nprint(p)\n",
+    "out": "Point(x=1, y=2)\n"
+   },
+   "typescript": {
+    "status": "runs",
+    "says": "Prints Point { x: 1, y: 2 }. `console.log` shows any object's fields. Putting it in a template literal instead, `${p}`, would print [object Object].",
+    "code": "class Point {\n  constructor(public x: number, public y: number) {}\n}\n\nconst p = new Point(1, 2);\nconsole.log(p);\n",
+    "out": "Point { x: 1, y: 2 }\n"
+   },
+   "java": {
+    "status": "runs",
+    "says": "A record writes `toString` for you, so this prints Point[x=1, y=2]. A plain class would print something like Point@1b6d3586 unless you override `toString`.",
+    "code": "public class Main {\n    record Point(int x, int y) {}\n\n    public static void main(String[] args) {\n        Point p = new Point(1, 2);\n        System.out.println(p);\n    }\n}\n",
+    "out": "Point[x=1, y=2]\n"
+   },
+   "csharp": {
+    "status": "runs",
+    "says": "A record writes `ToString` for you, so this prints Point { X = 1, Y = 2 }. A plain class would only print its type name, Point, unless you override `ToString`.",
+    "code": "var p = new Point(1, 2);\nConsole.WriteLine(p);\n\nrecord Point(int X, int Y);\n",
+    "out": "Point { X = 1, Y = 2 }\n"
+   },
+   "c": {
+    "status": "wrong",
+    "says": "gcc with `-Wall` (the runner's flag) warns that `%d` wants an int, not a `struct Point`, but builds it anyway; with no flags it says nothing. It printed `1` here, just the bits of `x`; passing the wrong type to printf is undefined behaviour.",
+    "code": "#include <stdio.h>\n\nstruct Point {\n    int x;\n    int y;\n};\n\nint main(void) {\n    struct Point p = {1, 2};\n    printf(\"%d\\n\", p);\n    return 0;\n}\n",
+    "warnings": "main.c: In function ‘main’:\nmain.c:10:14: warning: format ‘%d’ expects argument of type ‘int’, but argument 2 has type ‘struct Point’ [-Wformat=]\n   10 |     printf(\"%d\\n\", p);\n      |             ~^     ~\n      |              |     |\n      |              int   struct Point",
+    "out": "1\n"
+   },
+   "cpp": {
+    "status": "refuses",
+    "says": "C++ refuses this too: `std::format` needs a `std::formatter` for `Point`, and g++ says it \"must be specialized for each type being formatted\".",
+    "code": "#include <format>\n#include <iostream>\n\nstruct Point {\n    int x;\n    int y;\n};\n\nint main() {\n    Point p{1, 2};\n    std::cout << std::format(\"{}\\n\", p);\n}\n",
+    "error": "In file included from main.cpp:1:\n/usr/include/c++/14/format: In instantiation of ‘class std::__format::_Checking_scanner<char, Point>’:\n/usr/include/c++/14/format:4213:4:   required from ‘consteval std::basic_format_string<_CharT, _Args>::basic_format_string(const _Tp&) [with _Tp = char [4]; _CharT = char; _Args = {Point&}]’\n 4213 |           __scanner(_M_str);\n      |           ^~~~~~~~~\nmain.cpp:11:29:   required from here\n   11 |     std::cout << std::format(\"{}\\n\", p);\n      |                  ~~~~~~~~~~~^~~~~~~~~~~\n/usr/include/c++/14/format:4068:10: error: static assertion failed: std::formatter must be specialized for each type being formatted\n 4068 |         (is_default_constructible_v<formatter<_Args, _CharT>> && ...),\n      |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n/usr/include/c++/14/format:4068:10: note: ‘std::is_default_constructible_v<std::formatter<Point, char> >’ evaluates to false\n/usr/include/c++/14/format: In instantiation of ‘constexpr void std::__format::_Checking_scanner<_CharT, _Args>::_M_parse_format_spec(std::size_t) [with _Tp = Point; _OtherArgs = {}; _CharT = char; _Args = {Point}; std::size_t = long unsigned int]’:\n/usr/include/c++/14/format:4085:33:   required from here\n 4085 |                 _M_parse_format_spec<_Args...>(__id);\n      |                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~\nmain.cpp:11:29:   in ‘constexpr’ expansion of ‘std::basic_format_string<char, Point&>(\"{}\\012\")’\n/usr/include/c++/14/format:4214:19:   in ‘constexpr’ expansion of ‘__scanner.std::__format::_Checking_scanner<char, Point>::std::__format::_Scanner<char>.std::__format::_Scanner<char>::_M_scan()’\n/usr/include/c++/14/format:3955:30:   in ‘constexpr’ expansion of ‘((std::__format::_Scanner<char>*)this)->std::__format::_Scanner<char>::_M_on_replacement_field()’\n/usr/include/c++/14/format:4007:15:   in ‘constexpr’ expansion of ‘((std::__format::_Scanner<char>*)this)->std::__format::_Scanner<char>::_M_format_arg(__id)’\n/usr/include/c++/14/format:4098:38: error: use of deleted function ‘std::formatter<_Tp, _CharT>::formatter() [with _Tp = Point; _CharT = char]’\n 4098 |               formatter<_Tp, _CharT> __f;\n      |                                      ^~~\n/usr/include/c++/14/format:178:7: note: declared here\n  178 |       formatter() = delete; // No std::formatter specialization for this type.\n      |       ^~~~~~~~~\n/usr/include/c++/14/format:4098:38: note: use ‘-fdiagnostics-all-candidates’ to display considered candidates\n 4098 |               formatter<_Tp, _CharT> __f;\n      |                                      ^~~\n/usr/include/c++/14/format:4099:42: error: ‘struct std::formatter<Point, char>’ has no member named ‘parse’\n 4099 |               this->_M_pc.advance_to(__f.parse(this->_M_pc));\n      |                                      ~~~~^~~~~\nmain.cpp: In function ‘int main()’:\nmain.cpp:11:29: error: call to consteval function ‘std::basic_format_string<char, Point&>(\"{}\\012\")’ is not a constant expression\n   11 |     std::cout << std::format(\"{}\\n\", p);\n      |                  ~~~~~~~~~~~^~~~~~~~~~~\n/usr/include/c++/14/format: In instantiation of ‘static std::__format::_Arg_store<_Context, _Args>::_Element_t std::__format::_Arg_store<_Context, _Args>::_S_make_elt(_Tp&) [with _Tp = Point; _Context = std::basic_format_context<std::__format::_Sink_iter<char>, char>; _Args = {std::basic_format_arg<std::basic_format_context<std::__format::_Sink_iter<char>, char> >::handle}; _Element_t = std::__format::_Arg_store<std::basic_format_context<std::__format::_Sink_iter<char>, char>, std::basic_format_arg<std::basic_format_context<std::__format::_Sink_iter<char>, char> >::handle>::_Element_t]’:\n/usr/include/c++/14/format:3755:23:   required from ‘std::__format::_Arg_store<_Context, _Args>::_Arg_store(_Tp& ...) [with _Tp = {Point}; _Context = std::basic_format_context<std::__format::_Sink_iter<char>, char>; _Args = {std::basic_format_arg<std::basic_format_context<std::__format::_Sink_iter<char>, char> >::handle}]’\n 3755 |         : _M_args{_S_make_elt(__a)...}\n      |                   ~~~~~~~~~~~^~~~~\n/usr/include/c++/14/format:3805:14:   required from ‘auto std::make_format_args(_Args& ...) [with _Context = basic_format_context<__format::_Sink_iter<char>, char>; _Args = {Point}]’\n 3805 |       return _Store(__fmt_args...);\n      |              ^~~~~~~~~~~~~~~~~~~~~\n/usr/include/c++/14/format:4297:61:   required from ‘std::string std::format(format_string<_Args ...>, _Args&& ...) [with _Args = {Point&}; string = __cxx11::basic_string<char>; format_string<_Args ...> = basic_format_string<char, Point&>]’\n 4297 |     { return std::vformat(__fmt.get(), std::make_format_args(__args...)); }\n      |                                        ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~\nmain.cpp:11:29:   required from here\n   11 |     std::cout << std::format(\"{}\\n\", p);\n      |                  ~~~~~~~~~~~^~~~~~~~~~~\n/usr/include/c++/14/format:3733:25: error: static assertion failed: std::formatter must be specialized for the type of each format arg\n 3733 |           static_assert(is_default_constructible_v<formatter<_Tq, _CharT>>,\n      |                         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n/usr/include/c++/14/format:3733:25: note: ‘std::is_default_constructible_v<std::formatter<Point, char> >’ evaluates to false\n/usr/include/c++/14/format:3744:38: error: no matching function for call to ‘std::basic_format_arg<std::basic_format_context<std::__format::_Sink_iter<char>, char> >::basic_format_arg(Point&)’\n 3744 |           basic_format_arg<_Context> __arg(__v);\n      |                                      ^~~~~\n/usr/include/c++/14/format:3480:9: note: candidate: ‘template<class _Tp>  requires  __formattable_with<_Tp, _Context, typename _Context::formatter_type<typename std::remove_const<_Tp>::type>, std::basic_format_parse_context<typename _Context::char_type> > std::basic_format_arg<_Context>::basic_format_arg(_Tp&) [with _Context = std::basic_format_context<std::__format::_Sink_iter<char>, char>]’\n 3480 |         basic_format_arg(_Tp& __v) noexcept\n      |         ^~~~~~~~~~~~~~~~\n/usr/include/c++/14/format:3480:9: note:   template argument deduction/substitution failed:\n/usr/include/c++/14/format:3480:9: note: constraints not satisfied\nIn file included from /usr/include/c++/14/compare:40,\n                 from /usr/include/c++/14/array:38,\n                 from /usr/include/c++/14/format:43:\n/usr/include/c++/14/concepts: In substitution of ‘template<class _Tp>  requires  __formattable_with<_Tp, _Context, typename _Context::formatter_type<typename std::remove_const<_Tp>::type>, std::basic_format_parse_context<typename _Context::char_type> > std::basic_format_arg<std::basic_format_context<std::__format::_Sink_iter<char>, char> >::basic_format_arg(_Tp&) [with _Tp = std::basic_format_context<std::__format::_Sink_iter<char>, char>]’:\n/usr/include/c++/14/format:3744:31:   required from ‘static std::__format::_Arg_store<_Context, _Args>::_Element_t std::__format::_Arg_store<_Context, _Args>::_S_make_elt(_Tp&) [with _Tp = Point; _Context = std::basic_format_context<std::__format::_Sink_iter<char>, char>; _Args = {std::basic_format_arg<std::basic_format_context<std::__format::_Sink_iter<char>, char> >::handle}; _Element_t = std::__format::_Arg_store<std::basic_format_context<std::__format::_Sink_iter<char>, char>, std::basic_format_arg<std::basic_format_context<std::__format::_Sink_iter<char>, char> >::handle>::_Element_t]’\n 3744 |           basic_format_arg<_Context> __arg(__v);\n      |                                      ^~~~~\n/usr/include/c++/14/format:3755:23:   required from ‘std::__format::_Arg_store<_Context, _Args>::_Arg_store(_Tp& ...) [with _Tp = {Point}; _Context = std::basic_format_context<std::__format::_Sink_iter<char>, char>; _Args = {std::basic_format_arg<std::basic_format_context<std::__format::_Sink_iter<char>, char> >::handle}]’\n 3755 |         : _M_args{_S_make_elt(__a)...}\n      |                   ~~~~~~~~~~~^~~~~\n/usr/include/c++/14/format:3805:14:   required from ‘auto std::make_format_args(_Args& ...) [with _Context = basic_format_context<__format::_Sink_iter<char>, char>; _Args = {Point}]’\n 3805 |       return _Store(__fmt_args...);\n      |              ^~~~~~~~~~~~~~~~~~~~~\n/usr/include/c++/14/format:4297:61:   required from ‘std::string std::format(format_string<_Args ...>, _Args&& ...) [with _Args = {Point&}; string = __cxx11::basic_string<char>; format_string<_Args ...> = basic_format_string<char, Point&>]’\n 4297 |     { return std::vformat(__fmt.get(), std::make_format_args(__args...)); }\n      |                                        ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~\nmain.cpp:11:29:   required from here\n   11 |     std::cout << std::format(\"{}\\n\", p);\n      |                  ~~~~~~~~~~~^~~~~~~~~~~\n/usr/include/c++/14/concepts:159:13:   required for the satisfaction of ‘constructible_from<_Tp, _Tp>’ [with _Tp = std::formatter<Point, char>]\n/usr/include/c++/14/concepts:173:13:   required for the satisfaction of ‘move_constructible<_Tp>’ [with _Tp = std::formatter<Point, char>]\n/usr/include/c++/14/concepts:178:13:   required for the satisfaction of ‘copy_constructible<_Tp>’ [with _Tp = std::formatter<Point, char>]\n/usr/include/c++/14/concepts:275:13:   required for the satisfaction of ‘copyable<_Tp>’ [with _Tp = std::formatter<Point, char>]\n/usr/include/c++/14/concepts:280:13:   required for the satisfaction of ‘semiregular<_Formatter>’ [with _Formatter = std::formatter<Point, char>]\n/usr/include/c++/14/format:2526:13:   required for the satisfaction of ‘__formattable_with<_Tp, _Context, typename _Context::formatter_type<typename std::remove_const<_Tp>::type>, std::basic_format_parse_context<typename _Context::char_type> >’ [with _Tp = Point; _Context = std::basic_format_context<std::__format::_Sink_iter<char>, char>]\n/usr/include/c++/14/concepts:160:30: note: the expression ‘is_constructible_v<_Tp, _Args ...> [with _Tp = std::formatter<Point, char>; _Args = {std::formatter<Point, char>}]’ evaluated to ‘false’\n  160 |       = destructible<_Tp> && is_constructible_v<_Tp, _Args...>;\n      |                              ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n/usr/include/c++/14/format: In instantiation of ‘static std::__format::_Arg_store<_Context, _Args>::_Element_t std::__format::_Arg_store<_Context, _Args>::_S_make_elt(_Tp&) [with _Tp = Point; _Context = std::basic_format_context<std::__format::_Sink_iter<char>, char>; _Args = {std::basic_format_arg<std::basic_format_context<std::__format::_Sink_iter<char>, char> >::handle}; _Element_t = std::__format::_Arg_store<std::basic_format_context<std::__format::_Sink_iter<char>, char>, std::basic_format_arg<std::basic_format_context<std::__format::_Sink_iter<char>, char> >::handle>::_Element_t]’:\n/usr/include/c++/14/format:3755:23:   required from ‘std::__format::_Arg_store<_Context, _Args>::_Arg_store(_Tp& ...) [with _Tp = {Point}; _Context = std::basic_format_context<std::__format::_Sink_iter<char>, char>; _Args = {std::basic_format_arg<std::basic_format_context<std::__format::_Sink_iter<char>, char> >::handle}]’\n 3755 |         : _M_args{_S_make_elt(__a)...}\n      |                   ~~~~~~~~~~~^~~~~\n/usr/include/c++/14/format:3805:14:   required from ‘auto std::make_format_args(_Args& ...) [with _Context = basic_format_context<__format::_Sink_iter<char>, char>; _Args = {Point}]’\n 3805 |       return _Store(__fmt_args...);\n      |              ^~~~~~~~~~~~~~~~~~~~~\n/usr/include/c++/14/format:4297:61:   required from ‘std::string std::format(format_string<_Args ...>, _Args&& ...) [with _Args = {Point&}; string = __cxx11::basic_string<char>; format_string<_Args ...> = basic_format_string<char, Point&>]’\n 4297 |     { return std::vformat(__fmt.get(), std::make_format_args(__args...)); }\n      |                                        ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~\nmain.cpp:11:29:   required from here\n   11 |     std::cout << std::format(\"{}\\n\", p);\n      |                  ~~~~~~~~~~~^~~~~~~~~~~\n/usr/include/c++/14/format:3280:7: note: candidate: ‘std::basic_format_arg<_Context>::basic_format_arg() [with _Context = std::basic_format_context<std::__format::_Sink_iter<char>, char>]’\n 3280 |       basic_format_arg() noexcept : _M_type(__format::_Arg_none) { }\n      |       ^~~~~~~~~~~~~~~~\n/usr/include/c++/14/format:3280:7: note:   candidate expects 0 arguments, 1 provided\n/usr/include/c++/14/format:3223:11: note: candidate: ‘constexpr std::basic_format_arg<std::basic_format_context<std::__format::_Sink_iter<char>, char> >::basic_format_arg(const std::basic_format_arg<std::basic_format_context<std::__format::_Sink_iter<char>, char> >&)’\n 3223 |     class basic_format_arg\n      |           ^~~~~~~~~~~~~~~~\n/usr/include/c++/14/format:3223:11: note:   no known conversion for argument 1 from ‘Point’ to ‘const std::basic_format_arg<std::basic_format_context<std::__format::_Sink_iter<char>, char> >&’\n/usr/include/c++/14/format:3223:11: note: candidate: ‘constexpr std::basic_format_arg<std::basic_format_context<std::__format::_Sink_iter<char>, char> >::basic_format_arg(std::basic_format_arg<std::basic_format_context<std::__format::_Sink_iter<char>, char> >&&)’\n/usr/include/c++/14/format:3223:11: note:   no known conversion for argument 1 from ‘Point’ to ‘std::basic_format_arg<std::basic_format_context<std::__format::_Sink_iter<char>, char> >&&’"
+   }
+  },
+  "code": "struct Point {\n    x: i32,\n    y: i32,\n}\n\nfn main() {\n    let p = Point { x: 1, y: 2 };\n    println!(\"{}\", p);\n}\n",
+  "error": "error[E0277]: `Point` doesn't implement `std::fmt::Display`\n --> src/main.rs:8:20\n  |\n8 |     println!(\"{}\", p);\n  |               --   ^ `Point` cannot be formatted with the default formatter\n  |               |\n  |               required by this formatting parameter\n  |\nhelp: the trait `std::fmt::Display` is not implemented for `Point`\n --> src/main.rs:1:1\n  |\n1 | struct Point {\n  | ^^^^^^^^^^^^\n  = note: in format strings you may be able to use `{:?}` (or `{:#?}` for pretty-print) instead\n",
+  "error_code": "E0277",
+  "fixed": {
+   "code": "use std::fmt;\n\nstruct Point {\n    x: i32,\n    y: i32,\n}\n\nimpl fmt::Display for Point {\n    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {\n        write!(f, \"({}, {})\", self.x, self.y)\n    }\n}\n\nfn main() {\n    let p = Point { x: 1, y: 2 };\n    println!(\"{}\", p);\n}\n",
+   "out": "(1, 2)\n"
+  }
+ },
+ "order": 50,
+ "program": {
+  "rust": {
+   "code": "use std::fmt;\n\nstruct Money {\n    cents: i64,\n}\n\n// Display: how Money looks with {}\nimpl fmt::Display for Money {\n    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {\n        write!(f, \"${}.{:02}\", self.cents / 100, self.cents % 100)\n    }\n}\n\n#[derive(Debug)]\nstruct Item {\n    name: String,\n    qty: u32,\n}\n\nfn main() {\n    let n = 42;\n    println!(\"[{n:>6}] [{n:<6}] [{n:^6}] [{n:06}]\");\n    println!(\"{:.2} {:e} {n:#x} {n:#b}\", 3.14159, 1234.5);\n\n    let price = Money { cents: 1999 };\n    println!(\"total: {price}\");\n\n    let label = format!(\"{price} each\"); // format! builds a String\n    println!(\"{label} ({} chars)\", label.len());\n\n    let item = Item {\n        name: \"pen\".to_string(),\n        qty: 3,\n    };\n    println!(\"{} x {}\", item.qty, item.name);\n    println!(\"{item:?}\"); // Debug, written by derive\n    println!(\"{item:#?}\"); // pretty Debug\n}\n",
+   "out": "[    42] [42    ] [  42  ] [000042]\n3.14 1.2345e3 0x2a 0b101010\ntotal: $19.99\n$19.99 each (11 chars)\n3 x pen\nItem { name: \"pen\", qty: 3 }\nItem {\n    name: \"pen\",\n    qty: 3,\n}\n"
+  },
+  "go": {
+   "code": "package main\n\nimport \"fmt\"\n\ntype Money struct {\n\tcents int64\n}\n\n// String() is Go's Display\nfunc (m Money) String() string {\n\treturn fmt.Sprintf(\"$%d.%02d\", m.cents/100, m.cents%100)\n}\n\ntype Item struct {\n\tName string\n\tQty  int\n}\n\nfunc main() {\n\tn := 42\n\tfmt.Printf(\"[%6d] [%-6d] [%06d]\\n\", n, n, n) // no centering verb in Go\n\tfmt.Printf(\"%.2f %e %#x %#b\\n\", 3.14159, 1234.5, n, n)\n\n\tprice := Money{1999}\n\tfmt.Println(\"total:\", price)\n\n\tlabel := fmt.Sprintf(\"%v each\", price)\n\tfmt.Printf(\"%s (%d chars)\\n\", label, len(label))\n\n\titem := Item{\"pen\", 3}\n\tfmt.Printf(\"%d x %s\\n\", item.Qty, item.Name)\n\tfmt.Printf(\"%+v\\n\", item)\n\tfmt.Printf(\"%#v\\n\", item)\n}\n",
+   "out": "[    42] [42    ] [000042]\n3.14 1.234500e+03 0x2a 0b101010\ntotal: $19.99\n$19.99 each (11 chars)\n3 x pen\n{Name:pen Qty:3}\nmain.Item{Name:\"pen\", Qty:3}\n"
+  },
+  "kotlin": {
+   "code": "class Money(val cents: Long) {\n    override fun toString() = \"\\$${cents / 100}.${\"%02d\".format(cents % 100)}\"\n}\n\ndata class Item(val name: String, val qty: Int)\n\nfun main() {\n    val n = 42\n    println(\"[%6d] [%-6d] [%06d]\".format(n, n, n))\n    println(\"%.2f %e %#x\".format(3.14159, 1234.5, n) + \" 0b\" + n.toString(2))\n\n    val price = Money(1999)\n    println(\"total: $price\")\n\n    val label = \"$price each\"\n    println(\"$label (${label.length} chars)\")\n\n    val item = Item(\"pen\", 3)\n    println(\"${item.qty} x ${item.name}\")\n    println(item)\n}\n",
+   "out": "[    42] [42    ] [000042]\n3.14 1.234500e+03 0x2a 0b101010\ntotal: $19.99\n$19.99 each (11 chars)\n3 x pen\nItem(name=pen, qty=3)\n"
+  },
+  "python": {
+   "code": "from dataclasses import dataclass\nfrom pprint import pprint\n\n\nclass Money:\n    def __init__(self, cents: int):\n        self.cents = cents\n\n    # __str__: how Money looks with print and f\"{}\"\n    def __str__(self) -> str:\n        return f\"${self.cents // 100}.{self.cents % 100:02}\"\n\n\n@dataclass  # writes __repr__ for you, like derive(Debug)\nclass Item:\n    name: str\n    qty: int\n\n\nn = 42\nprint(f\"[{n:>6}] [{n:<6}] [{n:^6}] [{n:06}]\")\nprint(f\"{3.14159:.2f} {1234.5:e} {n:#x} {n:#b}\")\n\nprice = Money(1999)\nprint(f\"total: {price}\")\n\nlabel = f\"{price} each\"  # an f-string builds a str\nprint(f\"{label} ({len(label)} chars)\")\n\nitem = Item(\"pen\", 3)\nprint(f\"{item.qty} x {item.name}\")\nprint(f\"{item!r}\")       # repr, written by @dataclass\npprint(item, width=20)  # pretty print, splits when it doesn't fit\n",
+   "out": "[    42] [42    ] [  42  ] [000042]\n3.14 1.234500e+03 0x2a 0b101010\ntotal: $19.99\n$19.99 each (11 chars)\n3 x pen\nItem(name='pen', qty=3)\nItem(name='pen',\n     qty=3)\n"
+  },
+  "typescript": {
+   "code": "class Money {\n  constructor(public cents: number) {}\n\n  // toString: how Money looks inside `${}`\n  toString(): string {\n    return `$${Math.trunc(this.cents / 100)}.${String(this.cents % 100).padStart(2, \"0\")}`;\n  }\n}\n\ninterface Item {\n  name: string;\n  qty: number;\n}\n\n// no format mini-language: padStart and padEnd do the work, centering is by hand\nfunction center(s: string, width: number): string {\n  const left = Math.floor((width - s.length) / 2);\n  return s.padStart(s.length + left).padEnd(width);\n}\n\nconst n = 42;\nconst s = String(n);\nconsole.log(`[${s.padStart(6)}] [${s.padEnd(6)}] [${center(s, 6)}] [${s.padStart(6, \"0\")}]`);\nconsole.log(`${(3.14159).toFixed(2)} ${(1234.5).toExponential()} 0x${n.toString(16)} 0b${n.toString(2)}`);\n\nconst price = new Money(1999);\nconsole.log(`total: ${price}`);\n\nconst label = `${price} each`; // a template literal builds a string\nconsole.log(`${label} (${label.length} chars)`);\n\nconst item: Item = { name: \"pen\", qty: 3 };\nconsole.log(`${item.qty} x ${item.name}`);\nconsole.log(item);                         // console.log shows the object's fields\nconsole.log(JSON.stringify(item, null, 2)); // pretty, as JSON\n",
+   "out": "[    42] [42    ] [  42  ] [000042]\n3.14 1.2345e+3 0x2a 0b101010\ntotal: $19.99\n$19.99 each (11 chars)\n3 x pen\n{ name: 'pen', qty: 3 }\n{\n  \"name\": \"pen\",\n  \"qty\": 3\n}\n"
+  },
+  "java": {
+   "code": "public class Main {\n    // toString is Java's Display\n    record Money(long cents) {\n        @Override\n        public String toString() {\n            return String.format(\"$%d.%02d\", cents / 100, cents % 100);\n        }\n    }\n\n    // a record writes toString for you, like derive(Debug)\n    record Item(String name, int qty) {}\n\n    public static void main(String[] args) {\n        int n = 42;\n        System.out.printf(\"[%6d] [%-6d] [%06d]%n\", n, n, n); // no centering flag\n        System.out.printf(\"%.2f %e %#x 0b%s%n\", 3.14159, 1234.5, n, Integer.toBinaryString(n));\n\n        Money price = new Money(1999);\n        System.out.println(\"total: \" + price);\n\n        String label = price + \" each\";\n        System.out.println(label + \" (\" + label.length() + \" chars)\");\n\n        Item item = new Item(\"pen\", 3);\n        System.out.println(item.qty() + \" x \" + item.name());\n        System.out.println(item);\n    }\n}\n",
+   "out": "[    42] [42    ] [000042]\n3.14 1.234500e+03 0x2a 0b101010\ntotal: $19.99\n$19.99 each (11 chars)\n3 x pen\nItem[name=pen, qty=3]\n"
+  },
+  "csharp": {
+   "code": "var n = 42;\nConsole.WriteLine($\"[{n,6}] [{n,-6}] [{n:D6}]\"); // no centering\nConsole.WriteLine($\"{3.14159:F2} {1234.5:e} 0x{n:x} 0b{n:b}\");\n\nvar price = new Money(1999);\nConsole.WriteLine($\"total: {price}\");\n\nvar label = $\"{price} each\";\nConsole.WriteLine($\"{label} ({label.Length} chars)\");\n\nvar item = new Item(\"pen\", 3);\nConsole.WriteLine($\"{item.Qty} x {item.Name}\");\nConsole.WriteLine(item); // records write ToString for you\n\n// ToString is C#'s Display\nrecord Money(long Cents)\n{\n    public override string ToString() => $\"${Cents / 100}.{Cents % 100:D2}\";\n}\n\nrecord Item(string Name, int Qty);\n",
+   "out": "[    42] [42    ] [000042]\n3.14 1.234500e+003 0x2a 0b101010\ntotal: $19.99\n$19.99 each (11 chars)\n3 x pen\nItem { Name = pen, Qty = 3 }\n"
+  },
+  "c": {
+   "code": "#include <stdio.h>\n\nstruct Money {\n    long cents;\n};\n\n// C has no Display: write the text into a buffer the caller gives you\nvoid money_str(char *buf, size_t size, struct Money m) {\n    snprintf(buf, size, \"$%ld.%02ld\", m.cents / 100, m.cents % 100);\n}\n\nstruct Item {\n    const char *name;\n    unsigned qty;\n};\n\nint main(void) {\n    int n = 42;\n    printf(\"[%6d] [%-6d] [%06d]\\n\", n, n, n); // no centering in printf\n    // no %b for binary before C23\n    printf(\"%.2f %e %#x\\n\", 3.14159, 1234.5, n);\n\n    struct Money price = {1999};\n    char money[32];\n    money_str(money, sizeof money, price);\n    printf(\"total: %s\\n\", money);\n\n    // snprintf builds a string, and returns how long it is\n    char label[64];\n    int len = snprintf(label, sizeof label, \"%s each\", money);\n    printf(\"%s (%d chars)\\n\", label, len);\n\n    // no Debug either: print each field by hand\n    struct Item item = {\"pen\", 3};\n    printf(\"%u x %s\\n\", item.qty, item.name);\n    printf(\"Item { name: \\\"%s\\\", qty: %u }\\n\", item.name, item.qty);\n    return 0;\n}\n",
+   "out": "[    42] [42    ] [000042]\n3.14 1.234500e+03 0x2a\ntotal: $19.99\n$19.99 each (11 chars)\n3 x pen\nItem { name: \"pen\", qty: 3 }\n"
+  },
+  "cpp": {
+   "code": "#include <format>\n#include <iostream>\n#include <string>\n\nstruct Money {\n    long cents;\n};\n\n// a std::formatter specialization: how Money looks with {}\ntemplate <>\nstruct std::formatter<Money> : std::formatter<std::string> {\n    auto format(const Money &m, std::format_context &ctx) const {\n        return std::format_to(ctx.out(), \"${}.{:02}\", m.cents / 100, m.cents % 100);\n    }\n};\n\nstruct Item {\n    std::string name;\n    unsigned qty;\n};\n\n// no derive: operator<< is written by hand\nstd::ostream &operator<<(std::ostream &os, const Item &item) {\n    return os << \"Item { name: \\\"\" << item.name << \"\\\", qty: \" << item.qty << \" }\";\n}\n\nint main() {\n    int n = 42;\n    std::cout << std::format(\"[{:>6}] [{:<6}] [{:^6}] [{:06}]\\n\", n, n, n, n);\n    std::cout << std::format(\"{:.2f} {:e} {:#x} {:#b}\\n\", 3.14159, 1234.5, n, n);\n\n    Money price{1999};\n    std::cout << std::format(\"total: {}\\n\", price);\n\n    std::string label = std::format(\"{} each\", price); // std::format builds a std::string\n    std::cout << std::format(\"{} ({} chars)\\n\", label, label.size());\n\n    Item item{\"pen\", 3};\n    std::cout << std::format(\"{} x {}\\n\", item.qty, item.name);\n    std::cout << item << \"\\n\";\n}\n",
+   "out": "[    42] [42    ] [  42  ] [000042]\n3.14 1.234500e+03 0x2a 0b101010\ntotal: $19.99\n$19.99 each (11 chars)\n3 x pen\nItem { name: \"pen\", qty: 3 }\n"
+  }
+ },
+ "faq": [],
+ "snippets": {
+  "allocations.rs": {
+   "code": "use std::alloc::{GlobalAlloc, Layout, System};\nuse std::fmt::{Arguments, Write as _};\nuse std::io::Write as _;\nuse std::sync::atomic::{AtomicUsize, Ordering::Relaxed};\n\n// Counts calls to the system allocator. (`unsafe impl` is boilerplate here.)\nstruct Counting;\nstatic CALLS: AtomicUsize = AtomicUsize::new(0);\n\nunsafe impl GlobalAlloc for Counting {\n    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {\n        CALLS.fetch_add(1, Relaxed);\n        unsafe { System.alloc(layout) }\n    }\n    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {\n        unsafe { System.dealloc(ptr, layout) }\n    }\n}\n\n#[global_allocator]\nstatic COUNTING: Counting = Counting;\n\nfn count(work: impl FnOnce()) -> usize {\n    let before = CALLS.load(Relaxed);\n    work();\n    CALLS.load(Relaxed) - before\n}\n\n// Writes the description out; no String is ever built.\nfn pass_on(args: Arguments) {\n    std::io::sink().write_fmt(args).unwrap();\n}\n\nfn main() {\n    let n = 42;\n    let mut empty = String::new();\n    let mut room = String::with_capacity(64);\n    println!(\n        \"format!(\\\"n = {{n}}\\\"):        {}\",\n        count(|| drop(format!(\"n = {n}\")))\n    );\n    println!(\n        \"format!(\\\"{{n:>200}}\\\"):       {}\",\n        count(|| drop(format!(\"{n:>200}\")))\n    );\n    println!(\n        \"write! into String::new(): {}\",\n        count(|| write!(empty, \"n = {n}\").unwrap())\n    );\n    println!(\n        \"write! with_capacity(64):  {}\",\n        count(|| write!(room, \"n = {n}\").unwrap())\n    );\n    println!(\n        \"pass format_args! on:      {}\",\n        count(|| pass_on(format_args!(\"n = {n}\")))\n    );\n}\n",
+   "out": "format!(\"n = {n}\"):        1\nformat!(\"{n:>200}\"):       6\nwrite! into String::new(): 1\nwrite! with_capacity(64):  0\npass format_args! on:      0\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-table.rs": {
+   "code": "// Backs the numbers in the prose of lesson.mdx. Every claim is an assertion.\nfn main() {\n    assert_eq!(format!(\"{:08.3}\", -3.14159), \"-003.142\");\n    assert_eq!(format!(\"{:+}\", 5), \"+5\");\n    assert_eq!(format!(\"{:+.1}\", 2.0), \"+2.0\");\n    assert_eq!(format!(\"{:08}\", -42), \"-0000042\");\n    assert_eq!(format!(\"{:#x}\", 255), \"0xff\");\n    assert_eq!(format!(\"{:#06x}\", 255), \"0x00ff\");\n    assert_eq!(format!(\"{:#010b}\", 5), \"0b00000101\");\n    assert_eq!(format!(\"{:x}\", -1i8), \"ff\");\n    assert_eq!(format!(\"{:x}\", -255i32), \"ffffff01\");\n    assert_eq!(format!(\"{:.6}\", 1.5), \"1.500000\");\n    assert_eq!(format!(\"{:e}\", 1.5), \"1.5e0\");\n    assert_eq!(format!(\"{:X}\", 48879), \"BEEF\");\n    assert_eq!(format!(\"{:e}\", 1234.5), \"1.2345e3\");\n    assert_eq!(format!(\"{:5}|\", true), \"true |\");\n    assert_eq!(format!(\"{:5}|\", 1.5), \"  1.5|\");\n    assert_eq!(format!(\"{:.3}\", \"Hello\"), \"Hel\");\n    assert_eq!(format!(\"{:.3}\", 7), \"7\");\n    assert_eq!(format!(\"{:.0}\", 2.5), \"2\");\n    assert_eq!(format!(\"{:.0}\", 3.5), \"4\");\n    assert_eq!(format!(\"{:.0}\", -0.5), \"-0\");\n    assert_eq!(format!(\"{}\", 1e21), \"1000000000000000000000\");\n    assert_eq!(format!(\"{:?}\", 1e21), \"1e21\");\n    assert_eq!(format!(\"{} {:?}\", 1.0, 1.0), \"1 1.0\");\n    println!(\"all rows hold\");\n}\n",
+   "out": "all rows hold\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "cursor.rs": {
+   "code": "use std::io::{Cursor, Write};\n\nfn main() {\n    let mut small = [0u8; 8];\n    let mut cursor = Cursor::new(&mut small[..]); // lets write! fill a byte buffer\n    let result = write!(cursor, \"{} each\", \"$19.99 and more\");\n    println!(\"result: {:?}\", result.map_err(|e| e.to_string()));\n    println!(\"kept: {:?}\", String::from_utf8_lossy(&small));\n}\n",
+   "out": "result: Err(\"failed to write whole buffer\")\nkept: \"$19.99 a\"\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "custom-hex.rs": {
+   "code": "use std::fmt;\n\nstruct Rgb(u8, u8, u8);\n\nimpl fmt::LowerHex for Rgb {\n    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {\n        if f.alternate() {\n            f.write_str(\"#\")?;\n        }\n        write!(f, \"{:02x}{:02x}{:02x}\", self.0, self.1, self.2)\n    }\n}\n\nfn main() {\n    let orange = Rgb(255, 128, 0);\n    println!(\"{:x}\", orange);\n    println!(\"{:#x}\", orange);\n    // Rgb has no Display, no Binary and no UpperHex, so {} or {:X} would not compile.\n    println!(\"length of {{:x}}: {}\", format!(\"{:x}\", orange).len());\n}\n",
+   "out": "ff8000\n#ff8000\nlength of {:x}: 6\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "dbg.rs": {
+   "code": "fn main() {\n    let n = dbg!(2 + 3) * 10; // prints, and hands the value back\n    println!(\"n = {n}\");\n\n    let name = String::from(\"ada\");\n    dbg!(&name); // dbg!(name) would move it\n    dbg!(name.len(), &name);\n\n    let v = vec![1, 2];\n    dbg!(&v);\n}\n",
+   "out": "[src/main.rs:2:13] 2 + 3 = 5\nn = 50\n[src/main.rs:6:5] &name = \"ada\"\n[src/main.rs:7:5] name.len() = 3\n[src/main.rs:7:5] &name = \"ada\"\n[src/main.rs:10:5] &v = [\n    1,\n    2,\n]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "debug-escapes.rs": {
+   "code": "fn main() {\n    println!(\"{}\", \"tab:\\t quote:\\\" newline:\\n end\");\n    println!(\"{:?}\", \"tab:\\t quote:\\\" newline:\\n end\");\n    println!(\"{:?} {:?} {:?}\", 'a', '\\'', '\\u{e9}');\n    println!(\"{:?}\", \"it's\");\n    println!(\"{:?}\", \"e\\u{301} \\u{200b} \\u{7f}\");\n    println!(\"{:?} {:?}\", \"日本\", String::from(\"smile \\u{1F600}\"));\n    println!(\"{} {:?}\", 1.0, 1.0);\n    println!(\"{} {:?}\", 1e21, 1e21);\n}\n",
+   "out": "tab:\t quote:\" newline:\n end\n\"tab:\\t quote:\\\" newline:\\n end\"\n'a' '\\'' 'é'\n\"it's\"\n\"e\\u{301} \\u{200b} \\u{7f}\"\n\"日本\" \"smile 😀\"\n1 1.0\n1000000000000000000000 1e21\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "debug-manual.rs": {
+   "code": "use std::fmt;\n\nstruct Account {\n    id: u32,\n    owner: String,\n    password: String,\n}\n\nimpl fmt::Debug for Account {\n    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {\n        f.debug_struct(\"Account\")\n            .field(\"id\", &self.id)\n            .field(\"owner\", &self.owner)\n            .finish_non_exhaustive()\n    }\n}\n\nfn main() {\n    let a = Account {\n        id: 7,\n        owner: \"ada\".to_string(),\n        password: \"hunter2\".to_string(),\n    };\n    println!(\"{:?}\", a);\n    println!(\"{:#?}\", a);\n    println!(\n        \"password printed: {}\",\n        format!(\"{a:?}\").contains(&a.password)\n    );\n}\n",
+   "out": "Account { id: 7, owner: \"ada\", .. }\nAccount {\n    id: 7,\n    owner: \"ada\",\n    ..\n}\npassword printed: false\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "debug-pad.rs": {
+   "code": "fn main() {\n    println!(\"[{:>8}]\", \"ab\");\n    println!(\"[{:>8?}]\", \"ab\");\n    println!(\"[{:5?}]\", Some(1));\n    println!(\"[{:>10}]\", format!(\"{:?}\", Some(1)));\n}\n",
+   "out": "[      ab]\n[\"ab\"]\n[Some(    1)]\n[   Some(1)]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "destinations.rs": {
+   "code": "use std::fmt::Write as _; // for write! into a String\nuse std::io::Write as _; // for write! into bytes, files, stdout\n\nfn main() {\n    let mut text = String::new();\n    write!(text, \"{}-{}\", 1, 2).unwrap();\n    writeln!(text, \"!\").unwrap();\n    println!(\"String: {:?}\", text);\n\n    let mut bytes: Vec<u8> = Vec::new();\n    write!(bytes, \"{}-{}\", 1, 2).unwrap();\n    println!(\"Vec<u8>: {:?}\", bytes);\n\n    let mut out = std::io::stdout().lock();\n    writeln!(out, \"stdout: through write!\").unwrap();\n    writeln!(out, \"also stdout\").unwrap();\n    drop(out); // release the lock so that other threads can print\n\n    eprintln!(\"stderr: eprintln!\");\n    println!(\"done\");\n}\n",
+   "out": "String: \"1-2!\\n\"\nVec<u8>: [49, 45, 50]\nstdout: through write!\nalso stdout\nstderr: eprintln!\ndone\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "floats.rs": {
+   "code": "fn main() {\n    let sum = 0.1 + 0.2;\n    println!(\"{{}}:   {}\", sum);\n    println!(\"{{:.1}}: {:.1}\", sum);\n    println!(\n        \"round trip: {}\",\n        sum.to_string().parse::<f64>().unwrap() == sum\n    );\n    println!(\"{} {} {}\", f64::NAN, f64::INFINITY, -f64::INFINITY);\n    println!(\"{} {:?}\", -0.0, -0.0);\n    println!(\"{{:e}}: {:e} {:e}\", 1234.5, 0.00012);\n\n    for x in [0.5, 1.5, 2.5, 3.5, -0.5] {\n        print!(\"{:.0} \", x);\n    }\n    println!(\"<- {{:.0}}\");\n    for x in [0.125, 0.375, 2.675, 1.005] {\n        print!(\"{:.2} \", x);\n    }\n    println!(\"<- {{:.2}}\");\n    println!(\"2.675 is really {:.20}\", 2.675);\n    println!(\"{}\", 1234567.5);\n}\n",
+   "out": "{}:   0.30000000000000004\n{:.1}: 0.3\nround trip: true\nNaN inf -inf\n-0 -0.0\n{:e}: 1.2345e3 1.2e-4\n0 2 2 4 -0 <- {:.0}\n0.12 0.38 2.67 1.00 <- {:.2}\n2.675 is really 2.67499999999999982236\n1234567.5\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "fmt-error.panic.rs": {
+   "code": "use std::fmt::{self, Write};\n\nstruct Broken;\n\nimpl fmt::Display for Broken {\n    fn fmt(&self, _f: &mut fmt::Formatter) -> fmt::Result {\n        Err(fmt::Error) // nothing went wrong with the destination: this is a bug\n    }\n}\n\nfn main() {\n    let mut text = String::new();\n    println!(\"write! returned: {:?}\", write!(text, \"{}\", Broken));\n    println!(\"{}\", Broken.to_string());\n}\n",
+   "out": "write! returned: Err(Error)\n\nthread 'main' (1) panicked at /rustc/58cf8f9c35b355199727627d07ae34a4e2846d67/library/alloc/src/string.rs:2953:14:\na Display implementation returned an error unexpectedly: Error\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+   "lang": "rust",
+   "exit": 101
+  },
+  "format-args.rs": {
+   "code": "use std::fmt;\n\n// Takes the format string and its arguments, not a finished String.\nfn log(level: &str, args: fmt::Arguments) {\n    println!(\"[{level}] {args}\");\n}\n\nmacro_rules! info {\n    ($($arg:tt)*) => { log(\"info\", format_args!($($arg)*)) };\n}\n\nfn main() {\n    log(\"warn\", format_args!(\"disk at {}%\", 91));\n    info!(\"user {} logged in from {}\", \"ada\", \"10.0.0.7\");\n    info!(\"{:>6.2}|{:<6}|\", 3.14159, \"ab\");\n}\n",
+   "out": "[warn] disk at 91%\n[info] user ada logged in from 10.0.0.7\n[info]   3.14|ab    |\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "from-fn.rs": {
+   "code": "use std::fmt;\n\nstruct Matrix([[i32; 2]; 2]);\n\nimpl Matrix {\n    // A value that prints a row, without a new type and impl for it.\n    fn row(&self, i: usize) -> impl fmt::Display + '_ {\n        fmt::from_fn(move |f| write!(f, \"{} {}\", self.0[i][0], self.0[i][1]))\n    }\n}\n\nfn main() {\n    let m = Matrix([[1, 2], [3, 4]]);\n    println!(\"row 0: {}\", m.row(0));\n    println!(\"row 1: {}\", m.row(1));\n    println!(\"as string: {:?}\", m.row(1).to_string());\n}\n",
+   "out": "row 0: 1 2\nrow 1: 3 4\nas string: \"3 4\"\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "list-everyday.rs": {
+   "code": "fn main() {\n    let scores = [1.0, 2.26, 3.0];\n    println!(\"{:?}\", scores);\n    println!(\"{:.1?}\", scores); // Debug on a slice passes the spec to each item\n    let words: Vec<String> = scores.iter().map(|s| format!(\"{s:.1}\")).collect();\n    println!(\"{}\", words.join(\", \"));\n}\n",
+   "out": "[1.0, 2.26, 3.0]\n[1.0, 2.3, 3.0]\n1.0, 2.3, 3.0\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "list.rs": {
+   "code": "use std::fmt::{self, Display, Formatter};\n\nstruct List<'a, T>(&'a [T]);\n\nimpl<T: Display> Display for List<'_, T> {\n    fn fmt(&self, f: &mut Formatter) -> fmt::Result {\n        for (i, item) in self.0.iter().enumerate() {\n            if i > 0 {\n                f.write_str(\", \")?;\n            }\n            item.fmt(f)?; // every item gets the caller's spec\n        }\n        Ok(())\n    }\n}\n\nfn main() {\n    println!(\"[{}]\", List(&[1.5, 2.25, 3.0]));\n    println!(\"[{:.1}]\", List(&[1.5, 2.26, 3.0]));\n    println!(\"[{:>4}]\", List(&[1, 22, 333]));\n    println!(\"[{}]\", List::<i32>(&[]));\n}\n",
+   "out": "[1.5, 2.25, 3]\n[1.5, 2.3, 3.0]\n[   1,   22,  333]\n[]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "params.rs": {
+   "code": "fn main() {\n    let names = [\"ada\", \"grace\", \"alan\"];\n    let width = names.iter().map(|n| n.len()).max().unwrap(); // the widest name\n    for (i, name) in names.iter().enumerate() {\n        let score = 2.0 * i as f64 + 0.3;\n        println!(\"{i:>2} | {name:<width$} | {score:>6.1}\");\n    }\n\n    let (w, p, x) = (9, 2, 3.14159);\n    println!(\"[{x:>w$.p$}]\"); // width and precision from variables\n    println!(\"[{:>1$}]\", 42, 6); // width is argument 1\n    println!(\"[{:.*}]\", 3, 2.71828); // .* takes the precision first, then the value\n    println!(\"[{:>width$}]\", 9, width = 4); // a named argument\n}\n",
+   "out": " 0 | ada   |    0.3\n 1 | grace |    2.3\n 2 | alan  |    4.3\n[     3.14]\n[    42]\n[2.718]\n[   9]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "spec-dump.rs": {
+   "code": "use std::fmt::{self, Alignment, Display, Formatter};\n\nstruct Spec;\n\nimpl Display for Spec {\n    fn fmt(&self, f: &mut Formatter) -> fmt::Result {\n        let align = match f.align() {\n            Some(Alignment::Left) => \"left\",\n            Some(Alignment::Right) => \"right\",\n            Some(Alignment::Center) => \"center\",\n            None => \"none\",\n        };\n        write!(\n            f,\n            \"width={:?} fill={:?} align={} precision={:?} plus={} alt={} zero={}\",\n            f.width(),\n            f.fill(),\n            align,\n            f.precision(),\n            f.sign_plus(),\n            f.alternate(),\n            f.sign_aware_zero_pad()\n        )\n    }\n}\n\nfn main() {\n    println!(\"{}\", Spec);\n    println!(\"{:<5}\", Spec);\n    println!(\"{:*^+#012.3}\", Spec);\n}\n",
+   "out": "width=None fill=' ' align=none precision=None plus=false alt=false zero=false\nwidth=Some(5) fill=' ' align=left precision=None plus=false alt=false zero=false\nwidth=Some(12) fill='*' align=center precision=Some(3) plus=true alt=true zero=true\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "traits.rs": {
+   "code": "fn main() {\n    let n = 255;\n    println!(\"Display  {{}}:   {}\", n);\n    println!(\"Debug    {{:?}}: {:?}\", \"hi\");\n    println!(\"LowerHex {{:x}}:  {:x}\", n);\n    println!(\"UpperHex {{:X}}:  {:X}\", n);\n    println!(\"Octal    {{:o}}:  {:o}\", n);\n    println!(\"Binary   {{:b}}:  {:b}\", n);\n    println!(\"LowerExp {{:e}}:  {:e}\", 1234.5);\n    println!(\"UpperExp {{:E}}:  {:E}\", 1234.5);\n    println!(\"Debug in hex {{:x?}}: {:x?}\", vec![255, 16]);\n    let address = format!(\"{:p}\", &n);\n    println!(\n        \"Pointer  {{:p}}:  starts with 0x? {}\",\n        address.starts_with(\"0x\")\n    );\n}\n",
+   "out": "Display  {}:   255\nDebug    {:?}: \"hi\"\nLowerHex {:x}:  ff\nUpperHex {:X}:  FF\nOctal    {:o}:  377\nBinary   {:b}:  11111111\nLowerExp {:e}:  1.2345e3\nUpperExp {:E}:  1.2345E3\nDebug in hex {:x?}: [ff, 10]\nPointer  {:p}:  starts with 0x? true\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "two-traits.rs": {
+   "code": "use std::fmt;\n\n#[derive(Debug)]\nstruct Point {\n    x: i32,\n    y: i32,\n}\n\nimpl fmt::Display for Point {\n    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {\n        write!(f, \"({},{})\", self.x, self.y)\n    }\n}\n\nfn main() {\n    let p = Point { x: 1, y: 2 };\n    println!(\"{} | {:?}\", p, p); // two traits: {:?} does not use Display\n}\n",
+   "out": "(1,2) | Point { x: 1, y: 2 }\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "unknown-letter.fail.rs": {
+   "code": "fn main() {\n    println!(\"{:K}\", 1.5); // no such trait\n    println!(\"{:p}\", 255); // an integer is not a pointer\n}\n",
+   "error": "error: unknown format trait `K`\n --> src/main.rs:2:17\n  |\n2 |     println!(\"{:K}\", 1.5); // no such trait\n  |                 ^\n  |\n  = note: the only appropriate formatting traits are:\n          - ``, which uses the `Display` trait\n          - `?`, which uses the `Debug` trait\n          - `e`, which uses the `LowerExp` trait\n          - `E`, which uses the `UpperExp` trait\n          - `o`, which uses the `Octal` trait\n          - `p`, which uses the `Pointer` trait\n          - `b`, which uses the `Binary` trait\n          - `x`, which uses the `LowerHex` trait\n          - `X`, which uses the `UpperHex` trait\n\nerror[E0277]: the trait bound `{integer}: std::fmt::Pointer` is not satisfied\n --> src/main.rs:3:22\n  |\n3 |     println!(\"{:p}\", 255); // an integer is not a pointer\n  |               ----   ^^^ the trait `std::fmt::Pointer` is not implemented for `{integer}`\n  |               |\n  |               required by this formatting parameter\n",
+   "lang": "rust"
+  },
+  "vec-display.fail.rs": {
+   "code": "fn main() {\n    let scores = vec![90, 85];\n    println!(\"scores: {}\", scores);\n}\n",
+   "error": "error[E0277]: `Vec<{integer}>` doesn't implement `std::fmt::Display`\n --> src/main.rs:3:28\n  |\n3 |     println!(\"scores: {}\", scores);\n  |                       --   ^^^^^^ `Vec<{integer}>` cannot be formatted with the default formatter\n  |                       |\n  |                       required by this formatting parameter\n  |\n  = help: the trait `std::fmt::Display` is not implemented for `Vec<{integer}>`\n  = note: in format strings you may be able to use `{:?}` (or `{:#?}` for pretty-print) instead\n",
+   "lang": "rust"
+  },
+  "width-ignored.rs": {
+   "code": "use std::fmt::{self, Display, Formatter};\n\nstruct Plain(u32);\nstruct Padded(u32);\nstruct Forward(f64);\n\nimpl Display for Plain {\n    fn fmt(&self, f: &mut Formatter) -> fmt::Result {\n        write!(f, \"#{}\", self.0) // a new, empty format spec: the caller's is dropped\n    }\n}\n\nimpl Display for Padded {\n    fn fmt(&self, f: &mut Formatter) -> fmt::Result {\n        f.pad(&format!(\"#{}\", self.0)) // applies width, fill, alignment and precision\n    }\n}\n\nimpl Display for Forward {\n    fn fmt(&self, f: &mut Formatter) -> fmt::Result {\n        Display::fmt(&self.0, f) // hands the caller's spec to the f64\n    }\n}\n\nfn main() {\n    println!(\"write!:   [{:>8}] [{:<8}]\", Plain(42), Plain(42));\n    println!(\n        \"pad:      [{:>8}] [{:<8}] [{:*^8}]\",\n        Padded(42),\n        Padded(42),\n        Padded(42)\n    );\n    println!(\"pad, .2:  [{:.2}]\", Padded(12345));\n    println!(\n        \"forward:  [{:8.2}] [{:+.1}]\",\n        Forward(3.14159),\n        Forward(3.14159)\n    );\n    println!(\"to_string: [{}]\", Padded(42).to_string());\n}\n",
+   "out": "write!:   [#42] [#42]\npad:      [     #42] [#42     ] [**#42***]\npad, .2:  [#1]\nforward:  [    3.14] [+3.1]\nto_string: [#42]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "write-no-import.fail.rs": {
+   "code": "fn main() {\n    let mut s = String::new();\n    write!(s, \"n = {}\", 42).unwrap();\n    println!(\"{s}\");\n}\n",
+   "error": "error[E0599]: cannot write into `String`\n --> src/main.rs:3:12\n  |\n3 |     write!(s, \"n = {}\", 42).unwrap();\n  |            ^\n  |\nnote: must implement `io::Write`, `fmt::Write`, or have a `write_fmt` method\n --> src/main.rs:3:12\n  |\n3 |     write!(s, \"n = {}\", 42).unwrap();\n  |            ^\n  = help: items from traits can only be used if the trait is in scope\nhelp: trait `Write` which provides `write_fmt` is implemented but not in scope; perhaps you want to import it\n  |\n1 + use std::fmt::Write;\n  ... (notes pointing into the standard library trimmed)",
+   "lang": "rust"
+  },
+  "check-format-errors.fail.cpp": {
+   "code": "#include <format>\n#include <string>\n\nstruct P { int n; };\ntemplate <> struct std::formatter<P> {\n    constexpr auto parse(std::format_parse_context& ctx) { return ctx.begin(); }  // takes no spec\n    auto format(const P& p, std::format_context& ctx) const { return std::format_to(ctx.out(), \"#{}\", p.n); }\n};\n\nint main() {\n    std::string a = std::format(\"{:d}\", \"text\");    // wrong type for the letter\n    std::string b = std::format(\"{} {}\", 1);        // missing argument\n    std::string c = std::format(\"{:>8}\", P{4});     // a spec the formatter does not parse\n}\n",
+   "error": "main.cpp: In function ‘int main()’:\nmain.cpp:11:32: error: call to consteval function ‘std::basic_format_string<char, const char (&)[5]>(\"{:d}\")’ is not a constant expression\n   11 |     std::string a = std::format(\"{:d}\", \"text\");    // wrong type for the letter\n      |                     ~~~~~~~~~~~^~~~~~~~~~~~~~~~\nIn file included from main.cpp:1:\nmain.cpp:11:32:   in ‘constexpr’ expansion of ‘std::basic_format_string<char, const char (&)[5]>(\"{:d}\")’\n/usr/include/c++/14/format:4214:19:   in ‘constexpr’ expansion of ‘__scanner.std::__format::_Checking_scanner<char, char [5]>::std::__format::_Scanner<char>.std::__format::_Scanner<char>::_M_scan()’\n/usr/include/c++/14/format:3955:30:   in ‘constexpr’ expansion of ‘((std::__format::_Scanner<char>*)this)->std::__format::_Scanner<char>::_M_on_replacement_field()’\n/usr/include/c++/14/format:4007:15:   in ‘constexpr’ expansion of ‘((std::__format::_Scanner<char>*)this)->std::__format::_Scanner<char>::_M_format_arg(__id)’\n/usr/include/c++/14/format:4085:33:   in ‘constexpr’ expansion of ‘((std::__format::_Checking_scanner<char, char [5]>*)this)->std::__format::_Checking_scanner<char, char [5]>::_M_parse_format_spec<char [5]>(__id)’\n/usr/include/c++/14/format:4099:40:   in ‘constexpr’ expansion of ‘__f.std::formatter<char [5], char>::parse(((std::__format::_Checking_scanner<char, char [5]>*)this)->std::__format::_Checking_scanner<char, char [5]>::std::__format::_Scanner<char>.std::__format::_Scanner<char>::_M_pc)’\n/usr/include/c++/14/format:1990:26:   in ‘constexpr’ expansion of ‘((std::formatter<char [5], char>*)this)->std::formatter<char [5], char>::_M_f.std::__format::__formatter_str<char>::parse((* & __pc))’\n/usr/include/c++/14/format:892:48: error: call to non-‘constexpr’ function ‘void std::__format::__failed_to_parse_format_spec()’\n  892 |         __format::__failed_to_parse_format_spec();\n      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~\n/usr/include/c++/14/format:223:3: note: ‘void std::__format::__failed_to_parse_format_spec()’ declared here\n  223 |   __failed_to_parse_format_spec()\n      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~\nmain.cpp:12:32: error: call to consteval function ‘std::basic_format_string<char, int>(\"{} {}\")’ is not a constant expression\n   12 |     std::string b = std::format(\"{} {}\", 1);        // missing argument\n      |                     ~~~~~~~~~~~^~~~~~~~~~~~\nmain.cpp:12:32:   in ‘constexpr’ expansion of ‘std::basic_format_string<char, int>(\"{} {}\")’\n/usr/include/c++/14/format:4214:19:   in ‘constexpr’ expansion of ‘__scanner.std::__format::_Checking_scanner<char, int>::std::__format::_Scanner<char>.std::__format::_Scanner<char>::_M_scan()’\n/usr/include/c++/14/format:3955:30:   in ‘constexpr’ expansion of ‘((std::__format::_Scanner<char>*)this)->std::__format::_Scanner<char>::_M_on_replacement_field()’\n/usr/include/c++/14/format:3988:28:   in ‘constexpr’ expansion of ‘((std::__format::_Scanner<char>*)this)->std::__format::_Scanner<char>::_M_pc.std::basic_format_parse_context<char>::next_arg_id()’\n/usr/include/c++/14/format:270:56: error: call to non-‘constexpr’ function ‘void std::__format::__invalid_arg_id_in_format_string()’\n  270 |             __format::__invalid_arg_id_in_format_string();\n      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~\n/usr/include/c++/14/format:218:3: note: ‘void std::__format::__invalid_arg_id_in_format_string()’ declared here\n  218 |   __invalid_arg_id_in_format_string()\n      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\nmain.cpp:13:32: error: call to consteval function ‘std::basic_format_string<char, P>(\"{:>8}\")’ is not a constant expression\n   13 |     std::string c = std::format(\"{:>8}\", P{4});     // a spec the formatter does not parse\n      |                     ~~~~~~~~~~~^~~~~~~~~~~~~~~\nmain.cpp:13:32:   in ‘constexpr’ expansion of ‘std::basic_format_string<char, P>(\"{:>8}\")’\n/usr/include/c++/14/format:4214:19:   in ‘constexpr’ expansion of ‘__scanner.std::__format::_Checking_scanner<char, P>::std::__format::_Scanner<char>.std::__format::_Scanner<char>::_M_scan()’\n/usr/include/c++/14/format:3955:30:   in ‘constexpr’ expansion of ‘((std::__format::_Scanner<char>*)this)->std::__format::_Scanner<char>::_M_on_replacement_field()’\n/usr/include/c++/14/format:4009:60: error: call to non-‘constexpr’ function ‘void std::__format::__unmatched_left_brace_in_format_string()’\n 4009 |           __format::__unmatched_left_brace_in_format_string();\n      |           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~\n/usr/include/c++/14/format:203:3: note: ‘void std::__format::__unmatched_left_brace_in_format_string()’ declared here\n  203 |   __unmatched_left_brace_in_format_string()\n      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~",
+   "lang": "cpp"
+  },
+  "format-js.ts": {
+   "code": "const n = 1234567.5;\nconsole.log((0.5).toFixed(0), (1.5).toFixed(0), (2.5).toFixed(0));\nconsole.log(n.toLocaleString(\"en-US\"), \"|\", n.toLocaleString(\"de-DE\"));\nconsole.log(JSON.stringify({ user: \"ada\", roles: [\"admin\", \"dev\"] }, null, 2));\n",
+   "out": "1 2 3\n1,234,567.5 | 1.234.567,5\n{\n  \"user\": \"ada\",\n  \"roles\": [\n    \"admin\",\n    \"dev\"\n  ]\n}\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "format-letters.cs": {
+   "code": "using System;\n\nint n = 5;\ntry { Console.WriteLine($\"{n:Q}\"); } catch (FormatException e) { Console.WriteLine(\"FormatException: \" + e.Message); }\nConsole.WriteLine($\"{\"text\":D}\");\ntry { Console.WriteLine(string.Format(\"{0} {1}\", 1)); } catch (FormatException e) { Console.WriteLine(\"FormatException: \" + e.Message); }\ntry { Console.WriteLine(string.Format(\"{0:Q}\", n)); } catch (FormatException e) { Console.WriteLine(\"FormatException: \" + e.Message); }\n",
+   "out": "FormatException: Format specifier was invalid.\ntext\nFormatException: Index (zero based) must be greater than or equal to zero and less than the size of the argument list.\nFormatException: Format specifier was invalid.\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "format-spec.py": {
+   "code": "class Id:\n    def __init__(self, n):\n        self.n = n\n\n    def __str__(self):\n        return f\"#{self.n}\"\n\n\nprint(f\"[{Id(42)!s:>8}]\")  # convert to str first, then pad\ntry:\n    print(f\"[{Id(42):>8}]\")\nexcept TypeError as e:\n    print(\"TypeError:\", e)\nprint(f\"{0.5:.0f} {1.5:.0f} {2.5:.0f}\")\nprint(f\"{1234567.5:,.2f}\")\n\nx = 5\nprint(f\"{1234.5:e} {-255:x} [{True:5}] {x=}\")\ntry:\n    print(f\"{7:.3}\")\nexcept ValueError as e:\n    print(\"ValueError:\", e)\nimport pprint\npprint.pprint({\"user\": \"ada\", \"roles\": [\"admin\", \"dev\"]}, width=20)\n",
+   "out": "[     #42]\nTypeError: unsupported format string passed to Id.__format__\n0 2 2\n1,234,567.50\n1.234500e+03 -ff [    1] x=5\nValueError: Precision not allowed in integer format specifier\n{'roles': ['admin',\n           'dev'],\n 'user': 'ada'}\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "format-to.cpp": {
+   "code": "#include <format>\n#include <iostream>\n#include <iterator>\n#include <string>\n\nint main() {\n    std::string s = std::format(\"n = {}\", 42);\n    std::cout << s << \", capacity \" << s.capacity() << \"\\n\";\n\n    std::string out;\n    std::format_to(std::back_inserter(out), \"{}-{}\", 1, 2);  // write! into a String\n    std::cout << out << \"\\n\";\n\n    int n = 7;\n    std::string_view word = \"x\";\n    std::cout << std::vformat(\"{} {}\", std::make_format_args(n, word)) << \"\\n\";  // format_args!\n}\n",
+   "out": "n = 42, capacity 15\n1-2\n7 x\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "formattable.java": {
+   "code": "import java.util.Formattable;\nimport java.util.Formatter;\n\npublic class Main {\n    record Id(int n) implements Formattable {\n        @Override\n        public void formatTo(Formatter f, int flags, int width, int precision) {\n            boolean left = (flags & java.util.FormattableFlags.LEFT_JUSTIFY) != 0;\n            f.format(\"width=%d left=%b precision=%d%n\", width, left, precision);\n        }\n    }\n\n    public static void main(String[] args) {\n        System.out.print(String.format(\"%-8.3s\", new Id(42)));\n        System.out.print(String.format(\"%s\", new Id(42)));\n    }\n}\n",
+   "out": "width=8 left=true precision=3\nwidth=-1 left=false precision=-1\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "iformattable.cs": {
+   "code": "using System;\n\nvar t = new Temp(21.456);\nConsole.WriteLine($\"{t}\");\nConsole.WriteLine($\"{t:F1}\");\nConsole.WriteLine($\"{t:K}\");\nConsole.WriteLine($\"[{t,12:F1}]\");\n\nclass Temp(double celsius) : IFormattable\n{\n    public string ToString(string? format, IFormatProvider? provider) => format switch\n    {\n        \"K\" => (celsius + 273.15).ToString(\"F2\") + \" K\",\n        null or \"\" => celsius.ToString() + \" C\",\n        _ => celsius.ToString(format, provider) + \" C\",\n    };\n\n    public override string ToString() => ToString(null, null);\n}\n",
+   "out": "21.456 C\n21.5 C\n294.61 K\n[      21.5 C]\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "round.c": {
+   "code": "#include <stdio.h>\n\nint main(void) {\n    printf(\"%e %f\\n\", 1.5, 1.5);\n    printf(\"%.0f %.0f %.0f\\n\", 0.5, 1.5, 2.5);\n    return 0;\n}\n",
+   "out": "1.500000e+00 1.500000\n0 2 2\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "setw.cpp": {
+   "code": "#include <format>\n#include <iomanip>\n#include <iostream>\n\nstruct Id {\n    int n;\n};\n\nstd::ostream& operator<<(std::ostream& os, const Id& id) {\n    return os << '#' << id.n;  // two separate insertions\n}\n\nstruct Id2 {\n    int n;\n};\n\ntemplate <>\nstruct std::formatter<Id2> : std::formatter<std::string> {\n    auto format(const Id2& id, std::format_context& ctx) const {\n        return std::formatter<std::string>::format(\"#\" + std::to_string(id.n), ctx);\n    }\n};\n\nint main() {\n    std::cout << '[' << std::setw(8) << Id{42} << \"]\\n\";\n    std::cout << std::format(\"[{:>8}]\\n\", Id2{42});\n    std::cout << std::format(\"{:.0f} {:.0f} {:.0f}\\n\", 0.5, 1.5, 2.5);\n}\n",
+   "out": "[       #42]\n[     #42]\n0 2 2\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "snprintf.c": {
+   "code": "#include <stdio.h>\n\nint main(int argc, char **argv) {\n    const char *text = argc > 5 ? argv[1] : \"$19.99 and more\";\n    char buf[8];\n    int wanted = snprintf(buf, sizeof buf, \"%s each\", text);\n    printf(\"returned %d, kept \\\"%s\\\"\\n\", wanted, buf);\n    return 0;\n}\n",
+   "out": "returned 20, kept \"$19.99 \"\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "string-hook.go": {
+   "code": "package main\n\nimport \"fmt\"\n\ntype Point struct{ X, Y int }\n\nfunc (p Point) String() string { return fmt.Sprintf(\"(%d,%d)\", p.X, p.Y) }\n\ntype Plain struct{ X, Y int }\n\ntype Wrap struct {\n\tP  Point\n\tID int\n}\n\nfunc main() {\n\tp := Point{1, 2}\n\tfmt.Printf(\"%v | %+v | %s | %#v\\n\", p, p, p, p)\n\tfmt.Printf(\"%v | %+v\\n\", Plain{1, 2}, Plain{1, 2})\n\tfmt.Printf(\"%+v\\n\", Wrap{p, 3})\n\tfmt.Printf(\"%e %x\\n\", 1234.5, -255)\n}\n",
+   "out": "(1,2) | (1,2) | (1,2) | main.Point{X:1, Y:2}\n{1 2} | {X:1 Y:2}\n{P:(1,2) ID:3}\n1.234500e+03 -ff\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "width-locale.cpp": {
+   "code": "#include <format>\n#include <iostream>\n#include <locale>\n\nstruct German : std::numpunct<char> {\n    char do_decimal_point() const override { return ','; }\n    char do_thousands_sep() const override { return '.'; }\n    std::string do_grouping() const override { return \"\\3\"; }\n};\n\nint main() {\n    std::locale de(std::locale::classic(), new German);\n    std::cout << std::format(\"{}\", 1234567.5) << \"\\n\";         // never uses a locale\n    std::cout << std::format(\"{:L}\", 1234567.5) << \"\\n\";        // the global locale (classic)\n    std::cout << std::format(de, \"{:L}\", 1234567.5) << \"\\n\";    // the locale we built\n    std::cout << std::format(de, \"{}\", 1234567.5) << \"\\n\";\n}\n",
+   "out": "1234567.5\n1234567.5\n1.234.567,5\n1234567.5\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "width-locale.java": {
+   "code": "import java.util.Locale;\n\npublic class Main {\n    record Id(int n) {\n        @Override\n        public String toString() {\n            return \"#\" + n;\n        }\n    }\n\n    public static void main(String[] args) {\n        System.out.println(String.format(\"[%8s] [%-8s]\", new Id(42), new Id(42)));\n        System.out.println(String.format(\"%.0f %.0f %.0f\", 0.5, 1.5, 2.5));\n        System.out.println(String.format(Locale.US, \"%,.2f\", 1234567.5));\n        System.out.println(String.format(Locale.GERMANY, \"%,.2f\", 1234567.5));\n    }\n}\n",
+   "out": "[     #42] [#42     ]\n1 2 3\n1,234,567.50\n1.234.567,50\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "width-stringer.go": {
+   "code": "package main\n\nimport \"fmt\"\n\ntype ID int\n\nfunc (i ID) String() string { return fmt.Sprintf(\"#%d\", int(i)) }\n\ntype Point struct{ X, Y int }\n\nfunc main() {\n\tfmt.Printf(\"[%8v] [%-8v]\\n\", ID(42), ID(42)) // width applies to String()'s result\n\tfmt.Printf(\"%v | %+v | %#v | %T\\n\", Point{1, 2}, Point{1, 2}, Point{1, 2}, Point{1, 2})\n\tfmt.Printf(\"%d\\n\", \"text\")\n\tfmt.Printf(\"%d %d\\n\", 1)\n\tfmt.Printf(\"%.0f %.0f %.0f\\n\", 0.5, 1.5, 2.5)\n}\n",
+   "out": "[     #42] [#42     ]\n{1 2} | {X:1 Y:2} | main.Point{X:1, Y:2} | main.Point\n%!d(string=text)\n1 %!d(MISSING)\n0 2 2\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "width.cs": {
+   "code": "using System;\n\nvar id = new Id(42);\nConsole.WriteLine($\"[{id,8}] [{id,-8}]\");\nConsole.WriteLine($\"{0.5:F0} {1.5:F0} {2.5:F0}\");\nConsole.WriteLine(1234567.5.ToString(\"N2\"));\n\nrecord Id(int N)\n{\n    public override string ToString() => $\"#{N}\";\n}\n",
+   "out": "[     #42] [#42     ]\n0 2 2\n1,234,567.50\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "width.kt": {
+   "code": "data class Id(val n: Int) {\n    override fun toString() = \"#$n\"\n}\n\nfun main() {\n    println(\"[%8s] [%-8s]\".format(Id(42), Id(42)))\n    println(\"%.0f %.0f %.0f\".format(0.5, 1.5, 2.5))\n}\n",
+   "out": "[     #42] [#42     ]\n1 2 3\n",
+   "lang": "kotlin",
+   "exit": 0
+  }
+ },
+ "exercises": {
+  "joined": {
+   "starter": "use std::fmt::{self, Display};\n\n/// Prints the items with `Display`, separated by the second field. Whatever the caller\n/// put after the colon (`{:.1}`, `{:>4}`) applies to every item.\nstruct Joined<'a, T>(&'a [T], &'a str);\n\nimpl<T: Display> Display for Joined<'_, T> {\n    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {\n        todo!(\n            \"write each item, with the separator between them, so that the caller's spec reaches the items\"\n        )\n    }\n}\n\n/// An id that pads itself (it uses `f.pad`, so a width and a fill reach it).\nstruct Id(u32);\n\nimpl Display for Id {\n    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {\n        f.pad(&format!(\"#{}\", self.0))\n    }\n}\n\nfn main() {\n    assert_eq!(Joined(&[1, 2, 3], \", \").to_string(), \"1, 2, 3\");\n    assert_eq!(Joined(&[\"a\", \"b\"], \" | \").to_string(), \"a | b\"); // Display: no quotes\n    assert_eq!(Joined(&[7], \", \").to_string(), \"7\");\n    assert_eq!(Joined::<i32>(&[], \", \").to_string(), \"\");\n    assert_eq!(format!(\"{:.1}\", Joined(&[1.0, 2.26], \", \")), \"1.0, 2.3\");\n    assert_eq!(\n        format!(\"{:>4}\", Joined(&[1, 22, 333], \"|\")),\n        \"   1|  22| 333\"\n    );\n    assert_eq!(format!(\"{:>3}\", Joined(&[\"a\", \"b\"], \", \")), \"  a,   b\");\n    assert_eq!(\n        format!(\"{:>5}\", Joined(&[Id(1), Id(22)], \";\")),\n        \"   #1;  #22\"\n    );\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "use std::fmt::{self, Display};\n\n/// Prints the items with `Display`, separated by the second field. Whatever the caller\n/// put after the colon (`{:.1}`, `{:>4}`) applies to every item.\nstruct Joined<'a, T>(&'a [T], &'a str);\n\nimpl<T: Display> Display for Joined<'_, T> {\n    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {\n        for (i, item) in self.0.iter().enumerate() {\n            if i > 0 {\n                f.write_str(self.1)?;\n            }\n            item.fmt(f)?;\n        }\n        Ok(())\n    }\n}\n\n/// An id that pads itself (it uses `f.pad`, so a width and a fill reach it).\nstruct Id(u32);\n\nimpl Display for Id {\n    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {\n        f.pad(&format!(\"#{}\", self.0))\n    }\n}\n\nfn main() {\n    assert_eq!(Joined(&[1, 2, 3], \", \").to_string(), \"1, 2, 3\");\n    assert_eq!(Joined(&[\"a\", \"b\"], \" | \").to_string(), \"a | b\"); // Display: no quotes\n    assert_eq!(Joined(&[7], \", \").to_string(), \"7\");\n    assert_eq!(Joined::<i32>(&[], \", \").to_string(), \"\");\n    assert_eq!(format!(\"{:.1}\", Joined(&[1.0, 2.26], \", \")), \"1.0, 2.3\");\n    assert_eq!(\n        format!(\"{:>4}\", Joined(&[1, 22, 333], \"|\")),\n        \"   1|  22| 333\"\n    );\n    assert_eq!(format!(\"{:>3}\", Joined(&[\"a\", \"b\"], \", \")), \"  a,   b\");\n    assert_eq!(\n        format!(\"{:>5}\", Joined(&[Id(1), Id(22)], \";\")),\n        \"   #1;  #22\"\n    );\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "session": {
+   "starter": "use std::fmt;\n\n/// A value that must never be printed.\nstruct Secret(String);\n\n#[derive(Debug)]\nstruct Session {\n    user: String,\n    token: Secret,\n    hits: u32,\n}\n\n// Debug must not show what is inside, not even its length.\nimpl fmt::Debug for Secret {\n    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {\n        todo!(\"write <redacted>\")\n    }\n}\n\nfn main() {\n    let s = Session {\n        user: \"ada\".to_string(),\n        token: Secret(\"s3cr3t\".to_string()),\n        hits: 3,\n    };\n    assert_eq!(\n        (s.user.as_str(), s.token.0.as_str(), s.hits),\n        (\"ada\", \"s3cr3t\", 3)\n    );\n    assert_eq!(\n        format!(\"{:?}\", s),\n        r#\"Session { user: \"ada\", token: <redacted>, hits: 3 }\"#\n    );\n    assert_eq!(\n        format!(\"{:#?}\", s),\n        \"Session {\\n    user: \\\"ada\\\",\\n    token: <redacted>,\\n    hits: 3,\\n}\"\n    );\n    assert!(!format!(\"{:?} {:#?}\", s, s).contains(&s.token.0));\n\n    // The text must not depend on the secret, even in other values.\n    assert_eq!(format!(\"{:?}\", Secret(String::new())), \"<redacted>\");\n    let two = vec![Secret(\"a\".to_string()), Secret(\"bb\".to_string())];\n    assert_eq!(format!(\"{:?}\", two), \"[<redacted>, <redacted>]\");\n    assert_eq!(format!(\"{:?}\", Some(&s.token)), \"Some(<redacted>)\");\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "use std::fmt;\n\n/// A value that must never be printed.\nstruct Secret(String);\n\n#[derive(Debug)]\nstruct Session {\n    user: String,\n    token: Secret,\n    hits: u32,\n}\n\n// Debug must not show what is inside, not even its length.\nimpl fmt::Debug for Secret {\n    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {\n        f.write_str(\"<redacted>\")\n    }\n}\n\nfn main() {\n    let s = Session {\n        user: \"ada\".to_string(),\n        token: Secret(\"s3cr3t\".to_string()),\n        hits: 3,\n    };\n    assert_eq!(\n        (s.user.as_str(), s.token.0.as_str(), s.hits),\n        (\"ada\", \"s3cr3t\", 3)\n    );\n    assert_eq!(\n        format!(\"{:?}\", s),\n        r#\"Session { user: \"ada\", token: <redacted>, hits: 3 }\"#\n    );\n    assert_eq!(\n        format!(\"{:#?}\", s),\n        \"Session {\\n    user: \\\"ada\\\",\\n    token: <redacted>,\\n    hits: 3,\\n}\"\n    );\n    assert!(!format!(\"{:?} {:#?}\", s, s).contains(&s.token.0));\n\n    // The text must not depend on the secret, even in other values.\n    assert_eq!(format!(\"{:?}\", Secret(String::new())), \"<redacted>\");\n    let two = vec![Secret(\"a\".to_string()), Secret(\"bb\".to_string())];\n    assert_eq!(format!(\"{:?}\", two), \"[<redacted>, <redacted>]\");\n    assert_eq!(format!(\"{:?}\", Some(&s.token)), \"Some(<redacted>)\");\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "tag": {
+   "starter": "use std::fmt;\n\n/// Prints as `#<number>`, for example `#42`.\nstruct Tag(u32);\n\nimpl fmt::Display for Tag {\n    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {\n        todo!(\"print #<number>, but obey the width, fill and alignment the caller asked for\")\n    }\n}\n\nfn main() {\n    assert_eq!(Tag(42).to_string(), \"#42\");\n    assert_eq!(format!(\"[{:>8}]\", Tag(42)), \"[     #42]\");\n    assert_eq!(format!(\"[{:<6}]\", Tag(7)), \"[#7    ]\");\n    assert_eq!(format!(\"[{:*^7}]\", Tag(7)), \"[**#7***]\");\n    assert_eq!(format!(\"[{:3}]\", Tag(12345)), \"[#12345]\"); // wider than the width: not cut\n    assert_eq!(format!(\"{:<6}|{:>6}|\", Tag(1), Tag(22)), \"#1    |   #22|\");\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "use std::fmt;\n\n/// Prints as `#<number>`, for example `#42`.\nstruct Tag(u32);\n\nimpl fmt::Display for Tag {\n    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {\n        f.pad(&format!(\"#{}\", self.0))\n    }\n}\n\nfn main() {\n    assert_eq!(Tag(42).to_string(), \"#42\");\n    assert_eq!(format!(\"[{:>8}]\", Tag(42)), \"[     #42]\");\n    assert_eq!(format!(\"[{:<6}]\", Tag(7)), \"[#7    ]\");\n    assert_eq!(format!(\"[{:*^7}]\", Tag(7)), \"[**#7***]\");\n    assert_eq!(format!(\"[{:3}]\", Tag(12345)), \"[#12345]\"); // wider than the width: not cut\n    assert_eq!(format!(\"{:<6}|{:>6}|\", Tag(1), Tag(22)), \"#1    |   #22|\");\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}

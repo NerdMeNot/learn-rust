@@ -1,0 +1,276 @@
+---
+title: "Rust for C# developers"
+description: "Ten habits from C# that Rust answers differently, an idiom table, a toolchain map and a reading path through the course. Every program on the page was run."
+---
+
+import { Files, Remember, Session, Tree } from '../../../components/guide'
+
+This page is for readers who write C# today. It does not teach Rust from the start: the [course](/learn/hello-world/) does that. It collects the places where a C# habit fails to compile, or does something different, in Rust. Each habit has a C# program and a Rust program, both run in this site's image. Each C# file is copied to `Program.cs` in the console template, with nullable reference types and implicit usings on, so diagnostics name that file; the SDK version is in the C# session of the [toolchain section](#toolchain-map). The Rust is 1.99.1.
+
+<Remember>In C# a variable of a class type holds a reference that the garbage collector keeps alive. In Rust a value has one owner, and the compiler checks every other name for it.</Remember>
+
+<Tree guide="for-csharp" dir="rust" name="for-csharp" title="The Rust project behind this page" notes={{"src/bin":"one small program per example, run with cargo run --bin name","Cargo.toml":"no dependencies"}} />
+
+## What carries over
+
+- **Static types with inference.** `var x = 5;` is `let mut x = 5;` if it changes later ([Variables](/learn/variables/)).
+- **Generic constraints.** `where T : IComparable<T>` becomes a bound such as `T: Ord`; nothing is allowed on a `T` that the bound does not name ([Generics](/learn/generics/)).
+- **Pattern matching.** `switch` expressions, `is` patterns and deconstruction become `match`, `if let` and `let (a, b) = ...` ([Match](/learn/match/), [Patterns](/learn/patterns/)). A `match` must cover every case.
+- **Lazy pipelines.** LINQ's `Where` and `Select` are `filter` and `map`, and nothing runs until the end of the chain asks for items (habit 6).
+- **Scoped cleanup.** `using` runs `Dispose` at the end of a block; Rust runs `Drop` at the end of the owner's scope (habit 8).
+
+## Ten habits to unlearn
+
+### 1. `var b = a;` makes a second name for the same object
+
+For a `class`, including `List<T>`, assignment copies the reference. Both names see every change:
+
+<Files guide="for-csharp" dir="cs" files={["Shares.cs"]} run="h1-cs" lang="csharp" />
+
+Rust moves the value. `a` is finished after `let mut b = a;`, and using it is an error:
+
+<Files guide="for-csharp" dir="rust" files={["src/bin/moved.rs"]} run="h1-moved" />
+
+The `Vec` is freed when its single owner goes out of scope, with no collector to count names, so the compiler must know which name that is. To keep using `a` you copy (`a.clone()`, task 1 below) or borrow (`&a`, `&mut a`, habit 9). See [Ownership](/learn/ownership/) and [Copy or reference](/learn/copy-or-reference/).
+
+### 2. A `struct` copies, so it is safe to assign
+
+A C# `struct` is copied on assignment, but only its own fields. A `List` inside it is a reference, and the copy shares it. The run prints `red 2` for the original, because the other copy's `Add` reached it:
+
+<Files guide="for-csharp" dir="cs" files={["StructCopy.cs"]} run="h2-cs" lang="csharp" />
+
+Rust refuses it. `Copy` is only for types made of plain values, so a struct that owns a `Vec` cannot be `Copy`:
+
+<Files guide="for-csharp" dir="rust" files={["src/bin/copy_vec.rs"]} run="h2-copy-vec" />
+
+Without `Copy`, `let b = a;` moves. `Clone` is the opt-in copy, and it copies everything the value owns, so the two teams stay apart:
+
+<Files guide="for-csharp" dir="rust" files={["src/bin/team_clone.rs"]} run="h2-team-clone" />
+
+Rust has no struct/class split: every type holds its value, and a reference is something you write with `&`. See [Copy or reference](/learn/copy-or-reference/).
+
+### 3. Sharing behaviour through a base class
+
+<div class="lr-compare">
+<Files guide="for-csharp" dir="cs" files={["Inherit.cs"]} run="h3-cs" lang="csharp" />
+<Files guide="for-csharp" dir="rust" files={["src/bin/shapes.rs"]} run="h3-shapes" />
+</div>
+
+Rust has no inheritance of fields or methods. The Rust Book says there is "no way to define a struct that inherits the parent struct's fields and method implementations without using a macro" ([chapter 18.1](https://doc.rust-lang.org/book/ch18-01-what-is-oo.html)). A trait is an interface that can carry default methods, such as `describe` above, and a type opts in with its own `impl` block. `Vec<Box<dyn Shape>>` is the `Shape[]`. Data you would put in a base class becomes a field holding another struct. See [Traits](/learn/traits/) and [Trait objects](/learn/trait-objects/).
+
+### 4. `string?` and a warning
+
+With nullable reference types on, C# warns about the dereference below and, by default, builds anyway. Microsoft's [page on the feature](https://learn.microsoft.com/en-us/dotnet/csharp/nullable-references) says "the runtime behavior of your program is unchanged", and the program throws:
+
+<Files guide="for-csharp" dir="cs" files={["Nullable.cs"]} run="h4-cs" lang="csharp" />
+
+`WarningsAsErrors` turns the warning into an error; the template does not set it:
+
+<Session guide="for-csharp" run="h4-strict" />
+
+In Rust the maybe-missing value is a different type, `Option<&str>`, and it has none of `&str`'s methods until you decide what the `None` case does:
+
+<Files guide="for-csharp" dir="rust" files={["src/bin/option_missing.rs"]} run="h4-option-missing" />
+
+`match`, `if let`, `unwrap_or` and `?` are the ways through. Rows 2 to 4 of the [idiom table](#idiom-by-idiom) run `unwrap_or`, `map` and `if let`; habit 5 runs `?`. See [Option](/learn/option/).
+
+### 5. Exceptions
+
+Nothing in the signature of `Double` says it can throw. C# has no checked exceptions:
+
+<Files guide="for-csharp" dir="cs" files={["Exceptions.cs"]} run="h5-cs" lang="csharp" />
+
+A Rust function that can fail returns a `Result`, and `?` hands the error up to the caller. A bug panics instead ([Errors](/learn/errors/)); `Result` is for input you expected could be wrong:
+
+<Files guide="for-csharp" dir="rust" files={["src/bin/parse.rs"]} run="h5-parse" />
+
+The `Err` is in the return type, so the caller sees it in the signature, which `Double` above cannot do.
+
+### 6. LINQ: lazy, and reusable
+
+LINQ is lazy, and so are Rust iterators: nothing prints until the end of the chain asks. The difference is what a query object is. A LINQ query over a re-enumerable source such as this `Range` restarts the whole chain on each terminal call, so `Count()` checks from 1 again:
+
+<Files guide="for-csharp" dir="cs" files={["Linq.cs"]} run="h6-cs" lang="csharp" />
+
+A Rust iterator is a value with a position. `next()` consumed two checks, and `count()` carried on:
+
+<Files guide="for-csharp" dir="rust" files={["src/bin/iter_resume.rs"]} run="h6-iter-resume" />
+
+`count()` also takes the iterator by value, so a second call is a use after move:
+
+<Files guide="for-csharp" dir="rust" files={["src/bin/iter_twice.rs"]} run="h6-iter-twice" />
+
+To walk the items twice, `collect` them into a `Vec` or build the chain again. See [Iterators](/learn/iterators/), which has the full LINQ table.
+
+### 7. A `Task` has already started
+
+A C# `async` method runs up to its first `await` that has to wait before the call returns. `saving` is printed before `called Save`:
+
+<div class="lr-compare">
+<Files guide="for-csharp" dir="cs" files={["Hot.cs"]} run="h7-cs" lang="csharp" />
+<Files guide="for-csharp" dir="rust" files={["src/bin/lazy.rs"]} run="h7-lazy" />
+</div>
+
+A Rust `async fn` returns a future, a value that does nothing until something polls it. `block_on` here is a few lines of std, only to show the order; a real program uses a runtime such as Tokio. See [Async basics](/learn/async-basics/) and [Tokio](/build/tokio/).
+
+### 8. `using` and `IDisposable`
+
+`using` is opt-in. `a` and `b` are disposed in reverse order, and `c`, declared without `using`, never is:
+
+<div class="lr-compare">
+<Files guide="for-csharp" dir="cs" files={["Dispose.cs"]} run="h8-cs" lang="csharp" />
+<Files guide="for-csharp" dir="rust" files={["src/bin/drop.rs"]} run="h8-drop" />
+</div>
+
+In Rust a value runs its `Drop` when its owner goes out of scope, in reverse order of declaration, whether or not you thought of it. A leaked `Rc` cycle is the exception ([Smart pointers](/learn/smart-pointers/)). See [Common traits](/learn/common-traits/) for `Drop`.
+
+### 9. Changing a list while you loop over it
+
+C# lets `foreach` and `Add` compile. The list changes under the loop, and the check happens at run time, after one item was added:
+
+<Files guide="for-csharp" dir="cs" files={["Grow.cs"]} run="h9-cs" lang="csharp" />
+
+`for x in &xs` borrows the `Vec` for the whole loop, and `&mut` is exclusive: nothing else may use the value while one exists. The same loop is a compile error:
+
+<Files guide="for-csharp" dir="rust" files={["src/bin/grow.rs"]} run="h9-grow" />
+
+Build the new items first, then add them:
+
+<Files guide="for-csharp" dir="rust" files={["src/bin/grow_ok.rs"]} run="h9-grow-ok" />
+
+See [Mutable borrows](/learn/mutable-borrows/).
+
+### 10. A `T` that still exists at run time
+
+In C# an unconstrained `T` has `object`'s members and can be asked for its type, because generics are kept at run time:
+
+<Files guide="for-csharp" dir="cs" files={["Generic.cs"]} run="h10-cs" lang="csharp" />
+
+Rust compiles a separate copy of the function for each type ([what `T` is at run time](/learn/generics/#what-t-is-at-run-time-in-your-language)), and an unbounded `T` has none of `object`'s members: no `ToString`, so here not even a way to print it:
+
+<Files guide="for-csharp" dir="rust" files={["src/bin/unbounded.rs"]} run="h10-unbounded" />
+
+The error names the fix, and the bound goes in the signature. `type_name` is a string the compiler fills in for each copy (its docs call the text best-effort), where C# keeps `T` as metadata it can be asked about at run time:
+
+<Files guide="for-csharp" dir="rust" files={["src/bin/bounded.rs"]} run="h10-bounded" />
+
+See [Generics](/learn/generics/).
+
+## Idiom by idiom
+
+Both programs below print one numbered line per row. The C# file is on the left and the Rust file on the right, and every cell in the table is a line from one of them. Rows 8 and 9 use `SortedDictionary` and `BTreeMap`, and row 10 `BTreeMap`, so the output order is fixed; `Dictionary` and `HashMap` are the unsorted pair.
+
+| # | You write in C# | In Rust |
+| --- | --- | --- |
+| 1 | `var x = 5; x += 1;` | `let mut x = 5; x += 1;` |
+| 2 | `name ?? "anon"` | `name.as_deref().unwrap_or("anon")` |
+| 3 | `word?.Length` | `word.map(str::len)` |
+| 4 | `int.TryParse(text, out var n)` | `text.parse::<i32>()` |
+| 5 | `[{seven,5}] [{seven:D3}]` inside `$"..."` | `[{seven:5}] [{seven:03}]` inside `println!("...")` |
+| 6 | `xs.Where(v => v > 1).Select(v => v * 2).ToList()` | `xs.iter().filter(\|&&v\| v > 1).map(\|&v\| v * 2).collect::<Vec<_>>()` |
+| 7 | `xs.Sum()`, `xs.Max()` | `xs.iter().sum::<i32>()`, `xs.iter().max()` |
+| 8 | `foreach (var (k, v) in ages)` | `for (k, v) in &ages` |
+| 9 | `ages.TryGetValue("bo", out var bo)` | `ages.get("bo")` |
+| 10 | `counts[w] = counts.GetValueOrDefault(w) + 1;` | `*counts.entry(w).or_insert(0) += 1;` |
+| 11 | `x switch { 1 => "one", _ => "many" }` | `match x { 1 => "one", _ => "many", }` |
+| 12 | `sh is Circle c` | `if let Shape::Circle(r) = sh` |
+| 13 | `p1 == new Point(1, 2)`, `p1 with { X = 3 }` | `p1 == Point { x: 1, y: 2 }`, `Point { x: 3, ..p1 }` |
+| 14 | `accent.Length` | `accent.chars().count()` |
+| 15 | `lock (gate) { hits++; }` | `*hits.lock().unwrap() += 1;` |
+| 16 | `public int Age { get; set; }` | `pub age: u32` |
+
+<div class="lr-compare">
+<Files guide="for-csharp" dir="cs" files={["Idioms.cs"]} run="idioms-cs" lang="csharp" />
+<Files guide="for-csharp" dir="rust" files={["src/bin/idioms.rs"]} run="idioms-rs" />
+</div>
+
+What the run shows beyond the spelling:
+
+- **Row 3**: both lines make a maybe-missing number (`int?` and `Option<usize>`). C# interpolation prints a missing one as empty text. Rust has no `Display` for `Option`, so the program prints it with `{:?}` as `Some(3)`; `unwrap_or` or `match` picks the text for the missing case ([Option](/learn/option/)).
+- **Row 6** needs `&&v` because `iter()` yields references and `filter` borrows each item again.
+- **Row 13**: `derive(PartialEq, Clone)` gives the `==` and `clone` a `record` writes for you; you list what you want ([Common traits](/learn/common-traits/)). `..p1` fills the other fields from `p1`.
+- **Row 14**: `Length` counts UTF-16 units, so `"a😀"` is 3 in C#. Rust's `chars().count()` gives 2 for it and 5 for `héllo`; `len()` is bytes and gives 6 for `héllo` ([Strings](/learn/strings/)).
+- **Row 15**: C# `lock` guards whatever you write inside the braces. In Rust the `Mutex` owns the data, so you cannot touch it without the lock ([Shared state](/learn/shared-state/)).
+- **Row 16**: Rust has no properties. A `pub` field is read and written directly; to keep control, keep the field private and write `fn age(&self)` and `fn set_age(&mut self, ...)` ([Methods](/learn/methods/)).
+
+## Toolchain map
+
+| Job | C# | Rust | On this page |
+| --- | --- | --- | --- |
+| new project | `dotnet new console` | `cargo new` | both run |
+| add a library | `dotnet add package` (NuGet) | `cargo add` (crates.io) | `cargo add` run, C# not run |
+| build and run | `dotnet build`, `dotnet run` | `cargo build`, `cargo run` | both run in the habits above |
+| tests | xUnit with `dotnet test` | `#[test]` with `cargo test` | both run |
+| format | `dotnet format` | `cargo fmt` | both run |
+| analyzers and lints | compiler warnings and Roslyn analyzers | `cargo clippy` | Rust run; C#: the one warning in habit 4 |
+| generated docs | `///` XML comments, read by the IDE | `///` comments with `cargo doc` | Rust run; C# not run |
+| debugger | Visual Studio, or an IDE extension | `rust-gdb` or `rust-lldb` (gdb and lldb wrappers), started from an IDE through rust-analyzer | not run |
+| pin the SDK | `global.json` | `rust-toolchain.toml` | not run |
+
+The Rust commands, run in this page's project:
+
+<Session guide="for-csharp" run="tools-rs" />
+
+The same jobs in C#. The last step needs the network (NuGet restore); only its last three lines are shown, a warning is switched off with `-p:NoWarn=NETSDK1188`, and the duration changes:
+
+<Session guide="for-csharp" run="tools-cs" />
+
+`cargo add` needs the network too, to read the crates.io index. The resolved version can change, so this output varies:
+
+<Session guide="for-csharp" run="add-rs" />
+
+See [Using crates](/start/using-crates/) and [Files and modules](/start/files-and-modules/).
+
+## A reading path
+
+1. [Rust at a glance](/learn/rust-at-a-glance/): syntax with your language beside it.
+2. [What Rust lacks](/learn/what-rust-lacks/): `i++`, `?:`, overloads and named arguments are things you will type by habit.
+3. [Stack and heap](/learn/stack-heap/), then [Copy or reference](/learn/copy-or-reference/): the struct/class split and where values live (habits 1 and 2).
+4. [Ownership](/learn/ownership/), [Borrowing](/learn/borrowing/) and [Mutable borrows](/learn/mutable-borrows/): the rule that replaces the garbage collector (habits 1 and 9).
+5. [Option](/learn/option/) and [Errors](/learn/errors/): `null` and exceptions (habits 4 and 5).
+6. [Traits](/learn/traits/), [Generics](/learn/generics/) and [Trait objects](/learn/trait-objects/): interfaces without classes (habits 3 and 10).
+7. [Closures](/learn/closures/) and [Iterators](/learn/iterators/): lambdas and the LINQ half of your toolbox (habit 6).
+8. [Returning references](/learn/returning-references/) and [Lifetimes](/learn/lifetimes/): how long a reference may live.
+9. [Smart pointers](/learn/smart-pointers/): `Rc` and `RefCell` for when you want shared, changing data after all.
+10. [Working with the borrow checker](/learn/borrow-checker/): "it was rejected, what now".
+11. [Threads](/learn/threads/), [Shared state](/learn/shared-state/) and [Async basics](/learn/async-basics/): then [Tokio](/build/tokio/) for the runtime (habit 7).
+12. [Modules](/learn/modules/) and [Project structure](/further/project-structure/): namespaces, assemblies and `internal`.
+13. [Rust and C/C++ interop](/interop/c-cpp/): the Rust side of `DllImport`, if you need it.
+
+## What you will miss
+
+- **Reflection.** The first run lists a class's properties at run time. The `std::any` module offers `TypeId`, `type_name` and downcasting; its [docs](https://doc.rust-lang.org/std/any/index.html) call it "utilities for dynamic typing or type reflection", and I found nothing in it that lists a struct's fields. The Rust side prints through `#[derive(Debug)]`, generated at compile time, as [Serde](/build/serde/) does.
+- **Single-file programs.** `dotnet run one.cs` runs a file with no project. On this stable toolchain `cargo one.rs` was refused: it requires `-Zscript`.
+- **Overloads, optional and named arguments.** These have no direct form; [What Rust lacks](/learn/what-rust-lacks/) gives the replacement for each. Properties are row 16 above.
+- **A collector for cycles.** Graphs with back-pointers need indices or `Weak`, as [Smart pointers](/learn/smart-pointers/) and [Working with the borrow checker](/learn/borrow-checker/) show.
+- **Not covered here: GUI toolkits and desktop frameworks.** The [crates map](/build/crates-map/) lists what this site does cover.
+
+The runs behind the first two bullets:
+
+<Session guide="for-csharp" run="reflect-cs" />
+
+<Session guide="for-csharp" run="reflect-rs" />
+
+<Session guide="for-csharp" run="miss-rs" />
+
+<Session guide="for-csharp" run="miss-cs" />
+
+## Try it yourself
+
+Tasks 1 and 2 are steps of the first session below, task 3 of the second.
+
+1. In habit 1, change `let mut b = a;` to `let mut b = a.clone();`. It compiles, and the last line says `a has 3 items`.
+2. In habit 8, add `drop(_b);` before `println!("working");`. `close b` now prints before `working`: `drop` ends the value's life early, as calling `Dispose` yourself would.
+3. In habit 4, take the `?` off `string? Find`. The warning moves to the `return null` side (CS8603), and the exception is still thrown.
+
+<Session guide="for-csharp" run="try-rs" />
+
+<Session guide="for-csharp" run="try-cs" />
+
+## Read more
+
+- [The Rust Book, chapter 18.1](https://doc.rust-lang.org/book/ch18-01-what-is-oo.html): what Rust has in place of inheritance
+- [The Rust Book, chapter 4](https://doc.rust-lang.org/book/ch04-00-understanding-ownership.html): ownership, from the Book
+- [Nullable reference types](https://learn.microsoft.com/en-us/dotnet/csharp/nullable-references) in the C# docs, for what the analysis does and does not catch
+- [Generics in the runtime](https://learn.microsoft.com/en-us/dotnet/csharp/programming-guide/generics/generics-in-the-run-time): how .NET keeps type arguments
+- [`std::any`](https://doc.rust-lang.org/std/any/index.html): the closest Rust has to run-time type information

@@ -1,0 +1,238 @@
+{
+ "id": "app-errors",
+ "files": {
+  "go": {
+   "go.mod": "module app-errors\n\ngo 1.27\n",
+   "main.go": "package main\n\nimport (\n\t\"errors\"\n\t\"fmt\"\n\t\"os\"\n\t\"strconv\"\n\t\"strings\"\n)\n\ntype BadPortError struct{ Value string }\n\nfunc (e *BadPortError) Error() string { return fmt.Sprintf(\"port must be a number, got %q\", e.Value) }\n\nfunc readConfig(path string) (string, error) {\n\tb, err := os.ReadFile(path)\n\tif err != nil {\n\t\treturn \"\", fmt.Errorf(\"config file not found: %s\", path)\n\t}\n\treturn string(b), nil\n}\n\nfunc parsePort(text string) (int, error) {\n\ttext = strings.TrimSpace(text)\n\tn, err := strconv.Atoi(text)\n\tif err != nil {\n\t\treturn 0, &BadPortError{Value: text}\n\t}\n\treturn n, nil\n}\n\nfunc loadPort(path string) (int, error) {\n\ttext, err := readConfig(path)\n\tif err != nil {\n\t\treturn 0, fmt.Errorf(\"loading settings: %w\", err)\n\t}\n\tport, err := parsePort(text)\n\tif err != nil {\n\t\treturn 0, fmt.Errorf(\"reading %s: %w\", path, err)\n\t}\n\treturn port, nil\n}\n\nfunc main() {\n\tos.WriteFile(\"good.conf\", []byte(\"8080\\n\"), 0o644)\n\tos.WriteFile(\"bad.conf\", []byte(\"eighty\\n\"), 0o644)\n\n\tfor _, path := range []string{\"good.conf\", \"bad.conf\", \"missing.conf\"} {\n\t\tif port, err := loadPort(path); err != nil {\n\t\t\tfmt.Printf(\"%s: %v\\n\", path, err)\n\t\t} else {\n\t\t\tfmt.Printf(\"%s: port %d\\n\", path, port)\n\t\t}\n\t}\n\n\t_, err := loadPort(\"bad.conf\")\n\tvar bad *BadPortError\n\tif errors.As(err, &bad) {\n\t\tfmt.Printf(\"the bad value was %q\\n\", bad.Value)\n\t}\n}\n"
+  },
+  "gotcha": {
+   "fixed.rs": "use std::fs;\nuse thiserror::Error;\n\n#[derive(Debug, Error)]\nenum ConfigError {\n    #[error(\"config file not found: {0}\")]\n    Missing(String),\n}\n\nfn read_config(path: &str) -> Result<String, ConfigError> {\n    fs::read_to_string(path).map_err(|_| ConfigError::Missing(path.to_string()))\n}\n\nfn main() {\n    match read_config(\"missing.conf\") {\n        Ok(text) => println!(\"{text}\"),\n        Err(e) => println!(\"{e}\"),\n    }\n}\n",
+   "main.rs": "use std::fs;\nuse thiserror::Error;\n\n#[derive(Debug, Error)]\nenum ConfigError {\n    #[error(\"config file not found: {0}\")]\n    Missing(String),\n}\n\nfn read_config(path: &str) -> Result<String, ConfigError> {\n    let text = fs::read_to_string(path)?;\n    Ok(text)\n}\n\nfn main() {\n    match read_config(\"missing.conf\") {\n        Ok(text) => println!(\"{text}\"),\n        Err(e) => println!(\"{e}\"),\n    }\n}\n"
+  },
+  "gotcha-go": {
+   "go.mod": "module app-errors\n\ngo 1.27\n",
+   "main.go": "package main\n\nimport (\n\t\"fmt\"\n\t\"os\"\n)\n\nfunc readConfig(path string) (string, error) {\n\tb, err := os.ReadFile(path)\n\tif err != nil {\n\t\treturn \"\", err // any error value fits the error interface\n\t}\n\treturn string(b), nil\n}\n\nfunc main() {\n\tif _, err := readConfig(\"missing.conf\"); err != nil {\n\t\tfmt.Println(err)\n\t}\n}\n"
+  },
+  "gotcha-java": {
+   "Main.java": "import java.nio.file.Files;\nimport java.nio.file.Path;\n\npublic class Main {\n    static class ConfigError extends Exception {\n        ConfigError(String message) { super(message); }\n    }\n\n    // The signature promises ConfigError, but readString throws IOException.\n    static String readConfig(String path) throws ConfigError {\n        return Files.readString(Path.of(path));\n    }\n\n    public static void main(String[] args) {\n        try {\n            System.out.println(readConfig(\"missing.conf\"));\n        } catch (ConfigError e) {\n            System.out.println(e.getMessage());\n        }\n    }\n}\n"
+  },
+  "gotcha-kotlin": {
+   "main.kt": "import java.io.File\nimport java.io.IOException\n\n// Nothing in the signature says this can throw, or what.\nfun readConfig(path: String): String = File(path).readText()\n\nfun main() {\n    try {\n        println(readConfig(\"missing.conf\"))\n    } catch (e: IOException) {\n        println(\"caught ${e.javaClass.simpleName}\")\n    }\n}\n"
+  },
+  "languages": {
+   "Cause.java": "public class Cause {\n    public static void main(String[] args) {\n        try {\n            try {\n                Integer.parseInt(\"eighty\");\n            } catch (NumberFormatException e) {\n                throw new RuntimeException(\"reading bad.conf\", e);\n            }\n        } catch (RuntimeException e) {\n            System.out.println(e.getMessage() + \": \" + e.getCause().getMessage());\n        }\n    }\n}\n",
+   "cause.c": "#include <errno.h>\n#include <stdio.h>\n#include <string.h>\n\nint main(void) {\n    FILE *f = fopen(\"missing.conf\", \"r\");\n    if (f == NULL) {\n        /* the callee reports only a code; adding context is up to the caller */\n        printf(\"fopen failed, errno=%d: %s\\n\", errno, strerror(errno));\n        return 1;\n    }\n    fclose(f);\n    return 0;\n}\n",
+   "cause.cpp": "#include <exception>\n#include <iostream>\n#include <stdexcept>\n#include <string>\n\nvoid load() {\n    try {\n        std::stoi(\"eighty\");\n    } catch (...) {\n        std::throw_with_nested(std::runtime_error(\"reading bad.conf\"));\n    }\n}\n\nint main() {\n    try {\n        load();\n    } catch (const std::exception &e) {\n        std::cout << e.what();\n        try {\n            std::rethrow_if_nested(e);\n        } catch (const std::exception &cause) {\n            std::cout << \": \" << cause.what() << \"\\n\";\n        }\n    }\n}\n",
+   "cause.cs": "using System;\ntry\n{\n    try { int.Parse(\"eighty\"); }\n    catch (FormatException e) { throw new Exception(\"reading bad.conf\", e); }\n}\ncatch (Exception e)\n{\n    Console.WriteLine($\"{e.Message}: {e.InnerException!.Message}\");\n}\n",
+   "cause.kt": "fun main() {\n    try {\n        try {\n            \"eighty\".toInt()\n        } catch (e: NumberFormatException) {\n            throw RuntimeException(\"reading bad.conf\", e)\n        }\n    } catch (e: RuntimeException) {\n        println(\"${e.message}: ${e.cause?.message}\")\n    }\n    // runCatching turns a thrown exception into a Result value\n    val r = runCatching { \"eighty\".toInt() }\n    println(\"runCatching: isFailure=${r.isFailure}\")\n}\n",
+   "cause.py": "try:\n    try:\n        int(\"eighty\")\n    except ValueError as e:\n        raise RuntimeError(\"reading bad.conf\") from e\nexcept RuntimeError as e:\n    print(f\"{e}: {e.__cause__}\")\n",
+   "cause.ts": "try {\n  try {\n    JSON.parse(\"eighty\");\n  } catch (e) {\n    throw new Error(\"reading bad.conf\", { cause: e });\n  }\n} catch (e) {\n  const err = e as Error;\n  console.log(`${err.message}: ${(err.cause as Error).name}`);\n}\n",
+   "cs.sh": "#!/bin/bash\n# build one C# file the way the lessons do: inside the image's restored project\nset -e\nrm -rf /tmp/cs && cp -r /opt/templates/csharp /tmp/cs && cp \"$1\" /tmp/cs/Program.cs\ncd /tmp/cs && dotnet build --no-restore -v q -nologo -clp:NoSummary\ndotnet bin/Debug/net10.0/Program.dll\n",
+   "expected.cpp": "#include <expected>\n#include <iostream>\n#include <string>\n\nstd::expected<int, std::string> parse_port(const std::string &s) {\n    try {\n        return std::stoi(s);\n    } catch (...) {\n        return std::unexpected(\"port must be a number, got \\\"\" + s + \"\\\"\");\n    }\n}\n\nint main() {\n    auto r = parse_port(\"eighty\");\n    if (!r) std::cout << r.error() << \"\\n\";\n    else std::cout << *r << \"\\n\";\n}\n"
+  },
+  "rust": {
+   "Cargo.lock": "# This file is automatically @generated by Cargo.\n# It is not intended for manual editing.\nversion = 4\n\n[[package]]\nname = \"anyhow\"\nversion = \"1.0.104\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470\"\n\n[[package]]\nname = \"app-errors\"\nversion = \"0.1.0\"\ndependencies = [\n \"anyhow\",\n \"thiserror\",\n]\n\n[[package]]\nname = \"proc-macro2\"\nversion = \"1.0.107\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9\"\ndependencies = [\n \"unicode-ident\",\n]\n\n[[package]]\nname = \"quote\"\nversion = \"1.0.47\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"1fbf4db142a473a8d80c26bbf18454ed458bf8d26c8219c331daecfdbd079001\"\ndependencies = [\n \"proc-macro2\",\n]\n\n[[package]]\nname = \"syn\"\nversion = \"3.0.9\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"d78c8dee4c7bf0e14673097256fed6142ce9d3b85a408189d07482442145823b\"\ndependencies = [\n \"proc-macro2\",\n \"quote\",\n \"unicode-ident\",\n]\n\n[[package]]\nname = \"thiserror\"\nversion = \"2.0.21\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"09e52cb86a36cede5cb101bf8908837b3e4c6e5e59fe7fd85c23fb56200d189e\"\ndependencies = [\n \"thiserror-impl\",\n]\n\n[[package]]\nname = \"thiserror-impl\"\nversion = \"2.0.21\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"fe5197923287db20a58125f0bc85c062f7f2c892de97b18c356f9efb14b28524\"\ndependencies = [\n \"proc-macro2\",\n \"quote\",\n \"syn\",\n]\n\n[[package]]\nname = \"unicode-ident\"\nversion = \"1.0.27\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563\"\n",
+   "Cargo.toml": "[package]\nname = \"app-errors\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\nanyhow = \"1.0.104\"\nthiserror = \"2.0.21\"\n",
+   "src/main.rs": "use anyhow::Context;\nuse std::fs;\nuse thiserror::Error;\n\n// Library-style error: callers can match on each case.\n#[derive(Debug, Error)]\nenum ConfigError {\n    #[error(\"config file not found: {0}\")]\n    Missing(String),\n    #[error(\"port must be a number, got {0:?}\")]\n    BadPort(String),\n}\n\nfn read_config(path: &str) -> Result<String, ConfigError> {\n    fs::read_to_string(path).map_err(|_| ConfigError::Missing(path.to_string()))\n}\n\nfn parse_port(text: &str) -> Result<u16, ConfigError> {\n    let text = text.trim();\n    text.parse()\n        .map_err(|_| ConfigError::BadPort(text.to_string()))\n}\n\n// Application code: anyhow adds context, like Go's fmt.Errorf(\"...: %w\", err).\nfn load_port(path: &str) -> anyhow::Result<u16> {\n    let text = read_config(path).context(\"loading settings\")?;\n    let port = parse_port(&text).with_context(|| format!(\"reading {path}\"))?;\n    Ok(port)\n}\n\nfn main() {\n    fs::write(\"good.conf\", \"8080\\n\").unwrap();\n    fs::write(\"bad.conf\", \"eighty\\n\").unwrap();\n\n    for path in [\"good.conf\", \"bad.conf\", \"missing.conf\"] {\n        match load_port(path) {\n            Ok(port) => println!(\"{path}: port {port}\"),\n            Err(e) => println!(\"{path}: {e:#}\"), // {:#} prints the whole chain\n        }\n    }\n\n    // Look for a specific error type held by this anyhow::Error (downcast_ref).\n    if let Err(e) = load_port(\"bad.conf\") {\n        if let Some(ConfigError::BadPort(value)) = e.downcast_ref::<ConfigError>() {\n            println!(\"the bad value was {value:?}\");\n        }\n    }\n}\n"
+  },
+  "snippet-from": {
+   "src/main.rs": "use anyhow::Context;\nuse std::{fs, io, num::ParseIntError};\nuse thiserror::Error;\n\n#[derive(Debug, Error)]\nenum ConfigError {\n    #[error(\"cannot read the file\")]\n    Read(#[from] io::Error),\n    #[error(\"port is not a number\")]\n    Parse(#[from] ParseIntError),\n}\n\nfn read_port(path: &str) -> Result<u16, ConfigError> {\n    let text = fs::read_to_string(path)?; // io::Error -> ConfigError::Read\n    let port = text.trim().parse()?; // ParseIntError -> ConfigError::Parse\n    Ok(port)\n}\n\nfn main() {\n    fs::write(\"bad.conf\", \"eighty\\n\").unwrap();\n\n    for path in [\"bad.conf\", \"missing.conf\"] {\n        let e = read_port(path)\n            .with_context(|| format!(\"loading {path}\"))\n            .unwrap_err();\n        println!(\"{e:#}\");\n\n        // The ConfigError is still inside, so a caller can match on it.\n        match e.downcast_ref::<ConfigError>() {\n            Some(ConfigError::Read(io)) => println!(\"  io error kind: {:?}\", io.kind()),\n            Some(ConfigError::Parse(_)) => println!(\"  not a number\"),\n            None => println!(\"  something else\"),\n        }\n    }\n}\n"
+  },
+  "snippet-main": {
+   "src/main.rs": "use anyhow::{Context, Result};\n\nfn main() -> Result<()> {\n    let port: u16 = \"eighty\".parse().context(\"reading the port\")?;\n    println!(\"port {port}\");\n    Ok(())\n}\n"
+  },
+  "snippet-show": {
+   "src/main.rs": "use anyhow::{Context, Result};\nuse std::fs;\n\nfn load(path: &str) -> Result<String> {\n    fs::read_to_string(path).with_context(|| format!(\"reading {path}\"))\n}\n\nfn main() {\n    let e = load(\"missing.conf\").unwrap_err();\n    println!(\"{{}}   : {e}\");\n    println!(\"{{:#}}  : {e:#}\");\n    println!(\"{{:?}}  :\\n{e:?}\");\n    println!(\"links in the chain: {}\", e.chain().count());\n    println!(\"root cause: {}\", e.root_cause());\n}\n"
+  }
+ },
+ "sessions": {
+  "run": [
+   {
+    "show": "$ cargo run",
+    "out": "good.conf: port 8080\nbad.conf: reading bad.conf: port must be a number, got \"eighty\"\nmissing.conf: loading settings: config file not found: missing.conf\nthe bad value was \"eighty\"\n",
+    "exit": 0
+   }
+  ],
+  "go": [
+   {
+    "show": "$ go run .",
+    "out": "good.conf: port 8080\nbad.conf: reading bad.conf: port must be a number, got \"eighty\"\nmissing.conf: loading settings: config file not found: missing.conf\nthe bad value was \"eighty\"\n",
+    "exit": 0
+   }
+  ],
+  "question-mark": [
+   {
+    "show": "$ cargo build",
+    "out": "error[E0277]: `?` couldn't convert the error to `ConfigError`\n  --> src/main.rs:11:40\n   |\n10 | fn read_config(path: &str) -> Result<String, ConfigError> {\n   |                               --------------------------- expected `ConfigError` because of this\n11 |     let text = fs::read_to_string(path)?;\n   |                ------------------------^ the trait `From<std::io::Error>` is not implemented for `ConfigError`\n   |                |\n   |                this can't be annotated with `?` because it has type `Result<_, std::io::Error>`\n   |\nnote: `ConfigError` needs to implement `From<std::io::Error>`\n  --> src/main.rs:5:1\n   |\n 5 | enum ConfigError {\n   | ^^^^^^^^^^^^^^^^\n   = note: the question mark operation (`?`) implicitly performs a conversion on the error value using the `From` trait\n\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "map-err": [
+   {
+    "show": "$ cargo run",
+    "out": "config file not found: missing.conf\n",
+    "exit": 0
+   }
+  ],
+  "show": [
+   {
+    "show": "$ cargo run",
+    "out": "{}   : reading missing.conf\n{:#}  : reading missing.conf: No such file or directory (os error 2)\n{:?}  :\nreading missing.conf\n\nCaused by:\n    No such file or directory (os error 2)\nlinks in the chain: 2\nroot cause: No such file or directory (os error 2)\n",
+    "exit": 0
+   }
+  ],
+  "from": [
+   {
+    "show": "$ cargo run",
+    "out": "loading bad.conf: port is not a number: invalid digit found in string\n  not a number\nloading missing.conf: cannot read the file: No such file or directory (os error 2)\n  io error kind: NotFound\n",
+    "exit": 0
+   }
+  ],
+  "main-result": [
+   {
+    "show": "$ cargo run; echo \"exit code $?\"",
+    "out": "Error: reading the port\n\nCaused by:\n    invalid digit found in string\nexit code 1\n",
+    "exit": 0
+   }
+  ],
+  "backtrace": [
+   {
+    "show": "$ RUST_BACKTRACE=1 cargo run 2>&1 | grep -c \"Stack backtrace\"",
+    "out": "1\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo run 2>&1 | grep -c \"Stack backtrace\"",
+    "out": "0\n",
+    "exit": 1,
+    "error": true
+   }
+  ],
+  "go-gotcha": [
+   {
+    "show": "$ go run .",
+    "out": "open missing.conf: no such file or directory\n",
+    "exit": 0
+   }
+  ],
+  "java-gotcha": [
+   {
+    "show": "$ javac Main.java",
+    "out": "Main.java:11: error: unreported exception IOException; must be caught or declared to be thrown\n        return Files.readString(Path.of(path));\n                               ^\n1 error\n",
+    "exit": 1,
+    "error": true
+   }
+  ],
+  "kt-gotcha": [
+   {
+    "show": "$ kotlinc main.kt -include-runtime -d gotcha.jar && java -jar gotcha.jar",
+    "out": "caught FileNotFoundException\n",
+    "exit": 0
+   }
+  ],
+  "languages": [
+   {
+    "show": "$ javac Cause.java && java Cause",
+    "out": "reading bad.conf: For input string: \"eighty\"\n",
+    "exit": 0
+   },
+   {
+    "show": "$ kotlinc cause.kt -include-runtime -d cause.jar && java -jar cause.jar",
+    "out": "reading bad.conf: For input string: \"eighty\"\nrunCatching: isFailure=true\n",
+    "exit": 0
+   },
+   {
+    "show": "$ dotnet run",
+    "out": "Build succeeded.\n    0 Warning(s)\n    0 Error(s)\n\nTime Elapsed 00:00:00.66\nreading bad.conf: The input string 'eighty' was not in a correct format.\n",
+    "exit": 0
+   },
+   {
+    "show": "$ tsc --strict --target es2022 --module nodenext --types node cause.ts && node cause.js",
+    "out": "reading bad.conf: SyntaxError\n",
+    "exit": 0
+   },
+   {
+    "show": "$ python3 cause.py",
+    "out": "reading bad.conf: invalid literal for int() with base 10: 'eighty'\n",
+    "exit": 0
+   },
+   {
+    "show": "$ gcc -Wall -Wextra cause.c -o cause_c && ./cause_c",
+    "out": "fopen failed, errno=2: No such file or directory\n",
+    "exit": 1,
+    "error": true
+   },
+   {
+    "show": "$ g++ -std=c++20 -Wall -Wextra cause.cpp -o cause_cpp && ./cause_cpp",
+    "out": "reading bad.conf: stoi\n",
+    "exit": 0
+   },
+   {
+    "show": "$ g++ -std=c++23 -Wall -Wextra expected.cpp -o expected_cpp && ./expected_cpp",
+    "out": "port must be a number, got \"eighty\"\n",
+    "exit": 0
+   }
+  ]
+ },
+ "gotcha": {
+  "kind": "compile",
+  "title": "Using `?` on an error your function can't hold",
+  "verdict": "rust-rule",
+  "looks_fine": "`fs::read_to_string(path)?` reads like the usual \"pass the error up\" step, so it seems the function can simply let the `io::Error` out.",
+  "rust_sees": "This function promises to return a `ConfigError`. `fs::read_to_string` fails with an `io::Error`, and Rust doesn't know how to turn one into the other.",
+  "why": "`?` can convert errors, but only along a route you've written: an `impl From<io::Error> for ConfigError`, or a `#[from]` on a variant with thiserror. Or convert by hand with `map_err`, as the fix below and the program on this page do. A function that returns `anyhow::Result` accepts any error that implements `std::error::Error` (and is `Send + Sync + 'static`), so it needs no conversion.",
+  "code": "use std::fs;\nuse thiserror::Error;\n\n#[derive(Debug, Error)]\nenum ConfigError {\n    #[error(\"config file not found: {0}\")]\n    Missing(String),\n}\n\nfn read_config(path: &str) -> Result<String, ConfigError> {\n    let text = fs::read_to_string(path)?;\n    Ok(text)\n}\n\nfn main() {\n    match read_config(\"missing.conf\") {\n        Ok(text) => println!(\"{text}\"),\n        Err(e) => println!(\"{e}\"),\n    }\n}\n",
+  "session": "question-mark",
+  "fixed": {
+   "code": "use std::fs;\nuse thiserror::Error;\n\n#[derive(Debug, Error)]\nenum ConfigError {\n    #[error(\"config file not found: {0}\")]\n    Missing(String),\n}\n\nfn read_config(path: &str) -> Result<String, ConfigError> {\n    fs::read_to_string(path).map_err(|_| ConfigError::Missing(path.to_string()))\n}\n\nfn main() {\n    match read_config(\"missing.conf\") {\n        Ok(text) => println!(\"{text}\"),\n        Err(e) => println!(\"{e}\"),\n    }\n}\n",
+   "name": "src/main.rs",
+   "out": "config file not found: missing.conf\n",
+   "cmd": "$ cargo run"
+  },
+  "langs": {
+   "go": {
+    "status": "runs",
+    "says": "Go compiles and runs this. The function returns the `error` interface, which any error value satisfies, so `return \"\", err` type-checks.",
+    "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"os\"\n)\n\nfunc readConfig(path string) (string, error) {\n\tb, err := os.ReadFile(path)\n\tif err != nil {\n\t\treturn \"\", err // any error value fits the error interface\n\t}\n\treturn string(b), nil\n}\n\nfunc main() {\n\tif _, err := readConfig(\"missing.conf\"); err != nil {\n\t\tfmt.Println(err)\n\t}\n}\n",
+    "out": "open missing.conf: no such file or directory\n"
+   },
+   "kotlin": {
+    "status": "none",
+    "says": "Kotlin compiles and runs this, and the exception is caught as `IOException`. A thrown exception travels up the stack, and the signature does not name its type. So there is nothing to convert, and no rule to break.",
+    "code": "import java.io.File\nimport java.io.IOException\n\n// Nothing in the signature says this can throw, or what.\nfun readConfig(path: String): String = File(path).readText()\n\nfun main() {\n    try {\n        println(readConfig(\"missing.conf\"))\n    } catch (e: IOException) {\n        println(\"caught ${e.javaClass.simpleName}\")\n    }\n}\n",
+    "out": "caught FileNotFoundException\n"
+   },
+   "java": {
+    "status": "refuses",
+    "says": "Java refuses a version of this too: a method that declares `throws ConfigError` cannot let an `IOException` escape, and `javac` says `unreported exception IOException; must be caught or declared to be thrown`. Java's rule is about checked exceptions; Rust's is about the `Result` type.",
+    "code": "import java.nio.file.Files;\nimport java.nio.file.Path;\n\npublic class Main {\n    static class ConfigError extends Exception {\n        ConfigError(String message) { super(message); }\n    }\n\n    // The signature promises ConfigError, but readString throws IOException.\n    static String readConfig(String path) throws ConfigError {\n        return Files.readString(Path.of(path));\n    }\n\n    public static void main(String[] args) {\n        try {\n            System.out.println(readConfig(\"missing.conf\"));\n        } catch (ConfigError e) {\n            System.out.println(e.getMessage());\n        }\n    }\n}\n",
+    "out": "Main.java:11: error: unreported exception IOException; must be caught or declared to be thrown\n        return Files.readString(Path.of(path));\n                               ^\n1 error\n"
+   },
+   "python": {
+    "status": "none",
+    "says": "Not run here. A Python function does not declare which exceptions it raises, so nothing checks them against a signature."
+   },
+   "typescript": {
+    "status": "none",
+    "says": "Not run here. A TypeScript function cannot declare which errors it throws, so nothing checks them against a signature."
+   },
+   "csharp": {
+    "status": "none",
+    "says": "Not run here. C# has no checked exceptions: a method does not declare the exceptions it throws."
+   },
+   "c": {
+    "status": "none",
+    "says": "Not run here. A C function reports failure through its return value or `errno`, and nothing converts one kind of error into another for you."
+   },
+   "cpp": {
+    "status": "none",
+    "says": "Not run here. A C++ function can throw an exception of any type; its signature does not list them."
+   }
+  },
+  "code_name": "src/main.rs",
+  "error": "error[E0277]: `?` couldn't convert the error to `ConfigError`\n  --> src/main.rs:11:40\n   |\n10 | fn read_config(path: &str) -> Result<String, ConfigError> {\n   |                               --------------------------- expected `ConfigError` because of this\n11 |     let text = fs::read_to_string(path)?;\n   |                ------------------------^ the trait `From<std::io::Error>` is not implemented for `ConfigError`\n   |                |\n   |                this can't be annotated with `?` because it has type `Result<_, std::io::Error>`\n   |\nnote: `ConfigError` needs to implement `From<std::io::Error>`\n  --> src/main.rs:5:1\n   |\n 5 | enum ConfigError {\n   | ^^^^^^^^^^^^^^^^\n   = note: the question mark operation (`?`) implicitly performs a conversion on the error value using the `From` trait",
+  "error_cmd": "$ cargo build",
+  "error_code": "E0277"
+ }
+}

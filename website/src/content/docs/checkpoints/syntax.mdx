@@ -1,0 +1,128 @@
+---
+title: "Checkpoint: Syntax"
+description: "Seven short programs from the Syntax lessons. Decide what each prints, or which error code it gets, then open the answer and compare it with a real run."
+---
+
+import { Files, Remember, Session } from '../../../components/guide'
+
+Seven short programs, one question each. For every one, decide before you open the answer: does it compile, and what does it print? If it does not compile, which error code does the compiler give? The questions use only what the six Syntax lessons teach.
+
+<Remember>Predict first, then look. A wrong guess teaches more than a right one, because the compiler's message names the rule you missed.</Remember>
+
+Each program is a file in a Cargo project (`src/bin/q1.rs` and so on) and runs with `cargo run --bin q1`. The answers are real runs in the page's image (Rust 1.99.1, edition 2024).
+
+### 1. What does it print?
+
+<Files guide="checkpoint-syntax" dir="rust" files={["src/bin/q1.rs"]} />
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-syntax" run="q1" />
+
+A block is worth its last line when that line has no semicolon, so the block gives `x` the value 11. The `x` inside the block is a new variable that hides the outer one inside the block. The second block ends in a statement, so it is worth `()`, which `{:?}` prints as `()`. See [The semicolon decides](/learn/statements-expressions/#the-semicolon-decides) and [shadowing](/learn/declarations-types/#patterns-in-let-and-shadowing).
+
+</details>
+
+### 2. Which error code?
+
+<Files guide="checkpoint-syntax" dir="rust" files={["src/bin/q2.rs"]} />
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-syntax" run="q2" />
+
+`n + 1;` is a statement, so the body has no value and is worth `()`, but the signature promises an `i32`. The compiler points at the semicolon. See [The semicolon decides](/learn/statements-expressions/#the-semicolon-decides).
+
+</details>
+
+### 3. What does it print?
+
+<Files guide="checkpoint-syntax" dir="rust" files={["src/bin/q3.rs"]} />
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-syntax" run="q3" />
+
+`as` does not fail at run time, so it can lose information silently. An integer that does not fit keeps its low bits (300 becomes 44, and -1 becomes 255 in a `u8`). A float is cut toward zero and stops at the limits of the target type, so -5.5 becomes 0 in a `u32`. `b'a' + 2` is the byte 99, which `as char` turns into `c`. See [`as` and the turbofish](/learn/declarations-types/#as-and-the-turbofish).
+
+</details>
+
+### 4. Which error code?
+
+<Files guide="checkpoint-syntax" dir="rust" files={["src/bin/q4.rs"]} />
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-syntax" run="q4" />
+
+In this version of Rust it is E0284, not the E0282 you may have guessed. `parse` can build any type that knows how to be made from text (the trait is called `FromStr`), and `{}` prints any type that can be displayed, so nothing says which type `n` is. Name it with the turbofish, `parse::<i32>()`, or with `let n: i32`. The first form, run:
+
+<Session guide="checkpoint-syntax" run="q4-fixed" />
+
+See [`as` and the turbofish](/learn/declarations-types/#as-and-the-turbofish).
+
+</details>
+
+### 5. Which error code?
+
+<Files guide="checkpoint-syntax" dir="rust" files={["src/bin/q5.rs"]} />
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-syntax" run="q5" />
+
+The function takes two borrowed strings and returns a borrowed one. Looking only at the signature, the compiler cannot tell which input the result borrows from, so you have to say it with a lifetime name. The `help:` line in the output shows where the names go: after the function name, and on each `&` that should share the lifetime. A function with one borrowed input needs no name, because the compiler assumes the result borrows from that one input; the lesson explains when it fills the names in for you. See [`'a`: why it appears](/learn/reading-signatures/#a-why-it-appears-and-when-it-does-not).
+
+</details>
+
+### 6. Fix it
+
+This does not compile. What is the error code, and what do you change?
+
+<Files guide="checkpoint-syntax" dir="rust" files={["src/bin/q6.rs"]} />
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-syntax" run="q6" />
+
+`>` needs a type that can be ordered, and a bare `T` promises nothing, so the check happens where you write the function, not where you call it. Add the bound the compiler suggests:
+
+<Files guide="checkpoint-syntax" dir="fixes" files={["q6.rs"]} run="q6-fixed" />
+
+See [The bound is checked where you write it](/learn/reading-signatures/#the-bound-is-checked-where-you-write-it).
+
+</details>
+
+### 7. What does it print?
+
+<Files guide="checkpoint-syntax" dir="rust" files={["src/bin/q7.rs"]} />
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-syntax" run="q7" />
+
+`{:>w$}` takes its width from the variable `w`. Text is left-aligned unless you ask, so `>` is what right-aligns `ab`, and `{:<5}` moves the number to the left. `.2` keeps two decimals and `^` centres, with the odd space on the right. `{:#x}` adds the `0x`, and `{:05}` pads with zeros after the sign. `{{` and `}}` print braces, and `{0}` is the first argument again. See [Format strings](/learn/macros-attributes-naming/#format-strings).
+
+</details>
+
+## How to score yourself
+
+Count a question as right when you gave the correct output, or the correct error code and the reason. The reason matters more than the number: a guess of E0282 for question 4 is close, and the compiler's note ("cannot satisfy `<_ as FromStr>::Err == _`") shows why it chose a different code. The same program in another language might run, so a miss here is usually a Rust rule you have not met yet, not a gap in how you program.
+
+Read the failing answers' error text slowly. Each message follows one pattern: the code and a one-line summary, the source line with arrows, and, usually, a `help:` line that is often the fix. Reading that shape fluently is worth practising.
+
+## If you missed one
+
+- Questions 1 and 2: [Statements and expressions](/learn/statements-expressions/)
+- Questions 3 and 4: [Declarations and types](/learn/declarations-types/)
+- Questions 5 and 6: [Reading signatures](/learn/reading-signatures/)
+- Question 7: [Macros, attributes and naming](/learn/macros-attributes-naming/)
+
+When all seven felt easy, go on to [Checkpoint: Basics](/checkpoints/basics/).

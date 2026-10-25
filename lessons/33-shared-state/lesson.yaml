@@ -1,0 +1,119 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Shared State: Arc and Mutex"
+part: "concurrency"
+intro: >-
+  To share one value between threads you need two things. `Arc` gives the value several
+  owners. `Mutex` makes sure only one thread changes it at a time.
+coming_from:
+  go: >-
+    A Rust `Mutex` holds the data inside it, instead of sitting next to it like
+    `sync.Mutex`. `lock()` gives you a guard that unlocks when it goes out of scope, like
+    a `defer mu.Unlock()` you cannot forget, and `Arc` lets several threads own the value
+    because a Rust value has one owner, and a thread can outlive the scope that made it.
+  kotlin: >-
+    `Mutex` replaces `synchronized(lock)`, but the data lives inside the mutex, so you
+    can't reach `results` without locking. `Arc` is a shared, reference-counted pointer
+    that lets each thread own a handle to the same value.
+  python: >-
+    `results.lock().unwrap()` is your `with lock:`, and the lock is released when the
+    guard goes out of scope. The data lives inside the `Mutex`, so forgetting to lock is
+    a compile error, not a latent race that your tests may never show.
+  typescript: >-
+    Workers share only raw bytes in a `SharedArrayBuffer`; here `Arc<Mutex<Vec<i32>>>`
+    shares an ordinary `Vec` between threads. `lock()` gives a guard that unlocks when it
+    goes out of scope, and you can't touch the data without it.
+  java: >-
+    `Arc` gives a value several owners, the way GC references share an object between
+    threads, and `Mutex<T>` is `synchronized` with the data inside the lock. You can
+    only reach the `Vec` by calling `lock()`, so forgetting to lock doesn't compile.
+  csharp: >-
+    `Mutex<T>` is a `lock` that owns the data it protects, and `Arc<T>` shares it
+    between threads where C# would rely on the garbage collector. The lock opens when
+    you call `lock()` and closes at the end of the scope, and touching the data without
+    it is a compile error.
+  c: >-
+    `Mutex<T>` is a `pthread_mutex_t` stored together with the data, where the data is
+    only reachable through `lock()`. `Arc` is an atomic reference count that frees the
+    value when the last owner drops it; an unlocked write won't compile.
+  cpp: >-
+    `Arc<T>` is `std::shared_ptr<T>`, and `Mutex<T>` is a `std::mutex` that wraps the
+    data; `lock()` returns a guard like `std::lock_guard`. You can't reach the data
+    without the guard, and sharing a type that isn't thread-safe, such as `Rc`, is a
+    compile error.
+notes:
+  - >-
+    `Arc::clone` does not copy the Vec. It adds one to an atomic counter and gives you
+    another pointer to the same Vec. When the last Arc goes away, the Vec is freed.
+  - >-
+    In many languages the mutex sits next to the data, and you have to remember to lock
+    it. In Rust the Mutex holds the data. The only way to reach the Vec is `lock()`, so
+    forgetting to lock does not compile.
+  - >-
+    The lock is released automatically when the value returned by `lock()` goes away, at
+    the end of the line here. There is no `Unlock` to forget.
+gotcha:
+  title: "Several threads writing to one list, without a lock"
+  verdict: "broken-elsewhere"
+  looks_fine: >-
+    The Go and Kotlin versions compile and run. Both are data races: when two threads add
+    at the same moment, a value can be lost and the count comes out below 3. Go only
+    reports it if you run with `-race`, which is what the Go output shows. Kotlin gives
+    no warning.
+  rust_sees: >-
+    The first thread's `move` takes `results`. The second loop pass has nothing left to
+    give. Sharing one Vec between three threads needs shared ownership and a lock, which
+    is `Arc<Mutex<_>>` (or scoped threads that borrow a `Mutex`, shown below).
+  why: >-
+    Code like this really is broken in most languages, and Rust refuses to build it.
+    Safe Rust has no data races, because it checks before the program runs: a value
+    shared between threads must be wrapped in something that controls access. What it
+    does not check is the logic around the locks (see the sections on deadlocks and
+    check-then-act). Careful with the compiler's `help:` here. It suggests cloning the Vec.
+    Once you also make the copy `mut`, that compiles, but each thread would push into its
+    own private copy, and `results` would stay empty. Arc and Mutex are the real fix.
+  langs:
+    go:
+      status: "race"
+      mode: "race"
+      says: >-
+        With the race detector on, Go printed 2 here and reported a data race. Without a
+        lock, two `append` calls can collide and lose items, so the count varies.
+    kotlin:
+      status: "race"
+      says: >-
+        Kotlin printed 3 this time, but this is still a race. `ArrayList` isn't safe
+        across threads (the Java docs say so), so another run can lose items.
+    python:
+      status: "runs"
+      says: >-
+        Python prints [0, 10, 20], because a single `append` is atomic in CPython. A
+        read-then-write is not: the Python FAQ lists `i = i + 1` as not atomic, and the
+        Python section below shows which counter forms lose updates.
+    typescript:
+      status: "wrong"
+      says: >-
+        Prints [], an empty list. Each worker runs the file again and pushes into its
+        own copy of `results`, so the main thread's list never changes.
+    java:
+      status: "race"
+      says: >-
+        ArrayList is not thread-safe, so adds from different threads overwrite each
+        other. The count comes out far below 400000 and changes every run.
+    csharp:
+      status: "race"
+      says: >-
+        Two threads add to the same List with no lock, and the count comes up short of
+        10000000 (it changes every run). Without the capacity set up front, the List can
+        also throw while it grows.
+    c:
+      status: "race"
+      mode: "tsan"
+      says: >-
+        C compiles this without a word, and it usually prints 3. ThreadSanitizer shows
+        the threads reading and writing `len` at the same time.
+    cpp:
+      status: "race"
+      mode: "tsan"
+      says: >-
+        This compiles cleanly. ThreadSanitizer flags the unlocked `push_back` calls,
+        which a plain build does not.

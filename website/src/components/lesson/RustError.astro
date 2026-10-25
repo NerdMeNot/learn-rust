@@ -1,0 +1,38 @@
+---
+// A compiler error, coloured the way a terminal shows it: the error line red, help and
+// note cyan, `^` carets red, `-` labels cyan, suggested insertions green.
+// Ported from the first version's colouring, now done at build time.
+interface Props { text: string; cmd?: string; code?: string; title?: string }
+const { text, cmd = '$ cargo build', code, title } = Astro.props
+
+const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+
+function colour(raw: string): string {
+  let m
+  if ((m = raw.match(/^(error(\[E\d+\])?)(:)(.*)$/))) return `<span class="e">${esc(m[1])}</span><span class="eh">:${esc(m[4])}</span>`
+  if ((m = raw.match(/^(warning)(:)(.*)$/))) return `<span class="m">${m[1]}</span><span class="eh">:${esc(m[3])}</span>`
+  if ((m = raw.match(/^(help|note|tip)(:)(.*)$/))) return `<span class="h">${m[1]}:</span>${esc(m[3])}`
+  if (raw.startsWith('  ... (')) return `<span class="s">${esc(raw)}</span>`
+  if ((m = raw.match(/^(\s*-->)(.*)$/))) return `<span class="g">${esc(m[1])}</span>${esc(m[2])}`
+  if ((m = raw.match(/^(\s*\d*\s*[|~+\-]|\s*\.\.\.)(.*)$/)) && /^\s*(\d+\s*)?[|~+\-]|^\s*\.\.\./.test(raw)) {
+    const gutter = m[1], rest = m[2]
+    let html = esc(rest)
+    if (/^\s*=\s*(help|note)/.test(rest)) html = esc(rest).replace(/=\s*(help|note):/, s => `<span class="h">${s}</span>`)
+    else if (/\^/.test(rest)) html = esc(rest).replace(/(\^+.*)$/, '<span class="e">$1</span>').replace(/(-{2,}|(?<=\s)-(?=\s|$))/g, '<span class="h">$1</span>')
+    else if (/^\s*[-|_]*\s*-+/.test(rest) || /^\s*\|?\s*-+ /.test(rest)) html = esc(rest).replace(/(-+\s.*|-+$)/, '<span class="h">$1</span>')
+    else if (/^\s*\++\s*$/.test(rest)) html = `<span class="a">${esc(rest)}</span>`
+    return `<span class="${/[+~]\s*$/.test(gutter) ? 'a' : 'g'}">${esc(gutter)}</span>${html}`
+  }
+  return esc(raw)
+}
+const html = text.split('\n').map(colour).join('\n')
+---
+<div class="lr-term not-content">
+  <div class="lr-term-head">
+    <span>{title ?? cmd}</span>
+    {code && (
+      <a href={`https://doc.rust-lang.org/error_codes/${code}.html`} target="_blank" rel="noopener">What is {code}?</a>
+    )}
+  </div>
+  <pre set:html={html} />
+</div>

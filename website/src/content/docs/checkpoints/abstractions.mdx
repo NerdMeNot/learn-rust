@@ -1,0 +1,158 @@
+---
+title: "Checkpoint: Abstractions"
+description: "Eight short programs on traits, generics, common traits, trait objects, lifetimes and modules. Predict what each prints or which error it gets, then open the answer and compare it with a real run."
+---
+
+import { Files, Remember, Session } from '../../../components/guide'
+
+This checkpoint is for the Abstractions part of the course (traits, generics, common traits, trait objects, returning references, lifetimes, modules) and the parts before it. Each question is a short program. Read it, decide your answer on paper, and only then open the answer. Every answer is a real run of that exact file with Rust 1.99.1 in the course image, so the compiler text is what you would see.
+
+<Remember>Guess first. For the error questions, name the code and the line before you look; the code is the part worth remembering.</Remember>
+
+## Predict the output
+
+### Question 1: three ways to say `fly`
+
+<Files guide="checkpoint-abstractions" dir="rust" files={["src/bin/q1.rs"]} />
+
+Does it compile? What are the three lines?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-abstractions" run="q1" />
+
+A type's own method wins over a trait's, so `person.fly()` picks the one in `impl Human`. The other two name the trait, with `Pilot::fly(&person)` or the fully qualified `<Human as Wizard>::fly(&person)`. See [Two traits, one method name](/learn/traits/#two-traits-one-method-name).
+
+</details>
+
+### Question 2: the order things are dropped
+
+<Files guide="checkpoint-abstractions" dir="rust" files={["src/bin/q2.rs"]} />
+
+Does it compile? What are the seven lines, in order?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-abstractions" run="q2" />
+
+`let _ = ...` does not keep the value, so `ignored` is dropped on the spot. At the end of `main`, locals are dropped in the reverse of the order they were made: `y`, then `pair`, then `x`. The fields of `pair` are dropped in the order they are written, `first` and then `second`. See [Scopes, drop order and `let _`](/learn/ownership/#scopes-drop-order-and-let-_) and [`Drop`](/learn/common-traits/#drop-the-trait-behind-scope-exit).
+
+</details>
+
+### Question 3: a derived order
+
+<Files guide="checkpoint-abstractions" dir="rust" files={["src/bin/q3.rs"]} />
+
+Does it compile? What are the two lines?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-abstractions" run="q3" />
+
+A derived order compares enum variants by declaration order, and compares the data inside a variant only when both values are the same variant. So every `Mid(_)` sorts before `High`, whatever the number, and `Mid(2)` is before `Mid(5)`. See [Equality, order and hashing](/learn/common-traits/#equality-order-and-hashing).
+
+</details>
+
+### Question 4: a reading that is not there
+
+<Files guide="checkpoint-abstractions" dir="rust" files={["src/bin/q4.rs"]} />
+
+Does it compile? What are the four lines?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-abstractions" run="q4" />
+
+`NaN` is not equal to itself, so the derived `==` is `false` for `missing == missing`. `partial_cmp` returns an `Option<Ordering>` and gives `None` when two values cannot be put in order, and `<` on a `None` is `false`. Two ordinary readings are equal, as you would expect. See [Equality, order and hashing](/learn/common-traits/#equality-order-and-hashing).
+
+</details>
+
+## Predict the error
+
+### Question 5: a reference outlives its text
+
+<Files guide="checkpoint-abstractions" dir="rust" files={["src/bin/q5.rs"]} />
+
+Does it compile? If not, which error code, and which line does the compiler say `line` is dropped on, and which line uses the borrow afterwards?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-abstractions" run="q5" />
+
+`Parser<'a>` holds a reference, so a `Parser` cannot live longer than the `String` it borrows. `line` is dropped at the closing brace of the inner block (line 10, marked "dropped here while still borrowed"), while `parser` is used after it (line 11, "borrow later used here"). See [Structs that hold references](/learn/lifetimes/#structs-that-hold-references) and [How long a borrow lasts](/learn/borrowing/#how-long-a-borrow-lasts).
+
+</details>
+
+### Question 6: a trait you cannot put in a box
+
+<Files guide="checkpoint-abstractions" dir="rust" files={["src/bin/q6.rs"]} />
+
+Does it compile? If not, which error code, and which method is to blame?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-abstractions" run="q6" />
+
+A `dyn Shape` forgets the concrete type, but `scaled` returns `Self`, and there is no way to say what `Self` is once the type is forgotten. The compiler's word for this is that the trait is not dyn compatible, and it names the method. See [Which traits can be `dyn`](/learn/trait-objects/#which-traits-can-be-dyn).
+
+</details>
+
+### Question 7: building through a private door
+
+<Files guide="checkpoint-abstractions" dir="rust" files={["src/bin/q7.rs"]} />
+
+Does it compile? If not, which error code, and which line?
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-abstractions" run="q7" />
+
+The struct is `pub`, but its field is private, so code outside `bank` cannot name the field, and a struct literal has to name every field. `Account::new()` is the way in that the module chose to offer. See [Private by default](/learn/modules/#private-by-default) and [Fields and variants](/learn/modules/#fields-and-variants).
+
+</details>
+
+## Fix it
+
+### Question 8: the biggest of any `T`
+
+<Files guide="checkpoint-abstractions" dir="rust" files={["src/bin/q8.rs"]} />
+
+This does not compile. How many errors does it give, and which codes? Then change the function's signature and body so that it prints `zebra` (there is more than one way).
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-abstractions" run="q8" />
+
+`T` is any type with `PartialOrd`, and that does not include `Copy`, so `items[0]` and `*item` try to move a value out of a slice that still owns it. Return a reference to the best item instead of a copy of it, so nothing is copied:
+
+<Files guide="checkpoint-abstractions" dir="rust" files={["src/bin/q8_fixed.rs"]} run="q8-fixed" />
+
+A second fix is a `Clone` bound with `.clone()`, which copies the winning `String`:
+
+<Files guide="checkpoint-abstractions" dir="rust" files={["src/bin/q8_clone.rs"]} run="q8-clone" />
+
+A `Copy` bound is not a fix for this call: the body of `biggest` compiles, but `String` is not `Copy`, so the call in `main` is refused:
+
+<Files guide="checkpoint-abstractions" dir="rust" files={["src/bin/q8_copy.rs"]} run="q8-copy" />
+
+See [Bounds: what `T` may do](/learn/generics/#bounds-what-t-may-do) and [Owning the items](/learn/vectors/#owning-the-items).
+
+</details>
+
+## If you missed one
+
+- Questions 1, 2, 3 and 4: [Traits](/learn/traits/) and [Common traits](/learn/common-traits/).
+- Question 5: [Borrowing](/learn/borrowing/), [Lifetimes](/learn/lifetimes/) and [Returning references](/learn/returning-references/).
+- Question 6: [Trait objects](/learn/trait-objects/).
+- Question 7: [Modules](/learn/modules/).
+- Question 8: [Generics](/learn/generics/).
+
+The next checkpoint covers [smart pointers and the borrow checker](/checkpoints/smart-pointers/).

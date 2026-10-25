@@ -1,0 +1,31 @@
+---
+// A small exercise: what to do (the slot), the starter program, a Playground link,
+// and a worked solution folded away. The extract has checked that the starter fails,
+// that the solution passes, and that both run the same checks.
+//   <Exercise name="initials">Write `initials`, which turns "Ada Lovelace" into "AL".</Exercise>
+import CodePanel from './CodePanel.astro'
+import { lessonData, playground } from './lessonData'
+
+interface Props { name: string; title?: string }
+const { name, title } = Astro.props
+const l = lessonData(Astro.locals.lessonId)
+const ex = l.exercises?.[name]
+if (!ex) throw new Error(`lesson "${l.id}" has no exercises/${name}.rs`)
+---
+<section class="lr-exercise not-content">
+  <h3 class="lr-ex-title">{title ?? name.replace(/-/g, ' ')}</h3>
+  <div class="lr-ex-task"><slot /></div>
+  <CodePanel lang="rust" code={ex.starter} title="Starter" file={`exercises/${name}.rs`} />
+  <p class="lr-ex-actions">
+    <a class="lr-btn" href={playground(ex.starter)} target="_blank" rel="noopener">Open in the Rust Playground ↗</a>
+    <span>
+      Run it first: it stops at <code>todo!()</code> with <em>not yet implemented</em> and a hint, and the
+      compiler warns that the parameter is unused. Both are expected. Replace the <code>todo!()</code> with
+      your code and run it again until it prints <code>all checks passed</code>.
+    </span>
+  </p>
+  <details class="lr-ex-solution">
+    <summary>Show a solution</summary>
+    <CodePanel lang="rust" code={ex.solution.code} out={ex.solution.out} title="One solution" file={`exercises/${name}.solution.rs`} playground />
+  </details>
+</section>

@@ -1,0 +1,269 @@
+<p class="lr-layer">The toolkit</p>
+
+Outputs on this page come from Linux on 64-bit ARM with Rust 1.99.1.
+
+## Three forms of the loop
+
+A `for` loop takes anything that can hand out items one at a time (an **iterator**). For a `Vec` you pick one of three forms. The choice decides what `x` is and who owns the list afterwards:
+
+<Snippet file="forms.rs" />
+
+| You write | `x` is | The list afterwards | Same as |
+|---|---|---|---|
+| `for x in &v` | `&T`, a read-only [reference](/learn/borrowing/) | unchanged | `v.iter()` |
+| `for x in &mut v` | `&mut T`, a reference you can write through ([`&mut`](/learn/mutable-borrows/)) | still yours; items may have changed | `v.iter_mut()` |
+| `for x in v` | `T`, the item itself | **moved into the loop**: unusable after it (unless `v` is an array of `Copy` items) | `v.into_iter()` |
+
+`iter()`, `iter_mut()` and `into_iter()` are the methods that hand out the items; `for` calls them when you write `&v`, `&mut v` or `v` ([the end of the page](#what-the-three-forms-call) shows it).
+
+Use the borrowing forms unless you are done with the list. The third form is the [gotcha at the top of the page](#gotcha): for a `Vec<String>` it moves each `String` out, and the compiler refuses a later use of `v`. An array has the same three forms. An array of numbers is copied into the by-value loop and stays usable, while an array of `String`s is moved like a `Vec`. A slice (`&[T]`) is already a reference, so `for x in s` borrows and `x` is `&T`. A range written directly (`for i in 0..3`) gives the numbers themselves. How other languages share or copy items in a loop is compared in [Copy or reference](/learn/copy-or-reference/).
+
+## Getting the value out of `&T`
+
+With `&v` and `&mut v`, `x` is a reference. `*x` follows it to the value, the pattern `&x` after `for` does that once per item ([Patterns](/learn/patterns/#references-in-patterns) explains it), and arithmetic like `x + 1` works on a `&i32` directly:
+
+<Snippet file="values.rs" />
+
+The `&x` pattern copies the item out, so it needs an item that can be copied. A `String` cannot, which is the E0507 error that Patterns shows. Use the reference as it is (`n.len()`, `println!("{n}")`), or ask for a copy with `n.clone()`.
+
+## Position and backwards
+
+<Snippet file="position.rs" />
+
+| To loop… | Write | `x` is |
+|---|---|---|
+| with the position | `for (i, x) in v.iter().enumerate()` | `(usize, &T)` |
+| backwards | `for x in v.iter().rev()` | `&T` |
+| over part of the list | `for x in &v[1..3]` | `&T` |
+| with the original position, backwards | `for (i, x) in v.iter().enumerate().rev()` | `(usize, &T)` |
+| with the position, changing the item | `for (i, x) in v.iter_mut().enumerate()` | `(usize, &mut T)` |
+
+`enumerate` and `rev` are **adaptors**: methods that turn one iterator into another. Their order changes the numbers:
+
+<Snippet file="enumerate-rev.rs" />
+
+`enumerate().rev()` attaches each position first, so walking backwards still prints the original indices, 2 down to 0. `rev().enumerate()` reverses first and counts what it is handed, so `cy` is numbered 0. The first order works because a slice iterator knows its length and can run from the back, and `enumerate` passes that on.
+
+`zip`, `step_by`, `skip` and the rest are in [Iterators](/learn/iterators/), and so are the slice methods `windows` and `chunks`.
+
+## Loops over positions
+
+`for i in 0..v.len()` is the loop you know from C, Go and Java, and it works. It reads `v[i]`, a bounds-checked index, and nothing ties `i` to the list, so a slip such as `..=` for `..` is a panic:
+
+<Snippet file="off-by-one.panic.rs" />
+
+`for x in &v` has no index to get wrong. An empty list is the other trap: `v.len() - 1` underflows, because `usize` cannot go below zero ([Loops](/learn/loops/#counting-down-with-usize) runs it).
+
+An index is the right tool when the body needs a neighbour as well as the item:
+
+<Snippet file="index-loops.rs" />
+
+On an empty list `1..empty.len()` is the empty range `1..0`, so the body never runs.
+
+## Changing a list while looping over it
+
+`for x in &v` borrows `v` until the loop ends, and `remove` needs `&mut v`. The compiler refuses:
+
+<Snippet file="modify.fail.rs" />
+
+The compiler's own help line names two of the fixes: "consider using an index-based loop instead, or collecting modifications into a separate collection". [Mutable borrows](/learn/mutable-borrows/#changing-a-list-while-looping-over-it) explains the rule and runs the same mistake in other languages. Here are the ways out:
+
+<Snippet file="modify-fixed.rs" />
+
+| You want to | Use |
+|---|---|
+| remove items | `v.retain(\|x\| keep(x))`: `\|x\| …` is a closure, a small function written in place ([Closures](/learn/closures/)) that says which items stay |
+| change every item | `for x in &mut v`: one writer, no other borrow |
+| add or remove depending on what you saw | collect the positions or new items in one loop, change `v` in a second |
+| remove while walking | loop over `(0..v.len()).rev()`: the range is made once, and removing item `i` only moves later items |
+| move items into a new list | `for x in v` and push each one where it belongs ([next section](#taking-the-items-out); the last exercise) |
+
+## Taking the items out
+
+Sometimes you want the items themselves, as owned values: to push them into another list, send them somewhere or finish with them. `for x in v` does that for the whole list. Two tools take less than all of it, or work on a list you only have a `&mut` to:
+
+<Snippet file="take-items.rs" />
+
+- `v.drain(range)` removes those items and hands them to the loop. The rest stay in `v`, which is still yours. `drain(..)` takes everything, and works on a `&mut Vec` parameter too.
+- `std::mem::take(&mut v)` moves the whole list out and leaves an empty one in its place ([Mutable borrows](/learn/mutable-borrows/#swapping-and-taking) covers `take`). It is one way to take the items of a `&mut Vec` parameter, where `for x in v` would give you `&mut` items, not owned ones.
+
+## Maps and text
+
+<Snippet file="maps-and-text.rs" />
+
+A `HashMap` loops in pairs: `for (k, v) in &map` gives `(&K, &V)`, and `&mut map` gives `(&K, &mut V)`. You may change values, not keys. The keys here are `&str`, so a reference to one prints as `&&str`. The order is not yours to rely on ([Maps](/learn/maps/#the-order-is-not-yours-to-rely-on)). A `String` or `&str` is not looped directly: pick `chars()`, `bytes()` or `char_indices()`, as the last line does ([Strings](/learn/strings/#characters-bytes-and-what-a-person-sees)).
+
+## Your loops in Rust
+
+<ForLang only="go">
+
+| In Go | In Rust |
+|---|---|
+| `for _, n := range v` | `for n in &v` |
+| `for i, n := range v` | `for (i, n) in v.iter().enumerate()` |
+| `for i := range v { v[i] *= 10 }` | `for n in &mut v { *n *= 10 }` |
+| `for i := len(v) - 1; i >= 0; i-- { … v[i] … }` | `for n in v.iter().rev()` |
+| `slices.DeleteFunc(v, f)`, or `out := v[:0]` and an `append` loop | `v.retain(\|x\| !f(x))` |
+| `for k, c := range m` | `for (k, c) in &m`; neither language promises an order |
+| `delete(m, k)` inside `for k := range m` | `m.retain(\|k, _\| …)` |
+| `for i, r := range s` (byte offset, rune) | `for (i, c) in s.char_indices()` |
+
+In Go the value in `for _, n := range v` is a copy, so `n *= 10` changes nothing and you go through the index. The same `range` over a string steps by rune:
+
+<Snippet file="range-copy.go" />
+
+Rust's `&mut` form gives you a `&mut` reference to the item (`*n *= 10` writes through it), and `é` at offset 1 takes two bytes in `char_indices` as well. `range` takes the slice's length once, so an `append` inside is not seen ([Mutable borrows](/learn/mutable-borrows/#changing-a-list-while-looping-over-it)), and Go allows `delete` on the map it is ranging over. Rust refuses to compile both, because `&v` and `&m` stay borrowed for the whole loop.
+
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+
+| Your language | In Rust |
+|---|---|
+| Java `for (var x : list)`, Kotlin `for (x in list)`, C# `foreach (var x in list)` that only reads | `for x in &list` (read-only) |
+| the same loops calling a setter or `p.age++` on each object | `for p in &mut list` |
+| Kotlin `withIndex()`, C# `Select((x, i) => …)`, Java an index loop | `for (i, x) in list.iter().enumerate()` |
+| Kotlin `zip`, `reversed()`, `windowed(2)`, `chunked(2)`; C# `Zip`, `Enumerable.Reverse`, `Chunk(2)` | `zip`, `rev`, `windows(2)`, `chunks(2)` ([Iterators](/learn/iterators/)) |
+| Java `removeIf`, Kotlin `removeAll { }`, C# `RemoveAll` | `v.retain(\|x\| !p(x))` |
+
+None of them lets an assignment to the loop variable change the list. Java compiles `n *= 10` and changes a local copy, Kotlin and C# refuse it:
+
+<Snippet file="foreach-assign.java" />
+
+<Snippet file="foreach-assign.fail.kt" />
+
+<Snippet file="foreach-assign.fail.cs" />
+
+Items that are objects can be changed through the loop variable (`t.append("!")` above), because the variable refers to the object. Rust splits the for-each in two: `for x in &list` reads, and `for x in &mut list` is the one that lets you change what the item holds. The read-only form refuses `p.age += 1`:
+
+<Snippet file="ref-field.fail.rs" />
+
+The help line names the fix, `for p in &mut people`. A Java `removeIf`, or `Iterator.remove`, is `retain`. Changing a list inside a for-each throws `ConcurrentModificationException` in Java and Kotlin, and `InvalidOperationException` in C#, but only for some changes: in Java, removing the second-to-last item throws nothing, and the loop skips the last item ([Mutable borrows](/learn/mutable-borrows/#changing-a-list-while-looping-over-it) runs them). Rust refuses to compile it.
+
+</ForLang>
+
+<ForLang only="python typescript">
+
+| In Python / TypeScript | In Rust |
+|---|---|
+| `for x in v` / `for (const x of v)` | `for x in &v` |
+| `enumerate(v)` / `v.entries()` | `v.iter().enumerate()` |
+| `reversed(v)` / `[...v].reverse()` (`reverse` works in place) | `v.iter().rev()` |
+| `for ch in s` / `for (const c of s)`: code points | `for c in s.chars()` (`s.bytes()` for the UTF-8 bytes) |
+| `for k, v in d.items()` / `for (const [k, v] of map)`: insertion order | `for (k, v) in &map`: no order is promised ([Maps](/learn/maps/)); a `BTreeMap` sorts by key |
+
+<ForLang only="python">
+
+In Python, `reversed(enumerate(v))` raises `TypeError`, and the workaround copies the pairs into a list. In Rust both orders compile and mean different things (see "Position and backwards" above):
+
+<Snippet file="reversed.py" />
+
+A Python loop variable is a name for the item. For a number, `n *= 10` rebinds the name, but `row.append(0)` changes the list that `row` names:
+
+<Snippet file="rebind.py" />
+
+Rust's `&mut` form gives you a `&mut` reference to the item, and writing `*n = …` replaces what is in the list.
+
+</ForLang>
+
+<ForLang only="typescript">
+
+`for...in` is not `for...of`: it gives the keys, as strings. And `n *= 10` on a number changes the local only:
+
+<Snippet file="for-in.ts" />
+
+Use `for...of` with `entries()` for the position. Rust's `&mut` form gives you a `&mut` reference to the item.
+
+</ForLang>
+
+Python and `for...of` walk the live list. Removing the current item from `[1, 2, 3, 4]` leaves `[1, 3, 4]` and the loop never visits the item after it, appending makes the loop visit the new item too, and neither raises an error ([Mutable borrows](/learn/mutable-borrows/#changing-a-list-while-looping-over-it) runs both). Rust refuses to compile either inside `for x in &v`.
+
+</ForLang>
+
+<ForLang only="c cpp">
+
+| In C / C++ | In Rust |
+|---|---|
+| C++ `for (const auto& x : v)` | `for x in &v` |
+| C++ `for (auto& x : v)` | `for x in &mut v` |
+| C++ `for (auto x : v)`: a copy of each item | `for x in v.iter().cloned()`: `.cloned()` copies any item that can be cloned, and `.copied()` is the same for plain numbers. `for x in v` moves instead |
+| C++20 `for (auto& x : v \| std::views::reverse)` | `for x in v.iter().rev()` |
+| C++ `for (size_t i = 0; i < v.size(); ++i)` | `for i in 0..v.len()`, or `for x in &v` |
+| C `for (size_t i = n; i-- > 0;)` | `for x in a.iter().rev()` |
+| C `for (int *p = a; p < a + n; p++)`, or an index and a separate `n` | `for x in &a`: the array or slice knows its length |
+| C++20 `std::erase_if(v, p)`, or `v.erase(std::remove_if(…), v.end())` | `v.retain(\|x\| !p(x))`: `retain` keeps the items the closure says true for, `remove_if` removes them |
+
+The three C++ forms in one run:
+
+<Snippet file="copy-vs-ref.cpp" />
+
+Changing a vector inside a range-`for` is undefined behaviour in C++, and that does not need a reallocation. The loop caches `end()` before it starts, and `push_back` invalidates `end()` even when there is room ([cppreference](https://en.cppreference.com/w/cpp/container/vector/push_back), [how the loop is defined](https://en.cppreference.com/w/cpp/language/range-for)). It crashes visibly only when the vector reallocates ([Mutable borrows](/learn/mutable-borrows/#changing-a-list-while-looping-over-it) runs that under AddressSanitizer). Below, the vector has spare room (`reserve(100)`), and `erase` is the other mistake C++ programmers write:
+
+<Snippet file="range-for-mutate.asan.cpp" />
+
+The sanitizer reported nothing. The `push_back` loop made its six original passes and never reached the `99` it pushed, and the `erase` loop left `1` where `retain` would leave `1 3 5`. The behaviour is undefined, so another compiler or run may differ. Both are a compile error in Rust.
+
+</ForLang>
+
+<p class="lr-layer">Going deeper</p>
+
+## What the three forms call
+
+`for` calls `IntoIterator::into_iter` on what follows `in`, then `next()` until it gets `None` ([Loops](/learn/loops/) and [Iterators](/learn/iterators/#intoiterator-why-for-x-in-v-works) explain it). `Vec<T>`, `&Vec<T>` and `&mut Vec<T>` each have their own `into_iter`, which is why one `for` has three forms:
+
+<Snippet file="same-as.rs" />
+
+`&v` becomes the same iterator as `v.iter()`, and `&mut v` the same as `v.iter_mut()`. The consuming form is a third type that owns the list's buffer. The names are the compiler's; you will mostly meet them in error messages.
+
+## A consuming loop that stops early
+
+What happens to the items a consuming loop never reached? A type can run code when a value is dropped, which means it goes away (that is the `Drop` trait; [Ownership](/learn/ownership/#scopes-drop-order-and-let-_) shows the order). Here it only prints:
+
+<Snippet file="consume-break.rs" />
+
+Each `item` is dropped at the end of its pass. After the `break`, `c` and `d` were never visited. `items` has been moved, so they sit in the buffer the loop's hidden iterator owns, and it drops them when the loop ends.
+
+<Memory
+  title="for item in items { … break at b }"
+  stack={[
+    { name: 'items', type: 'Vec<Noisy>', cells: ['ptr', 'len 4', 'cap 4'], to: 'buf', gone: 'moved' },
+    { name: 'item', type: 'Noisy', cells: ['b'], note: 'dropped when this pass ends' },
+    { name: '(the loop)', type: 'vec::IntoIter<Noisy>', cells: ['owns the buffer', 'next: c'], to: 'buf', note: 'not a name you can use' },
+  ]}
+  heap={[{ id: 'buf', label: "items' buffer: 4 × Noisy", cells: ['a: gone', 'b: in item', 'c', 'd'] }]}
+  caption="The moment of the break. When the loop ends, c and d are dropped, then the buffer is freed. The iterator's fields are drawn in a convenient order; the standard library does not promise one."
+/>
+
+A borrowing loop owns nothing, so a `break` drops nothing:
+
+<Snippet file="borrow-break.rs" />
+
+Nothing was dropped until `items` itself went out of scope at the end of `main`. `drain(..)` is a consuming loop over a range, and it removes the whole range even if you `break`:
+
+<Snippet file="drain-break.rs" />
+
+`c` was dropped by the `drain`, and `items` is empty. If you want to keep the unconsumed items, borrow, or `drain` only the part you want.
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Each exercise has checks in `main`. Open it in the Playground, replace the `todo!()`, and run it until it prints `all checks passed`.
+
+<Exercise name="tidy" title="Tidy names in place">
+Write `tidy`: trim the spaces around every name and make it lowercase, changing the list itself. Keep the empty list, an all-space name and non-English letters in mind. A loop over a clone of the list leaves the original untouched, and the checks catch that.
+</Exercise>
+
+<Exercise name="number" title="Number the lines">
+Write `number`: put `1: ` in front of the first line, `2: ` in front of the second, and so on, changing the list itself. Counting starts at 1, and the checks include a list with more than nine lines.
+</Exercise>
+
+<Exercise name="take-long" title="Move the long names out">
+Write `take_long`: remove every `Job` whose name is longer than `max` bytes from the list and return those jobs, both lists keeping their order. A `Job` cannot be cloned, so whatever you write has to move the jobs. `retain` would drop the ones it removes, and `for j in jobs` on a `&mut Vec` hands out `&mut Job`; the [section on taking items out](#taking-the-items-out) has the tools. A loop that moves the jobs into two lists works.
+</Exercise>
+
+## Read more
+
+- [The Rust Book, chapter 3.5 Control Flow](https://doc.rust-lang.org/book/ch03-05-control-flow.html#looping-through-a-collection-with-for), the section "Looping Through a Collection with for".
+- [Rust by Example: for and range](https://doc.rust-lang.org/rust-by-example/flow_control/for.html), which shows `iter`, `into_iter` and `iter_mut` side by side.
+- [`IntoIterator`](https://doc.rust-lang.org/std/iter/trait.IntoIterator.html) in the standard library docs, and [`Vec::retain`](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.retain).

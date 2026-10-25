@@ -1,0 +1,183 @@
+# Rust for Kotlin developers
+name: kotlin-habits
+sessions:
+  kt-h1:
+    dir: kt
+    steps:
+      - cmd: kotlinc h1.kt -include-runtime -d h1.jar && java -jar h1.jar
+        show: "$ kotlinc h1.kt -include-runtime -d h1.jar && java -jar h1.jar"
+  kt-h2:
+    dir: kt
+    steps:
+      - cmd: kotlinc h2.kt -include-runtime -d h2.jar && java -jar h2.jar
+        show: "$ kotlinc h2.kt -include-runtime -d h2.jar && java -jar h2.jar"
+  kt-h3:
+    dir: kt
+    steps:
+      - cmd: kotlinc h3.kt -include-runtime -d h3.jar && java -jar h3.jar
+        show: "$ kotlinc h3.kt -include-runtime -d h3.jar && java -jar h3.jar"
+  kt-h4:
+    dir: kt
+    steps:
+      - cmd: kotlinc h4.kt -include-runtime -d h4.jar && java -jar h4.jar
+        show: "$ kotlinc h4.kt -include-runtime -d h4.jar && java -jar h4.jar"
+  kt-h5:
+    dir: kt
+    steps:
+      - cmd: kotlinc h5.kt -include-runtime -d h5.jar && java -jar h5.jar
+        show: "$ kotlinc h5.kt -include-runtime -d h5.jar && java -jar h5.jar"
+  kt-h6:
+    dir: kt
+    steps:
+      - cmd: kotlinc h6.kt -include-runtime -d h6.jar && java -jar h6.jar
+        show: "$ kotlinc h6.kt -include-runtime -d h6.jar && java -jar h6.jar"
+  kt-h7:
+    dir: kt
+    steps:
+      - cmd: kotlinc h7.kt -include-runtime -d h7.jar && java -jar h7.jar
+        show: "$ kotlinc h7.kt -include-runtime -d h7.jar && java -jar h7.jar"
+  kt-h8:
+    dir: kt
+    steps:
+      - cmd: kotlinc h8.kt -include-runtime -d h8.jar && java -jar h8.jar
+        show: "$ kotlinc h8.kt -include-runtime -d h8.jar && java -jar h8.jar"
+  kt-h9:
+    dir: kt
+    steps:
+      - cmd: kotlinc h9.kt -include-runtime -d h9.jar && java -jar h9.jar
+        show: "$ kotlinc h9.kt -include-runtime -d h9.jar && java -jar h9.jar"
+  kt-h10:
+    dir: kt
+    steps:
+      - cmd: kotlinc -cp /opt/kotlinc/lib/kotlinx-coroutines-core-jvm.jar h10.kt -include-runtime -d h10.jar && java -cp h10.jar:/opt/kotlinc/lib/kotlinx-coroutines-core-jvm.jar H10Kt
+        show: "$ kotlinc -cp kotlinx-coroutines-core-jvm.jar h10.kt -include-runtime -d h10.jar && java -cp h10.jar:kotlinx-coroutines-core-jvm.jar H10Kt   # kotlinx.coroutines"
+  kt-h7-fail:
+    dir: kt
+    steps:
+      - cmd: kotlinc h7_fail.kt -include-runtime -d h7_fail.jar
+        show: "$ kotlinc h7_fail.kt -include-runtime -d h7_fail.jar"
+        expect: fail
+  rs-h1:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin h1
+  rs-h2:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin h2
+  rs-h3:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin h3
+  rs-h4:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin h4
+  rs-h5:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin h5
+  rs-h6:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin h6
+  rs-h7:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin h7
+  rs-h8:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin h8
+  rs-h9:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin h9
+  rs-h10:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin h10
+  fail-h2:
+    dir: rust
+    overlay:
+      src/bin/h2.rs: fail/h2.rs
+    steps:
+      - cmd: cargo run --bin h2
+        expect: fail
+  fail-h3:
+    dir: rust
+    overlay:
+      src/bin/h3.rs: fail/h3.rs
+    steps:
+      - cmd: cargo run --bin h3
+        expect: fail
+  fail-h4:
+    dir: rust
+    overlay:
+      src/bin/h4.rs: fail/h4.rs
+    steps:
+      - cmd: cargo run --bin h4
+        expect: fail
+  fail-h6:
+    dir: rust
+    overlay:
+      src/bin/h6.rs: fail/h6.rs
+    steps:
+      - cmd: cargo run --bin h6
+        expect: fail
+  fail-template:
+    dir: rust
+    overlay:
+      src/bin/template.rs: fail/template.rs
+    steps:
+      - cmd: cargo run --bin template
+        expect: fail
+  # Reflection: Kotlin lists a class's properties at run time (kotlin-reflect.jar ships in the compiler's lib).
+  kt-reflect:
+    dir: kt
+    steps:
+      - cmd: kotlinc -cp /opt/kotlinc/lib/kotlin-reflect.jar reflect.kt -include-runtime -d reflect.jar && java -cp reflect.jar:/opt/kotlinc/lib/kotlin-reflect.jar ReflectKt
+        show: "$ kotlinc -cp kotlin-reflect.jar reflect.kt -include-runtime -d reflect.jar && java -cp reflect.jar:kotlin-reflect.jar ReflectKt"
+  # The same 19 idioms in both languages; the two programs must print the same lines.
+  idioms:
+    dir: idioms
+    steps:
+      - cmd: kotlinc idioms.kt -include-runtime -d idioms.jar && java -jar idioms.jar > kt.txt
+      - cmd: cargo run -q > rs.txt
+      - cmd: diff kt.txt rs.txt && echo "the two programs print the same $(wc -l < rs.txt) lines"
+      - cmd: cat rs.txt
+  toolchain:
+    dir: idioms
+    steps:
+      - cmd: cargo --version && rustc --version
+      - cmd: kotlinc -version
+      - cmd: java -version
+      - cmd: command -v gradle ktlint detekt jdb gdb lldb rust-gdb rust-lldb || true
+      - cmd: cargo new demo
+      - cmd: cat demo/Cargo.toml
+      - cmd: cargo fmt --check && echo formatted
+      - cmd: cargo clippy
+      - cmd: cargo test
+        varies: true
+      - cmd: cargo doc --no-deps
+  # Things to try (the page's "Try it yourself"): each edits a copy of the project first.
+  try-triangle:
+    dir: rust
+    steps:
+      - cmd: sed -i 's/    Rect(f64, f64),/    Rect(f64, f64),\n    Triangle(f64, f64),/' src/bin/h6.rs
+        show: "$ # add a Triangle(f64, f64) variant to the enum in src/bin/h6.rs"
+      - cmd: cargo run --bin h6
+        expect: fail
+  try-move:
+    dir: rust
+    steps:
+      - cmd: sed -i 's/\.\.a\.clone()/..a/' src/bin/h5.rs
+        show: "$ # in src/bin/h5.rs, change ..a.clone() to ..a"
+      - cmd: cargo run --bin h5
+        expect: fail
+  try-await:
+    dir: rust
+    steps:
+      - cmd: sed -i 's/let _second = fetch(2);/println!("{}", block_on(fetch(2)));/' src/bin/h10.rs
+        show: "$ # in src/bin/h10.rs, replace let _second = fetch(2); with println!(\"{}\", block_on(fetch(2)));"
+      - cmd: cargo run --bin h10

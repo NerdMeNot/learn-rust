@@ -1,0 +1,116 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Strings"
+part: "data"
+intro: >-
+  Rust has two string types. `String` owns its text and can grow. `&str` is a borrowed,
+  read-only view into text that lives somewhere else.
+coming_from:
+  go: >-
+    `&str` looks like your `string`: read-only UTF-8 bytes, and `len()` counts bytes. The
+    difference is lifetime. A Go substring shares its parent's bytes and the GC keeps the
+    parent alive; a `&str` borrows from a `String` and can't outlive it, which the
+    compiler checks. Slicing that cuts a rune gives Go invalid UTF-8 silently, while Rust
+    panics. `range` gives (byte index, rune), which is `char_indices()`, not `chars()`.
+  kotlin: >-
+    Rust's `String` owns its text like a Kotlin `String`, but it can change, like a
+    `StringBuilder`. `&str` has no Kotlin twin: it is a borrowed view into someone
+    else's text, with no copy, and it can't outlive the string it points into. Rust
+    stores UTF-8, not UTF-16, so `.len()` counts bytes and `.chars().count()` counts
+    characters.
+  python: >-
+    Your `str` splits into two types: `String` owns text and can grow, `&str` is a
+    borrowed view. Both are UTF-8 bytes, so `.len()` counts bytes, and slicing like
+    `&s[0..1]` uses byte positions and panics if it cuts a character in half.
+  typescript: >-
+    JS strings are UTF-16, but Rust strings are UTF-8, so `.len()` counts bytes and
+    `.chars()` walks characters like `for...of`. A `String` can also be changed in place
+    with `push_str` when it's `mut`, and `&str` is a borrowed view of one.
+  java: >-
+    Rust's `String` owns its text like a Java `String`, but can grow like a
+    `StringBuilder`. `&str` is a borrowed, read-only view into text with no copy, and it
+    can't outlive the string it points into. Rust text is UTF-8, so `len()` counts bytes, and `s[1]` won't
+    compile; use `chars()` to walk characters.
+  csharp: >-
+    `String` is an owned, growable string (think `StringBuilder`), and `&str` is close
+    to `ReadOnlySpan<char>`: a borrowed view that can't outlive its owner. Rust stores UTF-8, not UTF-16, so `len()` counts bytes, and
+    indexing with `s[1]` is not allowed.
+  c: >-
+    `String` is a heap buffer that frees itself, and `&str` is a pointer plus a length,
+    like your `%.*s` view. Rust strings are always valid UTF-8, carry their length
+    instead of a `'\0'`, and can't be indexed by byte with `s[1]`.
+  cpp: >-
+    `String` is like `std::string` and `&str` like `std::string_view`. But `std::string`
+    holds any bytes, while Rust guarantees valid UTF-8. Rust also refuses `s[1]`, and the
+    borrow checker stops a `&str` from outliving the `String` it views.
+notes:
+  - >-
+    Rule of thumb: a function that only reads text takes `&str`. A struct field that
+    keeps text uses `String`.
+  - >-
+    A `&String` turns into a `&str` automatically when you pass it, so `fn f(s: &str)`
+    accepts both.
+  - >-
+    `.len()` counts bytes, not characters. `é` takes 2 bytes, so "héllo" is 6 bytes and
+    5 characters.
+  - >-
+    Text written in quotes, like `"hi"`, is already a `&str`. Use `String::from("hi")`
+    or `"hi".to_string()` when you need an owned String.
+gotcha:
+  title: "Indexing a string like an array"
+  verdict: "rust-rule"
+  looks_fine: >-
+    In Go, `s[1]` gives you a byte. For plain English text, that byte is the second
+    letter, so it looks like it works.
+  rust_sees: >-
+    Rust stores text as UTF-8, where one character can be 1 to 4 bytes. Byte 1 of
+    "héllo" is the first half of `é`.
+  why: >-
+    `s[1]` could mean byte 1 (half of `é`) or character 1. Look at the outputs: the same line
+    gives a raw byte in some languages (Go, C, C++) and a character or UTF-16 unit in
+    others (Python, Java, Kotlin, C#, TypeScript). Rust won't guess which you meant. Ask
+    for characters with `.chars()`, or raw bytes with `.as_bytes()`.
+  langs:
+    go:
+      status: "runs"
+      says: >-
+        Go runs this and prints 195. `s[1]` is a single byte, the first half of `é`, not
+        a character.
+    kotlin:
+      status: "runs"
+      says: >-
+        Kotlin runs this and prints é. Kotlin indexes UTF-16 units, and `é` is one
+        unit, so you get the whole character.
+    python:
+      status: "runs"
+      says: >-
+        Python prints é. A Python str is indexed by characters (code points), not bytes,
+        so `s[1]` gives a whole character.
+    typescript:
+      status: "runs"
+      says: >-
+        Prints é. `s[1]` picks a UTF-16 unit, and `é` fits in one, so it is a whole
+        character here.
+    java:
+      status: "runs"
+      says: >-
+        `charAt(1)` gives `é` here because Java strings are made of UTF-16 units, and
+        `é` fits in one.
+    csharp:
+      status: "runs"
+      says: >-
+        C# strings are indexed by UTF-16 `char`, not by byte, and `é` fits in one, so
+        `s[1]` is é.
+    c:
+      status: "wrong"
+      says: >-
+        C indexes bytes, and `s[1]` is the first of the two bytes in é. Whether `char`
+        is signed depends on the platform. These outputs come from Linux on ARM64, where
+        it is unsigned, so this prints 195. On x86 and on Apple-silicon Macs it is
+        signed, and the same program prints -61. Either way you get a byte, not é.
+    cpp:
+      status: "wrong"
+      says: >-
+        `s[1]` is the first byte of the two-byte `é`. These outputs come from Linux on
+        ARM64, where `char` is unsigned, so this prints 195 like Go. On x86 and on
+        Apple-silicon Macs `char` is signed, and the same program prints -61. Either way
+        you get a byte, not é.

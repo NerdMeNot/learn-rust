@@ -1,0 +1,402 @@
+<p class="lr-layer">The toolkit</p>
+
+Outputs on this page come from Linux on 64-bit ARM with Rust 1.99.1, built in debug mode.
+
+## What makes a pointer smart
+
+A reference (`&T`) borrows a value that someone else owns. A **smart pointer** is a struct that owns the data it points to, usually on the heap; implements `Deref`, so `*p` and `p.method()` reach the data; and implements `Drop`, so the data is cleaned up when the pointer goes out of scope. [Common traits](/learn/common-traits/#deref-one-reference-becomes-another) teaches `Deref` and `Drop`; this page uses them.
+
+<Snippet file="three-things.rs" />
+
+`r` owns nothing, so nothing happens when it goes. `b`'s `Noisy` is dropped at the closing brace of its block. By that definition this page has two smart pointers and three types that go with them:
+
+- `Box<T>`: one owner, the value on the heap.
+- `Rc<T>`: several owners, counted. Read-only.
+- `Cell<T>` and `RefCell<T>` change a value through a shared reference. They are not pointers: only the guards `RefCell::borrow` returns deref.
+- `Weak<T>` is a link that does not count as an owner. It does not deref: you `upgrade()` it to an `Rc` first (`check-no-deref.fail.rs`).
+
+Because `Box` and `Rc` implement `Deref`, you rarely write the `*`. A method of the value works on the pointer, and a `&Box<String>` or `&Rc<String>` is accepted where a `&str` is wanted:
+
+<Snippet file="deref-through.rs" />
+
+## `Box<T>`: one owner, on the heap
+
+[Ownership](/learn/ownership/#boxt-one-value-on-the-heap) introduced `Box::new` and two reasons to use it. Here is the first with numbers, and a third.
+
+**A type that contains itself.** An expression tree holds expressions. Written directly, the compiler cannot give `Expr` a size:
+
+<Snippet file="recursive.fail.rs" />
+
+A `Box<Expr>` is one pointer, whatever it points at, so the size is known:
+
+<Snippet file="recursive.rs" />
+
+An `Expr` is 24 bytes however deep the tree is; the depth lives on the heap.
+
+<ForLang only="go">
+Go writes the pointer field itself; `Box` adds one owner and an automatic free.
+
+<Snippet file="recursive.go" />
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+In your language a class field already holds a reference, so a class can contain another of itself. A Rust struct stores its fields inline, so the pointer is written as `Box`.
+</ForLang>
+
+<ForLang only="java">
+<Snippet file="recursive.java" />
+</ForLang>
+
+<ForLang only="kotlin">
+<Snippet file="recursive.kt" />
+</ForLang>
+
+<ForLang only="csharp">
+A C# `struct` is inline too, and cannot contain itself:
+
+<Snippet file="recursive.fail.cs" />
+</ForLang>
+
+**A pointer that can be absent.** A box is never null, so the compiler uses the null address for `None`. The [`Option` docs](https://doc.rust-lang.org/std/option/index.html#representation) guarantee this for `Option<Box<U>>` and `Option<&U>`:
+
+<Snippet file="niche.rs" />
+
+`Option<Box<i32>>` is as big as the box. `Option<u64>` needs a separate tag and doubles. `Option<Box<Node>>` is how a linked list says "the next node, or the end".
+
+A chain of boxes is also freed by a chain of calls: dropping a box drops its node, which drops the next box. A long list can run out of stack:
+
+<Snippet file="long-list.panic.rs" />
+
+This is a debug build. Compiled by hand with `rustc -O` in the same image it overflowed too, but this runner builds debug only, so no release run is shown. The first exercise fixes it. For `Box<dyn Shape>`, see [Trait objects](/learn/trait-objects/).
+
+## `Rc<T>`: several owners
+
+[Ownership](/learn/ownership/#shared-ownership-rc-and-arc) showed the count with a `Drop`. Here is what the count means for the data:
+
+<Snippet file="rc-share.rs" />
+
+- `Rc::clone` copied an 8-byte pointer and added one to the count. `a` and `b` have the same buffer.
+- `(*a).clone()` is the other thing, a new `Vec` with its own buffer.
+- `Rc::get_mut` gives a `&mut` only while there is no other `Rc` or `Weak` (`check-get-mut-weak.rs`).
+
+An `Rc` hands out only shared references, so the gotcha near the top is an error: `a.hits += 1` needs a `&mut`. A lone `Rc` is read-only too (`check-rc-single.fail.rs`): the compiler cannot see the count, which changes at run time. Moving the value out is refused as well, which `Box` allowed (`check-table.rs`):
+
+<Snippet file="rc-move-out.fail.rs" />
+
+You can also stop sharing before a change. `Rc::make_mut` gives a `&mut`, and if other owners exist it first copies the value for this one:
+
+<Snippet file="make-mut.rs" />
+
+`theirs` kept the old `Vec` and `mine` got its own. Once alone, `mine` changed in place (`same allocation: true`). It needs `T: Clone` and copies the whole value the first time, so it suits data read by many and rarely changed. If owners must see each other's changes, `RefCell` is next.
+
+## `Cell` and `RefCell`: change it through a shared reference
+
+[Mutable borrows](/learn/mutable-borrows/#the-rule-one-writer-or-any-number-of-readers) gave the rule: any number of readers, or one writer. **Interior mutability** keeps the rule and checks it at run time, in types that change their contents through `&self`.
+
+`Cell<T>` never lends a reference into its value. `get` copies out, `set` and `replace` put a new one in. That needs no bookkeeping, and `Cell<u32>` is 4 bytes:
+
+<Snippet file="cell.rs" />
+
+`get` needs `T: Copy`: on a `Cell<String>` it is a compile error, and you `replace` or `take` instead.
+
+`RefCell<T>` lends references, and counts the loans. `borrow()` and `borrow_mut()` return guards, and the loan lasts until the guard is dropped:
+
+<Snippet file="refcell-basics.rs" />
+
+The counter costs space: `RefCell<()>` is 8 bytes, a `RefCell<Vec<i32>>` is 32, the 24-byte `Vec` plus that counter. `try_borrow_mut` gives `Err(BorrowMutError)` rather than a panic. The unchecked version compiles, and fails when it runs:
+
+<Snippet file="refcell-panic.panic.rs" />
+
+That is the trade: a violation is a panic at run time, where `&mut` makes it a compile error. Use them where the program is correct but the compiler cannot see why, such as a cache behind `&self` (the memo exercise).
+
+## `Rc<RefCell<T>>`: shared and changeable
+
+Put the two together and every owner can change the value, one at a time. Closures are the usual reason: each listener below is a `Box<dyn Fn>`, which may only read what it captured, yet all add to one record:
+
+<Snippet file="listeners.rs" />
+
+<Memory
+  title={'let seen = Rc::new(RefCell::new(Vec::new()));   each closure captures Rc::clone(&seen)'}
+  stack={[
+    { name: 'seen', type: 'Rc<RefCell<Vec<String>>>', cells: ['ptr'], to: 'one' },
+    { name: 'audit closure: seen', type: 'Rc<RefCell<Vec<String>>>', cells: ['ptr'], to: 'one' },
+    { name: 'mail closure: seen', type: 'Rc<RefCell<Vec<String>>>', cells: ['ptr'], to: 'one' },
+  ]}
+  heap={[{ id: 'one', label: 'one allocation', cells: ['strong 3', 'weak 0', 'borrow flag', 'the Vec'] }]}
+  caption="Three owners, one Vec. The closures really live in the boxes of `listeners`; their pointers are drawn here beside the variable. The counts and the borrow flag sit beside the Vec. A RefCell<Vec<String>> is 32 bytes: the flag and the 24-byte Vec. The order of the cells is not promised."
+/>
+
+**When will you write this?** Less often than tutorials suggest, so ask first who the one owner is. A function that needs the data for a while takes `&` or `&mut`; an ID or an index often replaces a second owner (Ownership's [advice](/learn/ownership/#when-ownership-feels-like-a-fight)); parts that report results can send them on a [channel](/learn/channels/). `Rc<RefCell<T>>` is right when the sharing is part of the program's shape:
+
+- closures or callbacks that each change the same state, as above ([Closures](/learn/closures/));
+- a tree or graph whose nodes point back (the next sections);
+- a test double that records the calls made to it while the code under test owns it.
+
+Its costs: **mistakes become panics**, such as a `borrow()` held across a call that writes:
+
+<Snippet file="held-borrow.panic.rs" />
+
+Finish the read first, as here:
+
+<Snippet file="held-borrow-fixed.rs" />
+
+It works on **one thread only** (below), and **ownership is no longer visible in the types**. The [borrow checker](/learn/borrow-checker/) lesson shows how to restructure.
+
+## Passing an `Rc` around
+
+A function that only reads takes a `&Config`; `&Rc<Config>` derefs to it. Take an `Rc<Config>` only when the function keeps a share, and the caller writes `Rc::clone(&config)`:
+
+<Snippet file="takes-rc.rs" />
+
+`Rc::clone(&x)` says "another owner"; `x.clone()` reads like a data copy.
+
+## Cycles and `Weak<T>`
+
+Cycles are not exotic: a child that holds its parent, a doubly linked list. Two `Rc`s that own each other never reach zero. This program makes one, with a `Drop` that prints:
+
+<Snippet file="cycle-leak.rs" />
+
+No `drop` line appears. The nodes are unreachable from the program, and still alive (`upgrade` found one). Leaking is allowed, and nothing reclaims a cycle. A `Weak<T>` is a link that does not count as an owner. `upgrade()` gives `Some(Rc<T>)` while the value lives, and `None` after. A parent owns its children; a child points back with a `Weak`:
+
+<Snippet file="weak-fix.rs" />
+
+<Memory
+  title={'root owns leaf; leaf.parent is a Weak pointing back'}
+  stack={[
+    { name: 'root', type: 'Rc<Node>', cells: ['ptr'], to: 'r' },
+    { name: 'leaf', type: 'Rc<Node>', cells: ['ptr'], to: 'l' },
+  ]}
+  heap={[
+    { id: 'r', label: 'Node "root"', cells: ['strong 1', 'weak 1', 'children: [leaf]', 'parent: none'] },
+    { id: 'l', label: 'Node "leaf"', cells: ['strong 2', 'weak 0', 'children: []', 'parent: Weak to root'] },
+  ]}
+  caption="The counts are the ones the program printed. leaf has two owners, the variable and root's children. root has one, so it is freed when the variable goes, and the Weak then upgrades to None."
+/>
+
+The other fix is not to point back at all: keep an index or an ID, as [Ownership](/learn/ownership/#when-ownership-feels-like-a-fight) shows.
+
+## Across threads: `Arc<T>`
+
+An `Rc` updates its count without protection, so two threads could corrupt it. The compiler refuses to send one to a thread:
+
+<Snippet file="rc-thread.fail.rs" />
+
+`Send` marks the types that may move to another thread ([Reading signatures](/learn/reading-signatures/#threadspawn-three-bounds-at-once); the trait is in [Send and Sync](/learn/send-sync/)). `Arc<T>` is the same API with an atomic count. `thread::spawn` runs a closure on a new thread and `join` waits for it ([Threads](/learn/threads/)):
+
+<Snippet file="arc-thread.rs" />
+
+A `RefCell<i32>` can move to another thread, but two threads cannot share one: `Sync` marks types that may be shared, and `RefCell` lacks it. The thread-safe `Rc<RefCell<T>>` is `Arc<Mutex<T>>` ([Shared state](/learn/shared-state/)). A `Mutex<T>` is a lock that owns the data it guards, with one writer at a time. A second thread that asks while it is held waits its turn (`check-mutex-wait.rs`). The same thread asking twice does not get a `RefCell`-style panic you can rely on: the [`lock` docs](https://doc.rust-lang.org/std/sync/struct.Mutex.html#method.lock) say it might deadlock.
+
+## Which one?
+
+| You want | Use |
+|---|---|
+| one owner, on the heap (recursive type, large value) | `Box<T>` |
+| several owners, one thread, read-only | `Rc<T>` |
+| several owners, several threads, read-only | `Arc<T>` |
+| change a `Copy` value through `&` | `Cell<T>` |
+| change any value through `&`, checked when it runs | `RefCell<T>` |
+| change a value from several threads | `Mutex<T>` (a lock around the data), usually inside an `Arc` |
+| several owners, one thread, changeable | `Rc<RefCell<T>>` |
+| several owners, several threads, changeable | `Arc<Mutex<T>>` |
+| a link that must not keep the value alive | `Weak<T>` |
+
+`check-table.rs` asserts a fact for each row (a `RefCell` refuses a writer while a reader is alive, four threads add up to 4 under a `Mutex`, and so on). "One thread, read-only" is shown by `rc-thread.fail.rs` and `rc-write.fail.rs`.
+
+## Translating from what you know
+
+<ForLang only="go java kotlin csharp python typescript">
+In your language an object (in Go, a pointer) is already shared by assignment, and a mutable one can be changed through any name. Three things differ:
+
+- **Most sharing is a call.** Passing an object to a function that uses it for the call is a plain `&` or `&mut`. `Rc` is for what remains: several owners, none outliving the others in a way the compiler can see.
+- **Changing is a second choice.** `Rc` is read-only; `RefCell` adds change, and a second writer panics.
+- **Cycles are yours to avoid.** The programs below show a collector reclaiming one.
+</ForLang>
+
+<ForLang only="go">
+Go has no owning pointer types: `*T` is a plain pointer, and the collector frees what is unreachable. `defer` runs at the end of a function; `Drop` when the value's scope ends, which can be earlier. Go 1.24 added a `weak` package ([release notes](https://go.dev/doc/go1.24)). The collector reclaims a cycle:
+
+<Snippet file="cycle.go" />
+
+| In Go | In Rust |
+|---|---|
+| `f(p)`, `p` used only during the call | `&T` or `&mut T`, no smart pointer |
+| `q := p`, kept | `Rc::clone(&p)`: counted, read-only |
+| `q.field = 1` through any copy | `Rc<RefCell<T>>`: `q.borrow_mut().field = 1` |
+| `Next *Node`, `nil` ends the list | `Option<Box<Node>>` (an optional argument is `Option<&T>`) |
+| `defer f.Close()` | `Drop` on the value |
+| `weak.Make(p)`, `w.Value()` | `Rc::downgrade(&p)`, `w.upgrade()` |
+| a pointer shared by goroutines, a `sync.Mutex` beside it | `Arc<Mutex<T>>`, the data inside the lock. `Rc<RefCell<T>>` is the same idea for one thread, which Go need not tell apart |
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+Your collector reclaims a cycle by itself, so you never need `WeakReference` for that. Each program below builds a cycle, keeps one weak reference, and collects. `System.gc()` is a request, so Java and Kotlin ask up to twenty times; .NET's `GC.Collect()` forces a blocking collection, but the cycle must be unreachable first, hence `NoInlining`.
+
+`WeakReference` has the shape of `Weak`, not the timing: `get()` returns null only after a collection has run, while `upgrade()` returns `None` the instant the last `Rc` drops. `Weak` is for back-pointers; `WeakReference` is usually for caches. `WeakHashMap` and `SoftReference` have no std counterpart; the nearest is a `HashMap<K, Weak<V>>` whose dead entries you remove yourself.
+</ForLang>
+
+<ForLang only="java">
+<Snippet file="cycle.java" />
+
+| In Java | In Rust |
+|---|---|
+| `List<String> other = log;` | `Rc::clone(&log)` |
+| `log.add(x)` through any reference | `log.borrow_mut().push(x)` |
+| `new WeakReference<>(a)`, `get()` | `Rc::downgrade(&a)`, `upgrade()` |
+| a field that may be `null` | `Option<Rc<T>>` or `Option<Box<T>>` |
+| `try (var r = open()) { ... }` | `Drop` on the value, no block ([Common traits](/learn/common-traits/)) |
+| `synchronized` around shared data | `Arc<Mutex<T>>` |
+</ForLang>
+
+<ForLang only="kotlin">
+<Snippet file="cycle.kt" />
+
+| In Kotlin | In Rust |
+|---|---|
+| `val other = log` | `Rc::clone(&log)` |
+| `log.add(x)` through any reference | `log.borrow_mut().push(x)` |
+| `WeakReference(a)`, `get()` | `Rc::downgrade(&a)`, `upgrade()` |
+| `var next: Node? = null` | `next: Option<Box<Node>>` |
+| `r.use { ... }` | `Drop` on the value, no block |
+</ForLang>
+
+<ForLang only="csharp">
+<Snippet file="cycle.cs" />
+
+| In C# | In Rust |
+|---|---|
+| `var other = log;` | `Rc::clone(&log)` |
+| `log.Add(x)` through any reference | `log.borrow_mut().push(x)` |
+| `new WeakReference(a)`, `IsAlive` | `Rc::downgrade(&a)`, `upgrade()` |
+| `Node? Next` | `Option<Box<Node>>` |
+| `using var r = Open();` | `Drop` on the value |
+| `lock (gate) { ... }` | `Arc<Mutex<T>>` |
+</ForLang>
+
+<ForLang only="python">
+CPython frees most objects as `Rc` does, by counting, and adds a cycle collector. Both are in this program:
+
+<Snippet file="cycle.py" />
+
+`lone` was freed the moment its count fell to zero. The pair waited for `gc.collect()`; Rust has no collector to wait for. `sys.getrefcount` reads one higher than `Rc::strong_count`, because passing the object adds a temporary reference, and `weakref.ref` works only on some objects, where `Weak<T>` takes any `T`:
+
+<Snippet file="refs.py" />
+
+| In Python | In Rust |
+|---|---|
+| `f(a)`, `a` used only during the call | `&T` or `&mut T`, no smart pointer |
+| `b = a`, kept in a field | `Rc::clone(&a)`, read-only |
+| `b.items.append(x)` through any name | `b.borrow_mut().push(x)` on an `Rc<RefCell<..>>` |
+| `weakref.ref(a)`, `ref()` | `Rc::downgrade(&a)`, `upgrade()` |
+| `__del__` | `Drop`. CPython runs `__del__` at count zero, as above; Rust runs `drop` where the owner's scope ends. A cycle waits for `gc` in Python and leaks in Rust |
+</ForLang>
+
+<ForLang only="typescript">
+V8 reclaims a cycle. Node exposes `gc()` only when asked, so the program asks from inside (the first lines), and waits a turn of the event loop because a `WeakRef` target lives until the current job ends:
+
+<Snippet file="cycle.ts" />
+
+`WeakRef` is not an exact `Weak`: `deref()` gives `undefined` only once the collector has run, while `upgrade()` gives `None` the instant the last strong count drops.
+
+| In TypeScript | In Rust |
+|---|---|
+| `f(a)`, `a` used only during the call | `&T` or `&mut T`, no smart pointer |
+| `const b = a;`, kept in a field | `Rc::clone(&a)`, read-only |
+| `b.items.push(x)` through any name | `b.borrow_mut().push(x)` on an `Rc<RefCell<..>>` |
+| `new WeakRef(a)`, `deref()` | `Rc::downgrade(&a)`, `upgrade()` |
+| `WeakMap<object, V>` | no counterpart: key by an ID |
+</ForLang>
+
+<ForLang only="c">
+C has no smart pointers: you `malloc`, share by copying the pointer, and decide by hand who calls `free`. An `Rc` is that discipline written once, in the type. This program does by hand what `Rc` does:
+
+<Snippet file="refcount.c" />
+
+Forget a `shared_drop` and it leaks. Call one too many and the extra call reads freed memory (AddressSanitizer: heap-use-after-free):
+
+<Snippet file="refcount-extra.crash.asan.c" />
+
+| In C | In Rust |
+|---|---|
+| `malloc`, one owner, `free` | `Box::new(x)`, freed by `Drop` |
+| a struct with a `count` field, as above | `Rc<T>` |
+| `NULL` for "no next node" | `None` in an `Option<Box<T>>`, as wide as the pointer (`niche.rs`) |
+| a pointer the code must not free | a reference `&T`, or a `Weak<T>` |
+| a `pthread_mutex_t` beside the data | `Arc<Mutex<T>>`, the data inside the lock |
+</ForLang>
+
+<ForLang only="cpp">
+`Box<T>` is `std::unique_ptr<T>`, and the difference is the move. A moved-from `unique_ptr` is specified to be null, so `a == nullptr` is true. Dereferencing it is undefined behaviour (here it crashed), and nothing at compile time stops the line:
+
+<Snippet file="moved-from.crash.cpp" />
+
+Rust refuses it before the program runs:
+
+<Snippet file="box-moved.fail.rs" />
+
+To be fair, a `unique_ptr<Node>` list crashes the same way when its head is freed (a destructor recursion a million deep); a loop, as in the exercise, is the fix there too:
+
+<Snippet file="unique-list.crash.cpp" />
+
+`std::shared_ptr` must be safe to copy from different threads ([cppreference](https://en.cppreference.com/w/cpp/memory/shared_ptr)), so its count is atomic in practice: that is `Arc`. The standard has no non-atomic shared pointer you can ask for. libstdc++ skips the atomics by itself while the process has one thread (it reads glibc's `__libc_single_threaded`; see [`atomicity.h`](https://github.com/gcc-mirror/gcc/blob/master/libstdc%2B%2B-v3/include/ext/atomicity.h)), and Boost has [`local_shared_ptr`](https://www.boost.org/doc/libs/release/libs/smart_ptr/doc/html/smart_ptr.html#local_shared_ptr). In C++ the cheap path is a run-time property of the process; Rust makes it a type, and an `Rc` cannot cross to another thread.
+
+`Rc<T>` is read-only; its counterpart is `shared_ptr<const T>`. C++ makes read-only sharing the opt-in, Rust the reverse:
+
+<Snippet file="shared-const.fail.cpp" />
+
+Cycles leak with `shared_ptr` as with `Rc`, and `weak_ptr` is the fix, as `Weak` is:
+
+<Snippet file="shared-cycle.cpp" />
+
+`shared_from_this()` on an object no `shared_ptr` owns throws at run time. Rust needs no helper class: a method can take `self: &Rc<Self>`, and `Rc::new_cyclic` hands a value its own `Weak` while it is built:
+
+<Snippet file="shared-from-this.cpp" />
+
+<Snippet file="from-self.rs" />
+
+| In C++ | In Rust |
+|---|---|
+| `std::make_unique<T>(x)` | `Box::new(x)` |
+| `std::shared_ptr<T>`, atomic count | `Arc<T>` |
+| `std::make_shared<T>(x)` | `Rc::new(x)`: counts beside the value, one allocation ([Ownership](/learn/ownership/#shared-ownership-rc-and-arc)) |
+| `std::shared_ptr<const T>` | `Rc<T>` |
+| `std::weak_ptr<T>`, `lock()` | `Weak<T>`, `upgrade()`: an `Option<Rc<T>>` you must match |
+| `enable_shared_from_this` | `self: &Rc<Self>`, or `Rc::new_cyclic` |
+| a `mutable` member in a `const` method | `Cell` or `RefCell` behind `&self` (the memo exercise) |
+| `unique_ptr<FILE, decltype(&fclose)>`, a custom deleter | a type with `Drop` ([Common traits](/learn/common-traits/)) |
+</ForLang>
+
+<p class="lr-layer">Going deeper</p>
+
+## `Rc<str>`: a shared string
+
+A pointer to a `str`, a slice or a `dyn Trait` is two words ([Trait objects](/learn/trait-objects/#what-a-dyn-pointer-is-made-of)). Sizes for this 64-bit runner:
+
+<Snippet file="fat-pointers.rs" />
+
+`Rc<str>` is a shared string with no spare capacity. It suits text many owners read and nobody changes; cloning it copies no bytes. An `Rc<String>` points at a `String`, which points at its text; an `Rc<str>` holds the text itself.
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Each exercise has checks in `main`. Replace the `todo!()` calls and run until it prints `all checks passed`. The starters compile and stop at the first `todo!()`.
+
+<Exercise name="linked-stack" title="A stack of boxed nodes">
+Finish `Stack`: `push`, `pop`, `peek`, an in-place `reverse` that relinks the nodes, and a `Drop` that frees them in a loop. Real code would use a `Vec`; a list is the smallest program that needs `Option<Box<_>>`, `take()` and a custom `Drop`. `Option::take` moves a box out of a field you hold by `&mut`. The checks count allocations and frees: a `reverse` that builds new nodes fails, a `pop` that leaks fails, and a million nodes must drop without overflowing the stack.
+</Exercise>
+
+<Exercise name="family-tree" title="Parents own children">
+A parent owns its children through `Rc`; a child points back with a `Weak` (`Rc::downgrade` makes one, `upgrade` follows it). The starter's `Person` has plain fields, but `add_child` only receives `&Rc<Person>`, so it can reach them only through `&`. Choose the field types (hint: `RefCell<Weak<Person>>`, because the `Weak` itself is what gets replaced), update `person`, and write `add_child`, `parent_of`, `child_count` and `path`. The checks read the strong and weak counts and count drops, so a strong pointer upward fails.
+</Exercise>
+
+<Exercise name="memo" title="A memo behind &self">
+`Collatz::steps` takes `&self` because callers share one `Collatz`, and a cache is state nobody asked to see. It remembers answers in a `RefCell` and counts computed numbers in a `Cell`; the `RefCell` is not about several owners. The checks catch a missing cache and a `borrow_mut` held across the recursive call. The file forbids `unsafe`.
+</Exercise>
+
+## Read more
+
+- [The Rust Book, chapter 15: Smart Pointers](https://doc.rust-lang.org/book/ch15-00-smart-pointers.html), with [`Box`](https://doc.rust-lang.org/book/ch15-01-box.html), [`Rc`](https://doc.rust-lang.org/book/ch15-04-rc.html), [`RefCell`](https://doc.rust-lang.org/book/ch15-05-interior-mutability.html) and [reference cycles](https://doc.rust-lang.org/book/ch15-06-reference-cycles.html).
+- The standard library: [`Box`](https://doc.rust-lang.org/std/boxed/struct.Box.html), [`Rc`](https://doc.rust-lang.org/std/rc/struct.Rc.html), [`Weak`](https://doc.rust-lang.org/std/rc/struct.Weak.html), [`Cell`](https://doc.rust-lang.org/std/cell/struct.Cell.html), [`RefCell`](https://doc.rust-lang.org/std/cell/struct.RefCell.html).
+- [Rust by Example: Box, stack and heap](https://doc.rust-lang.org/rust-by-example/std/box.html) and [Rc](https://doc.rust-lang.org/rust-by-example/std/rc.html).
+- Errors: [E0072](https://doc.rust-lang.org/error_codes/E0072.html), [E0277](https://doc.rust-lang.org/error_codes/E0277.html), [E0594](https://doc.rust-lang.org/error_codes/E0594.html), or [this site's index](/errors/).

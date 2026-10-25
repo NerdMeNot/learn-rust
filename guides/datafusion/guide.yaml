@@ -1,0 +1,65 @@
+# Data: Parquet and SQL with DataFusion
+#
+# DataFusion is a large build (many minutes the first time, and a large target folder),
+# hence the long timeout. Later sessions reuse the same shared target folder.
+name: sales-report
+sessions:
+  run:
+    dir: rust
+    steps:
+      - cmd: cargo run
+        timeout: 2400
+  # How big the dependency tree is, and which Arrow DataFusion brings with it.
+  tree:
+    dir: rust
+    steps:
+      - cmd: cargo tree --depth 1
+      - cmd: cargo tree -i arrow --depth 0
+      - cmd: grep -c '^name = ' Cargo.lock
+  # examples/explain.rs: plans, and what the Parquet reader skipped.
+  plans:
+    dir: rust
+    steps:
+      - cmd: cargo run --example explain
+        timeout: 2400
+      - cmd: cargo run --example explain -- 100 | tail -2
+  # examples/results.rs: a CSV file, results as Arrow batches, and errors.
+  results:
+    dir: rust
+    steps:
+      - cmd: cargo run --example results
+        timeout: 2400
+  # Adding your own arrow crate (fixes/two-arrows.*): a newer Arrow than DataFusion uses.
+  two-arrows:
+    dir: rust
+    overlay:
+      Cargo.toml: fixes/two-arrows.Cargo.toml
+      src/main.rs: fixes/two-arrows.rs
+    steps:
+      - cmd: cargo build
+        expect: fail
+        timeout: 2400
+  # The page's "try it" 3: the real program with arrow = "=60.0.0" added and its three
+  # `use datafusion::arrow::` lines changed to `use arrow::`.
+  main-with-arrow:
+    dir: rust
+    overlay:
+      Cargo.toml: fixes/two-arrows.Cargo.toml
+      src/main.rs: fixes/main-with-arrow.rs
+    steps:
+      - cmd: cargo build
+        expect: fail
+        timeout: 2400
+  # The same job with Python libraries (the page's table). NEEDS NETWORK: the image has
+  # no pip, so setup.sh downloads get-pip.py from bootstrap.pypa.io and then the packages
+  # in requirements.txt. get-pip.py and the packages' own dependencies are not pinned.
+  # The extract has no offline mode for sessions: like every cargo session here (crates
+  # are downloaded), it simply fails without a network.
+  python:
+    dir: py
+    steps:
+      - cmd: bash setup.sh
+        timeout: 900
+        show: '$ bash setup.sh   # needs network: fetches pip, then installs requirements.txt (the image has no pip)'
+      - cmd: PYTHONPATH=/tmp/pylibs python3 compare.py
+        show: '$ python3 compare.py'

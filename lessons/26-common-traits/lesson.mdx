@@ -1,0 +1,394 @@
+<p class="lr-layer">The toolkit</p>
+
+Outputs on this page come from Linux on 64-bit ARM with Rust 1.99.1.
+
+A **trait** is a named ability a type can have ([Traits](/learn/traits/) is the full story). A handful of standard traits sit behind everyday syntax: `==`, `{:?}`, `.clone()`, `.sort()`, `.into()`. The question is never "does my type work with `==`?" but "did I give it the trait behind `==`?" A new struct has none of them. `#[derive(...)]` asks the compiler to write the obvious version from the fields ([Structs](/learn/structs/#derive-asking-the-compiler-for-standard-behaviour) lists them); the rest you write by hand. Your language's equivalents follow the table.
+
+## To do this, implement that
+
+| You want | Implement |
+|---|---|
+| `{:?}` and `{:#?}`, and the message from `assert_eq!` | `Debug` |
+| `{}` and `.to_string()` | `Display` |
+| `.clone()` | `Clone` |
+| `let b = a;` without moving `a` | `Copy` (needs `Clone`) |
+| `==` and `!=` | `PartialEq` |
+| `<`, `>`, `<=`, `>=` | `PartialOrd` (needs `PartialEq`) |
+| `.sort()`, `a.max(b)`, `.min()`, a `BTreeMap` key | `Ord` (needs `Eq` and `PartialOrd`) |
+| a `HashMap` key, a `HashSet` item | `Eq` and `Hash` |
+| `T::default()`, `..Default::default()` | `Default` |
+| `T::from(x)`, `x.into()` | `From` |
+| `T::try_from(x)`, `x.try_into()` | `TryFrom` |
+| `"text".parse::<T>()` | `FromStr` |
+| `fn f(x: impl AsRef<str>)` | `AsRef` |
+| `a + b`, `-a`, `a += b`, `a[i]` | `Add`, `Neg`, `AddAssign`, `Index` |
+| `*x`, a `&String` where a `&str` is wanted | `Deref` |
+| run code when a value goes out of scope | `Drop` |
+| `for x in c` and `.next()` | `IntoIterator` and `Iterator` ([Iterators](/learn/iterators/)) |
+| `?` into a `Box<dyn Error>` | `Error` ([Errors](/learn/errors/)) |
+
+`derive` fails if a field lacks the trait, and `Display` has no derive at all: there is no obvious text for a struct, so you choose it. [Printing and Formatting](/learn/formatting/#width-is-your-job) shows how a `Display` you write should handle width.
+
+<Snippet file="no-derive-display.fail.rs" />
+
+## Your language's version
+
+<ForLang only="go">
+
+Go gives structs `==`, map keys and `%v` when the fields allow it; Rust makes each a trait.
+
+| In Go | In Rust |
+|---|---|
+| `a == b` on a struct, `comparable`, `map[Version]T` | `#[derive(PartialEq, Eq, Hash)]`; a map key is `K: Eq + Hash` |
+| `fmt.Println(v)`, `%v`, `%+v` | `{:?}` after `#[derive(Debug)]`: named fields keep their names, like `%+v`; a tuple struct prints `Cents(150)` |
+| `String() string` (`fmt.Stringer`) | `impl Display` |
+| `cmp.Compare(a, b)`, `cmp.Ordered`, `slices.SortFunc` | `a.cmp(&b)`, `T: Ord`, `v.sort()`, `v.sort_by(…)`; floats use `a.total_cmp(&b)` |
+| `b := a` copies a struct | a move; `.clone()` copies; `Copy` types copy on assignment |
+| `var v Version`, a zero value | `Version::default()` |
+
+Floats are where the rows differ. `cmp.Compare` and `cmp.Ordered` accept `float64`, and `float64` is a legal map key (a NaN key goes in and is never found again). Rust's `f64` has no `Ord` and no `Hash`, and `a.cmp(&b)` on two `f64` does not compile. Go sorts NaN first; `total_cmp` puts a positive NaN last (below).
+
+<Snippet file="go-eq-key.go" />
+
+Go refuses a struct with a slice, map or function field as a map key, and refuses `==` on it:
+
+<Snippet file="uncomparable.fail.go" />
+
+A struct with an interface field passes that check and fails at run time instead. A missing Rust trait is a compile error:
+
+<Snippet file="iface-key.crash.go" />
+
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+
+A `record`, `data class` or C# `record` writes the equality methods for you. In Rust that is a `derive` line, and the methods stay in step.
+
+| In Java, Kotlin, C# | In Rust |
+|---|---|
+| `a.equals(b)`, Kotlin `a == b`, C# `a.Equals(b)` | `a == b`. `equals(Object)` takes anything and says false: `new Version(1, 2).equals("x")`. `PartialEq` is typed, and `v == "x"` does not compile |
+| `equals` and `hashCode` (`Equals`, `GetHashCode`) | `PartialEq` and `Hash`: derive both, so they cannot drift apart |
+| `toString()` | `Display` for users; `Debug` is closest to a `record`'s generated one |
+| `Comparable<T>` (`IComparable<T>`) | `Ord` and `PartialOrd`. A `record` or `data class` is not `Comparable`; a derive makes the Rust struct `Ord` |
+| `Comparator.comparing(…).thenComparing(…)`, `compareBy`/`thenBy`, `OrderBy`/`ThenBy` | `sort_by_key`, and `then_with` between two `cmp` results |
+| `record`, `data class` | a struct with `#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]` |
+| Kotlin `copy(minor = 5)`, C# `with { Minor = 5 }` | `Version { minor: 5, ..v }`. Java shares one immutable record by reference; `let b = a` moves in Rust, so `.clone()` is how you get a second value |
+| `operator fun plus` (Kotlin), `operator +` (C#); Java has none | `impl Add` |
+| `new T()`, `default(T)`, default arguments | `T::default()` and `..Default::default()`: Rust has no constructors and no default arguments |
+
+Rust has no `hashCode()` that returns an int. `Hash::hash` returns nothing and writes the value into a hasher the map supplies ([below](#equality-order-and-hashing)).
+
+`Double.equals` treats NaN as equal to itself and `Double.compare` orders it, so a `Double` is a fine `HashMap` key. Rust's `f64` has one `==`, where NaN is not equal to itself, so no `Eq` and no `Hash` ([Maps](/learn/maps/#keys-need-hash-and-eq)); `total_cmp` is its `Double.compare`.
+
+A plain class has identity-based `equals` and `hashCode` in all three, so a lookup with an equal-looking new object finds nothing. Writing `equals` without `hashCode` does not help (C# warns with CS0659 as the build below shows; `javac` is silent). A `record` or `data class` is fine:
+
+<Snippet file="plain-key.java" />
+
+<Snippet file="plain-key.kt" />
+
+<Snippet file="plain-key.cs" />
+
+</ForLang>
+
+<ForLang only="python typescript">
+
+| In Python and TypeScript | In Rust |
+|---|---|
+| `__eq__`; a plain class compares by identity | `PartialEq`, by value after a derive |
+| `__hash__`; setting `__eq__` alone makes the class unhashable | `Hash`, derived with `Eq` |
+| `__repr__` and `__str__` | `Debug` and `Display` |
+| `@dataclass(order=True)`, `functools.total_ordering` | `PartialOrd` and `Ord`, derived |
+| `__add__`, `__neg__`, `__iadd__`, `__getitem__`; `__rmul__` for `2.5 * v` | `Add`, `Neg`, `AddAssign`, `Index`. Rust has no reflected operator: write `impl Mul<Vec2> for f64` yourself |
+| Python `copy.copy`, `copy.deepcopy` | `.clone()` (as deep as the fields' own `clone`) |
+| TypeScript: `===` and `Map` keys are by identity for objects | `==` and map keys are by value after a derive |
+
+A Python `list` has no hash because it can change while it is a dict key. A Rust map owns its keys and hands out no `&mut` to them, so `Vec<i32>` has `Hash`.
+
+<ForLang only="python">
+
+<Snippet file="plain-key.py" />
+
+</ForLang>
+
+<ForLang only="typescript">
+
+<Snippet file="map-identity.ts" />
+
+</ForLang>
+
+</ForLang>
+
+<ForLang only="c cpp">
+
+| In C and C++ | In Rust |
+|---|---|
+| C: `a == b` on a struct | `#[derive(PartialEq)]`; the C line does not compile |
+| C: `qsort` with a comparison returning an `int` | `Ord::cmp` returns an `Ordering`; `sort_by` |
+| C++: `operator==` and `operator<=>` set to `= default` | `PartialEq` and `PartialOrd`, by members in declaration order |
+| C++: `std::strong_ordering`, `std::partial_ordering` | `Ord`, `PartialOrd`: a defaulted `<=>` is partial once a `double` is a member, as a derive is once an `f64` is |
+| C++: a `std::hash<T>` specialisation and `operator==` | `Hash` and `Eq` |
+| C++: a converting constructor that is not `explicit` | `From<U> for T`; Rust converts only where you write `.into()` or `T::from(x)` (a `&str` for a `String` parameter is E0308) |
+| C++: copy constructor, `operator<<`, destructor | `Clone`, `Display`, `Drop` |
+
+C++ calls it the **rule of zero** when your members copy and destroy themselves; writing a destructor pulls you into the rules of three and five (copy, move, destroy together). In Rust that is `derive(Clone)` plus fields that drop themselves. There is no move constructor to write: a move is a bitwise copy after which the old name is dead and nothing runs on it. `Clone` runs only at `.clone()`, and `Drop` and `Copy` exclude each other ([below](#clone-and-copy)), which the compiler enforces.
+
+<ForLang only="c">
+
+<Snippet file="struct-eq.fail.c" />
+
+</ForLang>
+
+<ForLang only="cpp">
+
+A `std::unordered_map` key needs a hash, usually a `std::hash` specialisation, and it must agree with `operator==` just as in Rust. It returns a `size_t` that you combine by hand (the `* 31 +` below). Rust's `hash` returns nothing: it writes the fields into a hasher.
+
+<Snippet file="hash-spec.cpp" />
+
+</ForLang>
+
+</ForLang>
+
+## What the standard types have
+
+Which standard types already have the traits you would want?
+
+| Type | `Display` | `Copy` | `Eq` | `Ord` | `Hash` | `Default` |
+|---|---|---|---|---|---|---|
+| `f64` | yes | yes | **no** | **no** | **no** | yes |
+| `String` | yes | no | yes | yes | yes | yes |
+| `Vec<T>` | no | no | if `T` | if `T` | if `T` | yes |
+| `HashMap<K, V>` | no | no | if parts | no | no | yes |
+
+`i32`, `bool`, `char` and `&str` have all six. `Option<T>` and tuples have no `Display` and take `Copy`, `Eq`, `Ord` and `Hash` from their parts. All of them have `Debug`, `Clone` and `PartialEq` (when their parts do). A derive needs every field to have the trait, so `Vec<f64>`, `Option<f64>` and any struct with an `f64` field have no `Eq`, `Ord` or `Hash`.
+
+When to derive, and when to write the `impl` yourself:
+
+| Trait | Derive when | Write it by hand when |
+|---|---|---|
+| `Debug` | almost always | a field must not be printed, such as a password |
+| `Clone` | each field's own clone is right | a copy should not copy everything, such as a cache |
+| `PartialEq`, `Hash` | equal means every field is equal | equality ignores a field (and then `Hash` must ignore it too) |
+| `PartialOrd`, `Ord` | field order is the order you want | the order is something else, such as most urgent first |
+| `Default` | every field's default is a good start | zero is wrong, such as a port of 0 |
+
+## Printing: `Debug` and `Display`
+
+`Debug` is for you: logs, `assert_eq!` failures, a quick look. `Display` is for the people who use the program. Implementing `Display` also gives you `.to_string()`, so do not implement `ToString` yourself.
+
+<Snippet file="display.rs" />
+
+The last two lines are a trap. `write!` ignores the `>8` in `{v:>8}`: the flags are passed to your code, and it is your job to use them. `f.pad` does.
+
+## `Clone` and `Copy`
+
+`Clone` is an explicit copy that may run any code. `Copy` is a promise that copying the bits gives a whole new value, so the compiler does it silently on every assignment ([Ownership](/learn/ownership/#copy-types) has the table of which types are `Copy`).
+
+<Snippet file="clone-count.rs" />
+
+`.clone()` runs your code, a move runs nothing, and cloning a `Vec` calls `clone` once per item. `Copy` needs `Clone`, so derive both. A type with a destructor ([`Drop`](#drop-the-trait-behind-scope-exit)) can never be `Copy`:
+
+<Snippet file="copy-drop.fail.rs" />
+
+## Equality, order and hashing
+
+`PartialEq` gives `==`. `Eq` has no methods: it is the promise that `a == a` is always true. `f64` cannot make that promise, because `NaN` is not equal to itself. `PartialOrd` gives `<` and returns an `Option<Ordering>`, with `None` for values that cannot be compared. `Ord` is the full order that `sort`, `max`, `min` and `BTreeMap` need: `a.max(b)` on a type with only `PartialOrd` is a compile error (`f64` has a `max` of its own).
+
+A struct with an `f64` field can derive `PartialOrd` but not `Ord`, so `sort()` is refused ([Vectors](/learn/vectors/#sorting-floats) shows a plain `Vec<f64>`):
+
+<Snippet file="float-ord.fail.rs" />
+
+`f64::total_cmp` is a full order that includes `NaN` (a positive `NaN` sorts last), so it works with `sort_by`:
+
+<Snippet file="float-total.rs" />
+
+A derived order compares fields in the order you wrote them, and enum variants by discriminant, which is declaration order unless you set the numbers. Moving a field changes the order, and nothing warns you. For another order, write `Ord` by hand: `cmp` returns an `Ordering`, and `then_with` breaks ties. `PartialOrd` just calls `cmp`.
+
+<Snippet file="ordering.rs" />
+
+`Hash` feeds a value into a **hasher**, an object the map supplies that mixes in what it is given and produces the number. `hash` returns nothing. A derive writes every field into the hasher. When your `==` ignores a field, write `Hash` by hand and feed the hasher only what `==` looks at, or two equal values hash differently and a map misplaces them:
+
+<Snippet file="hash-eq.rs" />
+
+The derived version is equal and hashes differently, so the set misses the equal ticket and holds both. The docs call breaking the rule a logic error: no memory is unsafe, the answers are wrong. The set has a fixed hasher so the output is the same on every run; a normal one is randomly seeded ([Maps](/learn/maps/#where-the-randomness-comes-from)). `rustc` says nothing about a derived `Hash` beside a hand-written `PartialEq`, but `cargo clippy` denies it (`derived_hash_with_manual_eq`, run on the derived half in the image, clippy 0.1.99). It cannot see two hand-written impls that disagree. A map key needs `Eq` and `Hash` ([Maps](/learn/maps/#keys-need-hash-and-eq)); the [gotcha](#gotcha) shows the error when they are missing.
+
+## Starting from a default
+
+`Default` makes a "blank" value. On an enum, `#[default]` picks the variant, and `..Default::default()` fills the fields you leave out.
+
+<Snippet file="default.rs" />
+
+## Converting between types
+
+Pick the conversion trait by asking what can go wrong:
+
+| The conversion | Trait | You call |
+|---|---|---|
+| cannot fail | `From<A> for B` (you get `Into` free) | `B::from(a)`, `a.into()` |
+| can fail | `TryFrom<A> for B` | `B::try_from(a)`, `a.try_into()` |
+| from text | `FromStr for B` | `text.parse::<B>()` |
+| a cheap view of what you hold | `AsRef<B> for A` | `a.as_ref()` |
+
+Implement `From` and `Into` comes with it. A parameter of type `impl Into<String>` takes a `&str` or a `String`:
+
+<Snippet file="from-into.rs" />
+
+`.into()` does not know the target on its own, so the type must be written somewhere:
+
+<Snippet file="into-infer.fail.rs" />
+
+Std implements `From` between numbers only when no value can be lost. Your own `From` is only a promise not to fail, so keep it lossless (`impl From<i64>` that does `n as u8` compiles, and 300 becomes 44). For the rest there is `TryFrom`, which returns a `Result`, and the `as` cast, which never fails and silently changes the value ([Types](/learn/types/) has the rules):
+
+<Snippet file="try-from.rs" />
+
+`FromStr` is what `parse` calls. It works for your own types, and the error type is yours ([Errors](/learn/errors/) covers `Result` and `?`, which also uses `From` to convert error types):
+
+<Snippet file="from-str.rs" />
+
+`impl AsRef<str>` lets a caller pass a `String` or a `&str` as it is to a function that only reads; `impl Into<String>` is for one that keeps the text:
+
+<Snippet file="as-ref.rs" />
+
+The conversions most code needs:
+
+| From | To | Write | Fails? |
+|---|---|---|---|
+| `&str` | `String` | `String::from(s)`, `s.into()`, `s.to_string()` | no |
+| `i32` | `i64`, `f64` | `i64::from(x)`, `f64::from(x)` | no |
+| `i64` | `i32` | `i32::try_from(x)` | yes |
+| `&str` | `i32` | `s.parse::<i32>()` | yes |
+| `u8`, `u32` | `char` | `char::from(b)`, `char::try_from(n)` | `u32`: yes |
+| `Vec<T>` | `[T; N]` | `<[T; N]>::try_from(v)` | yes (wrong length) |
+
+## Operators
+
+An operator is a method call on a trait: `a + b` is `Add::add(a, b)`. Implement the trait and the operator works. `Output` is the result type, and the right side can differ (`Mul<f64>`).
+
+<Snippet file="ops.rs" />
+
+| Operator | Trait |
+|---|---|
+| `+` `-` `*` `/` `%` | `Add` `Sub` `Mul` `Div` `Rem` |
+| `-x`, `!x` | `Neg`, `Not` |
+| `&` `\|` `^` `<<` `>>` | `BitAnd` `BitOr` `BitXor` `Shl` `Shr` |
+| `+=` and the rest | `AddAssign` and one per operator |
+| `a[i]` reads, `a[i] = x` writes | `Index`, `IndexMut` |
+
+The arithmetic and bit operators take their operands **by value**, so `a + b` moves non-`Copy` operands. `Vec2` is `Copy`, which is why `a` still works above. `==`, `<` and `a[i]` borrow, and `+=` takes `&mut self`.
+
+<p class="lr-layer">Going deeper</p>
+
+## The rules between traits
+
+Some traits depend on each other, and the compiler cannot check some rules.
+
+| If you implement | You must also have | And you promise |
+|---|---|---|
+| `Copy` | `Clone` | copying the bits gives a complete new value |
+| `Eq` | `PartialEq` | `a == a` |
+| `PartialOrd` | `PartialEq` | `<` agrees with `==` |
+| `Ord` | `PartialOrd` and `Eq` | `partial_cmp` is `Some(cmp)` |
+| `Hash` with `Eq` | | `a == b` means the same hash |
+
+`From` gives you `Into`, and `Display` gives you `ToString`, through **blanket impls**: one `impl` in std that covers every type meeting a bound (`impl<T: Display> ToString for T`; [Generics](/learn/generics/) shows the syntax).
+
+## `Deref`: one reference becomes another
+
+`String` implements `Deref<Target = str>`, and `Vec<T>` implements `Deref<Target = [T]>`. When a function wants a `&str` and you hold a `&String`, the compiler calls `deref` for you. It is a **deref coercion**. A method of the target works on the outer type too, so `v.first()` is a slice method called on a `Vec`.
+
+<Snippet file="deref-coerce.rs" />
+
+<Memory
+  title={'let owned = String::from("hello");   let text: &str = &owned;'}
+  stack={[
+    { name: 'owned', type: 'String', cells: ['ptr', 'len 5', 'cap 5'], to: 'buf' },
+    { name: 'text', type: '&str', cells: ['ptr', 'len 5'], to: 'buf', note: 'the same address as owned' },
+  ]}
+  heap={[{ id: 'buf', label: 'the text', cells: ['h', 'e', 'l', 'l', 'o'] }]}
+  caption="The coercion copied no text. The `&str` is a pointer and a length into the bytes the `String` owns. (The order of a `String`'s three fields is not promised.)"
+/>
+
+Implement `Deref` for your own type only when it is a smart pointer ([Smart pointers](/learn/smart-pointers/#what-makes-a-pointer-smart)). The [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/predictability.html#only-smart-pointers-implement-deref-and-derefmut-c-deref) say so, because a wrapper that quietly forwards its inner type's methods surprises readers. `AsRef` is the quieter way.
+
+## `Drop`: the trait behind scope exit
+
+`Drop` runs code when a value goes out of scope: closing a file, releasing a lock ([guards](/learn/idioms/#guards-cleanup-tied-to-a-scope)). [Ownership](/learn/ownership/#scopes-drop-order-and-let-_) covers the order for locals, list items and fields, and `let _`. Three more facts:
+
+<Snippet file="drop-order.rs" />
+
+- A type's own `drop` runs first, then its fields are dropped. The fields are still there inside `drop`.
+- A value is dropped at the end of its **scope**, so a loop drops once per pass.
+- Shadowing a name does not drop the old value.
+
+<ForLang only="go">
+
+Go's `defer` belongs to the function, not the scope. In a loop every deferred call waits until the function ends and then runs in reverse:
+
+<Snippet file="defer-loop.go" />
+
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+
+`Drop` is not a finalizer: it runs at a known point, the closing brace, as the output above shows. To release a file on time in these languages you ask for it, with `try`-with-resources in Java, `use` in Kotlin or `using` in C#. Ending the block closes the resources in reverse order, which is Rust's order too. A Rust value with a `Drop` needs no keyword:
+
+<Snippet file="try-with-resources.java" />
+
+<Snippet file="use-order.kt" />
+
+<Snippet file="using-order.cs" />
+
+</ForLang>
+
+<ForLang only="python typescript">
+
+Python's counterpart is the `with` statement and TypeScript's is `using` with `Symbol.dispose`. Each is asked for at every use, where `Drop` belongs to the type. Both close in reverse order, as Rust drops:
+
+<ForLang only="python">
+
+<Snippet file="with-order.py" />
+
+</ForLang>
+
+<ForLang only="typescript">
+
+<Snippet file="using-order.ts" />
+
+</ForLang>
+
+</ForLang>
+
+<ForLang only="c cpp">
+
+C++ destructors are Rust's `Drop`, and locals go in the same reverse order. For members the order differs: C++ destroys them in reverse order of declaration, as `second` then `first` below, where Rust drops fields in declaration order (`log`, then `stats` above). C has no destructors; you call `free` yourself.
+
+<Snippet file="drop-order.cpp" />
+
+</ForLang>
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Each exercise has checks in `main`. Replace the `todo!()` and run it until it prints `all checks passed`.
+
+<Exercise name="version-parse" title="Parse a version">
+Implement `FromStr` for `Version`: `"1.10"` is major 1, minor 10. Anything else is an error, including a missing dot, a third part, an empty part and a sign (`"1.+2"`). Parsing the text as a float would read `"1.10"` as `1.1`, and `u32::from_str` alone accepts a `+`. The checks catch both.
+</Exercise>
+
+<Exercise name="name-key" title="A name that ignores case">
+Implement `PartialEq` and `Hash` for `Name` so that `"Ana"`, `"ANA"` and `"aNa"` are one key, and the map keeps the spelling it was given. Write `hash` by hand, as in the ticket example. A derived `Hash` next to your own `eq` breaks the rule, and the checks insert 256 spellings of one name to show it. (Python makes a class with `__eq__` and no `__hash__` unhashable; Rust lets you write the bug.)
+</Exercise>
+
+<Exercise name="percent" title="A percentage that checks its range">
+Implement `TryFrom<i32>` for `Percent` (0 to 100 only) and `From<Percent>` for `f64`. The field is public here, so `Percent(200)` still compiles; real code keeps it private in a [module](/learn/modules/). Casting with `as u8` before the range check lets 256, 300 and -255 through, because they wrap into range, and the checks include them.
+</Exercise>
+
+<Exercise name="release-order" title="Sort releases, pad the text">
+The starter sorts releases wrongly: a derived `Ord` compares the fields in the order they are written. Fix the order of the fields (or write `Ord` by hand), then write `Display` so that a width such as `{:>8}` is obeyed.
+</Exercise>
+
+## Read more
+
+- [Derivable traits](https://doc.rust-lang.org/book/appendix-03-derivable-traits.html), the Rust Book's appendix: what each derive generates and when it cannot.
+- The Rust Book on [`Deref`](https://doc.rust-lang.org/book/ch15-02-deref.html) and [`Drop`](https://doc.rust-lang.org/book/ch15-03-drop.html), and Rust by Example on [`From` and `Into`](https://doc.rust-lang.org/rust-by-example/conversion/from_into.html).
+- The std pages that state the rules: [`Hash`](https://doc.rust-lang.org/std/hash/trait.Hash.html) (the `Eq` section) and [`Ord`](https://doc.rust-lang.org/std/cmp/trait.Ord.html).

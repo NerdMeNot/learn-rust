@@ -1,0 +1,308 @@
+{
+ "id": "if-else",
+ "title": "If / Else",
+ "part": "basics",
+ "intro": "`if` needs no parentheses around the condition. It is also an expression, so it can produce a value.",
+ "coming_from": {
+  "go": "`if` looks like Go's: no parentheses, braces required, and the condition must be a `bool`. It is also an expression, so `let size = if n > 5 { \"big\" } else { \"small\" };` replaces declaring `size` first and assigning in a branch.",
+  "kotlin": "This is Kotlin's `if` expression without the parentheses, and the braces are required. Both branches must give the same type, where Kotlin would quietly pick a common supertype.",
+  "python": "`if` with a value replaces `\"big\" if n > 5 else \"small\"`. The condition must be a real `bool`: there is no truthiness, so `if n` with a number or `if items` with a list won't compile.",
+  "typescript": "`if` with a value replaces the ternary `n > 5 ? \"big\" : \"small\"`. The condition must be a real `bool`, so `if n` with a number or `if s` with a string won't compile, and both branches must give the same type.",
+  "java": "Rust's `if` is an expression, so `let size = if n > 5 { \"big\" } else { \"small\" };` replaces the `?:` ternary, which Rust does not have. Rust never converts one branch to fit the other, where Java's ternary would pick a common supertype or promote a number.",
+  "csharp": "`if` gives back a value, so it replaces C#'s `?:`, which Rust does not have. Like C#, the condition must be a `bool`; unlike C#'s `?:`, Rust never converts one branch to fit the other. Rust also drops the parentheses but always needs the braces.",
+  "c": "Rust's `if` is an expression that replaces `?:`, which Rust does not have. The condition must be a real `bool` (no `if (n)` on an integer or pointer), and both branches must have the same type, so a `0` can't stand in for a null string.",
+  "cpp": "`if` is an expression, so it does the job of `?:`, which Rust does not have. The condition must be a `bool`, with no implicit conversion from integers or pointers, and both branches must have exactly the same type."
+ },
+ "notes": [
+  "The condition must be a `bool`. `if n { }` with a number does not compile. There is no \"truthy\" zero, so write `if n != 0`.",
+  "There is no ternary `a ? b : c`. `if a { b } else { c }` is the same thing.",
+  "Chain tests with `else if`. When every branch compares one value against fixed cases, `match` (a later lesson) is usually clearer.",
+  "`if let` and `let ... else` test whether a value has a given shape and name its parts in the same step. They replace \"check, then unpack\".",
+  "`&&` and `||` stop as soon as the answer is known, so the right side runs only when it is needed."
+ ],
+ "gotcha": {
+  "title": "Two branches that give different types",
+  "verdict": "rust-rule",
+  "looks_fine": "Kotlin accepts this and gives `size` a loose common type (`Comparable<*> & Serializable`). Go has no `if` expression, so you would never write it.",
+  "rust_sees": "Rust gives every variable exactly one type, decided while compiling. `size` cannot be \"a string or maybe a number\".",
+  "why": "Code after this line uses `size`. If it could be either type, every later line would need to check which one it got. Rust makes both branches agree up front instead. If you really want \"string or number\", that is an enum, covered later.",
+  "langs": {
+   "go": {
+    "status": "none",
+    "says": "Go has no `if` expression, so this can't come up. You declare `size` with one type first and assign to it in each branch."
+   },
+   "kotlin": {
+    "status": "runs",
+    "says": "Kotlin runs this and prints big. `size` quietly gets a loose common type instead of `String`, so later code can't use it as text without a check.",
+    "code": "fun main() {\n    val n = 7\n    val size = if (n > 5) \"big\" else 0\n    println(size)\n}\n",
+    "out": "big\n"
+   },
+   "python": {
+    "status": "runs",
+    "says": "Python runs this and prints big. The two branches can give different types, so `size` might be a string or an int and later code has to cope with both.",
+    "code": "n = 7\nsize = \"big\" if n > 5 else 0\nprint(size)\n",
+    "out": "big\n"
+   },
+   "typescript": {
+    "status": "runs",
+    "says": "Prints big. TypeScript infers the union `\"big\" | 0` and lets it through; every later use of `size` as a string then needs a `typeof` check or the compiler rejects it. Rust asks you to say so up front instead.",
+    "code": "const n = 7;\nconst size = n > 5 ? \"big\" : 0; // type: \"big\" | 0\nconsole.log(size);\n",
+    "out": "big\n"
+   },
+   "java": {
+    "status": "runs",
+    "says": "Java compiles this and prints big. It picks a shared supertype for the two branches, so `size` ends up as a vague Object-like type that later code can't do much with.",
+    "code": "public class Main {\n    public static void main(String[] args) {\n        int n = 7;\n        var size = n > 5 ? \"big\" : 0;\n        System.out.println(size);\n    }\n}\n",
+    "out": "big\n"
+   },
+   "csharp": {
+    "status": "refuses",
+    "says": "C# refuses this too: the two sides of `?:` must share a type, and there is no conversion between string and int (CS0173).",
+    "code": "var n = 7;\nvar size = n > 5 ? \"big\" : 0;\nConsole.WriteLine(size);\n",
+    "error": "Program.cs(2,12): error CS0173: Type of conditional expression cannot be determined because there is no implicit conversion between 'string' and 'int'"
+   },
+   "c": {
+    "status": "runs",
+    "says": "C accepts this because a plain 0 counts as a null pointer. It prints big here, but with a smaller `n` the string would be NULL.",
+    "code": "#include <stdio.h>\n\nint main(void) {\n    int n = 7;\n    const char *size = n > 5 ? \"big\" : 0;\n    printf(\"%s\\n\", size);\n    return 0;\n}\n",
+    "out": "big\n"
+   },
+   "cpp": {
+    "status": "runs",
+    "says": "This compiles because a literal `0` also counts as a null pointer, so both branches become `const char*`. It prints `big`, but if `n` were small `cout` would get a null pointer.",
+    "code": "#include <iostream>\n\nint main() {\n    int n = 7;\n    auto size = n > 5 ? \"big\" : 0;\n    std::cout << size << \"\\n\";\n}\n",
+    "out": "big\n"
+   }
+  },
+  "code": "fn main() {\n    let n = 7;\n    let size = if n > 5 { \"big\" } else { 0 };\n    println!(\"{size}\");\n}\n",
+  "error": "error[E0308]: `if` and `else` have incompatible types\n --> src/main.rs:3:42\n  |\n3 |     let size = if n > 5 { \"big\" } else { 0 };\n  |                           -----          ^ expected `&str`, found integer\n  |                           |\n  |                           expected because of this\n",
+  "error_code": "E0308",
+  "fixed": {
+   "code": "fn main() {\n    let n = 7;\n    let size = if n > 5 { \"big\" } else { \"small\" };\n    println!(\"{size}\");\n}\n",
+   "out": "big\n"
+  }
+ },
+ "order": 10,
+ "program": {
+  "rust": {
+   "code": "fn main() {\n    let n = 7;\n    if n % 2 == 0 {\n        println!(\"{n} is even\");\n    } else {\n        println!(\"{n} is odd\");\n    }\n\n    // `if` gives back a value, so Rust has no `?:`\n    let size = if n > 5 { \"big\" } else { \"small\" };\n    println!(\"{size}\");\n}\n",
+   "out": "7 is odd\nbig\n"
+  },
+  "go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tn := 7\n\tif n%2 == 0 {\n\t\tfmt.Println(n, \"is even\")\n\t} else {\n\t\tfmt.Println(n, \"is odd\")\n\t}\n\n\tsize := \"small\"\n\tif n > 5 {\n\t\tsize = \"big\"\n\t}\n\tfmt.Println(size)\n}\n",
+   "out": "7 is odd\nbig\n"
+  },
+  "kotlin": {
+   "code": "fun main() {\n    val n = 7\n    if (n % 2 == 0) {\n        println(\"$n is even\")\n    } else {\n        println(\"$n is odd\")\n    }\n\n    val size = if (n > 5) \"big\" else \"small\"\n    println(size)\n}\n",
+   "out": "7 is odd\nbig\n"
+  },
+  "python": {
+   "code": "n = 7\nif n % 2 == 0:\n    print(f\"{n} is even\")\nelse:\n    print(f\"{n} is odd\")\n\n# the conditional expression gives back a value\nsize = \"big\" if n > 5 else \"small\"\nprint(size)\n",
+   "out": "7 is odd\nbig\n"
+  },
+  "typescript": {
+   "code": "const n = 7;\nif (n % 2 === 0) {\n  console.log(`${n} is even`);\n} else {\n  console.log(`${n} is odd`);\n}\n\n// `if` is a statement in TypeScript; the ternary gives back a value\nconst size = n > 5 ? \"big\" : \"small\";\nconsole.log(size);\n",
+   "out": "7 is odd\nbig\n"
+  },
+  "java": {
+   "code": "public class Main {\n    public static void main(String[] args) {\n        int n = 7;\n        if (n % 2 == 0) {\n            System.out.println(n + \" is even\");\n        } else {\n            System.out.println(n + \" is odd\");\n        }\n\n        // the ternary operator is Java's if-as-a-value\n        String size = n > 5 ? \"big\" : \"small\";\n        System.out.println(size);\n    }\n}\n",
+   "out": "7 is odd\nbig\n"
+  },
+  "csharp": {
+   "code": "var n = 7;\nif (n % 2 == 0)\n{\n    Console.WriteLine($\"{n} is even\");\n}\nelse\n{\n    Console.WriteLine($\"{n} is odd\");\n}\n\n// the ?: operator gives back a value\nvar size = n > 5 ? \"big\" : \"small\";\nConsole.WriteLine(size);\n",
+   "out": "7 is odd\nbig\n"
+  },
+  "c": {
+   "code": "#include <stdio.h>\n\nint main(void) {\n    int n = 7;\n    if (n % 2 == 0) {\n        printf(\"%d is even\\n\", n);\n    } else {\n        printf(\"%d is odd\\n\", n);\n    }\n\n    // C's if does not give back a value; the ?: operator does\n    const char *size = n > 5 ? \"big\" : \"small\";\n    printf(\"%s\\n\", size);\n    return 0;\n}\n",
+   "out": "7 is odd\nbig\n"
+  },
+  "cpp": {
+   "code": "#include <iostream>\n#include <string_view>\n\nint main() {\n    int n = 7;\n    if (n % 2 == 0) {\n        std::cout << n << \" is even\\n\";\n    } else {\n        std::cout << n << \" is odd\\n\";\n    }\n\n    // the ternary operator gives back a value\n    std::string_view size = n > 5 ? \"big\" : \"small\";\n    std::cout << size << \"\\n\";\n}\n",
+   "out": "7 is odd\nbig\n"
+  }
+ },
+ "faq": [],
+ "snippets": {
+  "arms-differ.fail.rs": {
+   "code": "fn main() {\n    let n = 7;\n    let limit = if n > 5 { 1 } else { 2.5 };\n    println!(\"limit: {limit}\");\n}\n",
+   "error": "error[E0308]: `if` and `else` have incompatible types\n --> src/main.rs:3:39\n  |\n3 |     let limit = if n > 5 { 1 } else { 2.5 };\n  |                            -          ^^^ expected integer, found floating-point number\n  |                            |\n  |                            expected because of this\n",
+   "lang": "rust"
+  },
+  "as-value.rs": {
+   "code": "fn main() {\n    let n = 7;\n\n    // `if` as the value of a `let`\n    let size = if n > 5 { \"big\" } else { \"small\" };\n    println!(\"size: {size}\");\n\n    // `if` as an argument, with no temporary variable\n    println!(\"parity: {}\", if n % 2 == 0 { \"even\" } else { \"odd\" });\n\n    // a block as a branch: its last expression is the value\n    let label = if n > 5 {\n        let doubled = n * 2;\n        doubled + 1\n    } else {\n        0\n    };\n    println!(\"label: {label}\");\n}\n",
+   "out": "size: big\nparity: odd\nlabel: 15\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "chain.rs": {
+   "code": "fn describe(n: i32) -> &'static str {\n    if n < 0 {\n        \"negative\"\n    } else if n == 0 {\n        \"zero\"\n    } else if n < 10 {\n        \"small\"\n    } else {\n        \"large\"\n    }\n}\n\nfn main() {\n    for n in [-5, 0, 3, 10, 99] {\n        println!(\"{n}: {}\", describe(n));\n    }\n}\n",
+   "out": "-5: negative\n0: zero\n3: small\n10: large\n99: large\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "chained-compare.fail.rs": {
+   "code": "fn main() {\n    let x = 3;\n    if 1 < x < 5 {\n        println!(\"between\");\n    }\n}\n",
+   "error": "error: comparison operators cannot be chained\n --> src/main.rs:3:10\n  |\n3 |     if 1 < x < 5 {\n  |          ^   ^\n  |\nhelp: split the comparison into two\n  |\n3 |     if 1 < x && x < 5 {\n  |              ++++",
+   "lang": "rust"
+  },
+  "check-rows.rs": {
+   "code": "use std::collections::HashMap;\n\n// Backs the \"you write -> in Rust\" cells of the language tables. Never shown.\nfn truthy_i32(n: i32) -> bool {\n    n != 0\n}\n\nfn main() {\n    // if n: / if (n)\n    assert!(!truthy_i32(0) && truthy_i32(-3));\n    // if s: / if items:\n    let s = \"\";\n    let items: Vec<i32> = Vec::new();\n    assert!(s.is_empty() && items.is_empty());\n    assert!(!\"x\".is_empty() && !vec![1].is_empty());\n    // x if c else y, c ? a : b\n    let n = 7;\n    let size = if n > 5 { \"big\" } else { \"small\" };\n    assert_eq!(size, \"big\");\n    // a < b < c\n    let x = 3;\n    assert!(1 < x && x < 5);\n    // x or d (Python), x || d (TypeScript) for numbers\n    let zero = 0;\n    let picked = if zero != 0 { zero } else { 5 };\n    assert_eq!(picked, 5);\n    // if p / p != NULL\n    let p: Option<&i32> = None;\n    assert!(p.is_none());\n    let q = Some(&4);\n    assert!(q.is_some());\n    // C++17 find with init, Go v, ok := m[k]\n    let mut ages: HashMap<&str, i32> = HashMap::new();\n    ages.insert(\"ana\", 31);\n    let mut found = 0;\n    if let Some(age) = ages.get(\"ana\") {\n        found = *age;\n    }\n    assert_eq!(found, 31);\n    assert!(ages.get(\"bo\").is_none());\n    // Go: if v, err := Atoi(s); err != nil\n    let mut got = -1;\n    if let Ok(v) = \"42\".parse::<i32>() {\n        got = v;\n    }\n    assert_eq!(got, 42);\n    // Kotlin x != null, smart cast; Option unpacked\n    let name: Option<String> = Some(\"Ada\".to_string());\n    if let Some(name) = &name {\n        assert_eq!(name.len(), 3);\n    }\n    // Java equals(), == on text compares content\n    assert!(String::from(\"rust\") == \"rust\");\n    // bool then_some\n    assert_eq!((n > 5).then_some(1), Some(1));\n    assert_eq!((n > 50).then_some(1), None);\n    // Python `not`, `and`, `or`\n    assert!(!(1 > 2) && (1 < 2 || 2 < 1));\n    // == on text, tuples and arrays; ! on integers is bitwise\n    assert!(\"ab\" == String::from(\"ab\"));\n    assert!((1, \"a\") == (1, \"a\"));\n    assert!([1, 2] == [1, 2]);\n    assert_eq!(!0_i32, -1);\n    // arms-differ fix: 1.0 and 2.5 are both f64\n    let limit = if n > 5 { 1.0 } else { 2.5 };\n    assert_eq!(limit, 1.0);\n    // x ?? d, x if x is not None else d\n    assert_eq!(Some(0).unwrap_or(9), 0);\n    assert_eq!(None.unwrap_or(9), 9);\n    // == compares contents of arrays and Vecs\n    assert!(vec![1, 2] == vec![1, 2]);\n    assert!(vec![1, 2] == [1, 2]);\n    // parse rejects an overflowing number\n    assert!(\"99999999999\".parse::<i32>().is_err());\n    println!(\"rows hold\");\n}\n",
+   "out": "rows hold\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "floats.rs": {
+   "code": "fn main() {\n    let sum = 0.1 + 0.2;\n    println!(\"0.1 + 0.2 == 0.3: {}\", sum == 0.3);\n    println!(\"sum: {sum}\");\n    println!(\"close enough: {}\", (sum - 0.3_f64).abs() < 1e-9);\n\n    let nan = f64::NAN;\n    println!(\"nan == nan: {}\", nan == nan);\n    println!(\"nan < 0.0: {}\", nan < 0.0);\n    println!(\"nan > 0.0: {}\", nan > 0.0);\n    println!(\"nan >= 0.0: {}\", nan >= 0.0);\n    // both comparisons are false, so an `else` branch is not \"the opposite\"\n    if nan < 0.0 {\n        println!(\"negative\");\n    } else {\n        println!(\"else branch: not negative, but not a number either\");\n    }\n}\n",
+   "out": "0.1 + 0.2 == 0.3: false\nsum: 0.30000000000000004\nclose enough: true\nnan == nan: false\nnan < 0.0: false\nnan > 0.0: false\nnan >= 0.0: false\nelse branch: not negative, but not a number either\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "if-let.rs": {
+   "code": "fn main() {\n    // `parse` returns a Result: Ok(number) or Err(reason). Errors are covered later.\n    for text in [\"42\", \"4x2\", \"99999999999\"] {\n        if let Ok(n) = text.parse::<i32>() {\n            println!(\"{text:?} is the number {n}\");\n        } else {\n            println!(\"{text:?} is not a number\");\n        }\n    }\n\n    // `else if let` chains several patterns\n    let text = \"7\";\n    if let Ok(n) = text.parse::<u8>() {\n        println!(\"fits in a u8: {n}\");\n    } else if let Ok(n) = text.parse::<i64>() {\n        println!(\"fits in an i64: {n}\");\n    } else {\n        println!(\"not a whole number\");\n    }\n}\n",
+   "out": "\"42\" is the number 42\n\"4x2\" is not a number\n\"99999999999\" is not a number\nfits in a u8: 7\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "init-stmt.rs": {
+   "code": "fn main() {\n    // `n` exists only in the first block (unlike Go, not in the `else`)\n    if let Ok(n) = \"42\".parse::<i32>() {\n        println!(\"number: {n}\");\n    } else {\n        println!(\"not a number\");\n    }\n\n    // for an init statement that is not a pattern, a block gives the same scope\n    {\n        let len = \"hello\".len();\n        if len > 3 {\n            println!(\"long: {len}\");\n        }\n    }\n}\n",
+   "out": "number: 42\nlong: 5\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "let-chain.rs": {
+   "code": "fn main() {\n    for text in [\"42\", \"-3\", \"x\"] {\n        if let Ok(n) = text.parse::<i32>()\n            && n > 0\n        {\n            println!(\"{text:?}: positive number {n}\");\n        } else {\n            println!(\"{text:?}: not a positive number\");\n        }\n    }\n}\n",
+   "out": "\"42\": positive number 42\n\"-3\": not a positive number\n\"x\": not a positive number\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "let-else-falls.fail.rs": {
+   "code": "fn main() {\n    let text = \"abc\";\n    let Ok(n) = text.parse::<i32>() else {\n        println!(\"not a number\");\n    };\n    println!(\"n: {n}\");\n}\n",
+   "error": "error[E0308]: `else` clause of `let...else` does not diverge\n --> src/main.rs:3:42\n  |\n3 |       let Ok(n) = text.parse::<i32>() else {\n  |  __________________________________________^\n4 | |         println!(\"not a number\");\n5 | |     };\n  | |_____^ expected `!`, found `()`\n  |\n  = note:   expected type `!`\n          found unit type `()`\n  = help: try adding a diverging expression, such as `return` or `panic!(..)`\n  = help: ...or use `match` instead of `let...else`\n",
+   "lang": "rust"
+  },
+  "let-else.rs": {
+   "code": "fn double(text: &str) -> i32 {\n    let Ok(n) = text.parse::<i32>() else {\n        println!(\"  cannot parse {text:?}, using 0\");\n        return 0;\n    };\n    // `n` is in scope for the rest of the function, not inside a block\n    n * 2\n}\n\nfn main() {\n    println!(\"double(\\\"21\\\"): {}\", double(\"21\"));\n    println!(\"double(\\\"abc\\\"): {}\", double(\"abc\"));\n}\n",
+   "out": "double(\"21\"): 42\n  cannot parse \"abc\", using 0\ndouble(\"abc\"): 0\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "let-or.fail.rs": {
+   "code": "fn main() {\n    let text = \"5\";\n    if let Ok(n) = text.parse::<i32>() || text.is_empty() {\n        println!(\"{n}\");\n    }\n}\n",
+   "error": "error: `||` operators are not supported in let chain conditions\n --> src/main.rs:3:40\n  |\n3 |     if let Ok(n) = text.parse::<i32>() || text.is_empty() {\n  |                                        ^^",
+   "lang": "rust"
+  },
+  "mixed-eq.fail.rs": {
+   "code": "fn main() {\n    let small: i32 = 1;\n    let big: i64 = 1;\n    if small == big {\n        println!(\"equal\");\n    }\n}\n",
+   "error": "error[E0308]: mismatched types\n --> src/main.rs:4:17\n  |\n4 |     if small == big {\n  |        -----    ^^^ expected `i32`, found `i64`\n  |        |\n  |        expected because this is `i32`\n  |\nhelp: you can convert `small` from `i32` to `i64`, matching the type of `big`\n  |\n4 |     if i64::from(small) == big {\n  |        ++++++++++     +\n",
+   "lang": "rust"
+  },
+  "ops.rs": {
+   "code": "fn main() {\n    let (a, b) = (3, 8);\n    println!(\"a == b: {}\", a == b);\n    println!(\"a != b: {}\", a != b);\n    println!(\"a < b: {}\", a < b);\n    println!(\"a >= b: {}\", a >= b);\n    println!(\"a > 1 && b > 1: {}\", a > 1 && b > 1);\n    println!(\"a > 5 || b > 5: {}\", a > 5 || b > 5);\n    println!(\"!(a < b): {}\", !(a < b));\n    // `&` binds tighter than `==` in Rust, so no parentheses are needed here\n    println!(\"a & 1 == 1: {}\", a & 1 == 1);\n}\n",
+   "out": "a == b: false\na != b: true\na < b: true\na >= b: false\na > 1 && b > 1: true\na > 5 || b > 5: true\n!(a < b): false\na & 1 == 1: true\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "precedence.rs": {
+   "code": "fn main() {\n    let x = 4;\n    // in Rust `&` binds tighter than `==`, so this reads (x & 1) == 0\n    if x & 1 == 0 {\n        println!(\"{x} is even\");\n    } else {\n        println!(\"{x} is odd\");\n    }\n}\n",
+   "out": "4 is even\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "scope.fail.rs": {
+   "code": "fn main() {\n    if let Ok(v) = \"5\".parse::<i32>() {\n        println!(\"inside: {v}\");\n    }\n    println!(\"outside: {v}\");\n}\n",
+   "error": "error[E0425]: cannot find value `v` in this scope\n --> src/main.rs:5:25\n  |\n5 |     println!(\"outside: {v}\");\n  |                         ^ not found in this scope\n",
+   "lang": "rust"
+  },
+  "short-circuit.rs": {
+   "code": "fn check(name: &str, answer: bool) -> bool {\n    println!(\"  checked {name}\");\n    answer\n}\n\n// the right side indexes the slice, so it must only run when the slice is not empty\nfn first_is_big(items: &[i32]) -> bool {\n    !items.is_empty() && items[0] > 5\n}\n\nfn main() {\n    println!(\"false && ...:\");\n    let a = check(\"left\", false) && check(\"right\", true);\n    println!(\"  result: {a}\");\n\n    println!(\"true || ...:\");\n    let b = check(\"left\", true) || check(\"right\", false);\n    println!(\"  result: {b}\");\n\n    println!(\"false & ... (no short-circuit):\");\n    let c = check(\"left\", false) & check(\"right\", true);\n    println!(\"  result: {c}\");\n\n    println!(\"first_is_big(&[]): {}\", first_is_big(&[]));\n    println!(\"first_is_big(&[9, 1]): {}\", first_is_big(&[9, 1]));\n}\n",
+   "out": "false && ...:\n  checked left\n  result: false\ntrue || ...:\n  checked left\n  result: true\nfalse & ... (no short-circuit):\n  checked left\n  checked right\n  result: false\nfirst_is_big(&[]): false\nfirst_is_big(&[9, 1]): true\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "string-eq.rs": {
+   "code": "fn main() {\n    let a = String::from(\"rust\");\n    let b = \"rust\";\n    // == on text compares the characters, not where they live\n    println!(\"a == b: {}\", a == b);\n}\n",
+   "out": "a == b: true\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "then-some.rs": {
+   "code": "fn costly() -> i32 {\n    println!(\"costly() ran\");\n    1\n}\n\nfn main() {\n    let n = 12;\n    // `then_some` turns a bool into an Option: Some(value) when true, None when false\n    println!(\"{:?}\", (n > 10).then_some(\"big\"));\n    println!(\"{:?}\", (n > 20).then_some(\"huge\"));\n\n    // the argument is evaluated even when the bool is false\n    let early = (n > 20).then_some(costly());\n    println!(\"{:?}\", early);\n\n    // the same with an if expression\n    let big = if n > 10 { Some(\"big\") } else { None };\n    println!(\"{:?}\", big);\n}\n",
+   "out": "Some(\"big\")\nNone\ncostly() ran\nNone\nSome(\"big\")\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "if-init.cpp": {
+   "code": "#include <iostream>\n#include <map>\n#include <string>\n\nint main() {\n    std::map<std::string, int> ages{{\"ana\", 31}};\n    // C++17: the declaration before `;` is scoped to the if/else\n    if (auto it = ages.find(\"ana\"); it != ages.end()) {\n        std::cout << \"found \" << it->second << \"\\n\";\n    } else {\n        std::cout << \"missing\\n\";\n    }\n    return 0;\n}\n",
+   "out": "found 31\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "init-stmt.go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"strconv\"\n)\n\nfunc main() {\n\t// the init statement runs first, and `n` exists only inside the if/else\n\tif n, err := strconv.Atoi(\"42\"); err != nil {\n\t\tfmt.Println(\"not a number:\", err)\n\t} else {\n\t\tfmt.Println(\"number:\", n)\n\t}\n}\n",
+   "out": "number: 42\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "is-pattern.cs": {
+   "code": "object x = \"hello\";\nif (x is string s)\n{\n    Console.WriteLine(\"text of length \" + s.Length);\n}\nint n = 7;\nstring size = n > 5 ? \"big\" : \"small\";\nConsole.WriteLine(size);\n",
+   "out": "text of length 5\nbig\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "precedence.c": {
+   "code": "#include <stdio.h>\n\nint main(void) {\n    int x = 4;\n    /* in C `==` binds tighter than `&`, so this reads x & (1 == 0), which is x & 0 */\n    if (x & 1 == 0) {\n        printf(\"%d is even\\n\", x);\n    } else {\n        printf(\"%d is odd\\n\", x);\n    }\n    return 0;\n}\n",
+   "warnings": "main.c: In function ‘main’:\nmain.c:6:11: warning: suggest parentheses around comparison in operand of ‘&’ [-Wparentheses]\n    6 |     if (x & 1 == 0) {\n      |           ^",
+   "out": "4 is odd\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "precedence.cpp": {
+   "code": "#include <iostream>\n\nint main() {\n    int x = 4;\n    // same as C: `==` binds tighter than `&`, so this reads x & (1 == 0)\n    if (x & 1 == 0) {\n        std::cout << x << \" is even\\n\";\n    } else {\n        std::cout << x << \" is odd\\n\";\n    }\n    return 0;\n}\n",
+   "warnings": "main.cpp: In function ‘int main()’:\nmain.cpp:6:15: warning: suggest parentheses around comparison in operand of ‘&’ [-Wparentheses]\n    6 |     if (x & 1 == 0) {\n      |             ~~^~~~",
+   "out": "4 is odd\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "smart-cast.kt": {
+   "code": "fun describe(x: Any): String {\n    if (x is String) {\n        return \"text of length \" + x.length\n    }\n    return \"something else\"\n}\n\nfun main() {\n    println(describe(\"hello\"))\n    println(describe(42))\n    val n = 7\n    val size = if (n > 5) \"big\" else \"small\"\n    println(size)\n}\n",
+   "out": "text of length 5\nsomething else\nbig\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "string-eq.java": {
+   "code": "public class Main {\n    public static void main(String[] args) {\n        String a = new String(\"rust\");\n        String b = \"rust\";\n        System.out.println(\"a == b: \" + (a == b));\n        System.out.println(\"a.equals(b): \" + a.equals(b));\n    }\n}\n",
+   "out": "a == b: false\na.equals(b): true\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "truthy.py": {
+   "code": "print(\"0 or 5:\", 0 or 5)\nprint(\"[] or 'empty':\", [] or \"empty\")\nprint(\"'a' and 'b':\", \"a\" and \"b\")\nprint(\"1 < 3 < 5:\", 1 < 3 < 5)\nd = {\"a\": 0}\nprint('d.get(\"a\") or 9:', d.get(\"a\") or 9)\nprint('d.get(\"a\", 9):', d.get(\"a\", 9))\nif []:\n    print(\"a list is true\")\nelse:\n    print(\"an empty list is false\")\n",
+   "out": "0 or 5: 5\n[] or 'empty': empty\n'a' and 'b': b\n1 < 3 < 5: True\nd.get(\"a\") or 9: 9\nd.get(\"a\", 9): 0\nan empty list is false\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "truthy.ts": {
+   "code": "function orDefault(x: number, d: number): number {\n  return x || d;\n}\nfunction nullishDefault(x: number | null, d: number): number {\n  return x ?? d;\n}\nfunction describe(items: number[]): string {\n  return items ? \"an empty array is true\" : \"false\";\n}\n\nconsole.log(\"0 || 5:\", orDefault(0, 5));\nconsole.log(\"0 ?? 5:\", nullishDefault(0, 5));\nconsole.log(\"null ?? 5:\", nullishDefault(null, 5));\nconst p = [1, 2];\nconst q = [1, 2];\nconsole.log(\"p === q for two equal arrays:\", p === q);\nconsole.log(\"[]:\", describe([]));\n",
+   "out": "0 || 5: 5\n0 ?? 5: 0\nnull ?? 5: 5\np === q for two equal arrays: false\n[]: an empty array is true\n",
+   "lang": "typescript",
+   "exit": 0
+  }
+ },
+ "exercises": {
+  "classify": {
+   "starter": "// Return the band of a temperature in whole degrees Celsius:\n//   below 0          -> \"freezing\"\n//   0 up to 15       -> \"cold\"\n//   16 up to 25      -> \"mild\"\n//   26 and above     -> \"hot\"\n// Use an `if` / `else if` chain as the function's value (no `return`).\nfn band(celsius: i32) -> &'static str {\n    todo!(\"an if / else if / else chain whose last expression is the answer\")\n}\n\nfn main() {\n    assert_eq!(band(-1), \"freezing\");\n    assert_eq!(band(0), \"cold\");\n    assert_eq!(band(15), \"cold\");\n    assert_eq!(band(16), \"mild\");\n    assert_eq!(band(25), \"mild\");\n    assert_eq!(band(26), \"hot\");\n    assert_eq!(band(i32::MIN), \"freezing\");\n    assert_eq!(band(i32::MAX), \"hot\");\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "// Return the band of a temperature in whole degrees Celsius:\n//   below 0          -> \"freezing\"\n//   0 up to 15       -> \"cold\"\n//   16 up to 25      -> \"mild\"\n//   26 and above     -> \"hot\"\n// Use an `if` / `else if` chain as the function's value (no `return`).\nfn band(celsius: i32) -> &'static str {\n    if celsius < 0 {\n        \"freezing\"\n    } else if celsius <= 15 {\n        \"cold\"\n    } else if celsius <= 25 {\n        \"mild\"\n    } else {\n        \"hot\"\n    }\n}\n\nfn main() {\n    assert_eq!(band(-1), \"freezing\");\n    assert_eq!(band(0), \"cold\");\n    assert_eq!(band(15), \"cold\");\n    assert_eq!(band(16), \"mild\");\n    assert_eq!(band(25), \"mild\");\n    assert_eq!(band(26), \"hot\");\n    assert_eq!(band(i32::MIN), \"freezing\");\n    assert_eq!(band(i32::MAX), \"hot\");\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "valid-age": {
+   "starter": "// Turn text typed by a user into an age.\n// Surrounding spaces are allowed. The age must be a whole number from 0 to 120.\n// Anything else gives `None`. Use `let ... else` for the parse and a plain `if` for the range.\n// (`Option` is covered in a later lesson: `Some(n)` is \"there is a value\", `None` is \"there is not\".)\nfn valid_age(text: &str) -> Option<i32> {\n    todo!(\"parse with let-else and return None on failure, then check 0 to 120\")\n}\n\nfn main() {\n    assert_eq!(valid_age(\"42\"), Some(42));\n    assert_eq!(valid_age(\"  7 \"), Some(7));\n    assert_eq!(valid_age(\"0\"), Some(0));\n    assert_eq!(valid_age(\"120\"), Some(120));\n    assert_eq!(valid_age(\"121\"), None);\n    assert_eq!(valid_age(\"-5\"), None);\n    assert_eq!(valid_age(\"abc\"), None);\n    assert_eq!(valid_age(\"4 2\"), None);\n    assert_eq!(valid_age(\"\"), None);\n    assert_eq!(valid_age(\"99999999999\"), None);\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "// Turn text typed by a user into an age.\n// Surrounding spaces are allowed. The age must be a whole number from 0 to 120.\n// Anything else gives `None`. Use `let ... else` for the parse and a plain `if` for the range.\n// (`Option` is covered in a later lesson: `Some(n)` is \"there is a value\", `None` is \"there is not\".)\nfn valid_age(text: &str) -> Option<i32> {\n    let Ok(n) = text.trim().parse::<i32>() else {\n        return None;\n    };\n    if n < 0 || n > 120 { None } else { Some(n) }\n}\n\nfn main() {\n    assert_eq!(valid_age(\"42\"), Some(42));\n    assert_eq!(valid_age(\"  7 \"), Some(7));\n    assert_eq!(valid_age(\"0\"), Some(0));\n    assert_eq!(valid_age(\"120\"), Some(120));\n    assert_eq!(valid_age(\"121\"), None);\n    assert_eq!(valid_age(\"-5\"), None);\n    assert_eq!(valid_age(\"abc\"), None);\n    assert_eq!(valid_age(\"4 2\"), None);\n    assert_eq!(valid_age(\"\"), None);\n    assert_eq!(valid_age(\"99999999999\"), None);\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}

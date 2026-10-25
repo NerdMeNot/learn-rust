@@ -1,0 +1,290 @@
+<p class="lr-layer">The toolkit</p>
+
+Outputs come from Linux on 64-bit ARM, Rust 1.99.1, debug mode. The programs use no crates, so you see what a runtime hides. After this page you can read `async fn`, `.await`, `Send` errors and `Pin` in library code, but not yet a typical Tokio handler: [Async with Tokio](/build/tokio/) comes next, and the last section lists what is missing.
+
+## A future is a value that has not run
+
+Calling an `async fn` runs none of its body. It returns a **future**, a value that stands for the work. The [`Future` docs](https://doc.rust-lang.org/std/future/trait.Future.html) say: "Futures alone are inert; they must be actively polled for the underlying computation to make progress." **Polling** is calling the future's `poll` method, which runs the body until it finishes or has to wait. Whatever does the polling is the **executor**, the core of a runtime; a future it owns and polls is a **task**. Read `block_on`, the smallest executor, as "call `poll` until it answers `Ready`"; the other lines are explained below.
+
+<Snippet file="lazy.rs" />
+
+- `fetch_name()` built the future. `fetch_name is running` printed only after `block_on` polled it.
+- `pin!` fixes the future in place, because `poll` demands it ([Pin](#what-the-compiler-builds-and-why-pin-exists)). A `Context` carries a **waker**, how a future asks to be polled again (next section). `Waker::noop()` does nothing; stable since Rust 1.85 ([docs](https://doc.rust-lang.org/std/task/struct.Waker.html)).
+- This future finished on its first poll. The loop busy-waits.
+
+If you call an `async fn` and ignore the result, the compiler warns (`unused_must_use`). `deny` turns the warning into an error the page can show:
+
+<Snippet file="unused-future.fail.rs" />
+
+The lint fires only on a discarded statement: `let _ = save();` and `drop(save());` stay silent (`check-unused-let.rs`), though the work never runs.
+
+## Pending, Ready and the waker
+
+`poll` answers `Ready(value)` when the future is finished and `Pending` when it is not. Here is a future written by hand that is not ready the first time, and an `async fn` that waits on it:
+
+<Snippet file="poll-once.rs" />
+
+- `YieldNow` returned `Pending` once and `Ready(())` on the second poll.
+- `.await` is that conversation. In the [Reference's words](https://doc.rust-lang.org/reference/expressions/await-expr.html), if the inner `poll` returns `Pending`, the outer future returns `Pending` too, and when polled again it resumes at the same `.await`. `before the await` printed once, though the body was polled twice.
+- An `.await` on a future that is already `Ready` does not stop: the last line shows one poll.
+- `wake_by_ref` is the future saying "poll me again soon".
+
+A real executor sleeps instead of looping, and the waker wakes it. This one records whether it was woken and gives up rather than sleep forever. `Wake` turns an `Arc` of your own type into a `Waker`:
+
+<Snippet file="wake.rs" />
+
+The first future woke the executor before each `Pending`, so it was polled again and finished. The second never asked: a real executor would wait for a wake-up that never comes. A runtime stores the waker and calls it when a timer fires or a socket has data ([Tokio guide](/build/tokio/)).
+
+## The standard library has no runtime
+
+Nothing in [`std::future`](https://doc.rust-lang.org/std/future/index.html) runs a future, so `main` cannot be async: nothing would poll it.
+
+<Snippet file="async-main.fail.rs" />
+
+That is why `#[tokio::main]` exists. A runtime is an event loop, which learns when timers fire and sockets are readable, plus a scheduler, which decides which task to poll next. Node and `asyncio.run` hide this loop; `block_on` is the smallest. The language gives you `async`, `.await` and `Future`, and the scheduler is a library you choose.
+
+## Two futures on one thread: join
+
+To make progress on two futures, poll both. `std::future::join!` is experimental on 1.99.1 (E0658; `check-join-unstable.fail.rs`), so here it is by hand; `poll_fn` turns a closure into a future. A finished future is left alone: the `Future` docs warn that polling after `Ready` may panic or block forever.
+
+<Snippet file="join.rs" />
+
+One after the other, the steps run `a1 a2 a3 b1 b2`. Joined, they take turns: `a1 b1 a2 b2 a3`, with no second thread.
+
+## Async blocks capture like closures
+
+`async { ... }` is a future too, and it captures like a closure ([Closures](/learn/closures/#what-a-closure-captures)): by reference, unless you write `move`.
+
+<Snippet file="capture.rs" />
+
+The first block borrowed `name`, so `name` was still ours. `async move` took it, so the future can leave the function. A returned future that borrows a local is refused:
+
+<Snippet file="async-block.fail.rs" />
+
+## A future that must cross threads is `Send`
+
+Tokio's default runtime is multi-threaded: the [`#[tokio::main]` docs](https://docs.rs/tokio/latest/tokio/attr.main.html) say `multi_thread` "is the default flavor". A task can then resume on another worker thread after any `.await`, so [`spawn`](https://docs.rs/tokio/latest/tokio/task/fn.spawn.html) asks for `Send` ([Send and Sync](/learn/send-sync/)) and `'static`, as `thread::spawn` does ([Reading signatures](/learn/reading-signatures/#threadspawn-three-bounds-at-once); [`'static`](/learn/lifetimes/#static)). The `spawn` below calls `thread::spawn`, so the bound is real. A future holds everything alive across an `.await`, so an `Rc` there makes it not `Send`:
+
+<Snippet file="send-rc.fail.rs" />
+
+The first note says "future is not `Send` as this value is used across an await". End the `Rc`'s life before the wait:
+
+<Snippet file="send-scope.rs" />
+
+An `Arc` there compiles too (`check-send-arc.rs`). Dropping early is less reliable than ending a block. On 1.99.1 a `drop(words)` before the wait does not help once the value was used:
+
+<Snippet file="send-drop.fail.rs" />
+
+A value that was only created and then dropped is accepted (`check-send-drop-unused.rs`), but I found no documented rule, so end the block. A lock is the same: [`Mutex::lock`](/learn/shared-state/) returns a guard, and one held across an `.await` makes the future not `Send`:
+
+<Snippet file="send-guard.fail.rs" />
+
+A guard used and then dropped still fails (`check-send-guard-drop.fail.rs`); one only locked and dropped compiles (`check-send-guard-unused.rs`). Lock in a block, or in a temporary that ends at the semicolon, and lock again after the wait (exercise 3).
+
+## What the keyword costs: function colour
+
+A plain function cannot `.await`. It needs a runtime or a `block_on`:
+
+<Snippet file="async-color.fail.rs" />
+
+This is **function colour**: async and plain functions are two kinds, and a plain one cannot wait on an async one, so callers turn async or carry a runtime. Libraries split too: `std::fs` and `std::net` block the calling thread, so async code uses a runtime's own I/O types, and a crate usually serves one world. Some runtimes avoid the split by parking a blocked call themselves. Rust has no runtime in `std` to do that, so it marks each wait in the types. You pay with the split, and get a future you can store, drop or poll by hand.
+
+## Translating from what you know
+
+<ForLang only="go java kotlin csharp python typescript">
+Two questions: when you call an async function, has it started? Does a function that may wait look different from one that does not?
+</ForLang>
+
+<ForLang only="typescript">
+A promise is eager: an `async function` body runs, up to its first `await`, before the call returns, and the `new Promise` executor runs at once. To delay, hold a function that starts the work. The last line shows `await` handing control back even for a resolved promise; a Rust `.await` on a `Ready` future does not.
+
+<Snippet file="eager.ts" />
+
+| In TypeScript | In Rust |
+|---|---|
+| `fetchName()` runs the body, returns a `Promise` | `fetch_name()` builds a future and runs nothing |
+| `() => fetchName()`, to delay | the future is already the delayed thing |
+| `save();` without `await` still runs | does nothing, and the compiler warns; fire and forget is a runtime's `spawn` |
+| `Promise.all([a, b])` | a runtime's `join!` ([Tokio](/build/tokio/)), or `join_two` above |
+| `new Promise(resolve => ...)` | usually a [`oneshot` channel](https://docs.rs/tokio/latest/tokio/sync/oneshot/index.html); a hand-written `Future` and `Waker` only to build a primitive |
+| the event loop, built in | a runtime crate: [Tokio](/build/tokio/) |
+</ForLang>
+
+<ForLang only="python">
+A coroutine object is lazy, as a Rust future is. `asyncio.create_task` starts one when the calling coroutine next suspends. Awaiting `leaf()`, which never waits, does not suspend; `asyncio.sleep(0)` does. A Rust `.await` on a `Ready` future acts like `leaf()`. An unawaited coroutine is reported when it is collected:
+
+<Snippet file="lazy.py" />
+
+| In Python | In Rust |
+|---|---|
+| `async def f()`; `f()` returns a coroutine | `async fn f()`; `f()` returns a future |
+| `asyncio.run(main())` | a runtime's `block_on`; Rust ships none |
+| `asyncio.create_task(c)` | a runtime's `spawn` ([Tokio](/build/tokio/)) |
+| `RuntimeWarning: ... never awaited`, at run time, when collected | `unused_must_use`, at compile time, when the result is discarded |
+</ForLang>
+
+<ForLang only="csharp">
+A `Task` from an async method is already running: the body starts before the call returns and runs until its first await that has to wait. A forgotten `Save();` still runs; in Rust the same call does nothing. To delay, hold a `Func<Task>`:
+
+<Snippet file="hot.cs" />
+
+| In C# | In Rust |
+|---|---|
+| `Task<T>`, started at the call | `impl Future<Output = T>`, not started |
+| `Func<Task<T>>`, to delay | the future itself |
+| `Task.WhenAll(a, b)` | a runtime's `join!`, or `join_two` above |
+</ForLang>
+
+<ForLang only="kotlin">
+A `suspend fun` is the nearest thing to an `async fn`, and a colour too: a plain function cannot call it.
+
+<Snippet file="colour.fail.kt" />
+
+Calling a `suspend fun` runs its body at once, inside the caller (the first lines below), where calling an `async fn` runs nothing. The unstarted `suspend { }` coroutine of the program above is the closer match to a future. Everyday Kotlin starts coroutines with `launch` and `async` from `kotlinx.coroutines`, a library like Rust's runtimes. `runBlocking` plays the role `block_on` plays in Rust: it runs the coroutines on the calling thread until they finish. A `launch` is scheduled at once, like `tokio::spawn`, but with one thread its body can run only when `main` suspends, here at `yield()`:
+
+<Snippet file="launch.kt" />
+
+A bare Rust future is different: it does nothing until polled or awaited. `CoroutineStart.LAZY` is nearer. The body did not run at creation or at `yield()`, only after `start()`; the `async` one started at `await()`. It is still a job in the scope: a `LAZY` launch that nobody started made `runBlocking` wait until the 30-second timeout killed my run. A Rust future nobody polls is dropped (with a warning).
+
+<Snippet file="lazy.kt" />
+</ForLang>
+
+<ForLang only="go">
+Go avoids colour. `fetchName` waits for data and nothing in its signature says so; you call it directly or with `go`:
+
+<Snippet file="nocolor.go" />
+
+The runtime parks a goroutine at a blocking call. The cost is a missing signal: no signature says "this may wait".
+</ForLang>
+
+<ForLang only="java">
+Java 25 avoids colour with virtual threads, which run plain blocking code. The [`Thread` docs](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Thread.html) say "Virtual threads are typically user-mode threads scheduled by the Java runtime rather than the operating system". Below, 1000 block at once and an interrupt stops a sleeper:
+
+<Snippet file="virtual.java" />
+
+| In Java | In Rust |
+|---|---|
+| `CompletableFuture.supplyAsync(f)`, started | a future handed to a runtime's `spawn` |
+| a virtual thread per task; a blocking call parks it | a task per future; a blocking call blocks the polling thread |
+</ForLang>
+
+<ForLang only="c">
+C has no futures. A function pointer is the nearest thing: holding it runs nothing. A function that waits is usually a callback plus a `void *` for its state; for an `async fn` the compiler builds that state (see below).
+</ForLang>
+
+<ForLang only="cpp">
+C++20 gives you `<coroutine>` and leaves the task type to you or a library; this g++ 14 with `-std=c++20` has none:
+
+<Snippet file="no-task.fail.cpp" />
+
+`std::future` is something else: a handle to work a thread is already running.
+
+<Snippet file="future.cpp" />
+
+A Rust future is the work itself and runs nothing until polled. A C++ coroutine's frame comes from `operator new` when it is created (the standard lets a compiler avoid that; this run did not), and the `Task` you hold points to it:
+
+<Snippet file="frame.cpp" />
+
+| In C++20 | In Rust |
+|---|---|
+| `initial_suspend` returning `suspend_always` | futures are lazy; nothing to choose |
+| `coroutine_handle::resume()` (returns nothing) | `Future::poll` (answers `Ready` or `Pending`) |
+</ForLang>
+
+<p class="lr-layer">Going deeper</p>
+
+## What the compiler builds, and why `Pin` exists
+
+An `async fn` becomes a value, and its size is the data it must keep while it waits. The program prints the sizes of three futures whose only wait is one `YieldNow`:
+
+<Snippet file="state.rs" />
+
+With nothing to keep, the future is 2 bytes. A `[u8; 1000]` used after the wait makes it 1,002. Used up before the wait, the array is not kept and the future is 16 bytes, because the `usize` `n` is still needed. The layout is the compiler's business and may change.
+
+<Memory
+  title={'async fn array_kept() { let buf = [0u8; 1000]; YieldNow.await; buf.len() }'}
+  stack={[
+    { name: 'future', type: 'impl Future<Output = usize>', cells: ['buf: [u8; 1000]', 'the other 2 bytes'] },
+  ]}
+  caption="The future owns buf, because buf is used after the await. The program printed 2 and 1,002 bytes; the array is 1,000 of the 1,002. The 2 are a 1-byte YieldNow (printed) and one more byte, presumably where the body stopped. The order of the cells is not promised."
+/>
+
+The Rust Book calls this a state machine ([Futures and the Async Syntax](https://doc.rust-lang.org/book/ch17-01-futures-and-syntax.html)). The future is that state, stored wherever its owner puts it, and not a pointer to a frame allocated elsewhere, which is how a C++20 coroutine works (see the C++ note). That is why Rust needs `Pin`. A future may hold a reference into its own fields across an `.await`, so moving it after the first poll could leave the reference pointing at the old place. `poll` therefore takes `Pin<&mut Self>`, a promise that the value will not move ([`std::pin`](https://doc.rust-lang.org/std/pin/index.html)), unless its type is `Unpin`, the marker for types that do not mind being moved. The future of an `async fn` is not `Unpin`. `pin!` pins on the stack and `Box::pin` on the heap; `Pin::new` needs `Unpin`, and the compiler points to the first two:
+
+<Snippet file="unpinned.fail.rs" />
+
+## Dropping a future cancels it
+
+Dropping a future between polls ends the work: everything it held is dropped and the rest of the body never runs. This `forward` takes an item off a queue, waits, then delivers it:
+
+<Snippet file="cancel.rs" />
+
+In the second run `delivered` never printed and `dropped item 1` did: cleanup runs through `Drop` ([Common traits](/learn/common-traits/#drop-the-trait-behind-scope-exit)), which is a plain function and cannot `.await` (`check-drop-await.fail.rs`). The item was also lost: it left the queue and was never delivered. A future is **cancellation safe** if being dropped at an `.await` loses nothing; `forward` is not. The place this bites is `select!`. Tokio's [`select!`](https://docs.rs/tokio/latest/tokio/macro.select.html) returns "when the first branch completes, cancelling the remaining branches", and its docs list which methods are cancellation safe. `timeout` cancels its future the same way ([Tokio guide](/build/tokio/)).
+
+<ForLang only="go">
+In Go, `cancel()` on a `context` is a signal a goroutine must check. The worker that looks at `ctx` stopped before its first step; the one that never looks did all three. A dropped Rust future needs no check, because it is never polled again (the drop can land only at an `.await`):
+
+<Snippet file="cancel.go" />
+</ForLang>
+
+<ForLang only="java">
+Java's `interrupt()` is a request too (the end of the Java program above): the blocked call throws, and the code decides.
+</ForLang>
+
+<ForLang only="kotlin">
+Kotlin's `cancel()` is cooperative, as its [docs](https://kotlinlang.org/docs/coroutines-cancellation.html) say. The body kept running after `cancel()` until the suspension point `yield()` threw, and the coroutine could have caught that. A Rust future is also cancelled only between polls, at an `.await`, but dropping it gives its code no say.
+
+<Snippet file="cancel.kt" />
+</ForLang>
+
+## Many tasks on one thread, and blocking
+
+This executor loops over a `Vec<Pin<Box<dyn Future>>>`, one pointer type for futures of different types ([Trait objects](/learn/trait-objects/)), and its tasks write to a shared log:
+
+<Snippet file="executor.rs" />
+
+`polite` awaits between steps, so the tasks interleave. `blocker` has no `.await`, and `thread::sleep` stands in for a blocking call. It ran to the end before `b` got a turn, and `b1` came after the three sleeps: while a `poll` has not returned, the other tasks on that thread wait. Node's event loop has the same rule. The `Future` docs say slow work should be "offloaded to a thread pool (or something similar)"; the [Tokio guide](/build/tokio/) names the tool, `spawn_blocking`.
+
+The last demo holds a std `Mutex` guard across an `.await`. The second task's `lock()` would block the only thread, and the holder could never resume: I ran that version and it hung until a timeout. The page uses `try_lock`, which reports `WouldBlock`. On a multi-thread runtime `lock()` ties up a worker thread instead.
+
+<ForLang only="go">
+A Go goroutine in a CPU loop does not starve the others on 1.27: the scheduler can preempt it. A Rust executor cannot interrupt a task between awaits.
+
+<Snippet file="preempt.go" />
+</ForLang>
+
+## Async or threads?
+
+`std` has native OS threads ([Threads](/learn/threads/)) and futures without a runtime. The [Async Book](https://rust-lang.github.io/async-book/) says async programming is "a good fit for systems which need to handle very many concurrent tasks and where those tasks spend a lot of time waiting". Two other reasons: cancellation, since a [`JoinHandle`](https://doc.rust-lang.org/std/thread/struct.JoinHandle.html) can `join` a thread or check `is_finished`, not stop it, while a future can be dropped; and crates, since axum, reqwest, tonic and sqlx are built on Tokio ([guide](/build/tokio/)).
+
+Async does not split one task's computation across threads, and long CPU work stalls the thread it runs on. [Rayon and Tokio together](/build/rayon-tokio/) sends parallel CPU work to rayon and a blocking call to `spawn_blocking`. A reasonable default is threads, until your program mostly waits on many things or needs timeouts.
+
+## What you can read now
+
+The [Tokio guide](/build/tokio/) covers `#[tokio::main]`, `spawn`, `join!`, `timeout`, `select!` (with [what it drops](/build/tokio/#select-drops-the-losers)), `JoinHandle` errors, `spawn_blocking`, and a [lock held across an `.await`](/build/tokio/#a-lock-held-across-an-await). It does not cover the rest of this list. `?` works in an `async fn` that returns a `Result` ([Errors](/learn/errors/); `check-question-mark.rs`). Async closures (`async |n| ...`) compile on stable 1.99.1 (`check-async-closure.rs`). Streams (async iterators) have no stable `std` trait (`check-stream-unstable.fail.rs`), so you meet them in crates. An `async fn` in a trait works, but the trait is not dyn compatible (`check-dyn-async.fail.rs`).
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Replace the `todo!()` calls until `main` prints `all checks passed`. The starters compile and stop at the first `todo!()`.
+
+<Exercise name="predict-order" title="Lazy, in your head first">
+Three scenarios create futures and run them in different orders. Before you run anything, write in `predictions()` what each log will hold; the checks run the real code and compare. One scenario never runs its future.
+</Exercise>
+
+<Exercise name="race-two" title="Race two futures">
+Finish `race_two`: poll two futures in turn on one thread, `a` first, and return the output of whichever is ready first. The loser is cancelled: dropped, and never polled again. The checks fail a version that awaits one after the other, keeps polling the loser, polls `b` first, or leaks the loser (its `Drop` must run). This is the shape of `select!`.
+</Exercise>
+
+<Exercise name="send-fix" title="A task that can change threads">
+`register` adds a name to a shared list, waits, and returns the list's length after the wait. `main` requires the future to be `Send` and checks that nobody holds the lock during the wait. Write the natural draft first, guard held across the `.await`, and read the error; then fix it. `drop(guard)` after `guard.push(..)` does not fix it on 1.99.1. The file forbids `unsafe`.
+</Exercise>
+
+## Read more
+
+- [The Rust Book, chapter 17: Fundamentals of Asynchronous Programming](https://doc.rust-lang.org/book/ch17-00-async-await.html), and [Asynchronous Programming in Rust](https://rust-lang.github.io/async-book/).
+- The standard library: [`Future`](https://doc.rust-lang.org/std/future/trait.Future.html), [`std::task`](https://doc.rust-lang.org/std/task/index.html), [`std::pin`](https://doc.rust-lang.org/std/pin/index.html), [`poll_fn`](https://doc.rust-lang.org/std/future/fn.poll_fn.html).
+- [The Reference: await expressions](https://doc.rust-lang.org/reference/expressions/await-expr.html), and [RFC 230](https://rust-lang.github.io/rfcs/0230-remove-runtime.html) on why `std` has no runtime.
+- The runtime itself: [Async with Tokio](/build/tokio/). Related lessons: [Threads](/learn/threads/), [Shared state](/learn/shared-state/), [Send and Sync](/learn/send-sync/).
+- Errors: [E0373](https://doc.rust-lang.org/error_codes/E0373.html), [E0728](https://doc.rust-lang.org/error_codes/E0728.html), [E0752](https://doc.rust-lang.org/error_codes/E0752.html), or [this site's index](/errors/).

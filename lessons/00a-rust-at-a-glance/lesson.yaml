@@ -1,0 +1,108 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Rust at a glance"
+part: "syntax"
+intro: >-
+  Rust code is built from a small set of symbols that repeat on every page: `fn`, `let`,
+  `&`, `::`, `?`, `!`. This page names each one, so you can read the shape of a file
+  before you know what every piece does.
+coming_from:
+  go: >-
+    `func` is `fn`, and `:=` is `let mut`: a plain `let` makes a variable that cannot
+    change. Types still follow the name, but with a colon (`a: i32`), the return type goes
+    after `->`, and you write the semicolons that Go adds for you. The last line of a
+    block, without a `;`, is the block's value.
+  kotlin: >-
+    `fun` is `fn`, `val` is `let` and `var` is `let mut`. `name: Type` is the same, but
+    the return type goes after `->`, not `:`. A Rust function whose body is one last
+    expression, written without `;`, is like your `= a + b` form, with braces.
+  python: >-
+    Blocks use `{ }` and lines end in `;`; indentation is only for people. Comments
+    start with `//`, not `#`, and `'a'` in single quotes is one character, so text uses
+    double quotes. A variable needs `let`, and `let mut` to change. `println!("{name}")`
+    reads like an f-string.
+  typescript: >-
+    Types follow names with a colon, as in TypeScript, but `function` is `fn` and the
+    return type goes after `->`. Rust's plain `let` is like your `const`, and `let mut` is
+    your `let`.
+  java: >-
+    There is no class around `main` and no `public static`: functions stand alone. The
+    type follows the name (`a: i32`), and a variable cannot change unless you write
+    `let mut`; plain `let` is like `final var`. The last expression of a block, written
+    without `;`, is its value, so by habit `return` is kept for leaving early (a final
+    `return x;` still compiles).
+  csharp: >-
+    Functions stand alone, as with top-level statements. The type follows the name
+    (`a: i32`), and `var` becomes `let mut` (plain `let` when it never changes). Inside
+    `println!`, `{name}` works without a `$` for a plain variable name. A block's last
+    expression, written without `;`, is its value.
+  c: >-
+    The type follows the name (`a: i32`, return type after `->`), plain `let` is like
+    `const`, and there is no header to include. The `!` in `println!` marks a macro call,
+    not a function. A block's last expression, written without `;`, is its value.
+  cpp: >-
+    Only the result type matches your trailing return type (`auto add(int a, int b) ->
+    int`): Rust writes parameter types after the names, `a: i32`. `let` is like `const
+    auto`, `let mut` like plain `auto`, and `.` works through a reference, so there is no
+    `->` for members.
+notes:
+  - >-
+    A name followed by `!` is a macro call, such as `println!` and `format!`. It looks
+    like a function call, and the `!` is there so you can tell.
+  - >-
+    A type follows its name after a colon: `name: &str`, `a: i32`. The return type
+    follows an arrow: `-> String`.
+  - >-
+    A line ending in `;` is a statement. The last line of a block without a `;` is the
+    value of the block, which is how `greet` returns its text with no `return`.
+  - >-
+    `1..=4` counts 1, 2, 3, 4, and `1..4` stops before 4.
+gotcha:
+  title: "Changing a variable without mut"
+  verdict: "rust-rule"
+  looks_fine: >-
+    In Go, Java, C#, C and C++ a variable like `total` can be changed later, and so can
+    any Python name. Adding to it in a loop is the most ordinary thing a program does.
+  rust_sees: >-
+    Plain `let` means the name keeps its value. `total += n` changes it, so the compiler
+    stops at that line and asks for `mut`.
+  why: >-
+    This is a default, not a safety proof. When you read `let total` anywhere in Rust
+    code, you know it keeps its value for the rest of the block. Only the `let mut`
+    variables need watching.
+  langs:
+    go:
+      status: "runs"
+      says: >-
+        Go prints `total: 10`. A variable made with `:=` can always be changed later;
+        Rust's twin of `:=` is `let mut`.
+    kotlin:
+      status: "refuses"
+      says: >-
+        Kotlin refuses this program too: a `val` cannot be reassigned. With `var` it
+        prints `total: 10`. Rust's `let` is `val`, and `let mut` is `var`.
+    python:
+      status: "runs"
+      says: >-
+        Python prints `total: 10`. Every name can be rebound, so there is no `mut` to
+        forget.
+    typescript:
+      status: "refuses"
+      says: >-
+        TypeScript refuses this too: a `const` cannot be assigned to. With `let` it
+        prints `total: 10`. Rust's `let` is like `const`, and `let mut` is like `let`.
+    java:
+      status: "runs"
+      says: >-
+        Java prints `total: 10`. A local can change unless you write `final`.
+    csharp:
+      status: "runs"
+      says: >-
+        C# prints `total: 10`. A `var` local can always be changed later.
+    c:
+      status: "runs"
+      says: >-
+        C prints `total: 10`. Variables can change unless you write `const`.
+    cpp:
+      status: "runs"
+      says: >-
+        C++ prints `total: 10`. Variables can change unless you write `const`.

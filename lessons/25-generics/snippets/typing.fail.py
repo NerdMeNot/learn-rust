@@ -1,0 +1,18 @@
+from typing import Protocol, Self
+
+
+class Comparable(Protocol):
+    def __gt__(self, other: Self, /) -> bool: ...
+
+
+def largest[T: Comparable](items: list[T]) -> T:
+    best = items[0]
+    for item in items:
+        if item > best:
+            best = item
+    return best
+
+
+print(largest([3, 9, 2]))
+# The hints are not checked when the program runs.
+print(largest([3, "kiwi", 2]))

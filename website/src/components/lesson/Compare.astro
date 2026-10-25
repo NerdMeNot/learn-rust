@@ -1,0 +1,73 @@
+---
+// The same program in the other eight languages, as tabs. Which tab shows is decided
+// by CSS from <html data-from="…"> (see FromStyles), so the reader's language is open
+// on first paint, and picking a tab switches every panel on the site at once.
+import { Code } from '@astrojs/starlight/components'
+import { LANG, OTHERS, STATUS, commandFor, type Lang, type Mode, type Status } from '../../lib/langs'
+import { inline } from '../../lib/md'
+
+export interface Side {
+  code?: string
+  out?: string
+  error?: string
+  status?: Status
+  mode?: Mode
+  says?: string
+  varies?: boolean
+  warnings?: string
+}
+interface Props { sides: Partial<Record<Lang, Side>>; showSays?: boolean; label?: string }
+const { sides, showSays = false, label = 'Compare with' } = Astro.props
+const trim = (s: string) => s.replace(/\n+$/, '')
+---
+<div class="lr-panel lr-others not-content">
+  <div class="lr-panel-head">
+    <div class="lr-tabs" role="tablist" aria-label={label}>
+      {OTHERS.map(k => {
+        const s = sides[k]
+        const st = s?.status && STATUS[s.status]
+        return (
+          <button class:list={['lr-tab', !s && 'lr-tab-missing']} role="tab" type="button" data-tab={k} style={`--c:${LANG[k].color}`}>
+            {LANG[k].name}
+            {st && <span class={`lr-tick ${st.cls}`} title={st.chip}>{st.tick}</span>}
+          </button>
+        )
+      })}
+    </div>
+    <button class="lr-copy" type="button" data-copy>Copy</button>
+  </div>
+  {OTHERS.map(k => {
+    const s = sides[k]
+    if (!s) {
+      return (
+        <div class="lr-pane" data-pane={k}>
+          <div class="lr-note-pane"><p>There is no {LANG[k].name} version of this one.</p></div>
+        </div>
+      )
+    }
+    if (s.code != null && s.error == null) {
+      return (
+        <div class="lr-pane" data-pane={k}>
+          <div class="lr-code" data-code><Code code={trim(s.code)} lang={LANG[k].hl} frame="none" /></div>
+          <div class="lr-out">
+            <span class="lr-cmd">{commandFor(k, s.mode)}{s.status && <span class={`lr-st ${STATUS[s.status].cls}`}>{STATUS[s.status].chip}</span>}</span>
+            {s.warnings && <pre class="lr-warnings">{s.warnings}</pre>}
+            <pre>{trim(s.out ?? '')}</pre>
+            {s.varies && <p class="lr-varies">The output changes from run to run. This is one real run.</p>}
+          </div>
+          {showSays && s.says && <div class="lr-pane-note"><p set:html={inline(s.says)} /></div>}
+        </div>
+      )
+    }
+    return (
+      <div class="lr-pane" data-pane={k}>
+        <div class="lr-note-pane">
+          <span class="lr-lbl">{LANG[k].name}{s.status && <span class={`lr-st ${STATUS[s.status].cls}`}>{STATUS[s.status].chip}</span>}</span>
+          <p set:html={inline(s.says ?? '')} />
+        </div>
+        {s.code != null && <div class="lr-code" data-code><Code code={trim(s.code)} lang={LANG[k].hl} frame="none" /></div>}
+        {s.error && <pre class="lr-mini-err">{trim(s.error)}</pre>}
+      </div>
+    )
+  })}
+</div>

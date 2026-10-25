@@ -1,0 +1,121 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Copy or reference? Telling them apart"
+part: "ownership"
+intro: >-
+  Every language has a quiet rule for whether `b = a` or a `for` loop gives you your own
+  copy or a second name for the same thing. Rust has the same three outcomes (a copy,
+  a shared reference, a move), but it writes which one you get into the code. This
+  lesson gives you tests to find the answer in your own language first.
+coming_from:
+  go: >-
+    `for _, p := range people` hands you a copy of each element, so `p.Age++` changes
+    nothing and you write `people[i].Age++` instead. In Rust the loop says which you
+    get: `for p in &people` reads each element, `for p in &mut people` changes it.
+    `range` over an array also copies the whole array first, and over a slice it does not.
+  kotlin: >-
+    `for (p in people)` gives you the object itself, so `p.age++` changes it, but the loop
+    variable is always a `val`, so `age++` on a number is an error. Rust spells out the object case:
+    `for p in &mut people` changes each item, `for p in &people` reads it.
+  python: >-
+    Every name in Python leads to an object, so `for p in people: p.age += 1` changes the
+    objects, while `for n in nums: n += 1` changes nothing (an int cannot change; `+=`
+    makes a new one). Rust shows it: `for p in &mut people` changes the items, and
+    `for mut n in nums.iter().copied()` is a copy.
+  typescript: >-
+    `for (const p of people) p.age++` changes the objects, because `const` fixes the name,
+    not the object, and `for (let n of nums) n++` changes nothing, because numbers are
+    copied. Rust writes the difference in the loop: `&mut people` for the objects
+    themselves, `.iter().copied()` for copies.
+  java: >-
+    `for (Person p : people)` copies the reference (Java passes references by value), so
+    `p.age++` reaches the object but `p = other` changes only the loop variable. An `int`
+    loop variable is a plain copy. Rust makes the object case visible: `&mut people`.
+  csharp: >-
+    `foreach` over a `class` list gives you the object, but over a `struct` list it gives
+    you a read-only copy, and `p.Age++` is error CS1654. Rust has no struct/class split:
+    every type holds its value, and `&`/`&mut` in the loop say whether you see the
+    element itself.
+  c: >-
+    A C loop that copies `people[i]` into a local struct changes only the copy, and
+    `&people[i]` reaches the original. Rust has the same two choices, `.iter().copied()`
+    and `&mut people`, and the compiler checks the pointer.
+  cpp: >-
+    `for (auto p : v)` copies each element and `for (auto& p : v)` does not: one character
+    apart. In Rust the loop variable of `&mut v` is visibly a `&mut T`, and `p += 1` on
+    it is a compile error until you write `*p`.
+notes:
+  - >-
+    In most languages assignment, passing an argument and a loop variable copy the
+    variable's bytes. The question is whether those bytes are the data or an arrow to it.
+    (C++ is the exception: it runs the type's copy constructor.)
+  - >-
+    In Rust the code shows it. A plain name is a value (copied if the type is `Copy`,
+    moved if not). A `&` or `&mut` is an arrow.
+  - >-
+    `for x in v` moves the Vec, `for x in &v` borrows each item, and `for x in &mut v`
+    borrows each item so you can change it with `*x`.
+  - >-
+    `.clone()` is the copy you ask for by name. Types that are `Copy` (numbers, `bool`,
+    `char`, `&T`) copy without it.
+gotcha:
+  title: "Changing the loop variable"
+  verdict: "rust-rule"
+  looks_fine: >-
+    In Go, Java, Python, TypeScript and C++, `age += 1` on a loop variable looks like it
+    adds one to every age. It runs without a complaint, and with objects instead of numbers
+    the same loop would have worked.
+  rust_sees: >-
+    `for age in &mut ages` gives you `age: &mut i32`, a reference to the element. `age +=
+    1` would add to the reference, which is not defined, so the compiler asks for
+    `*age += 1`.
+  why: >-
+    Most of the other languages quietly pick one answer: the loop variable is a copy (or
+    a name for an item that cannot change), so the increment is thrown away. That is fine
+    until you meant to change the list, and the program gives no sign. Rust makes you write `*age` for the element, or
+    `.iter().copied()` if you want a copy, so what you wrote says what you meant.
+  langs:
+    go:
+      status: "wrong"
+      says: >-
+        Go runs this and prints [30 40 50]. `range` gives you a copy of each element, so
+        `age++` changes the copy and the slice is untouched. The compiler does not
+        complain. With `[]Person` the same happens to `p.Age++`; with `[]*Person` it
+        reaches the Person, because the copy is of the pointer. You write `ages[i]++`.
+    kotlin:
+      status: "refuses"
+      says: >-
+        Kotlin refuses: the loop variable of a `for` is a `val`, so `age++` is "'val'
+        cannot be reassigned". You change the list through its index, `ages[i]++`.
+    python:
+      status: "wrong"
+      says: >-
+        Python prints [30, 40, 50]. `age` is a name for each int in turn. `+=` on an int
+        builds a new int and points `age` at it, so the list still holds the old ones.
+    typescript:
+      status: "wrong"
+      says: >-
+        TypeScript prints [ 30, 40, 50 ]. `age` holds its own copy of each number. (With
+        `const age` the compiler would refuse `age += 1`.)
+    java:
+      status: "wrong"
+      says: >-
+        Java prints [30, 40, 50]. An `int` loop variable is a copy of the element, and
+        Java allows you to change it. With objects the variable is a copy of the
+        reference, so changing a field would reach the object.
+    csharp:
+      status: "refuses"
+      says: >-
+        C# refuses with CS1656: a `foreach` variable is read-only. You change the array
+        through its index, `ages[i]++`.
+    c:
+      status: "runs"
+      says: >-
+        C prints [30, 40, 50], and nobody is surprised: C has no for-each loop, so you
+        wrote the copy `int age = ages[i]` yourself. `ages[i]++` or a pointer `&ages[i]`
+        would change the array. In Rust the loop variable is the part that differs: it is
+        a reference, not a copy you made.
+    cpp:
+      status: "wrong"
+      says: >-
+        C++ prints [30, 40, 50]. `auto age` is a copy of each element, and g++ with
+        `-Wall -Wextra` says nothing. `auto& age` would be the element itself.

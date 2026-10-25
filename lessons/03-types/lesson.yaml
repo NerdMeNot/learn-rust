@@ -1,0 +1,113 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Numbers and Types"
+part: "basics"
+intro: >-
+  Every number type has an exact size, and Rust does not convert between them unless you write the conversion.
+coming_from:
+  go: >-
+    `i32`, `i64` and `f64` are your `int32`, `int64` and `float64`, and `x as i64` is
+    `int64(x)`. There is no plain `int`: whole-number literals default to `i32`, and
+    lengths and indexes use `usize`.
+  kotlin: >-
+    `i32`, `i64` and `f64` are your `Int`, `Long` and `Double`, with `as` in place of
+    `toLong()` or `toDouble()`. Kotlin lets you write `Int + Long` and `Int * Double` and
+    gives the wider type; Rust has no such operators, so you write the conversion yourself.
+    `u8` and `u32` are your `UByte` and `UInt`.
+  python: >-
+    A Python `int` grows as big as it needs to, but Rust integers have a fixed size like
+    `i32` or `u64`. Going past the limit panics in a debug build (`cargo run`) and wraps around in a
+    release build (`cargo run --release`), and an `i32` and an `f64` won't mix until you
+    convert them.
+    `7 / 2` is `3` here, not `3.5`.
+  typescript: >-
+    Your `number` is always a 64-bit float, which is Rust's `f64`. Rust also has
+    separate integer types like `i32` and `u64`, and they never mix with each other or
+    with floats, the same way `number` and `bigint` don't mix.
+  java: >-
+    `i32`, `i64`, `f64` and `bool` are `int`, `long`, `double` and `boolean`, and Rust
+    adds unsigned types like `u32` and `u8`, which Java does not have. Rust does not
+    widen for you, so `int * double` style mixing needs an explicit conversion. Overflow wraps
+    silently in Java; in a Rust debug build it panics.
+  csharp: >-
+    `i32`, `i64`, `u32`, `f64` are `int`, `long`, `uint`, `double`. C# widens `int` to
+    `long` or `double` on its own; Rust widens nothing, so you write the conversion every time
+    (`i64::from(x)` when nothing can be lost, `as` when you mean to cut).
+  c: >-
+    `i32` and `i64` are `int32_t` and `int64_t` with the size fixed on every platform,
+    and there is no plain `int` whose size varies. Rust does no implicit conversions between
+    number types and no integer promotions, so mixing types needs a conversion, and overflow panics in debug builds
+    where signed overflow in C is undefined behaviour.
+  cpp: >-
+    `i32`, `u64`, `f64` map to `std::int32_t`, `std::uint64_t`, `double`, and `as` is
+    close to your `static_cast`. Rust has no implicit conversions between number types and
+    no integer promotions, so even `i32 + i64` does not compile without a cast.
+notes:
+  - >-
+    Integer names say their size: `i8 i16 i32 i64` are signed, `u8 u16 u32 u64` are
+    unsigned. `usize` is the type used for lengths and indexes. It is 64 bits on a
+    64-bit machine.
+  - >-
+    If you write `let x = 5;` with no type, Rust picks `i32`. Floats default to `f64`.
+  - >-
+    `as` can quietly cut bits off (`300_i32 as u8` is 44). When a conversion cannot lose
+    data, use `i64::from(a)`. When it might fail, use `u8::try_from(big)`, which
+    returns a Result.
+  - >-
+    Going past the end of an integer is a panic in a debug build (`cargo run`) and a wrap-around in a
+    release build (`cargo run --release`). Say what you mean with `checked_add`, `wrapping_add` or
+    `saturating_add`. Floats never panic: `1.0 / 0.0` is `inf`, and `NaN` is not equal
+    to itself.
+gotcha:
+  title: "Mixing an integer and a float"
+  verdict: "rust-rule"
+  looks_fine: >-
+    Go refuses this too: `a * price` with an int32 and a float64 is a compile error.
+    Kotlin allows it and converts `a` to Double for you.
+  rust_sees: "Rust treats every conversion as something you must write down."
+  why: >-
+    Some conversions lose information. A big i64 does not fit in an i32, and a large
+    integer cannot be stored exactly in an f32. This particular one, i32 to f64, is
+    exact, but the rule is by type, not by value. Making you write the conversion means
+    every place where something could be lost is visible in the code.
+  langs:
+    go:
+      status: "refuses"
+      says: >-
+        Go refuses this too: multiplying an `int32` by a `float64` is a compile error,
+        so you write `float64(a)` first.
+    kotlin:
+      status: "runs"
+      says: >-
+        Kotlin runs this and prints 17.5. An `Int` times a `Double` quietly becomes a
+        `Double`, so you never write the conversion.
+    python:
+      status: "runs"
+      says: >-
+        Python runs this and prints 17.5. An int times a float quietly becomes a float,
+        so you never write the conversion.
+    typescript:
+      status: "runs"
+      says: >-
+        Prints 17.5. TypeScript has one `number` type for both whole numbers and
+        decimals, so there is nothing to convert.
+    java:
+      status: "runs"
+      says: >-
+        Java quietly widens the int to a double, so this prints 17.5. Rust wants you to
+        write that conversion yourself.
+    csharp:
+      status: "runs"
+      says: >-
+        C# quietly converts the int to a double here and prints 17.5. That one is exact,
+        but C# applies the same silent conversion from `int` to `float` and from `long`
+        to `double`, where digits are lost. Rust wants every one of them written down.
+    c:
+      status: "runs"
+      says: >-
+        C quietly turns `a` into a double before multiplying, so this prints 17.5. Rust
+        wants you to write that conversion yourself.
+    cpp:
+      status: "runs"
+      says: >-
+        C++ quietly converts `a` to a `double` before multiplying, so this prints 17.5.
+        Rust wants you to write that conversion.

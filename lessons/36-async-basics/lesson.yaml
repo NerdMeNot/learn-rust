@@ -1,0 +1,120 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Async Basics"
+part: "concurrency"
+intro: >-
+  An `async fn` returns a future: a value that describes some work and has not done it. Nothing
+  runs until something polls the future, and `.await` is how one future waits for another. The
+  standard library defines the `Future` trait and the types around it, and has no runtime to poll
+  futures for you: you write a small one to see the idea, and use a crate such as Tokio for real
+  programs.
+coming_from:
+  go: >-
+    Go has no `async` and `await`, and no future value to hold. `go f()` starts `f` running
+    alongside you, and a call that has to wait is an ordinary call. A Rust `async fn` differs on both counts: calling it
+    builds a future that has not started, and `.await` marks each place where it waits. The
+    scheduler that goroutines get from the language is, in Rust, a runtime that you choose.
+  kotlin: >-
+    A `suspend fun` is the nearest thing: it can stop and be resumed later, and a suspend call
+    looks like a plain call where Rust marks each wait with `.await`. The program above builds a
+    coroutine with the standard library's `createCoroutine`, which does not start it, as an async
+    call builds a future. Everyday Kotlin uses `launch` and `async` from `kotlinx.coroutines`, a
+    library as Rust's runtimes are; they are scheduled at once, like `tokio::spawn`, unlike a bare Rust future (shown below).
+  python: >-
+    `async def` and `await` work as you know them, and a coroutine object is lazy like a Rust
+    future: calling `task()` runs nothing, as the program above shows. `asyncio.run` is the event
+    loop that Python includes; Rust includes none, so you add a runtime. Python warns when an
+    unawaited coroutine is collected, at run time; Rust warns at compile time, when the result of
+    an async call is discarded.
+  typescript: >-
+    A promise is eager: calling an `async function` runs its body up to the first `await` before
+    you get the promise back, as the program above prints. A Rust future is lazy: nothing runs
+    until it is polled. Node's event loop is built in; Rust's runtime is a library you add.
+  java: >-
+    Java has no `async` and `await`. `CompletableFuture.supplyAsync` starts at once on a pool, and
+    virtual threads let you write plain blocking code. A Rust future needs no thread of its own:
+    it is a value that something polls, on whatever thread the runtime chooses. A thread that is
+    built but not started is the nearest to "created, not running" (the program above).
+  csharp: >-
+    `async` and `await` come from the same idea, and a `Task` is the nearest type. A C# async
+    method starts running before the call returns, up to its first await that has to wait, so
+    the `Task` you get is already running, as the program above prints. A Rust future has not started. The
+    runtime is a crate, not a part of the framework.
+  c: >-
+    C has no futures or `async`/`await`. A function pointer is the nearest thing in the language:
+    holding it runs nothing until you call it. A Rust `async fn` becomes a value that remembers
+    where it stopped, and a runtime calls `poll` on it again and again until it is ready.
+  cpp: >-
+    C++20 coroutines are the nearest match. The compiler does the transformation, and a promise
+    type decides what happens at creation: the program above is lazy because `initial_suspend`
+    returns `std::suspend_always`, as a Rust future is. Rust's standard library has the `Future`
+    trait and `Poll`; the runtime that drives them is a crate.
+notes:
+  - >-
+    Calling an `async fn` does not run it. It returns a future, and the compiler warns when you
+    ignore the result of the call (`futures do nothing unless you .await or poll them`).
+  - >-
+    A future is polled and answers `Ready(value)` or `Pending`. `.await` polls an inner future and,
+    if it is `Pending`, makes the outer future `Pending` too. A `Waker` is how a future asks to be
+    polled again.
+  - >-
+    The standard library has no runtime. The `block_on` on this page is about ten lines, and shows
+    all a runtime does at its core: poll until ready. The real one, with timers, I/O and spawning
+    tasks, is [Tokio](/build/tokio/).
+  - >-
+    A task that never awaits holds its thread until it finishes, so blocking inside async code
+    stalls the other tasks on that thread. A future that is moved to another thread must be
+    `Send`, which includes everything it keeps across an `.await`.
+gotcha:
+  title: "Using the result of an async function as if it were the value"
+  verdict: "rust-rule"
+  looks_fine: >-
+    In Go, Kotlin and C, a call that waits gives you the result, so `n + 1` just works. Even
+    where the call gives you a promise or a task, it is easy to write the call and keep going.
+  rust_sees: >-
+    `load_count()` is a call to an async function, and an async function returns a future, not a
+    `u32`. The compiler says so ("calling an async function returns a future") and suggests
+    `.await`.
+  why: >-
+    The type of the call is `impl Future<Output = u32>`, so putting it where a `u32` is wanted is
+    a type error and not a silent wrong result. `.await` is only legal inside an `async` function
+    or block, and `main` is not one, so `fixed.rs` also needs something to run the future. It
+    uses `block_on`, ten lines of standard library code; a real program uses a runtime.
+  langs:
+    go:
+      status: "runs"
+      says: >-
+        Go has no async functions. `loadCount()` is an ordinary call that returns the number,
+        and the program prints count: 4.
+    kotlin:
+      status: "runs"
+      says: >-
+        Kotlin runs this and prints count: 4. A `suspend` call looks like a plain call and
+        returns the `Int`, with no `await` to write.
+    python:
+      status: "crash"
+      says: >-
+        Python raises `TypeError: unsupported operand type(s) for +: 'coroutine' and 'int'` when
+        it reaches `n + 1`, and warns that the coroutine was never awaited. The mistake is the
+        same; Python finds it while the program runs.
+    typescript:
+      status: "refuses"
+      says: >-
+        `tsc --strict` refuses: `Type 'Promise<number>' is not assignable to type 'number'`
+        (TS2322), because `n` is annotated as a number.
+    java:
+      status: "refuses"
+      says: >-
+        `javac` refuses: `CompletableFuture<Integer> cannot be converted to int`.
+    csharp:
+      status: "refuses"
+      says: >-
+        C# refuses: `Cannot implicitly convert type 'Task<int>' to 'int'` (CS0029).
+    c:
+      status: "none"
+      says: >-
+        C has no async functions, so there is no such mistake to make.
+    cpp:
+      status: "refuses"
+      says: >-
+        `g++` refuses: `cannot convert 'std::future<int>' to 'int' in initialization`. The
+        value returned by `std::async` is a future too.

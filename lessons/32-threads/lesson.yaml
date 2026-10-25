@@ -1,0 +1,120 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Threads"
+part: "concurrency"
+intro: >-
+  `thread::spawn` runs a closure on a new OS thread. `join` waits for that thread to
+  finish.
+coming_from:
+  go: >-
+    `thread::spawn` is `go func()`. `handle.join()` waits for that one thread and hands
+    back its return value, where `wg.Wait()` waits for a count and returns nothing; the
+    nearest Rust to a `WaitGroup` is `thread::scope`, or handles joined in turn. Each Rust
+    thread is an operating-system thread, where goroutines are scheduled by Go's runtime
+    onto fewer of them (the page counts both). A panic in a thread comes back to `join`
+    as an `Err`, where a goroutine's panic ends the program. The closure needs `move` to
+    take the data it uses.
+  kotlin: >-
+    `thread::spawn` is `thread { }`, and both start a thread of the operating system.
+    Rust's `join()` also gives back the closure's result, as an `Err` if the thread
+    panicked. The closure needs `move` to take ownership of what it uses.
+  python: >-
+    `thread::spawn` plus `join()` is `threading.Thread` plus `join()`, or `pool.submit`
+    plus `future.result()`. A Rust thread is an operating-system thread like a Python
+    one, and Rust has no global interpreter lock. A Python thread's exception is printed
+    and `join()` returns as if nothing happened; here `join()` returns an `Err`.
+  typescript: >-
+    There is no worker file or `postMessage`: `thread::spawn` runs a closure on another
+    thread in the same program. `move` hands the data to the thread instead of copying it
+    (a worker gets a structured clone, except for a `SharedArrayBuffer`), and `join()`
+    waits and gives back the result.
+  java: >-
+    `thread::spawn` starts an operating-system thread (Java calls it a platform thread),
+    like `new Thread`, and `join()` returns the closure's value, like `Future.get()`. The
+    difference is that the closure can't borrow locals, so you `move` them in, or use
+    `thread::scope` to borrow them for the length of the scope.
+  csharp: >-
+    `thread::spawn` is `new Thread`, not `Task.Run`: it is not a thread-pool thread, and
+    `join()` hands back the closure's return value. The closure must own what it uses,
+    so you write `move`, since no garbage collector keeps borrowed locals alive.
+  c: >-
+    `thread::spawn` is `pthread_create` with a typed closure instead of a `void *`
+    argument, and `join()` returns its result. The compiler refuses a thread that
+    borrows a local, unless you use `thread::scope`, which joins before the local goes
+    away.
+  cpp: >-
+    `thread::spawn(move || ...)` is `std::thread` with a lambda that captures by move,
+    and `join()` returns the closure's value. Dropping a `JoinHandle` without joining
+    detaches the thread, where destroying a joinable `std::thread` calls
+    `std::terminate`. `std::jthread` joins in its destructor.
+notes:
+  - >-
+    Each Rust thread is an operating-system thread (the Book calls this the 1:1 model).
+    For many tasks that mostly wait, Rust code usually uses async on a runtime crate such
+    as Tokio instead: [Async Basics](/learn/async-basics/) starts there.
+  - >-
+    `join()` returns a `Result` because the thread might have panicked. `.unwrap()` on
+    that `Err` starts a new panic in the joining thread.
+  - >-
+    `thread::scope` lets threads borrow local variables, because the scope joins all of
+    them before it ends.
+  - >-
+    `std` has no way to kill or interrupt a thread. To stop one, share a flag it checks
+    or close the channel it reads from.
+gotcha:
+  title: "A thread that borrows a local variable"
+  verdict: "fine-elsewhere"
+  looks_fine: >-
+    A goroutine can use `names` freely. The garbage collector keeps `names` alive as
+    long as anything still uses it.
+  rust_sees: >-
+    Without `move`, the closure only borrows `names`. `names` is freed when `main` ends.
+    And `spawn` makes no promise that the thread finishes before then. It could run
+    forever.
+  why: >-
+    You call `join` here, so it would be fine. But the compiler judges `spawn` by its
+    signature, not by what you do afterwards. Remove the `join` and you would have a
+    thread reading freed memory. So Rust asks the thread to take ownership with `move`.
+  langs:
+    go:
+      status: "runs"
+      says: >-
+        Go runs this and prints 3. The goroutine reads `names` from `main` directly, and
+        the garbage collector keeps the slice alive.
+    kotlin:
+      status: "runs"
+      says: >-
+        Kotlin runs this and prints 3. The thread reads `names` directly, and the
+        garbage collector keeps the list alive.
+    python:
+      status: "runs"
+      says: >-
+        Python prints 3. The thread reads `names` from the main program directly, and
+        the garbage collector keeps the list alive.
+    typescript:
+      status: "crash"
+      says: >-
+        Compiles, then the worker throws `ReferenceError: names is not defined`. A
+        worker runs in its own separate JavaScript world and can't see the main thread's
+        variables.
+    java:
+      status: "runs"
+      says: >-
+        The lambda captures a reference to the list, and the garbage collector keeps it
+        alive, so this prints 3. Java only asks that the captured variable is never
+        reassigned.
+    csharp:
+      status: "runs"
+      says: >-
+        The lambda captures names, and the garbage collector keeps it alive while the
+        thread runs, so this prints 3.
+    c:
+      status: "runs"
+      says: >-
+        C hands the thread a pointer to `names` on main's stack. It works because main
+        waits with `pthread_join`, but nothing checks that it does.
+    cpp:
+      status: "runs"
+      says: >-
+        Capturing `names` by reference compiles and prints 3. It is only safe because
+        `join()` runs before `names` goes away; `detach()` would leave a dangling
+        reference.

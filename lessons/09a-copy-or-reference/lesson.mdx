@@ -1,0 +1,345 @@
+<p class="lr-layer">The toolkit</p>
+
+Every language has moments where you cannot tell whether a loop gave you the item or a copy of it, or whether a function changed your data. This page gives you tests that find the answer in your own language, then shows where Rust writes it down. Outputs come from the site's runner (Linux, ARM64; Go 1.27.3, Java 25, Python 3.13, Rust 1.99.1).
+
+## One question, three answers
+
+Ask one question: **if I change this, does anyone else see it?** There are three answers.
+
+| Answer | What the new name holds | Who sees a change |
+|---|---|---|
+| A **copy** | its own bytes of data | nobody else |
+| A **shared reference** | an arrow to the same data | everybody with an arrow |
+| A **move** (Rust) | the data, handed over from the old name | nobody: the old name stops working |
+
+In most languages `b = a`, `f(a)` and `for x in xs` copy the variable's bytes ([Values, the Stack and the Heap](/learn/stack-heap/)); C++ runs the type's copy constructor instead, and a `std::vector` copies its elements. What differs is what the bytes are, **the data or an arrow to it**. Rust splits "shared" in two: `&` is a read-only arrow, `&mut` one that may change the data (one at a time). The **type test** asks what the bytes are; **mutate and look** changes a copy and looks at the original.
+
+| Where it hides | What to ask |
+|---|---|
+| `b = a`, `f(a)` | the data or an arrow? ([your language](#detectors-in-your-own-language)) |
+| `for x in xs` | is `x` the element or a copy of it? ([Rust loops](#loops)) |
+| a closure | the variable or a copy? ([Rust](#closures)) |
+| a method call | the object or a copy? |
+| a struct or list that holds things | most languages copy the top level only (a **shallow** copy); C++ containers and Rust `.clone()` copy what they own ([below](#shallow-and-deep)) |
+| returning or storing a value | a value type is copied, an object stays shared |
+
+## Detectors in your own language
+
+When you are stumped, run this recipe on the thing you are unsure about:
+
+1. Make `b` from `a` the way your code does (`b = a`, a call, a loop).
+2. Change something *inside* `b`: an element or a field. Do not assign a whole new value to `b`: rebinding only moves `b`'s arrow, and is the usual cause of "references are passed by value" confusion.
+3. Print `a`. If it changed, you shared. If it did not, you copied, or the object cannot change (an int, a string).
+4. Ask the language for identity (below): do `a` and `b` lead to the same object or address?
+
+<ForLang only="go">
+Keep this table:
+
+| What you hold | Copy or share | How to check |
+|---|---|---|
+| number, `bool`, `string` | copy (a string's bytes never change) | assign, change, look |
+| array, struct | copy of every field; a slice, map or pointer field copies only its arrow | assign, change, look |
+| pointer | shares what it points at | `p == q`, `%p` |
+| slice | copies the header (pointer, length, capacity); shares the array until `append` outgrows it | `&a[0] == &b[0]`, `cap` |
+| map, [channel](/learn/channels/), func | share (a func shares the variables it captured) | assign, change, look |
+| interface | holds a copy of a struct, or the pointer | assign, change, look |
+| `range` variable | a copy of the element: a struct whole, a pointer as a pointer | `&p == &s[i]` |
+
+Mutate-and-look on each type:
+
+<Snippet file="types.go" />
+
+**What `p` is in a `range` loop.** Always a copy of the element. For `[]Person` that is a copy of the struct, so `p.Age++` is lost. For `[]*Person` it is a copy of the pointer, which still leads to the same `Person`, so `p.Age++` sticks. A slice field inside a struct still leads to the same array. `&p == &people[i]` is the detector:
+
+<Snippet file="range-copy.go" />
+
+**Arrays, slices and methods.** `range` over an array copies it first (if you use the value; `range &arr` does not); a slice is not copied. A pointer-receiver method on the range variable compiles and changes the copy:
+
+<Snippet file="range-more.go" />
+
+**Closures and loop variables.** A Go closure captures the variable itself, never a copy. Each iteration of a `for` or `range` loop gets its own variable only when `go.mod` says `go 1.22` or later, whatever compiler you installed. This program builds the same code in two modules:
+
+<Snippet file="loopvar-gomod.go" />
+
+**Maps.** `m[k]` is not addressable (reading it gives a copy), so Go refuses to assign to its field. Slice elements are addressable, so `people[i].Age++` works:
+
+<Snippet file="map-field.fail.go" />
+
+<Snippet file="map-elements.go" />
+
+**Passing to a function.** A slice's elements are shared but its length is not; a map is shared; an array is copied:
+
+<Snippet file="passing.go" />
+
+**Tools.** `go vet` has a `copylocks` check that reports a `range` variable copying a `sync.Mutex`. `gocritic`'s `rangeValCopy` is off by default and, at its 128-byte threshold, does not flag the `Person` loop; neither did `staticcheck` (both installed in the runner image to check). For this bug the element type and the habit of indexing are your tools.
+</ForLang>
+
+<ForLang only="java">
+**Type test.** `int`, `double`, `boolean` and the other primitives are copied. Everything else is an object, and a variable holds a **reference** to it. Java passes references *by value*: the callee gets a copy of the arrow, so it can change the object but not your variable. A `record` is still an object: `equals` compares its components, `==` is identity, and a `List` component stays shared.
+
+<Snippet file="types.java" />
+
+`==` asks "the same object?"; `equals` asks "equal contents?" only where the class defines it, as `String` and records do.
+
+**Where it bites.** The enhanced `for` copies each element: a number for `int[]`, an arrow for objects. A lambda copies a local variable's value, so the variable must be final or effectively final; a one-element array is a copy of an arrow, so what it leads to can change:
+
+<Snippet file="places.java" />
+
+<Snippet file="lambda-capture.fail.java" />
+</ForLang>
+
+<ForLang only="kotlin">
+**Type test.** Kotlin's numbers, `Boolean` and `Char` act as copied values. Everything else, `data class` included, is an object reached through a reference. `===` is identity; `==` compares contents only for a `data class` or a class that defines it. `copy()` is shallow, and a lambda captures the variable itself.
+
+<Snippet file="types.kt" />
+
+**Where it bites.** A `for` loop variable is always a `val`: you can change the object it names but not the name.
+
+<Snippet file="loop-var.fail.kt" />
+</ForLang>
+
+<ForLang only="csharp">
+**Type test.** The declaration decides. A `struct`, a `record struct` and the numeric types are copied. A `class` or `record` (`record class`) is a reference type and is shared; a `record` compares by value with `==`, but is still shared.
+
+<Snippet file="types.cs" />
+
+**Where it bites.** `foreach` over structs gives a read-only copy, and `list[0]` of a `List<struct>` is a copy too, so changing either is error CS1654 or CS1612:
+
+<Snippet file="foreach-struct.fail.cs" />
+
+An array element is a variable, so `structs[0].Age++` works, and `foreach (ref var p in CollectionsMarshal.AsSpan(list))` gives the real element. `ref` passes the variable itself, and a lambda captures the variable:
+
+<Snippet file="places.cs" />
+</ForLang>
+
+<ForLang only="python">
+**Type test.** There is one kind of variable: a name for an object. So ask whether the object can change. Immutable: `int`, `float`, `str`, `bool` and `tuple` (its items can still be mutable). Mutable: `list`, `dict`, `set` and your own classes. `b = a` always makes two names for one object; `b += 1` on an immutable one rebinds `b`.
+
+<Snippet file="types.py" />
+
+`is` asks "the same object?". `==` asks "equal contents?" for built-in types and classes that define it. `+=` on a list changes it in place; `lst = lst + [4]` builds a new list.
+
+**Where it bites.** A loop variable names the item: rebinding it does nothing, changing a mutable item shows. A list slice is a new list. Copies are shallow. Closures capture the name:
+
+<Snippet file="places.py" />
+</ForLang>
+
+<ForLang only="typescript">
+**Type test.** `number`, `string`, `boolean`, `bigint`, `symbol`, `null` and `undefined` are primitives and are copied. Objects, arrays, `Map`s and functions are shared. `const` fixes the name, not the object.
+
+<Snippet file="types.ts" />
+
+`===` on objects asks "the same object?", so equal arrays are not `===`.
+
+**Where it bites.** `for...of` gives a copy of a primitive and the object itself for an object. `slice()` builds a new array, spread (`{ ...team }`) copies one level, `structuredClone` copies deeply. A closure captures the variable, and `var` has one per function:
+
+<Snippet file="places.ts" />
+</ForLang>
+
+<ForLang only="c">
+**Type test.** In C, assigning or passing a value copies its bytes. Arrays are the exception: they cannot be assigned, and as an argument they become a pointer, so the callee changes the caller's array. A struct copy copies its members: an array member comes along, a pointer member copies only the arrow.
+
+<Snippet file="types.c" />
+
+**Where it bites.** Naming an element copies it, taking its address shares it:
+
+<Snippet file="places.c" />
+
+To test identity, compare pointers (`pp == pq`). The addresses of two named variables prove nothing: a copy has its own. A `const T *` parameter promises the callee only reads.
+</ForLang>
+
+<ForLang only="cpp">
+**Type test.** Assignment and parameters copy unless you ask otherwise, by running the copy constructor: a `std::vector` or `std::string` copies all its elements. A reference (`T&`), a pointer or a `shared_ptr` shares, and a struct holding one copies only the arrow. `this` points at the object a method was called on.
+
+<Snippet file="types.cpp" />
+
+To test identity, compare data pointers (`v.data() == w.data()`) or a reference with its target (`&n == &r`), not two named variables.
+
+**Where it bites.** `auto` copies, `auto&` does not, and a lambda's `[=]` copies what it uses while `[&]` shares it. `std::move` has no detector: the moved-from object stays valid with unspecified contents, and on an `int` it is just a copy. In Rust the old name stops working:
+
+<Snippet file="places.cpp" />
+
+**Tools.** g++ `-Wall` (GCC 11 or later, via `-Wrange-loop-construct`) warns about a `const auto` loop variable that copies an expensive type (not trivially copyable, or over 64 bytes), including the `std::pair` copy in a `std::map` loop, but not about a plain `auto` you might be changing. `clang-tidy`'s `performance-for-range-copy` also flags a plain `auto` that is only read, and `bugprone-use-after-move` flags `s.size()` after `std::move(s)`.
+
+<Snippet file="range-copy.cpp" />
+</ForLang>
+
+## Rust writes the answer in the code
+
+Rust has the same outcomes, but you can see which one you got, and the compiler stops the surprising ones. A plain name is a value; `&` or `&mut` in front is an arrow. `Copy` is a *trait*, a named ability: a `Copy` type is duplicated by `let b = a`, any other is moved.
+
+| You write | You get | Afterwards |
+|---|---|---|
+| `let b = a;` for a `Copy` type | a copy | `a` still works and is separate |
+| `let b = a;` for `String`, `Vec`, most structs | a move | `a` cannot be used |
+| `let b = &a;` | a shared reference | `a` can be read, not changed, while `b` is in use |
+| `let b = &mut a;` | a unique reference (one at a time; see [Mutable borrows](/learn/mutable-borrows/)) | `a` cannot be used while `b` is in use |
+| `let b = a.clone();` | a new, separate value | `a` is unchanged |
+| `f(a)`, `f(&a)`, `f(&mut a)` | the same three, for a parameter | |
+
+The reference rows are the subject of [Borrowing](/learn/borrowing/). One of each:
+
+<Snippet file="what-you-wrote.rs" />
+
+### Loops
+
+The way you write a `for` loop decides the type of `x`. This prints it for every form with `type_name_of_val` (`&x` only lets it look at `x`). Here `.iter()` walks by reference, `.iter_mut()` by `&mut` and `.copied()` yields a copy of each item ([Iterators](/learn/iterators/) comes later):
+
+<Snippet file="loop-forms.rs" />
+
+| You write | `x` is | Afterwards |
+|---|---|---|
+| `for x in &v`, `v.iter()` | `&i32`, a shared reference | `v` unchanged |
+| `for x in &mut v`, `v.iter_mut()` | `&mut i32`, a reference you write through with `*x` | `v` changed |
+| `for x in v.iter().copied()` | `i32`, a copy | `v` unchanged |
+| `for x in v`, `v.into_iter()` | `i32`, taken out of `v` | `v` is gone |
+
+The last row bites people who expect `for x in v` to behave like `range` or `for...in`:
+
+<Snippet file="for-moves.fail.rs" />
+
+The compiler names the loop and suggests `&ages`, the form that behaves like `range` or `for...of`.
+
+When `x` is a `&mut`, `x.age += 1` and `x.len()` follow the reference for you. Only a bare change to the number itself needs `*x += 1`; forgetting it is the [gotcha](#gotcha) on this page. Inside a function that received `&mut Vec<T>`, the parameter is already the reference, so loop with `people.iter_mut()`.
+
+### From your language to Rust
+
+<ForLang only="go">
+| Go | Rust |
+|---|---|
+| `for _, p := range people` (a copy of each) | `for p in &people` borrows each element. `for p in people.iter().cloned()` is the visible copy (needs `#[derive(Clone)]`) |
+| `for i := range people { people[i].Age++ }`, or `p.Age++` over a `[]*Person` | `for p in &mut people { p.age += 1; }` |
+| `b := a` (a struct) | `let b = a;` copies if the struct is `Copy`, else moves. `a.clone()` is the explicit copy |
+| `s := a[1:3]` | `let s = &a[1..3];` also shares, and you cannot `push` to the `Vec` `a` while `s` is in use |
+| `m[k].Age++` (error) | `if let Some(p) = m.get_mut(k) { p.age += 1; }` |
+| `func (c Counter) Value()` | `fn value(&self)`. A plain `self` takes the value: a move unless the type is `Copy`, which Go has no form for |
+| `func (c *Counter) Inc()` | `fn inc(&mut self)` ([Methods](/learn/methods/)) |
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+| You write | Rust |
+|---|---|
+| `for (Person p : people) p.age++` | `for p in &mut people { p.age += 1; }` |
+| `Person b = a;` (two names that can both change one object) | `let b = &a;` is a read-only second name. Rust gives no plain form for two names that both change; `&mut a` makes `a` unusable while `b` lives |
+| `void f(Person p)` | `fn f(p: &mut Person)` changes yours, `&Person` reads, `Person` takes it |
+| `a.equals(b)`, `a == b` on objects | `a == b` compares contents (for types that derive `PartialEq`), `std::ptr::eq(&a, &b)` is identity |
+| `clone()`, Kotlin `copy()`, C# `with` | `.clone()`. Those are shallow (Java's array `clone()` shared its elements above); Rust's copies everything the value owns |
+| Java lambda: copy of the value, variable must not change | Rust closure: borrows the variable and may change it; `move` takes it |
+</ForLang>
+
+<ForLang only="python typescript">
+| You write | Rust |
+|---|---|
+| `for p in people: p.age += 1` | `for p in &mut people { p.age += 1; }` |
+| `b = a` (two names that can both change one object) | `let b = &a;` is a read-only second name. Rust gives no plain form for two names that both change: one `&mut` at a time, or `Rc` with `RefCell` ([Smart pointers](/learn/smart-pointers/#rcrefcellt-shared-and-changeable)) |
+| `copy.copy(a)`, `{ ...a }`, `copy.deepcopy(a)`, `structuredClone(a)` | `a.clone()`, which copies everything the value owns, so it is closer to the deep copies ([below](#shallow-and-deep)) |
+| `a[1:3]`, `a.slice(1, 3)` (a new list) | `&a[1..3]` is a view of the same items; `a[1..3].to_vec()` is the copy |
+| `def f(items): items.append(1)` | `fn f(items: &mut Vec<i32>)` |
+| `a is b`, `a === b` | `std::ptr::eq(a, b)` on two references |
+</ForLang>
+
+<ForLang only="c cpp">
+| You write | Rust |
+|---|---|
+| `for (auto x : v)` | `for x in v.iter().copied()` (`.cloned()` for a `String`) |
+| `for (auto& x : v)` | `for x in &mut v` |
+| `for (const auto& x : v)` | `for x in &v` |
+| `T copy = a;` (C++) | `let copy = a.clone();`, since a heap type never copies silently |
+| `std::move(a)` | `let b = a;`. A move is already the default, and unlike C++ the moved-from `a` cannot be used |
+| `T*` or `T&` that you change; `const T&` | `&mut T`; `&T`. Both are checked |
+| `std::shared_ptr` | `Rc` (`Arc` across threads), [Smart pointers](/learn/smart-pointers/#rct-several-owners) |
+| `[=]` and `[&]` in a lambda | roughly `move \|\| ...` and `\|\| ...`. `move` copies a `Copy` value but takes anything else; `.clone()` first for a C++-style copy |
+</ForLang>
+
+### Closures
+
+A closure is a small function you write inline (`|| ...`; [Closures](/learn/closures/) has the details). It borrows the variables it uses, unless its body needs to take one. With `move` it takes them, which for a `Copy` type means a copy:
+
+<Snippet file="closures.rs" />
+
+<Snippet file="closure-consumes.fail.rs" />
+
+### Which types are `Copy`
+
+Numbers, `bool`, `char`, shared references `&T`, and tuples, arrays and `Option`s of `Copy` things. `String`, `Vec` and `Box` own heap memory, so they are not, and neither is `&mut T`. Your own struct is not `Copy` until you write `#[derive(Clone, Copy)]`, which needs every field to be `Copy`. The [`Copy` docs](https://doc.rust-lang.org/std/marker/trait.Copy.html) list the standard ones, and the compiler tells you the rest (ignore the syntax here; the error is the point):
+
+<Snippet file="not-copy.fail.rs" />
+
+Rust still has the same three ideas. The sigil or the type shows which, and the compiler refuses the surprising ones.
+
+<p class="lr-layer">Going deeper</p>
+
+## A copied header still points at the data
+
+A `Vec` is three words: a pointer, a length and a capacity. `clone` builds a second buffer, and a slice `&v[..]` is a pointer plus a length into the first. `std::ptr::eq` is Rust's identity check: on two references it compares addresses, where `==` compares what they point at.
+
+<Snippet file="slice-sharing.rs" />
+
+<Memory
+  title="let copy = v.clone();   let view = &v[..];"
+  stack={[
+    { name: 'v', type: 'Vec<i32>', cells: ['pointer', 'len 3', 'cap 3'], to: 'buf' },
+    { name: 'copy', type: 'Vec<i32>', cells: ['pointer', 'len 3', 'cap 3'], to: 'dup' },
+    { name: 'view', type: '&[i32]', cells: ['pointer', 'len 3'], to: 'buf' },
+  ]}
+  heap={[
+    { id: 'buf', label: 'v and view', cells: ['1', '2', '3'] },
+    { id: 'dup', label: "copy's own buffer", cells: ['1', '2', '3'] },
+  ]}
+  caption="The three header fields are drawn in a convenient order. `view` shares `v`'s buffer, `copy` does not. The compiler tracks `view`, so `v` cannot grow or be dropped while `view` is in use."
+/>
+
+<ForLang only="go">
+A Go slice is the same idea: a header of pointer, length and capacity. Copying it copies the arrow, not the array:
+
+<Snippet file="slice-header.go" />
+
+<Memory
+  title="b := a   then   b[0] = 99"
+  stack={[
+    { name: 'a', type: '[]int', cells: ['pointer', 'len 3', 'cap 3'], to: 'arr' },
+    { name: 'b', type: '[]int', cells: ['pointer', 'len 3', 'cap 3'], to: 'arr' },
+  ]}
+  heap={[{ id: 'arr', label: 'one array of 3 ints', cells: ['99', '2', '3'] }]}
+  caption="Two headers (24 bytes each on a 64-bit machine), one array. `&a[0] == &b[0]` says the slices start at the same element; it is false for `b := a[1:]`, which shares memory too, and it panics on an empty slice. The `append` that ran out of room gave `b` a new array, and sharing ended without any error."
+/>
+</ForLang>
+
+## Shallow and deep
+
+A **shallow** copy shares what is inside; your language's block above showed one. In Rust a `Vec` or `String` field owns its buffer, so `.clone()` makes a new one for each. Sharing is something you ask for, with `Rc` (several owners; [Ownership](/learn/ownership/#shared-ownership-rc-and-arc)):
+
+<Snippet file="clone-deep.rs" />
+
+`Rc::clone` copied an arrow and added an owner, which is the "shared" case of the table at the top.
+
+<p class="lr-layer">Practice</p>
+
+## Predict, then run
+
+Say what this prints before you open the answer. Each line depends on whether `clone()` or `let first = scores[0]` made a copy.
+
+<Snippet file="predict.rs" hideOutput />
+
+<details>
+<summary>Show the output</summary>
+
+<Snippet file="predict.rs" />
+
+`clone()` gave `copy` its own buffer. `scores[0]` is an `i32`, so `first` is a copy, taken before `scores[0] = 99`.
+</details>
+
+<Exercise name="birthday" title="Change the caller's list">
+Add one to every age, in place. The parameter is already a `&mut Vec<Person>`, so loop with `people.iter_mut()`; `&mut people` would be a reference to a reference. The checks include an empty list.
+</Exercise>
+
+<Exercise name="oldest-age" title="Look without copying">
+Return the biggest age. `Person` does not derive `Clone`, so you cannot copy the list: borrow it with `for p in people`, where each `p` is a `&Person`. The checks include an empty list.
+</Exercise>
+
+## Read more
+
+- [The Rust Book, chapter 4: Understanding Ownership](https://doc.rust-lang.org/book/ch04-00-understanding-ownership.html), with [4.1 What Is Ownership?](https://doc.rust-lang.org/book/ch04-01-what-is-ownership.html) (moves and `Copy`) and [4.2 References and Borrowing](https://doc.rust-lang.org/book/ch04-02-references-and-borrowing.html).
+- [`std::marker::Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html) and [`Clone`](https://doc.rust-lang.org/std/clone/trait.Clone.html).
+- [`std::ptr::eq`](https://doc.rust-lang.org/std/ptr/fn.eq.html), for the identity check.
+- Go: the spec on [range clauses](https://go.dev/ref/spec#For_range), [assignment statements](https://go.dev/ref/spec#Assignment_statements) and [slice types](https://go.dev/ref/spec#Slice_types), Effective Go on [arrays, slices and maps](https://go.dev/doc/effective_go#data), and [Fixing For Loops in Go 1.22](https://go.dev/blog/loopvar-preview).

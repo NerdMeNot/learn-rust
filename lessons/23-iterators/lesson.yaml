@@ -1,0 +1,114 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Iterators"
+part: "collections"
+intro: >-
+  An iterator hands out items one at a time, and does nothing until something asks for
+  them. You chain steps like `filter`, `map`, `zip` and `fold` onto it instead of
+  writing the loop. The only surprise is how many `&` the closure receives.
+coming_from:
+  go: >-
+    Go's standard library has no `map` or `filter` for slices, so this replaces a
+    hand-written loop. The chain is lazy: nothing runs until `.collect()` or `.sum()`,
+    and the closure often gets a reference, like `&i32`, instead of the number.
+  kotlin: >-
+    This is Kotlin's `filter` and `map`, but lazy like a `Sequence`: you start with
+    `.iter()` and finish with `.collect()`. There is no `it`, and the closure gets
+    references, so `filter` sees `&&i32`.
+  python: >-
+    A chain like `.iter().filter(...).map(...)` is lazy like a generator expression, and
+    `.collect()` is `list(...)`. The surprise is that closures get references, so you
+    write `|&&n|` or `**n` to reach the number.
+  typescript: >-
+    Array `filter` and `map` build a new array at each step, but a Rust chain is lazy
+    until `.collect()` or `.sum()`. You start with `.iter()`, and the closure gets
+    references (`&&i32` in `filter`) instead of plain numbers.
+  java: >-
+    `iter().filter().map().collect()` is a Stream pipeline ending in `toList()`, and
+    it's just as lazy. The catch is that items are references, so `filter` gets `&&i32`
+    and you peel them off with patterns like `|&&n|`.
+  csharp: >-
+    `filter` is `Where` and `map` is `Select`, lazy like LINQ, and `collect()` is the
+    `ToList()` at the end that runs the whole chain. The catch is that `.iter()` yields
+    references, so `filter` gets `&&i32` and you write `|&&n|` or `**n` to get the number.
+  c: >-
+    C has no closures or iterator chains, so you'd write one loop that tests and stores.
+    Rust's chain compiles down to much the same loop; the cost is getting used to
+    closures that receive references like `&&i32`.
+  cpp: >-
+    `filter` and `map` are `std::views::filter` and `std::views::transform`, lazy in the
+    same way, and `collect()` is C++23's `std::ranges::to`. A C++ lambda taking `auto n`
+    gets a copy of each int; Rust's `filter` lends you a reference to the item instead,
+    so you write `|&&n|` to get the number.
+notes:
+  - >-
+    Why `&&`? `.iter()` lends you each item, so it is `&i32`. `filter` has to look at
+    the item and then still pass it on, so it can't hand it over. It lends it to your
+    closure again. A lend of a lend is `&&i32`.
+  - >-
+    `map` takes the item and returns something new, so it gets the item as-is (`&i32`
+    here). Rule: `filter`, `find`, `take_while` get one extra `&`. `map`, `for_each`,
+    `fold` don't.
+  - >-
+    `|&&n|` is a pattern that strips both `&` and gives you the plain number. The toolkit
+    below explains references in iterators properly, and how to avoid them with
+    `.copied()` or `.into_iter()`.
+  - >-
+    Chains are lazy. Nothing runs until `collect()` or `sum()`. In a release build they
+    typically compile to the same code as a hand-written loop.
+gotcha:
+  title: "Doing arithmetic on what `filter` hands you"
+  verdict: "rust-rule"
+  looks_fine: >-
+    In Kotlin, `it` inside `filter` is the element itself. You never think about
+    references.
+  rust_sees: >-
+    Here `n` is `&&i32`, a reference to a reference to a number. `%` works on a number
+    or on one reference to a number, but not through two.
+  why: >-
+    Method calls like `n.abs()` follow references automatically, any number of them.
+    Arithmetic follows one `&`, and comparisons want the same type on both sides. So
+    this only bites in closures that do arithmetic or comparisons on a `&&`. The
+    toolkit below explains where the second `&` comes from, and how to avoid it.
+  langs:
+    go:
+      status: "none"
+      says: >-
+        Go has no `filter` in its standard library. You would write a loop, where `n` is
+        just the number.
+    kotlin:
+      status: "runs"
+      says: >-
+        Kotlin runs this and prints [2, 4, 6]. `n` is the number itself, so `n % 2`
+        works with no references to follow.
+    python:
+      status: "runs"
+      says: >-
+        Python prints [2, 4, 6]. `n` is the number itself, so `n % 2` works with no
+        references to follow.
+    typescript:
+      status: "runs"
+      says: >-
+        Prints [ 2, 4, 6 ]. In TypeScript `n` is the number itself, so `n % 2` works as
+        written.
+    java:
+      status: "runs"
+      says: >-
+        This prints [2, 4, 6]. Java unboxes the Integer for `%` automatically, so there
+        are no layers of references to think about.
+    csharp:
+      status: "runs"
+      says: >-
+        LINQ lambdas get the item itself, so `n % 2` works and prints [2, 4, 6]. Rust's
+        `filter` hands you a reference to a reference, which is why the same line fails
+        there.
+    c:
+      status: "none"
+      says: >-
+        C has no closures or iterator chains. The C version is a plain loop over
+        `nums[i]`, so this mix-up of `&&i32` and `i32` cannot happen.
+    cpp:
+      status: "runs"
+      says: >-
+        The lambda takes `auto n`, a copy of each int, so `n % 2` works and this prints
+        `2 4 6`. Rust's `filter` lends the item instead of copying it, so the closure gets
+        `&&i32` and you take the `&`s off yourself.

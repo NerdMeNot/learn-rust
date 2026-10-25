@@ -1,0 +1,231 @@
+# Rust for Python developers
+#
+# Every habit is a pair: the Python program (dir py, run with python3) and the Rust program
+# (dir rust, with the example swapped in as src/main.rs). `expect: fail` is a program that
+# raises an exception (Python) or does not compile (Rust).
+name: habits
+sessions:
+  h1-py:
+    dir: py
+    steps:
+      - cmd: python3 h1_types.py
+  h1-rs:
+    dir: rust
+    overlay:
+      src/main.rs: ex/h1_types.rs
+    steps:
+      - cmd: cargo run
+        expect: fail
+  h2-py:
+    dir: py
+    steps:
+      - cmd: python3 h2_alias.py
+  h2-rs:
+    dir: rust
+    overlay:
+      src/main.rs: ex/h2_alias.rs
+    steps:
+      - cmd: cargo run
+        expect: fail
+  h3-py:
+    dir: py
+    steps:
+      - cmd: python3 h3_default.py
+  h3-rs:
+    dir: rust
+    overlay:
+      src/main.rs: ex/h3_default.rs
+    steps:
+      - cmd: cargo run
+  h4-py:
+    dir: py
+    steps:
+      - cmd: python3 h4_errors.py
+  h4-rs:
+    dir: rust
+    overlay:
+      src/main.rs: ex/h4_errors.rs
+    steps:
+      - cmd: cargo run
+  h5-py:
+    dir: py
+    steps:
+      - cmd: python3 h5_none.py
+        expect: fail
+  h5-rs:
+    dir: rust
+    overlay:
+      src/main.rs: ex/h5_none.rs
+    steps:
+      - cmd: cargo run
+        expect: fail
+  h6-py:
+    dir: py
+    steps:
+      - cmd: python3 h6_duck.py
+        expect: fail
+  h6-rs:
+    dir: rust
+    overlay:
+      src/main.rs: ex/h6_duck.rs
+    steps:
+      - cmd: cargo run
+        expect: fail
+  h7-py:
+    dir: py
+    steps:
+      - cmd: python3 h7_lazy.py
+  h7-rs:
+    dir: rust
+    overlay:
+      src/main.rs: ex/h7_lazy.rs
+    steps:
+      - cmd: cargo run
+  h8-py:
+    dir: py
+    steps:
+      - cmd: python3 h8_class.py
+  h8-rs:
+    dir: rust
+    overlay:
+      src/main.rs: ex/h8_struct.rs
+    steps:
+      - cmd: cargo run
+        expect: fail
+  h9-py:
+    dir: py
+    steps:
+      - cmd: python3 h9_threads.py
+        varies: true
+  h9-rs:
+    dir: rust
+    overlay:
+      src/main.rs: ex/h9_threads.rs
+    steps:
+      - cmd: cargo run
+  h10-py:
+    dir: py
+    steps:
+      - cmd: python3 h10_async.py
+  h10-rs:
+    dir: rust
+    overlay:
+      src/main.rs: ex/h10_async.rs
+    steps:
+      - cmd: cargo run
+  # Fixes and variations the text refers to.
+  h2-fixed:
+    dir: rust
+    overlay:
+      src/main.rs: ex/h2_fixed.rs
+    steps:
+      - cmd: cargo run
+  h3-missing:
+    dir: rust
+    overlay:
+      src/main.rs: ex/h3_missing.rs
+    steps:
+      - cmd: cargo run
+        expect: fail
+  h9-rc:
+    dir: rust
+    overlay:
+      src/main.rs: ex/h9_rc.rs
+    steps:
+      - cmd: cargo run
+        expect: fail
+  # The table: the same lines printed by Python and by Rust, then a diff.
+  idioms:
+    dir: rust
+    overlay:
+      src/main.rs: ex/idioms.rs
+      idioms.py: py/idioms.py
+    steps:
+      - cmd: python3 idioms.py | tee python.txt
+      - cmd: cargo run -q | tee rust.txt
+        show: '$ cargo run'
+      - cmd: 'diff python.txt rust.txt; echo "diff exit code: $?"; wc -l < rust.txt'
+        show: '$ diff python.txt rust.txt'
+  # Rows of the table whose meaning differs, not only the spelling.
+  differs:
+    dir: rust
+    overlay:
+      src/main.rs: ex/differs.rs
+      differs.py: py/differs.py
+    steps:
+      - cmd: python3 differs.py
+      - cmd: cargo run -q
+        expect: fail
+        show: '$ cargo run'
+  # Toolchain map. The Rust half runs offline; the Python half needs network because the
+  # image has Python but no pip (and no ensurepip, so no plain venv either).
+  rust-tools:
+    dir: rust
+    steps:
+      - cmd: cargo build; echo "exit code $?"
+        show: '$ cargo build; echo "exit code $?"'
+      - cmd: cargo test
+      - cmd: cargo run
+      - cmd: cargo fmt --check; echo "exit code $?"
+        show: '$ cargo fmt --check; echo "exit code $?"'
+      - cmd: cargo clippy; echo "exit code $?"
+        show: '$ cargo clippy; echo "exit code $?"'
+      - cmd: cargo doc --no-deps
+      - cmd: ls $CARGO_HOME/bin
+  python-tools:
+    dir: py
+    steps:
+      - cmd: python3 -m venv .venv
+        expect: fail
+        show: '$ python3 -m venv .venv   # fails in this image: no ensurepip'
+      - cmd: python3 -m venv --without-pip .venv
+      - cmd: curl -sS -o get-pip.py https://bootstrap.pypa.io/get-pip.py && .venv/bin/python get-pip.py -q
+        timeout: 600
+        show: '$ curl -O https://bootstrap.pypa.io/get-pip.py && .venv/bin/python get-pip.py   # needs network; get-pip.py is not pinned'
+      - cmd: .venv/bin/pip install -q pytest==9.1.1 mypy==2.4.0 ruff==0.17.2
+        timeout: 600
+        show: '$ .venv/bin/pip install pytest==9.1.1 mypy==2.4.0 ruff==0.17.2   # needs network; their own dependencies are not pinned'
+      - cmd: .venv/bin/mypy h1_types.py
+        expect: fail
+      - cmd: .venv/bin/pytest -q
+        varies: true
+      - cmd: .venv/bin/ruff format --check wordcount.py test_wordcount.py; .venv/bin/ruff check wordcount.py test_wordcount.py
+      - cmd: python3 -m pydoc wordcount | head -12
+        show: '$ python3 -m pydoc wordcount'
+      - cmd: |-
+          python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project'])"
+  # Things to try: each session is one task from the page's "Try it yourself".
+  try-1:
+    dir: rust
+    overlay:
+      src/main.rs: ex/h5_none.rs
+    steps:
+      - cmd: |-
+          sed -i 's/println!("{}", users.get("bob").to_uppercase());/println!("{:?}", users.get("bob").map(|name| name.to_uppercase()));/' src/main.rs && cargo run
+        show: '$ cargo run    # after changing the println! line to users.get("bob").map(|name| name.to_uppercase()) printed with {:?}'
+      - cmd: |-
+          sed -i 's/get("bob")/get("ada")/' src/main.rs && cargo run
+        show: '$ cargo run    # after changing "bob" to "ada"'
+  try-2:
+    dir: rust
+    overlay:
+      src/main.rs: ex/h6_duck.rs
+    steps:
+      - cmd: |-
+          printf '\nimpl Shape for Rock {\n    fn area(&self) -> u32 {\n        0\n    }\n}\n' >> src/main.rs && cargo run
+        show: '$ cargo run    # after adding impl Shape for Rock { fn area(&self) -> u32 { 0 } }'
+  try-3:
+    dir: rust
+    overlay:
+      src/main.rs: ex/h2_fixed.rs
+    steps:
+      - cmd: |-
+          sed -i 's/add_bonus(&mut a);/add_bonus(\&a);/' src/main.rs && cargo run
+        expect: fail
+        show: '$ cargo run    # after changing add_bonus(&mut a) to add_bonus(&a)'
+  versions:
+    dir: py
+    steps:
+      - cmd: python3 --version
+      - cmd: rustc --version
+      - cmd: cargo --version

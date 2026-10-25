@@ -1,0 +1,4 @@
+# Cloudflare Pages headers. Astro puts a content hash in every file name under
+# /_astro/, so those can be cached forever; HTML is revalidated on every visit.
+/_astro/*
+  Cache-Control: public, max-age=31536000, immutable

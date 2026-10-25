@@ -1,0 +1,112 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "If / Else"
+part: "basics"
+intro: >-
+  `if` needs no parentheses around the condition. It is also an expression, so it can
+  produce a value.
+coming_from:
+  go: >-
+    `if` looks like Go's: no parentheses, braces required, and the condition must be a
+    `bool`. It is also an expression, so `let size = if n > 5 { "big" } else { "small"
+    };` replaces declaring `size` first and assigning in a branch.
+  kotlin: >-
+    This is Kotlin's `if` expression without the parentheses, and the braces are
+    required. Both branches must give the same type, where Kotlin would quietly pick a
+    common supertype.
+  python: >-
+    `if` with a value replaces `"big" if n > 5 else "small"`. The condition must be a
+    real `bool`: there is no truthiness, so `if n` with a number or `if items` with a
+    list won't compile.
+  typescript: >-
+    `if` with a value replaces the ternary `n > 5 ? "big" : "small"`. The condition must
+    be a real `bool`, so `if n` with a number or `if s` with a string won't compile, and
+    both branches must give the same type.
+  java: >-
+    Rust's `if` is an expression, so `let size = if n > 5 { "big" } else { "small" };`
+    replaces the `?:` ternary, which Rust does not have. Rust never converts
+    one branch to fit the other, where Java's ternary would pick a common supertype or
+    promote a number.
+  csharp: >-
+    `if` gives back a value, so it replaces C#'s `?:`, which Rust does not have. Like
+    C#, the condition must be a `bool`; unlike C#'s `?:`, Rust never converts one branch
+    to fit the other. Rust also drops the parentheses but always needs the braces.
+  c: >-
+    Rust's `if` is an expression that replaces `?:`, which Rust does not have. The
+    condition must be a real `bool` (no `if (n)` on an integer or pointer), and both
+    branches must have the same type, so a `0` can't stand in for a null string.
+  cpp: >-
+    `if` is an expression, so it does the job of `?:`, which Rust does not have. The
+    condition must be a `bool`, with no implicit conversion from integers or pointers,
+    and both branches must have exactly the same type.
+notes:
+  - >-
+    The condition must be a `bool`. `if n { }` with a number does not compile. There is
+    no "truthy" zero, so write `if n != 0`.
+  - >-
+    There is no ternary `a ? b : c`. `if a { b } else { c }` is the same thing.
+  - >-
+    Chain tests with `else if`. When every branch compares one value against fixed
+    cases, `match` (a later lesson) is usually clearer.
+  - >-
+    `if let` and `let ... else` test whether a value has a given shape and name its
+    parts in the same step. They replace "check, then unpack".
+  - >-
+    `&&` and `||` stop as soon as the answer is known, so the right side runs only
+    when it is needed.
+gotcha:
+  title: "Two branches that give different types"
+  verdict: "rust-rule"
+  looks_fine: >-
+    Kotlin accepts this and gives `size` a loose common type (`Comparable<*> & Serializable`). Go has no `if` expression, so
+    you would never write it.
+  rust_sees: >-
+    Rust gives every variable exactly one type, decided while compiling. `size` cannot
+    be "a string or maybe a number".
+  why: >-
+    Code after this line uses `size`. If it could be either type, every later line would
+    need to check which one it got. Rust makes both branches agree up front instead. If you
+    really want "string or number", that is an enum, covered later.
+  langs:
+    go:
+      status: "none"
+      says: >-
+        Go has no `if` expression, so this can't come up. You declare `size` with one
+        type first and assign to it in each branch.
+    kotlin:
+      status: "runs"
+      says: >-
+        Kotlin runs this and prints big. `size` quietly gets a loose common type instead
+        of `String`, so later code can't use it as text without a check.
+    python:
+      status: "runs"
+      says: >-
+        Python runs this and prints big. The two branches can give different types, so
+        `size` might be a string or an int and later code has to cope with both.
+    typescript:
+      status: "runs"
+      says: >-
+        Prints big. TypeScript infers the union `"big" | 0` and lets it through; every later
+        use of `size` as a string then needs a `typeof` check or the compiler rejects it.
+        Rust asks you to say so up front instead.
+    java:
+      status: "runs"
+      says: >-
+        Java compiles this and prints big. It picks a shared supertype for the two
+        branches, so `size` ends up as a vague Object-like type that later code can't do
+        much with.
+    csharp:
+      status: "refuses"
+      says: >-
+        C# refuses this too: the two sides of `?:` must share a type, and there is no
+        conversion between string and int (CS0173).
+    c:
+      status: "runs"
+      says: >-
+        C accepts this because a plain 0 counts as a null pointer. It prints big here,
+        but with a smaller `n` the string would be NULL.
+    cpp:
+      status: "runs"
+      says: >-
+        This compiles because a literal `0` also counts as a null pointer, so both
+        branches become `const char*`. It prints `big`, but if `n` were small `cout`
+        would get a null pointer.

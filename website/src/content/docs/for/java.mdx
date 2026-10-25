@@ -1,0 +1,275 @@
+---
+title: "Rust for Java developers"
+description: "What carries over from Java, ten habits that Rust stops, an idiom table, the toolchain side by side, and a reading path through the course. Every Java and Rust program on the page was run."
+---
+
+import { Files, Remember, Session } from '../../../components/guide'
+
+You know Java well, so a lot of Rust will feel familiar. This page covers the parts that do not. Every Java program here ran with `javac` and `java` from Temurin JDK 25.0.5, and every Rust program ran with Rust 1.99.1, in the image behind this site (Linux ARM64). Maven and Gradle are not in the image, so anything about them is marked *not run*. Compile the Java files one at a time: two of them declare a `Point`.
+
+<Remember>Rust checks things that Java leaves to convention: who owns a value, who may change it, and what may cross a thread.</Remember>
+
+## What carries over
+
+- **Static types, inference and generics with bounds.** `<T extends Comparable<T>>` becomes `T: PartialOrd` ([Generics](/learn/generics/)).
+- **Interfaces and lambdas.** A `trait` is an `interface` with default methods, and a closure is a lambda that may also change what it captured ([Traits](/learn/traits/), [Closures](/learn/closures/)).
+- **Streams.** `iter().filter().map().collect()` is a lazy pipeline, like a `Stream` ([Iterators](/learn/iterators/)).
+- **Records and sealed interfaces.** A `struct` with derives is a record, and an `enum` with data plus `match` is a sealed interface with a pattern `switch` ([Enums](/learn/enums/)).
+- **Cleanup at the end of a block.** `try`-with-resources is the nearest idea to what Rust does for every value (habit 7).
+
+## Ten habits to unlearn
+
+Each habit has the Java program on the left and what Rust does on the right. Where Rust refuses the Java shape, the right side is the real compiler error; fixes are in the [idiom table](#idiom-by-idiom) or [Try it yourself](#try-it-yourself). The compiler errors name `src/bin/fail.rs` because each failing program was copied to that file to build it.
+
+### 1. Reuse code with `extends`
+
+A subclass inherits fields and methods, and a `User` variable can hold an `Admin`. Rust has no `extends` ([No inheritance](/learn/methods/#no-inheritance)). The `Admin` holds a `User`, and a trait plays the part of the interface.
+
+<div class="lr-compare">
+<Files guide="for-java" dir="java" files={["Inherit.java"]} run="java-inherit" lang="java" />
+<Files guide="for-java" dir="rust" files={["src/bin/inherit.rs"]} run="inherit" />
+</div>
+
+`super.describe()` became `self.user.describe()`, and `u.name` became `admin.user.name`. You write the path. Shared behaviour goes in a trait's default methods, shared data in a field ([Traits](/learn/traits/#a-trait-or-an-enum)).
+
+### 2. Let `null` mean "no value"
+
+`ages.get("bo")` returned `null`, and unboxing it into an `int` threw at run time, after the first line had printed. Rust's `get` returns an `Option`, and an `Option<&i32>` is not an `i32`, so this does not compile.
+
+<div class="lr-compare">
+<Files guide="for-java" dir="java" files={["Nulls.java"]} run="java-nulls" lang="java" />
+<Files guide="for-java" dir="fails" files={["null.rs"]} run="fail-null" />
+</div>
+
+You decide what a missing key means: `unwrap_or(0)`, a `match`, or an `if let` ([Option](/learn/option/#you-cant-use-an-option-as-the-value)). Java's `Optional` exists, but `null` stays a legal value of a variable of type `Optional` too, as the [Option lesson](/learn/option/) runs. Task 2 below runs the fix.
+
+### 3. Two names for one list
+
+In Java `List<String> b = a` copies the reference, and the `==` line shows one object. Rust moves the `Vec` into `b`, and using `a` afterwards is error E0382.
+
+<div class="lr-compare">
+<Files guide="for-java" dir="java" files={["Alias.java"]} run="java-alias" lang="java" />
+<Files guide="for-java" dir="fails" files={["moved.rs"]} run="fail-moved" />
+</div>
+
+If you want two lists, call `clone()`. If you want two names for one list, borrow it with `&mut`. Task 1 runs both. See [Ownership](/learn/ownership/#moves) and [Copy or reference?](/learn/copy-or-reference/).
+
+### 4. Trust `final`
+
+`final` stops the variable from pointing at another list. The list itself still took two `add` calls. In Rust `let` freezes the value too, unless the type allows interior mutation ([Smart pointers](/learn/smart-pointers/)).
+
+<div class="lr-compare">
+<Files guide="for-java" dir="java" files={["Final.java"]} run="java-final" lang="java" />
+<Files guide="for-java" dir="fails" files={["immutable.rs"]} run="fail-immutable" />
+</div>
+
+`let mut` opts in. The same split shows in signatures: `&Vec<T>` can read, `&mut Vec<T>` can change ([Variables](/learn/variables/#frozen-unless-you-say-mut), [Mutable borrows](/learn/mutable-borrows/#the-rule-one-writer-or-any-number-of-readers)).
+
+### 5. Report failure with an exception
+
+`Integer.parseInt` declares nothing, so `javac` did not ask for a `catch`, and the failure arrived as a stack trace. Rust's `parse` returns a `Result`, and using it as a `u16` does not compile.
+
+<div class="lr-compare">
+<Files guide="for-java" dir="java" files={["Parse.java"]} run="java-parse" lang="java" />
+<Files guide="for-java" dir="fails" files={["result.rs"]} run="fail-result" />
+</div>
+
+The failure is part of the return type, so every caller sees it. Handle it with `match`, give it a default (row 12 of the table), or pass it up with `?` (the stack-traces bullet below); see [Errors](/learn/errors/#result-is-an-enum). Java's checked exceptions are the nearest relative, but a `Result` is an ordinary value that you can store or collect.
+
+### 6. Return whatever you have, and let the GC keep it alive
+
+`longest` returned one of its two arguments, and the program printed the result even though `inner`, a `new String` on the heap, had gone out of scope: the object lives while something refers to it. Rust has no collector to keep a borrowed string alive, so the signature has to say which input the result borrows from.
+
+<div class="lr-compare">
+<Files guide="for-java" dir="java" files={["Longest.java"]} run="java-longest" lang="java" />
+<Files guide="for-java" dir="fails" files={["longest.rs"]} run="fail-longest" />
+</div>
+
+The compiler's suggestion, `<'a>`, ties the result to both inputs. If a function builds new text, return an owned `String` and skip lifetimes ([Returning references](/learn/returning-references/#the-problem-a-reference-to-something-that-is-gone), [Lifetimes](/learn/lifetimes/#naming-a-lifetime-a)).
+
+### 7. Close resources with `try`, and only there
+
+`a` and `b` were closed in reverse order because the program used `try`-with-resources. `c` was opened without it, and in this program nothing ever printed `close c`. In Rust a value is dropped when its owner goes out of scope, so `_c` was closed at the end of `main` and nobody had to remember anything.
+
+<div class="lr-compare">
+<Files guide="for-java" dir="java" files={["Cleanup.java"]} run="java-cleanup" lang="java" />
+<Files guide="for-java" dir="rust" files={["src/bin/cleanup.rs"]} run="cleanup" />
+</div>
+
+You write the `Drop` once, for the type ([Drop](/learn/common-traits/#drop-the-trait-behind-scope-exit)). See the Java Tutorials on [`try`-with-resources](https://docs.oracle.com/javase/tutorial/essential/exceptions/tryResourceClose.html).
+
+### 8. Expect generics to be erased
+
+At run time a `List<String>` and a `List<Integer>` were the same class (the first two lines: that is erasure). The last line is boxing, not erasure: a `List` cannot hold an `int`, so the two `1000`s became separate `Integer` objects and `==` compared references. Rust's generics are not erased: each `Vec<T>` is compiled for its own `T`, and `==` compares values.
+
+<div class="lr-compare">
+<Files guide="for-java" dir="java" files={["Erasure.java"]} run="java-erasure" lang="java" />
+<Files guide="for-java" dir="rust" files={["src/bin/generics.rs"]} run="generics" />
+</div>
+
+The names that `type_name` prints are for diagnostics, and its docs do not promise their text. The gap of 4 bytes comes from the `i32` size ([Generics](/learn/generics/#what-t-is-at-run-time-in-your-language); the [Java Tutorials](https://docs.oracle.com/javase/tutorial/java/generics/erasure.html) describe erasure).
+
+### 9. Write getters, setters and `equals` by hand
+
+A plain class with private fields and getters is not equal to another one with the same numbers until you write `equals` and `hashCode`; a `record` writes them. A Rust `struct` has no equality either, and the compiler says so instead of answering `false`.
+
+<div class="lr-compare">
+<Files guide="for-java" dir="java" files={["Records.java"]} run="java-records" lang="java" />
+<Files guide="for-java" dir="fails" files={["equals.rs"]} run="fail-equals" />
+</div>
+
+One line of `derive` writes the rest:
+
+<Files guide="for-java" dir="rust" files={["src/bin/derive.rs"]} run="derive" />
+
+Fields are private to their module, not to the type, so code in the same module can read `p.x` ([Structs](/learn/structs/#who-can-see-the-fields), [Modules](/learn/modules/#private-by-default), [Equality and hashing](/learn/common-traits/#equality-order-and-hashing)).
+
+### 10. Share a list between threads and add a lock later
+
+Four threads added to one `ArrayList`. `javac` did not object, and the run printed a smaller count than the 400,000 expected, or one thread died with `ArrayIndexOutOfBoundsException` (this output varies between runs). In Rust the same shape does not compile: the `Vec` moves into the first thread's closure.
+
+<div class="lr-compare">
+<Files guide="for-java" dir="java" files={["Racy.java"]} run="java-racy" lang="java" />
+<Files guide="for-java" dir="fails" files={["spawn.rs"]} run="fail-spawn" />
+</div>
+
+To share it, you wrap it in `Arc<Mutex<_>>`, and the count is right:
+
+<Files guide="for-java" dir="rust" files={["src/bin/shared.rs"]} run="shared" />
+
+[Send and Sync](/learn/send-sync/) explains why safe Rust code cannot contain a data race. It does not stop deadlocks, or a wrong check-then-act across two locks ([Shared state](/learn/shared-state/#what-rust-refuses)).
+
+## Idiom by idiom
+
+Every cell was run: the Java cells in one program, the Rust cells in another. Open the box below the table to see both and what they printed. Where a program spreads a cell over several lines, the table shows it on one.
+
+| # | You write in Java | In Rust | Lesson |
+| --- | --- | --- | --- |
+| 1 | `final var x = 1;` | `let x = 1;` | [Variables](/learn/variables/) |
+| 2 | `count++;` | `count += 1;` | [What Rust doesn't have](/learn/what-rust-lacks/) |
+| 3 | `String size = n > 5 ? "big" : "small";` | `let size = if n > 5 { "big" } else { "small" };` | [If / else](/learn/if-else/) |
+| 4 | `String level = switch (n) { case 1, 2 -> "low"; default -> "high"; };` | `let level = match n { 1 \| 2 => "low", _ => "high" };` | [Match](/learn/match/) |
+| 5 | `Optional.of("hi").map(String::length).orElse(0)` | `Some("hi").map(\|s\| s.len()).unwrap_or(0)` | [Option](/learn/option/) |
+| 6 | `ages.getOrDefault("bo", 0)` | `ages.get("bo").copied().unwrap_or(0)` | [Maps](/learn/maps/) |
+| 7 | `counts.merge("a", 1, Integer::sum);` | `*counts.entry("a").or_insert(0) += 1;` | [Maps](/learn/maps/) |
+| 8 | `nums.stream().filter(m -> m % 2 == 0).map(m -> m * m).toList()` | `nums.iter().filter(\|n\| **n % 2 == 0).map(\|n\| n * n).collect::<Vec<_>>()` | [Iterators](/learn/iterators/#why-iterators-hand-you-references) |
+| 9 | `for (String s : names)` | `for s in &names` | [Looping over a collection](/learn/for-collections/) |
+| 10 | `String.join(", ", names)` | `names.join(", ")` | [Working with text](/learn/text/) |
+| 11 | `word.length()` | `word.chars().count()` (`word.len()` counts bytes) | [Strings](/learn/strings/) |
+| 12 | `try { parsed = Integer.parseInt(s); } catch (NumberFormatException e) { parsed = -1; }` | `let parsed = s.parse::<i32>().unwrap_or(-1);` | [Errors](/learn/errors/) |
+| 13 | `record Point(int x, int y) {}` | `#[derive(Debug, PartialEq, Eq, Hash)] struct Point { x: i32, y: i32 }` | [Common traits](/learn/common-traits/) |
+| 14 | `if (shape instanceof Circle c)` | `if let Shape::Circle(r) = shape` | [Enums](/learn/enums/) |
+| 15 | `default String hi() { return "hi"; }` | `fn hi(&self) -> String { String::from("hi") }` | [Traits](/learn/traits/) |
+| 16 | `new ArrayList<>(original)` | `original.clone()` | [Ownership](/learn/ownership/#clone) |
+| 17 | `CompletableFuture.supplyAsync(() -> 5).join()` | `thread::spawn(\|\| 5).join().unwrap()` | [Threads](/learn/threads/) |
+| 18 | `synchronized (lock) { box[0]++; }` | `*count.lock().unwrap() += 1;` | [Shared state](/learn/shared-state/) |
+| 19 | `(int) 3.9` | `3.9_f64 as i32` | [Numbers and types](/learn/types/) |
+| 20 | `"x=" + n` | `format!("x={n}")` | [Printing and formatting](/learn/formatting/) |
+
+Rows 11, 17 and 18 are not exact twins. Row 11: `length()` in Java counts UTF-16 units, and Rust's `chars()` counts Unicode scalar values. Both gave 5 for `héllo`, while `len()` gave 6. Row 17: `supplyAsync` ran the work on a pool (the `17 pool` line printed `ForkJoinPool.commonPool-worker-1`), and `thread::spawn` starts an operating-system thread. Row 18: in Rust the `Mutex` owns the number, and in Java the lock is a separate object next to it.
+
+<details>
+<summary>The two programs behind the table</summary>
+
+<div class="lr-compare">
+<Files guide="for-java" dir="java" files={["Idioms.java"]} run="java-idioms" lang="java" />
+<Files guide="for-java" dir="rust" files={["src/bin/idioms.rs"]} run="idioms-rust" />
+</div>
+
+</details>
+
+## Toolchain map
+
+Cargo is the build tool, and also the front door to the compiler, the formatter, the linter and the documentation generator. The commands below ran on a two-function project (one Java file, one Rust crate with a unit test and a doc-test).
+
+| Job | Java | Rust | Run? |
+| --- | --- | --- | --- |
+| New project | `mvn archetype:generate`, `gradle init` | `cargo new demo` | Cargo run. Maven and Gradle not run |
+| Build file | `pom.xml`, `build.gradle` | `Cargo.toml` | Not run for Java |
+| Compile | `javac Slug.java` | `cargo build` | Both run |
+| Run | `java Slug`, or `java Slug.java` | `cargo run` | Both run |
+| Test | JUnit through Maven or Gradle | `cargo test` | Rust run. JUnit not run |
+| Format | a plugin or tool such as Spotless or google-java-format | `cargo fmt --check` | Rust run. Java not run |
+| Lint | `javac -Xlint:all` (the compiler's own warnings, not a linter) | `cargo clippy` | Both run |
+| Docs | `javadoc` | `cargo doc` | Both run |
+| Dependencies | coordinates in `pom.xml`, from Maven Central | `cargo add`, from crates.io ([Using crates](/start/using-crates/)) | Not run |
+| Debugger | `jdb` | `rust-gdb`, `rust-lldb` (wrappers for gdb and lldb) | `jdb` ran with `-version`. No debugger session run: `gdb` and `lldb` are not in the image |
+| REPL | `jshell` | none in `cargo --list` | `jshell` found; no Cargo command mentions a REPL |
+
+<details>
+<summary>The Rust and Java commands that ran</summary>
+
+An empty output means the command printed nothing. For `cargo fmt --check` and `cargo clippy` that is the pass result in this run, and `javac` is quiet when there is nothing to report.
+
+<Session guide="for-java" run="tools-rust" title="Rust" />
+
+<Files guide="for-java" dir="tools-rust" files={["src/lib.rs"]} />
+
+<Session guide="for-java" run="tools-java" title="Java" />
+
+<Files guide="for-java" dir="tools-java" files={["Slug.java"]} lang="java" />
+
+What the image does not have, and the Cargo commands that mention a REPL:
+
+<Session guide="for-java" run="tools-absent" />
+
+</details>
+
+## A reading path
+
+In this order, for a Java reader:
+
+1. [What Rust doesn't have](/learn/what-rust-lacks/): your reflexes (`++`, `?:`, `null`, `new`, overloads) in one table.
+2. [Values, the stack and the heap](/learn/stack-heap/): a Java object variable is a reference; a Rust variable holds the value.
+3. [Ownership](/learn/ownership/), [Borrowing](/learn/borrowing/) and [Mutable borrows](/learn/mutable-borrows/): habits 3 and 4 are these three lessons.
+4. [Structs](/learn/structs/) and [Methods](/learn/methods/): no constructors, no inheritance.
+5. [Enums](/learn/enums/), [Option](/learn/option/) and [Errors](/learn/errors/): sealed interfaces, `null` and exceptions.
+6. [Traits](/learn/traits/), [Generics](/learn/generics/) and [Trait objects](/learn/trait-objects/): interfaces, `<T extends ...>`, and `List<Shape>`.
+7. [Closures](/learn/closures/) and [Iterators](/learn/iterators/): lambdas and streams, with references in the items.
+8. [Returning references](/learn/returning-references/) and [Lifetimes](/learn/lifetimes/): where the garbage collector used to decide.
+9. [Smart pointers](/learn/smart-pointers/) and [Working with the borrow checker](/learn/borrow-checker/): `Rc` for shared ownership, indices for graphs.
+10. [Threads](/learn/threads/), [Shared state](/learn/shared-state/) and [Send and Sync](/learn/send-sync/): habit 10 in full.
+11. [Async basics](/learn/async-basics/): futures that start only when polled, compared with `CompletableFuture` and virtual threads.
+12. [Project structure](/further/project-structure/): Cargo workspaces next to Maven or Gradle multi-module builds.
+
+If you also read Kotlin or C#, the same page exists for them: [Rust for Kotlin developers](/for/kotlin/) and [Rust for C# developers](/for/csharp/).
+
+## What you will miss
+
+- **A REPL.** `jshell` is in the JDK. In this image no `cargo` command mentions a REPL (the last session printed 0). Crates such as evcxr provide one; I did not run it.
+- **Automatic stack traces.** Habit 5's Java failure printed five frames. A Rust `main` that returns an `Err` prints one line:
+
+  <Files guide="for-java" dir="rust" files={["src/bin/noframes.rs"]} run="noframes" />
+
+  To get a backtrace, the [anyhow guide](/build/app-errors/) runs a program with `RUST_BACKTRACE=1`.
+- **Run-time reflection.** The `std::any` module offers `Any`, `TypeId`, `type_name` and downcasting. Its docs call it utilities for "dynamic typing or type reflection", and say `&dyn Any` is limited to testing for a concrete type. I found nothing there that lists a type's fields or methods ([std::any](https://doc.rust-lang.org/std/any/index.html)). Rust code generation happens at compile time, through macros ([Macros you'll read](/learn/reading-macros/)).
+- **Overloading and default arguments.** One name, one function. Use different names, a builder or a struct ([the lesson](/learn/what-rust-lacks/#no-default-or-named-arguments-no-function-overloading)).
+- **Object graphs with back-pointers.** A parent pointer or a cycle is just a field in Java. In Rust you choose `Rc` with `Weak`, or ids into a `Vec` ([Cycles](/learn/smart-pointers/#cycles-and-weakt), [Indices, not references](/learn/borrow-checker/#parent-pointers-and-graphs-indices-not-references)).
+
+## Try it yourself
+
+I ran all three in the image.
+
+1. **Fix habit 3 in two ways.** Change `let mut b = a;` to `let mut b = a.clone();` and `a` stays `["x"]`. Make `a` mutable and write `let b = &mut a;` instead, and the push through `b` shows in `a` because they are one list:
+
+   <Session guide="for-java" run="try-moved" />
+
+2. **Make the missing key a value.** Replace the `i32` line of habit 2 with `ages.get("ana").copied().unwrap_or(0)` and look up `"bo"` the same way. It compiles, and `bo` is 0:
+
+   <Session guide="for-java" run="try-option" />
+
+3. **Run both racing programs three times.** Expect a Java count below 400000 that changes between runs (or an `ArrayIndexOutOfBoundsException`: 5 of 60 separate runs of mine, not shown here), and Rust's 400000 each time:
+
+   <Session guide="for-java" run="try-racy-java" title="Java" />
+
+   <Session guide="for-java" run="try-racy-rust" title="Rust" />
+
+## Read more
+
+- [The Rust Book, chapter 4: ownership](https://doc.rust-lang.org/book/ch04-01-what-is-ownership.html) (habits 3 and 6)
+- [The Rust Book, chapter 9: error handling](https://doc.rust-lang.org/book/ch09-00-error-handling.html) (habit 5)
+- [The Rust Book, chapter 18: object-oriented programming features](https://doc.rust-lang.org/book/ch18-00-oop.html) (habit 1)
+- [`std::option::Option`](https://doc.rust-lang.org/std/option/enum.Option.html) (habit 2) and [`std::ops::Drop`](https://doc.rust-lang.org/std/ops/trait.Drop.html) (habit 7)
+- [`cargo new`](https://doc.rust-lang.org/cargo/commands/cargo-new.html) in the Cargo Book
+- [Java Tutorials: type erasure](https://docs.oracle.com/javase/tutorial/java/generics/erasure.html) and [the try-with-resources statement](https://docs.oracle.com/javase/tutorial/essential/exceptions/tryResourceClose.html)
+- [How Rust wants you to think](/start/how-rust-thinks/) and [the standard library tour](/std/tour/)

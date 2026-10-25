@@ -1,0 +1,450 @@
+{
+ "id": "closures",
+ "title": "Closures",
+ "part": "collections",
+ "intro": "Closures are anonymous functions written `|args| body`. They can use variables from around them.",
+ "coming_from": {
+  "go": "`|x: i32| x * factor` is `func(x int) int { return x * factor }`, usually with the types left out. A closure that changes a captured variable must itself be `let mut`, and `move` makes it take ownership of what it uses.",
+  "kotlin": "`|x| x * factor` is `{ x: Int -> x * factor }`. A closure that changes a captured variable must be stored in a `let mut`, and while it's still going to be used, you can't read that variable yourself.",
+  "python": "A closure is a `lambda` that can hold a whole block with `|| { ... }`. Python makes you say `nonlocal` to change a captured variable; Rust makes you say `mut`: the closure itself must be `let mut`.",
+  "typescript": "`|x| x * factor` is the arrow function `(x) => x * factor`. A closure that changes a captured variable must be `let mut`, and while it's still going to be used, nothing else can read or write that variable.",
+  "java": "`|x| x * factor` is a lambda, but Rust closures may change captured locals. Java forbids that; the workaround is an `AtomicInteger`, a one-element array or a field. A closure that changes something must itself be declared `let mut`.",
+  "csharp": "`|x| x * factor` is a lambda like `x => x * factor`, and like C# it can change captured variables. Rust adds two rules: a closure that changes state must be `let mut`, and while it holds that borrow nobody else can use `count`.",
+  "c": "C has no closures; you'd pass a function pointer plus a `void *` for context. A Rust closure bundles both, captures variables by itself, and is type-checked, so there's no cast from `void *`.",
+  "cpp": "A closure is a lambda that works out its own capture list: it borrows what it reads, borrows mutably what it changes, and `move` takes ownership. Rust needs `let mut` for a closure that changes what it captured even when it changes it through a reference, where a C++ `[&]` lambda needs nothing."
+ },
+ "notes": [
+  "A closure borrows what it uses. `times` holds a `&factor`, and `inc` holds a `&mut count`.",
+  "While `inc` is still going to be used, nothing else can touch `count`. That is the one-writer rule. Reading `count` works here because `inc` is never used again after that line.",
+  "`move |x| ...` makes the closure take ownership of what it uses instead of borrowing. A closure given to `thread::spawn` needs it when it uses local variables, because the thread can outlive the function that started it (see Threads).",
+  "Rust works out from the body whether a closure is `Fn` (only reads), `FnMut` (changes something) or `FnOnce` (gives something away). A function that takes a closure says which kind it accepts."
+ ],
+ "gotcha": {
+  "title": "A changing closure without mut",
+  "verdict": "rust-rule",
+  "looks_fine": "Go and Kotlin closures can change captured variables freely.",
+  "rust_sees": "`inc` carries a hidden `&mut count` inside it. Calling `inc` changes something, so `inc` itself counts as a value that changes.",
+  "why": "It is the same rule as in Methods: anything that changes has to be marked `mut`, so you can spot every place where state changes.",
+  "langs": {
+   "go": {
+    "status": "runs",
+    "says": "Go runs this and prints count=2. Any closure can change the variables it captured, with nothing to mark.",
+    "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tcount := 0\n\tinc := func() { count++ }\n\tinc()\n\tinc()\n\tfmt.Printf(\"count=%d\\n\", count)\n}\n",
+    "out": "count=2\n"
+   },
+   "kotlin": {
+    "status": "runs",
+    "says": "Kotlin runs this and prints count=2. A lambda stored in a `val` can still change a captured `var`.",
+    "code": "fun main() {\n    var count = 0\n    val inc = { count++ }\n    inc()\n    inc()\n    println(\"count=$count\")\n}\n",
+    "out": "count=2\n"
+   },
+   "python": {
+    "status": "crash",
+    "says": "Python raises UnboundLocalError. Assigning to `count` inside `inc` makes it a new local variable, so you need `global count` (or `nonlocal` in a nested function).",
+    "code": "count = 0\n\n\ndef inc():\n    count += 1\n\n\ninc()\ninc()\nprint(f\"count={count}\")\n",
+    "out": "Traceback (most recent call last):\n  File \"main.py\", line 8, in <module>\n    inc()\n    ~~~^^\n  File \"main.py\", line 5, in inc\n    count += 1\n    ^^^^^\nUnboundLocalError: cannot access local variable 'count' where it is not associated with a value\n"
+   },
+   "typescript": {
+    "status": "runs",
+    "says": "Prints count=2. A TypeScript arrow function can change outer `let` variables with no extra marking.",
+    "code": "let count = 0;\nconst inc = () => { count += 1; };\ninc();\ninc();\nconsole.log(`count=${count}`);\n",
+    "out": "count=2\n"
+   },
+   "java": {
+    "status": "refuses",
+    "says": "Java refuses this too, for a different reason: a lambda can't change a local variable it captures. Use an AtomicInteger or a field instead.",
+    "code": "public class Main {\n    public static void main(String[] args) {\n        int count = 0;\n        Runnable inc = () -> count += 1;\n        inc.run();\n        inc.run();\n        System.out.println(\"count=\" + count);\n    }\n}\n",
+    "error": "Main.java:4: error: local variables referenced from a lambda expression must be final or effectively final\n        Runnable inc = () -> count += 1;\n                             ^\n1 error"
+   },
+   "csharp": {
+    "status": "runs",
+    "says": "C# lambdas can change captured variables with no extra marker, so this prints count=2.",
+    "code": "var count = 0;\nvar inc = () => count += 1;\ninc();\ninc();\nConsole.WriteLine($\"count={count}\");\n",
+    "out": "count=2\n"
+   },
+   "c": {
+    "status": "none",
+    "says": "C has no closures. A function that changes a counter takes a pointer to it, as in the lesson."
+   },
+   "cpp": {
+    "status": "runs",
+    "says": "A `[&]` lambda can change `count` without any marker, so this prints `count=2`. Capture by value and C++ also wants a keyword: `mutable`.",
+    "code": "#include <iostream>\n\nint main() {\n    int count = 0;\n    auto inc = [&] { count += 1; };\n    inc();\n    inc();\n    std::cout << \"count=\" << count << \"\\n\";\n}\n",
+    "out": "count=2\n"
+   }
+  },
+  "code": "fn main() {\n    let mut count = 0;\n    let inc = || count += 1;\n    inc();\n    inc();\n    println!(\"count={count}\");\n}\n",
+  "error": "error[E0596]: cannot borrow `inc` as mutable, as it is not declared as mutable\n --> src/main.rs:3:9\n  |\n3 |     let inc = || count += 1;\n  |         ^^^      ----- calling `inc` requires mutable binding due to mutable borrow of `count`\n  |         |\n  |         not mutable\n4 |     inc();\n  |     --- cannot borrow as mutable\n5 |     inc();\n  |     --- cannot borrow as mutable\n  |\nhelp: consider changing this to be mutable\n  |\n3 |     let mut inc = || count += 1;\n  |         +++\n",
+  "error_code": "E0596",
+  "fixed": {
+   "code": "fn main() {\n    let mut count = 0;\n    let mut inc = || count += 1;\n    inc();\n    inc();\n    println!(\"count={count}\");\n}\n",
+   "out": "count=2\n"
+  }
+ },
+ "order": 30,
+ "program": {
+  "rust": {
+   "code": "fn main() {\n    let factor = 3;\n    let times = |x: i32| x * factor;     // reads factor\n    println!(\"{}\", times(5));\n\n    let mut count = 0;\n    let mut inc = || count += 1;         // changes count, so inc is `mut`\n    inc();\n    inc();\n    println!(\"count={count}\");\n}\n",
+   "out": "15\ncount=2\n"
+  },
+  "go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfactor := 3\n\ttimes := func(x int) int { return x * factor }\n\tfmt.Println(times(5))\n\n\tcount := 0\n\tinc := func() { count++ }\n\tinc()\n\tinc()\n\tfmt.Printf(\"count=%d\\n\", count)\n}\n",
+   "out": "15\ncount=2\n"
+  },
+  "kotlin": {
+   "code": "fun main() {\n    val factor = 3\n    val times = { x: Int -> x * factor }\n    println(times(5))\n\n    var count = 0\n    val inc = { count++ }\n    inc()\n    inc()\n    println(\"count=$count\")\n}\n",
+   "out": "15\ncount=2\n"
+  },
+  "python": {
+   "code": "factor = 3\ntimes = lambda x: x * factor  # reads factor\nprint(times(5))\n\ncount = 0\n\n\ndef inc() -> None:\n    global count  # needed to change a variable from outside\n    count += 1\n\n\ninc()\ninc()\nprint(f\"count={count}\")\n",
+   "out": "15\ncount=2\n"
+  },
+  "typescript": {
+   "code": "const factor = 3;\nconst times = (x: number) => x * factor; // reads factor\nconsole.log(times(5));\n\nlet count = 0;\nconst inc = () => { count += 1; };       // changes count\ninc();\ninc();\nconsole.log(`count=${count}`);\n",
+   "out": "15\ncount=2\n"
+  },
+  "java": {
+   "code": "import java.util.concurrent.atomic.AtomicInteger;\nimport java.util.function.IntUnaryOperator;\n\npublic class Main {\n    public static void main(String[] args) {\n        int factor = 3;\n        IntUnaryOperator times = x -> x * factor;   // reads factor\n        System.out.println(times.applyAsInt(5));\n\n        // a lambda can't reassign a local, so keep the count in an object\n        var count = new AtomicInteger();\n        Runnable inc = count::incrementAndGet;\n        inc.run();\n        inc.run();\n        System.out.println(\"count=\" + count);\n    }\n}\n",
+   "out": "15\ncount=2\n"
+  },
+  "csharp": {
+   "code": "var factor = 3;\nvar times = (int x) => x * factor;   // reads factor\nConsole.WriteLine(times(5));\n\nvar count = 0;\nvar inc = () => count++;             // changes count\ninc();\ninc();\nConsole.WriteLine($\"count={count}\");\n",
+   "out": "15\ncount=2\n"
+  },
+  "c": {
+   "code": "#include <stdio.h>\n\n// C has no closures. A function cannot capture local variables,\n// so you pass what it needs as extra arguments.\nint times(int x, int factor) {\n    return x * factor;\n}\n\nvoid inc(int *count) {   // a pointer lets it change the caller's variable\n    *count += 1;\n}\n\nint main(void) {\n    int factor = 3;\n    printf(\"%d\\n\", times(5, factor));\n\n    int count = 0;\n    inc(&count);\n    inc(&count);\n    printf(\"count=%d\\n\", count);\n    return 0;\n}\n",
+   "out": "15\ncount=2\n"
+  },
+  "cpp": {
+   "code": "#include <iostream>\n\nint main() {\n    int factor = 3;\n    auto times = [factor](int x) { return x * factor; };   // copies factor in\n    std::cout << times(5) << \"\\n\";\n\n    int count = 0;\n    auto inc = [&count] { count += 1; };                    // & captures count by reference\n    inc();\n    inc();\n    std::cout << \"count=\" << count << \"\\n\";\n}\n",
+   "out": "15\ncount=2\n"
+  }
+ },
+ "faq": [],
+ "snippets": {
+  "capture-modes.rs": {
+   "code": "fn main() {\n    // reads `factor`: the closure holds a shared reference to it\n    let factor = 3;\n    let times = |x: i32| x * factor;\n    println!(\"times(5): {}\", times(5));\n    println!(\"factor, read beside the closure: {factor}\");\n\n    // changes `count`: the closure holds a mutable reference to it\n    let mut count = 0;\n    let mut inc = || count += 1;\n    inc();\n    inc();\n    println!(\"count after two calls: {count}\");\n\n    // gives `name` away: the closure takes it\n    let name = String::from(\"ferris\");\n    let consume = || drop(name);\n    consume();\n    println!(\"the closure has run once; it cannot run again\");\n}\n",
+   "out": "times(5): 15\nfactor, read beside the closure: 3\ncount after two calls: 2\nthe closure has run once; it cannot run again\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-consume-as-fnmut.fail.rs": {
+   "code": "fn call_twice(mut f: impl FnMut()) {\n    f();\n    f();\n}\n\nfn main() {\n    let name = String::from(\"ferris\");\n    call_twice(|| drop(name));\n}\n",
+   "error": "error[E0507]: cannot move out of `name`, a captured variable in an `FnMut` closure\n --> src/main.rs:8:24\n  |\n7 |     let name = String::from(\"ferris\");\n  |         ----   ---------------------- move occurs because `name` has type `String`, which does not implement the `Copy` trait\n  |         |\n  |         captured outer variable\n8 |     call_twice(|| drop(name));\n  |                --      ^^^^ `name` is moved here\n  |                |\n  |                captured by this `FnMut` closure\n  |\nhelp: `Fn` and `FnMut` closures require captured values to be able to be consumed multiple times, but `FnOnce` closures may consume them only once\n --> src/main.rs:1:27\n  |\n1 | fn call_twice(mut f: impl FnMut()) {\n  |                           ^^^^^^^\nhelp: consider cloning the value if the performance cost is acceptable\n  |\n8 |     call_twice(|| drop(name.clone()));\n  |                            ++++++++\n",
+   "lang": "rust"
+  },
+  "closure-size.rs": {
+   "code": "use std::mem::{size_of, size_of_val};\n\nfn main() {\n    let factor = 3;\n    let mut count = 0;\n    let name = String::from(\"ferris\");\n    println!(\"name: len {}, capacity {}\", name.len(), name.capacity());\n\n    let no_captures = |x: i32| x + 1;\n    let reads_factor = |x: i32| x * factor;\n    let bumps_count = || count += 1;\n    let owns_factor = move |x: i32| x * factor;\n    let owns_name = move || name.len();\n\n    println!(\n        \"size of a closure that captures nothing: {}\",\n        size_of_val(&no_captures)\n    );\n    println!(\n        \"reads factor (shared ref):    {}\",\n        size_of_val(&reads_factor)\n    );\n    println!(\n        \"bumps count (mutable ref):    {}\",\n        size_of_val(&bumps_count)\n    );\n    println!(\n        \"owns factor (an i32):         {}\",\n        size_of_val(&owns_factor)\n    );\n    println!(\"owns name (a String):         {}\", size_of_val(&owns_name));\n    println!(\n        \"for comparison, &i32: {}, i32: {}, String: {}\",\n        size_of::<&i32>(),\n        size_of::<i32>(),\n        size_of::<String>()\n    );\n}\n",
+   "out": "name: len 6, capacity 6\nsize of a closure that captures nothing: 0\nreads factor (shared ref):    8\nbumps count (mutable ref):    8\nowns factor (an i32):         4\nowns name (a String):         24\nfor comparison, &i32: 8, i32: 4, String: 24\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "consume-as-fn.fail.rs": {
+   "code": "fn call_twice(f: impl Fn()) {\n    f();\n    f();\n}\n\nfn main() {\n    let name = String::from(\"ferris\");\n    call_twice(|| drop(name));\n}\n",
+   "error": "error[E0507]: cannot move out of `name`, a captured variable in an `Fn` closure\n --> src/main.rs:8:24\n  |\n7 |     let name = String::from(\"ferris\");\n  |         ----   ---------------------- move occurs because `name` has type `String`, which does not implement the `Copy` trait\n  |         |\n  |         captured outer variable\n8 |     call_twice(|| drop(name));\n  |                --      ^^^^ `name` is moved here\n  |                |\n  |                captured by this `Fn` closure\n  |\nhelp: `Fn` and `FnMut` closures require captured values to be able to be consumed multiple times, but `FnOnce` closures may consume them only once\n --> src/main.rs:1:23\n  |\n1 | fn call_twice(f: impl Fn()) {\n  |                       ^^^^\nhelp: consider cloning the value if the performance cost is acceptable\n  |\n8 |     call_twice(|| drop(name.clone()));\n  |                            ++++++++\n",
+   "lang": "rust"
+  },
+  "disjoint-method.fail.rs": {
+   "code": "struct Player {\n    name: String,\n    score: u32,\n}\n\nimpl Player {\n    fn label(&self) -> String {\n        format!(\"player {}\", self.name)\n    }\n}\n\nfn main() {\n    let mut p = Player {\n        name: String::from(\"Ana\"),\n        score: 0,\n    };\n\n    let show = || println!(\"{}\", p.label());\n    p.score += 5;\n    show();\n}\n",
+   "error": "error[E0506]: cannot assign to `p.score` because it is borrowed\n  --> src/main.rs:19:5\n   |\n18 |     let show = || println!(\"{}\", p.label());\n   |                --                - borrow occurs due to use in closure\n   |                |\n   |                `p.score` is borrowed here\n19 |     p.score += 5;\n   |     ^^^^^^^^^^^^ `p.score` is assigned to here but it was already borrowed\n20 |     show();\n   |     ---- borrow later used here\n",
+   "lang": "rust"
+  },
+  "disjoint.rs": {
+   "code": "struct Player {\n    name: String,\n    score: u32,\n}\n\nfn main() {\n    let mut p = Player {\n        name: String::from(\"Ana\"),\n        score: 0,\n    };\n\n    // The closure uses only `p.name`, so it borrows only that field.\n    let show = || println!(\"player {}\", p.name);\n    p.score += 5; // a different field: allowed while `show` is alive\n    show();\n    println!(\"score: {}\", p.score);\n}\n",
+   "out": "player Ana\nscore: 5\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "dyn-sizes.rs": {
+   "code": "use std::mem::size_of;\n\nfn main() {\n    println!(\n        \"&dyn Fn(i32) -> i32:      {}\",\n        size_of::<&dyn Fn(i32) -> i32>()\n    );\n    println!(\n        \"Box<dyn Fn(i32) -> i32>:  {}\",\n        size_of::<Box<dyn Fn(i32) -> i32>>()\n    );\n    println!(\"fn(i32) -> i32:           {}\", size_of::<fn(i32) -> i32>());\n    println!(\"&i32 (for comparison):    {}\", size_of::<&i32>());\n}\n",
+   "out": "&dyn Fn(i32) -> i32:      16\nBox<dyn Fn(i32) -> i32>:  16\nfn(i32) -> i32:           8\n&i32 (for comparison):    8\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "field-call.fail.rs": {
+   "code": "struct Button<F: Fn(&str)> {\n    on_click: F,\n}\n\nfn main() {\n    let button = Button {\n        on_click: |label| println!(\"clicked {label}\"),\n    };\n    button.on_click(\"OK\");\n}\n",
+   "error": "error[E0599]: no method named `on_click` found for struct `Button<F>` in the current scope\n --> src/main.rs:9:12\n  |\n1 | struct Button<F: Fn(&str)> {\n  | -------------------------- method `on_click` not found for this struct\n...\n9 |     button.on_click(\"OK\");\n  |            ^^^^^^^^ field, not a method\n  |\nhelp: to call the closure stored in `on_click`, surround the field access with parentheses\n  |\n9 |     (button.on_click)(\"OK\");\n  |     +               +\n",
+   "lang": "rust"
+  },
+  "fn-kinds.rs": {
+   "code": "fn call_twice(f: impl Fn()) {\n    f();\n    f();\n}\n\nfn call_twice_mut(mut f: impl FnMut()) {\n    f();\n    f();\n}\n\nfn call_once(f: impl FnOnce()) {\n    f();\n}\n\nfn main() {\n    let name = String::from(\"ferris\");\n    let mut hits = 0;\n\n    // only reads `name`: fits all three\n    call_twice(|| println!(\"hello, {name}\"));\n    call_twice_mut(|| println!(\"hello, {name}\"));\n    call_once(|| println!(\"hello, {name}\"));\n\n    // changes `hits`: fits FnMut and FnOnce, not Fn\n    call_twice_mut(|| hits += 1);\n    println!(\"hits: {hits}\");\n    call_once(|| hits += 10);\n    println!(\"hits: {hits}\");\n\n    // gives `name` away: fits only FnOnce\n    call_once(|| drop(name));\n}\n",
+   "out": "hello, ferris\nhello, ferris\nhello, ferris\nhello, ferris\nhello, ferris\nhits: 2\nhits: 12\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "fnonce-twice.fail.rs": {
+   "code": "fn main() {\n    let name = String::from(\"ferris\");\n    let consume = || drop(name);\n    consume();\n    consume();\n}\n",
+   "error": "error[E0382]: use of moved value: `consume`\n --> src/main.rs:5:5\n  |\n4 |     consume();\n  |     --------- `consume` moved due to this call\n5 |     consume();\n  |     ^^^^^^^ value used here after move\n  |\nnote: closure cannot be invoked more than once because it moves the variable `name` out of its environment\n --> src/main.rs:3:27\n  |\n3 |     let consume = || drop(name);\n  |                           ^^^^\nnote: this value implements `FnOnce`, which causes it to be moved when called\n --> src/main.rs:4:5\n  |\n4 |     consume();\n  |     ^^^^^^^\n",
+   "lang": "rust"
+  },
+  "in-structs.rs": {
+   "code": "// One closure type per struct: the type parameter `F` is that closure's type.\nstruct Button<F: Fn(&str)> {\n    label: String,\n    on_click: F,\n}\n\nimpl<F: Fn(&str)> Button<F> {\n    fn click(&self) {\n        (self.on_click)(&self.label);\n    }\n}\n\n// Many closures of different types: box each one.\nstruct Events {\n    handlers: Vec<Box<dyn FnMut(&str) -> usize>>,\n}\n\nimpl Events {\n    fn fire(&mut self, event: &str) -> Vec<usize> {\n        self.handlers.iter_mut().map(|h| h(event)).collect()\n    }\n}\n\nfn main() {\n    let prefix = String::from(\"clicked\");\n    let button = Button {\n        label: String::from(\"OK\"),\n        on_click: |label| println!(\"{prefix}: {label}\"),\n    };\n    button.click();\n    button.click();\n\n    let mut seen = 0;\n    let mut events = Events {\n        handlers: Vec::new(),\n    };\n    events.handlers.push(Box::new(|e| e.len()));\n    events.handlers.push(Box::new(move |_| {\n        seen += 1;\n        seen\n    }));\n    println!(\"fire 1: {:?}\", events.fire(\"start\"));\n    println!(\"fire 2: {:?}\", events.fire(\"stop\"));\n    println!(\"outer seen (the closure counts its own copy): {seen}\");\n}\n",
+   "out": "clicked: OK\nclicked: OK\nfire 1: [5, 1]\nfire 2: [4, 2]\nouter seen (the closure counts its own copy): 0\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "infer-once.fail.rs": {
+   "code": "fn main() {\n    let identity = |x| x;\n    println!(\"{}\", identity(1));\n    println!(\"{}\", identity(\"one\"));\n}\n",
+   "error": "error[E0308]: mismatched types\n --> src/main.rs:4:29\n  |\n4 |     println!(\"{}\", identity(\"one\"));\n  |                    -------- ^^^^^ expected integer, found `&str`\n  |                    |\n  |                    arguments to this function are incorrect\n  |\nnote: expected because the closure was earlier called with an argument of type `{integer}`\n --> src/main.rs:3:29\n  |\n3 |     println!(\"{}\", identity(1));\n  |                    -------- ^ expected because this argument is of type `{integer}`\n  |                    |\n  |                    in this closure call\nnote: closure parameter defined here\n --> src/main.rs:2:21\n  |\n2 |     let identity = |x| x;\n  |                     ^\n",
+   "lang": "rust"
+  },
+  "lazy-default.rs": {
+   "code": "fn default_port() -> u16 {\n    println!(\"  (default_port ran)\");\n    8080\n}\n\nfn main() {\n    let configured: Option<u16> = Some(443);\n\n    println!(\"unwrap_or:\");\n    let a = configured.unwrap_or(default_port());\n    println!(\"  -> {a}\");\n\n    println!(\"unwrap_or_else:\");\n    let b = configured.unwrap_or_else(default_port);\n    println!(\"  -> {b}\");\n\n    println!(\"unwrap_or_else with nothing configured:\");\n    let missing: Option<u16> = None;\n    let c = missing.unwrap_or_else(|| default_port() + 1);\n    println!(\"  -> {c}\");\n}\n",
+   "out": "unwrap_or:\n  (default_port ran)\n  -> 443\nunwrap_or_else:\n  -> 443\nunwrap_or_else with nothing configured:\n  (default_port ran)\n  -> 8081\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "loop-closures.rs": {
+   "code": "fn main() {\n    let mut fs: Vec<Box<dyn Fn() -> i32>> = Vec::new();\n    for i in 0..3 {\n        fs.push(Box::new(move || i));\n    }\n    for f in &fs {\n        print!(\"{} \", f());\n    }\n    println!();\n}\n",
+   "out": "0 1 2 \n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "loop-no-move.fail.rs": {
+   "code": "fn main() {\n    let mut fs: Vec<Box<dyn Fn() -> i32>> = Vec::new();\n    for i in 0..3 {\n        fs.push(Box::new(|| i));\n    }\n    for f in &fs {\n        print!(\"{} \", f());\n    }\n    println!();\n}\n",
+   "error": "error[E0597]: `i` does not live long enough\n --> src/main.rs:4:29\n  |\n3 |     for i in 0..3 {\n  |         - binding `i` declared here\n4 |         fs.push(Box::new(|| i));\n  |         --               -- ^ borrowed value does not live long enough\n  |         |                |\n  |         |                value captured here\n  |         borrow later used here\n5 |     }\n  |     - `i` dropped here while still borrowed\n",
+   "lang": "rust"
+  },
+  "mixed-capture.rs": {
+   "code": "fn main() {\n    let x = 2;\n    let mut y = 1;\n    // `move` takes every variable the body uses, so make the reference first:\n    // the closure then owns `x` (a copy) and the reference to `y`.\n    let y_ref = &mut y;\n    let mut add = move || {\n        *y_ref += x;\n        *y_ref\n    };\n    println!(\"add(): {}\", add());\n    println!(\"add(): {}\", add());\n    println!(\"y after the closure's last use: {y}\");\n}\n",
+   "out": "add(): 3\nadd(): 5\ny after the closure's last use: 5\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "move-copy.rs": {
+   "code": "fn main() {\n    let mut count = 0;\n    let mut inc = move || {\n        count += 1;\n        count\n    };\n    println!(\"closure's count: {}\", inc());\n    println!(\"closure's count: {}\", inc());\n    println!(\"outer count: {count}\");\n}\n",
+   "out": "closure's count: 1\nclosure's count: 2\nouter count: 0\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "move-string.rs": {
+   "code": "fn main() {\n    let name = String::from(\"ferris\");\n    let greet = move || println!(\"hello, {name}\");\n    greet();\n    greet();\n}\n",
+   "out": "hello, ferris\nhello, ferris\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "move-use.fail.rs": {
+   "code": "fn main() {\n    let name = String::from(\"ferris\");\n    let greet = move || println!(\"hello, {name}\");\n    greet();\n    println!(\"{name}\");\n}\n",
+   "error": "error[E0382]: borrow of moved value: `name`\n --> src/main.rs:5:16\n  |\n2 |     let name = String::from(\"ferris\");\n  |         ---- move occurs because `name` has type `String`, which does not implement the `Copy` trait\n3 |     let greet = move || println!(\"hello, {name}\");\n  |                 -------                   ---- variable moved due to use in closure\n  |                 |\n  |                 value moved into closure here\n4 |     greet();\n5 |     println!(\"{name}\");\n  |                ^^^^ value borrowed here after move\n  |\nhelp: consider cloning the value before moving it into the closure\n  |\n3 ~     let value = name.clone();\n4 ~     let greet = move || println!(\"hello, {value}\");",
+   "lang": "rust"
+  },
+  "mut-conflict.fail.rs": {
+   "code": "fn main() {\n    let mut count = 0;\n    let mut inc = || count += 1;\n    inc();\n    println!(\"count: {count}\");\n    inc();\n}\n",
+   "error": "error[E0502]: cannot borrow `count` as immutable because it is also borrowed as mutable\n --> src/main.rs:5:23\n  |\n3 |     let mut inc = || count += 1;\n  |                   -- ----- first borrow occurs due to use of `count` in closure\n  |                   |\n  |                   mutable borrow occurs here\n4 |     inc();\n5 |     println!(\"count: {count}\");\n  |                       ^^^^^ immutable borrow occurs here\n6 |     inc();\n  |     --- mutable borrow later used here\n",
+   "lang": "rust"
+  },
+  "mutate-as-fn.fail.rs": {
+   "code": "fn call_twice(f: impl Fn()) {\n    f();\n    f();\n}\n\nfn main() {\n    let mut count = 0;\n    call_twice(|| count += 1);\n    println!(\"count: {count}\");\n}\n",
+   "error": "error[E0594]: cannot assign to `count`, as it is a captured variable in a `Fn` closure\n --> src/main.rs:8:19\n  |\n1 | fn call_twice(f: impl Fn()) {\n  |                  --------- change this to accept `FnMut` instead of `Fn`\n...\n7 |     let mut count = 0;\n  |         --------- `count` declared here, outside the closure\n8 |     call_twice(|| count += 1);\n  |     ---------- -- ^^^^^^^^^^ cannot assign\n  |     |          |\n  |     |          in this closure\n  |     expects `Fn` instead of `FnMut`\n",
+   "lang": "rust"
+  },
+  "no-captures-coerce.rs": {
+   "code": "// Neither closure captures anything, so each one coerces to a plain `fn` pointer\n// and the two arms have the same type.\nfn pick(add: bool) -> fn(i32) -> i32 {\n    if add { |x| x + 1 } else { |x| x * 2 }\n}\n\nfn main() {\n    println!(\"pick(true)(5): {}\", pick(true)(5));\n    println!(\"pick(false)(5): {}\", pick(false)(5));\n    let both = [|x: i32| x + 1, |x: i32| x * 2];\n    println!(\"both[1](5): {}\", both[1](5));\n}\n",
+   "out": "pick(true)(5): 6\npick(false)(5): 10\nboth[1](5): 10\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "once-queue.rs": {
+   "code": "fn main() {\n    let name = String::from(\"ferris\");\n    let mut jobs: Vec<Box<dyn FnOnce() -> String>> = Vec::new();\n    jobs.push(Box::new(move || name)); // hands `name` back: it can run only once\n    jobs.push(Box::new(|| String::from(\"second job\")));\n\n    for job in jobs {\n        println!(\"job returned: {}\", job());\n    }\n}\n",
+   "out": "job returned: ferris\njob returned: second job\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "pass-by-ref.rs": {
+   "code": "fn call_twice(f: impl Fn()) {\n    f();\n    f();\n}\n\nfn main() {\n    let name = String::from(\"ferris\");\n    let greet = move || println!(\"hello, {name}\");\n    call_twice(&greet); // lend it: `greet` is still ours\n    call_twice(&greet);\n    greet();\n}\n",
+   "out": "hello, ferris\nhello, ferris\nhello, ferris\nhello, ferris\nhello, ferris\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "pass-twice.fail.rs": {
+   "code": "fn call_twice(f: impl Fn()) {\n    f();\n    f();\n}\n\nfn main() {\n    let name = String::from(\"ferris\");\n    let greet = move || println!(\"hello, {name}\");\n    call_twice(greet);\n    call_twice(greet);\n}\n",
+   "error": "error[E0382]: use of moved value: `greet`\n  --> src/main.rs:10:16\n   |\n 8 |     let greet = move || println!(\"hello, {name}\");\n   |         ----- move occurs because `greet` has type `{closure@src/main.rs:8:17: 8:24}`, which does not implement the `Copy` trait\n 9 |     call_twice(greet);\n   |                ----- value moved here\n10 |     call_twice(greet);\n   |                ^^^^^ value used here after move\n   |\nhelp: consider borrowing `greet`\n   |\n 9 |     call_twice(&greet);\n   |                +\n",
+   "lang": "rust"
+  },
+  "passing.rs": {
+   "code": "fn apply(f: impl Fn(i32) -> i32, x: i32) -> i32 {\n    f(x)\n}\n\nfn apply_generic<F>(f: F, x: i32) -> i32\nwhere\n    F: Fn(i32) -> i32,\n{\n    f(x)\n}\n\nfn apply_dyn(f: &dyn Fn(i32) -> i32, x: i32) -> i32 {\n    f(x)\n}\n\nfn apply_ptr(f: fn(i32) -> i32, x: i32) -> i32 {\n    f(x)\n}\n\nfn repeat(n: u32, mut f: impl FnMut()) {\n    for _ in 0..n {\n        f();\n    }\n}\n\nfn double(x: i32) -> i32 {\n    x * 2\n}\n\nfn main() {\n    let offset = 10;\n    println!(\"apply: {}\", apply(|x| x + offset, 5));\n    println!(\"apply_generic: {}\", apply_generic(|x| x + offset, 5));\n    println!(\"apply_dyn: {}\", apply_dyn(&|x| x + offset, 5));\n    println!(\"apply with a named fn: {}\", apply(double, 5));\n    println!(\"apply_ptr, named fn: {}\", apply_ptr(double, 5));\n    println!(\n        \"apply_ptr, closure with no captures: {}\",\n        apply_ptr(|x| x - 1, 5)\n    );\n\n    let mut calls = 0;\n    repeat(3, || calls += 1);\n    println!(\"repeat(3) made {calls} calls\");\n    repeat(0, || calls += 1);\n    println!(\"repeat(0) made {calls} calls in total\");\n}\n",
+   "out": "apply: 15\napply_generic: 15\napply_dyn: 15\napply with a named fn: 10\napply_ptr, named fn: 10\napply_ptr, closure with no captures: 4\nrepeat(3) made 3 calls\nrepeat(0) made 3 calls in total\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "ptr-capture.fail.rs": {
+   "code": "fn apply_ptr(f: fn(i32) -> i32, x: i32) -> i32 {\n    f(x)\n}\n\nfn main() {\n    let offset = 10;\n    println!(\"{}\", apply_ptr(|x| x + offset, 5));\n}\n",
+   "error": "error[E0308]: mismatched types\n --> src/main.rs:7:30\n  |\n7 |     println!(\"{}\", apply_ptr(|x| x + offset, 5));\n  |                    --------- ^^^^^^^^^^^^^^ expected fn pointer, found closure\n  |                    |\n  |                    arguments to this function are incorrect\n  |\n  = note: expected fn pointer `fn(i32) -> i32`\n                found closure `{closure@src/main.rs:7:30: 7:33}`\nnote: closures can only be coerced to `fn` types if they do not capture any variables\n --> src/main.rs:7:38\n  |\n7 |     println!(\"{}\", apply_ptr(|x| x + offset, 5));\n  |                                      ^^^^^^ `offset` captured here\nnote: function defined here\n --> src/main.rs:1:4\n  |\n1 | fn apply_ptr(f: fn(i32) -> i32, x: i32) -> i32 {\n  |    ^^^^^^^^^ -----------------\n",
+   "lang": "rust"
+  },
+  "recursion-fn.rs": {
+   "code": "fn main() {\n    // A function item has a name, so it can call itself.\n    fn factorial(n: u64) -> u64 {\n        if n <= 1 { 1 } else { n * factorial(n - 1) }\n    }\n    println!(\"factorial(5): {}\", factorial(5));\n}\n",
+   "out": "factorial(5): 120\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "recursion.fail.rs": {
+   "code": "fn main() {\n    let factorial = |n: u64| if n <= 1 { 1 } else { n * factorial(n - 1) };\n    println!(\"{}\", factorial(5));\n}\n",
+   "error": "error[E0425]: cannot find function `factorial` in this scope\n --> src/main.rs:2:57\n  |\n2 |     let factorial = |n: u64| if n <= 1 { 1 } else { n * factorial(n - 1) };\n  |                                                         ^^^^^^^^^ not found in this scope\n",
+   "lang": "rust"
+  },
+  "return-in-closure.rs": {
+   "code": "fn first_even(nums: &[i32]) -> Option<i32> {\n    let check = |n: i32| {\n        if n % 2 == 0 {\n            return true; // leaves the closure, not first_even\n        }\n        false\n    };\n    for &n in nums {\n        if check(n) {\n            return Some(n);\n        }\n    }\n    None\n}\n\nfn main() {\n    println!(\"first_even([3, 5, 8, 9]): {:?}\", first_even(&[3, 5, 8, 9]));\n    println!(\"first_even([3, 5]): {:?}\", first_even(&[3, 5]));\n}\n",
+   "out": "first_even([3, 5, 8, 9]): Some(8)\nfirst_even([3, 5]): None\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "return-no-move.fail.rs": {
+   "code": "fn make_adder(n: i32) -> impl Fn(i32) -> i32 {\n    |x| x + n\n}\n\nfn main() {\n    println!(\"{}\", make_adder(5)(1));\n}\n",
+   "error": "error[E0373]: closure may outlive the current function, but it borrows `n`, which is owned by the current function\n --> src/main.rs:2:5\n  |\n2 |     |x| x + n\n  |     ^^^     - `n` is borrowed here\n  |     |\n  |     may outlive borrowed value `n`\n  |\nnote: closure is returned here\n --> src/main.rs:2:5\n  |\n2 |     |x| x + n\n  |     ^^^^^^^^^\nhelp: to force the closure to take ownership of `n` (and any other referenced variables), use the `move` keyword\n  |\n2 |     move |x| x + n\n  |     ++++\n",
+   "lang": "rust"
+  },
+  "returning.rs": {
+   "code": "fn make_adder(n: i32) -> impl Fn(i32) -> i32 {\n    move |x| x + n\n}\n\nfn make_counter() -> impl FnMut() -> u32 {\n    let mut count = 0;\n    move || {\n        count += 1;\n        count\n    }\n}\n\nfn pick(op: &str) -> Box<dyn Fn(i32, i32) -> i32> {\n    match op {\n        \"add\" => Box::new(|a, b| a + b),\n        \"mul\" => Box::new(|a, b| a * b),\n        _ => Box::new(|_, _| 0),\n    }\n}\n\nfn main() {\n    let add5 = make_adder(5);\n    let add10 = make_adder(10);\n    println!(\"add5(1): {}, add10(1): {}\", add5(1), add10(1));\n\n    let mut a = make_counter();\n    let mut b = make_counter();\n    println!(\"a: {} {}, b: {}\", a(), a(), b());\n\n    for op in [\"add\", \"mul\", \"other\"] {\n        println!(\"{op}(3, 4): {}\", pick(op)(3, 4));\n    }\n}\n",
+   "out": "add5(1): 6, add10(1): 11\na: 1 2, b: 1\nadd(3, 4): 7\nmul(3, 4): 12\nother(3, 4): 0\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "sees-later.fail.rs": {
+   "code": "fn main() {\n    let mut x = 1;\n    let show = || println!(\"x: {x}\");\n    x = 2;\n    show();\n}\n",
+   "error": "error[E0506]: cannot assign to `x` because it is borrowed\n --> src/main.rs:4:5\n  |\n3 |     let show = || println!(\"x: {x}\");\n  |                --               - borrow occurs due to use in closure\n  |                |\n  |                `x` is borrowed here\n4 |     x = 2;\n  |     ^^^^^ `x` is assigned to here but it was already borrowed\n5 |     show();\n  |     ---- borrow later used here",
+   "lang": "rust"
+  },
+  "snapshot.rs": {
+   "code": "fn main() {\n    let mut x = 1;\n    let show = move || println!(\"x in the closure: {x}\");\n    x = 2;\n    show();\n    println!(\"x outside: {x}\");\n}\n",
+   "out": "x in the closure: 1\nx outside: 2\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "sort-and-filter.rs": {
+   "code": "#[derive(Debug)]\nstruct Person {\n    name: String,\n    age: u32,\n}\n\nfn person(name: &str, age: u32) -> Person {\n    Person {\n        name: name.to_string(),\n        age,\n    }\n}\n\nfn main() {\n    let mut people = vec![person(\"Cy\", 40), person(\"Ana\", 31), person(\"Bo\", 25)];\n\n    people.sort_by_key(|p| p.age);\n    println!(\n        \"by age: {:?}\",\n        people.iter().map(|p| &p.name).collect::<Vec<_>>()\n    );\n\n    people.sort_by(|a, b| a.name.cmp(&b.name));\n    println!(\n        \"by name: {:?}\",\n        people.iter().map(|p| &p.name).collect::<Vec<_>>()\n    );\n\n    let min_age = 30;\n    people.retain(|p| p.age >= min_age);\n    println!(\n        \"aged {min_age}+: {:?}\",\n        people.iter().map(|p| &p.name).collect::<Vec<_>>()\n    );\n\n    let total: u32 = people.iter().map(|p| p.age).sum();\n    println!(\"total age: {total}\");\n}\n",
+   "out": "by age: [\"Bo\", \"Ana\", \"Cy\"]\nby name: [\"Ana\", \"Bo\", \"Cy\"]\naged 30+: [\"Ana\", \"Cy\"]\ntotal age: 71\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "sort-key-borrow.fail.rs": {
+   "code": "struct Person {\n    name: String,\n}\n\nfn main() {\n    let mut people = vec![\n        Person {\n            name: String::from(\"Cy\"),\n        },\n        Person {\n            name: String::from(\"Ana\"),\n        },\n    ];\n    people.sort_by_key(|p| &p.name);\n    println!(\"{}\", people[0].name);\n}\n",
+   "error": "error: lifetime may not live long enough\n  --> src/main.rs:14:28\n   |\n14 |     people.sort_by_key(|p| &p.name);\n   |                         -- ^^^^^^^ returning this value requires that `'1` must outlive `'2`\n   |                         ||\n   |                         |return type of closure is &'2 String\n   |                         has type `&'1 Person`",
+   "lang": "rust"
+  },
+  "spawn-move.rs": {
+   "code": "use std::thread;\n\nfn main() {\n    let name = String::from(\"ferris\");\n    let handle = thread::spawn(move || println!(\"hello from a thread, {name}\"));\n    handle.join().unwrap();\n}\n",
+   "out": "hello from a thread, ferris\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "spawn-no-move.fail.rs": {
+   "code": "use std::thread;\n\nfn main() {\n    let name = String::from(\"ferris\");\n    let handle = thread::spawn(|| println!(\"hello, {name}\"));\n    handle.join().unwrap();\n}\n",
+   "error": "error[E0373]: closure may outlive the current function, but it borrows `name`, which is owned by the current function\n --> src/main.rs:5:32\n  |\n5 |     let handle = thread::spawn(|| println!(\"hello, {name}\"));\n  |                                ^^                   ---- `name` is borrowed here\n  |                                |\n  |                                may outlive borrowed value `name`\n  |\nnote: function requires argument type to outlive `'static`\n --> src/main.rs:5:18\n  |\n5 |     let handle = thread::spawn(|| println!(\"hello, {name}\"));\n  |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nhelp: to force the closure to take ownership of `name` (and any other referenced variables), use the `move` keyword\n  |\n5 |     let handle = thread::spawn(move || println!(\"hello, {name}\"));\n  |                                ++++\n",
+   "lang": "rust"
+  },
+  "two-closures.fail.rs": {
+   "code": "fn pick(add: bool, n: i32) -> impl Fn(i32) -> i32 {\n    if add { move |x| x + n } else { move |x| x * n }\n}\n\nfn main() {\n    println!(\"{}\", pick(true, 5)(1));\n}\n",
+   "error": "error[E0308]: `if` and `else` have incompatible types\n --> src/main.rs:2:38\n  |\n2 |     if add { move |x| x + n } else { move |x| x * n }\n  |              --------------          ^^^^^^^^^^^^^^ expected closure, found a different closure\n  |              |\n  |              the expected closure\n  |              expected because of this\n  |\n  = note: expected closure `{closure@src/main.rs:2:14: 2:22}`\n             found closure `{closure@src/main.rs:2:38: 2:46}`\n  = note: no two closures, even if identical, have the same type\n  = help: consider boxing your closure and/or using it as a trait object\nhelp: you could change the return type to be a boxed trait object\n  |\n1 - fn pick(add: bool, n: i32) -> impl Fn(i32) -> i32 {\n1 + fn pick(add: bool, n: i32) -> Box<dyn Fn(i32) -> i32> {\n  |\nhelp: if you change the return type to expect trait objects, box the returned expressions\n  |\n2 |     if add { Box::new(move |x| x + n) } else { Box::new(move |x| x * n) }\n  |              +++++++++              +          +++++++++              +\n",
+   "lang": "rust"
+  },
+  "use-after-capture.fail.rs": {
+   "code": "fn main() {\n    let name = String::from(\"ferris\");\n    let consume = || drop(name);\n    consume();\n    println!(\"{name}\");\n}\n",
+   "error": "error[E0382]: borrow of moved value: `name`\n --> src/main.rs:5:16\n  |\n2 |     let name = String::from(\"ferris\");\n  |         ---- move occurs because `name` has type `String`, which does not implement the `Copy` trait\n3 |     let consume = || drop(name);\n  |                   --      ---- variable moved due to use in closure\n  |                   |\n  |                   value moved into closure here\n4 |     consume();\n5 |     println!(\"{name}\");\n  |                ^^^^ value borrowed here after move\n  |\nhelp: consider cloning the value if the performance cost is acceptable\n  |\n3 |     let consume = || drop(name.clone());\n  |                               ++++++++\n",
+   "lang": "rust"
+  },
+  "capture-list.cpp": {
+   "code": "#include <functional>\n#include <iostream>\n#include <string>\n#include <utility>\n\nint main() {\n    int x = 1;\n    auto by_value = [x] { return x; };\n    auto by_ref = [&x] { return x; };\n    auto by_value_mutable = [x]() mutable { return ++x; };\n    x = 2;\n    std::cout << \"[x]: \" << by_value() << \", [&x]: \" << by_ref() << \"\\n\";\n    std::cout << \"[x] mutable: \" << by_value_mutable() << \" then \" << by_value_mutable() << \", x is \" << x << \"\\n\";\n\n    std::string s = \"ferris\";\n    auto owns = [s = std::move(s)] { return s.size(); };\n    std::cout << \"moved in: \" << owns() << \", s.size() now \" << s.size() << \"\\n\";\n\n    std::function<int()> counter = [n = 0]() mutable { return ++n; };\n    std::cout << \"std::function holding a mutable lambda: \" << counter() << \" then \" << counter() << \"\\n\";\n\n    int y = 10;\n    auto mixed = [x, &y] { y += x; return y; };\n    std::cout << \"[x, &y]: \" << mixed() << \", y is \" << y << \"\\n\";\n}\n",
+   "out": "[x]: 1, [&x]: 2\n[x] mutable: 2 then 3, x is 2\nmoved in: 6, s.size() now 0\nstd::function holding a mutable lambda: 1 then 2\n[x, &y]: 12, y is 12\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "capture-var.kt": {
+   "code": "fun main() {\n    var x = 1\n    val show = { println(\"x: $x\") }\n    x = 2\n    show()\n\n    val bump = { x += 10 }\n    bump()\n    println(\"x after bump: $x\")\n}\n",
+   "out": "x: 2\nx after bump: 12\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "context.c": {
+   "code": "#include <stdio.h>\n\n// A C \"closure\": a function pointer plus a void * that carries the captured data.\ntypedef struct {\n    int total;\n} Sum;\n\nstatic void add(void *ctx, int x) {\n    Sum *s = ctx;   // the cast is the programmer's promise\n    s->total += x;\n}\n\nstatic void for_each(const int *xs, int n, void (*f)(void *, int), void *ctx) {\n    for (int i = 0; i < n; i++) f(ctx, xs[i]);\n}\n\nint main(void) {\n    int xs[] = {1, 2, 3};\n    Sum s = {0};\n    for_each(xs, 3, add, &s);\n    printf(\"total: %d\\n\", s.total);\n    return 0;\n}\n",
+   "out": "total: 6\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "dangling.crash.asan.cpp": {
+   "code": "#include <functional>\n#include <iostream>\n\nstd::function<int(int)> make_adder(int n) {\n    return [&](int x) { return x + n; };   // n dies when make_adder returns\n}\n\nint main() {\n    auto add5 = make_adder(5);\n    std::cout << add5(1) << \"\\n\";\n}\n",
+   "out": "=================================================================\n==1==ERROR: AddressSanitizer: stack-use-after-return on address 0x············ at pc 0x············ bp 0x············ sp 0x············\nREAD of size 4 at 0x············ thread T0\n    #0 0x············ in operator() main.cpp:5\n    #1 0x············ in __invoke_impl<int, make_adder(int)::<lambda(int)>&, int> /usr/include/c++/14/bits/invoke.h:61\n    #2 0x············ in __invoke_r<int, make_adder(int)::<lambda(int)>&, int> /usr/include/c++/14/bits/invoke.h:114\n    #3 0x············ in _M_invoke /usr/include/c++/14/bits/std_function.h:290\n    #4 0x············ in std::function<int (int)>::operator()(int) const /usr/include/c++/14/bits/std_function.h:591\n    #5 0x············ in main main.cpp:10\n    #6 0x············  (/lib/aarch64-linux-gnu/libc.so.6+0x22258)\n    #7 0x············ in __libc_start_main (/lib/aarch64-linux-gnu/libc.so.6+0x22338)\n    #8 0x············ in _start (main+0x15ec)\n\nAddress 0x············ is located in stack of thread T0 at offset 48 in frame\n    #0 0x············ in make_adder(int) main.cpp:4\n\n  This frame has 2 object(s):\n    [48, 52) 'n' (line 4) <== Memory access at offset 48 is inside this variable\n    [64, 72) '<unknown>'\nHINT: this may be a false positive if your program uses some custom stack unwind mechanism, swapcontext or vfork\n      (longjmp and C++ exceptions *are* supported)\nSUMMARY: AddressSanitizer: stack-use-after-return main.cpp:5 in operator()\nShadow bytes around the buggy address:\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n  0x············: f1 f1 f1 f1 00 00 00 00 f3 f3 f3 f3 00 00 00 00\n=>0x············: f5 f5 f5 f5 f5 f5[f5]f5 f5 f5 f5 f5 00 00 00 00\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\n  0x············: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00\nShadow byte legend (one shadow byte represents 8 application bytes):\n  Addressable:           00\n  Partially addressable: 01 02 03 04 05 06 07 \n  Heap left redzone:       fa\n  Freed heap region:       fd\n  Stack left redzone:      f1\n  Stack mid redzone:       f2\n  Stack right redzone:     f3\n  Stack after return:      f5\n  Stack use after scope:   f8\n  Global redzone:          f9\n  Global init order:       f6\n  Poisoned by user:        f7\n  Container overflow:      fc\n  Array cookie:            ac\n  Intra object redzone:    bb\n  ASan internal:           fe\n  Left alloca redzone:     ca\n  Right alloca redzone:    cb\n==1==ABORTING\n",
+   "lang": "cpp",
+   "mode": "asan",
+   "exit": 1
+  },
+  "effectively-final.fail.java": {
+   "code": "public class Main {\n    public static void main(String[] args) {\n        int x = 1;\n        Runnable show = () -> System.out.println(\"x: \" + x);\n        x = 2;\n        show.run();\n    }\n}\n",
+   "error": "Main.java:4: error: local variables referenced from a lambda expression must be final or effectively final\n        Runnable show = () -> System.out.println(\"x: \" + x);\n                                                         ^\n1 error",
+   "lang": "java"
+  },
+  "late-binding.py": {
+   "code": "fs = [lambda: i for i in range(3)]\nprint(\"late binding:\", [f() for f in fs])\n\ngs = [lambda i=i: i for i in range(3)]\nprint(\"default argument:\", [g() for g in gs])\n\nx = 1\nshow = lambda: print(\"x:\", x)\nx = 2\nshow()\n",
+   "out": "late binding: [2, 2, 2]\ndefault argument: [0, 1, 2]\nx: 2\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "loop-capture.cs": {
+   "code": "var fs = new List<Func<int>>();\nfor (int i = 0; i < 3; i++) fs.Add(() => i);\nConsole.WriteLine(\"for:     \" + string.Join(\" \", fs.Select(f => f())));\n\nvar gs = new List<Func<int>>();\nforeach (var v in new[] { 0, 1, 2 }) gs.Add(() => v);\nConsole.WriteLine(\"foreach: \" + string.Join(\" \", gs.Select(g => g())));\n",
+   "out": "for:     3 3 3\nforeach: 0 1 2\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "loop-var.ts": {
+   "code": "const withVar: (() => number)[] = [];\nfor (var i = 0; i < 3; i++) withVar.push(() => i);\nconsole.log(\"var:\", withVar.map((f) => f()));\n\nconst withLet: (() => number)[] = [];\nfor (let j = 0; j < 3; j++) withLet.push(() => j);\nconsole.log(\"let:\", withLet.map((f) => f()));\n\nlet x = 1;\nconst show = () => console.log(\"x:\", x);\nx = 2;\nshow();\n",
+   "out": "var: [ 3, 3, 3 ]\nlet: [ 0, 1, 2 ]\nx: 2\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "loopvar-gomod.go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"os\"\n\t\"os/exec\"\n\t\"path/filepath\"\n)\n\n// The same program, built twice: once in a module whose go.mod says\n// `go 1.21`, once in a module that says `go 1.22`.\nconst program = `package main\n\nimport \"fmt\"\n\nfunc main() {\n\tvar fs []func() int\n\tfor i := 0; i < 3; i++ {\n\t\tfs = append(fs, func() int { return i })\n\t}\n\tfor _, f := range fs {\n\t\tfmt.Print(f(), \" \")\n\t}\n\tfmt.Println()\n\n\tvar gs []func() int\n\tfor _, v := range []int{0, 1, 2} {\n\t\tgs = append(gs, func() int { return v })\n\t}\n\tfor _, g := range gs {\n\t\tfmt.Print(g(), \" \")\n\t}\n\tfmt.Println()\n}\n`\n\nfunc run(goLine string) string {\n\tdir, _ := os.MkdirTemp(\"\", \"loopvar\")\n\tdefer os.RemoveAll(dir)\n\tos.WriteFile(filepath.Join(dir, \"go.mod\"), []byte(\"module demo\\n\\ngo \"+goLine+\"\\n\"), 0o644)\n\tos.WriteFile(filepath.Join(dir, \"main.go\"), []byte(program), 0o644)\n\tcmd := exec.Command(\"go\", \"run\", \".\")\n\tcmd.Dir = dir\n\tout, err := cmd.CombinedOutput()\n\tif err != nil {\n\t\treturn fmt.Sprint(err, string(out))\n\t}\n\treturn string(out)\n}\n\nfunc main() {\n\t// each run prints the three-clause `for` loop's values, then the `range` loop's\n\tfmt.Println(\"go.mod says go 1.21:\")\n\tfmt.Print(run(\"1.21\"))\n\tfmt.Println(\"go.mod says go 1.22:\")\n\tfmt.Print(run(\"1.22\"))\n}\n",
+   "out": "go.mod says go 1.21:\n3 3 3 \n2 2 2 \ngo.mod says go 1.22:\n0 1 2 \n0 1 2 \n",
+   "lang": "go",
+   "exit": 0
+  },
+  "make-counter.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc makeCounter() func() int {\n\tcount := 0\n\treturn func() int {\n\t\tcount++\n\t\treturn count\n\t}\n}\n\nfunc main() {\n\ta := makeCounter()\n\tb := makeCounter()\n\tfmt.Println(\"a:\", a(), a(), \"b:\", b())\n}\n",
+   "out": "a: 1 2 b: 1\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "non-local-return.kt": {
+   "code": "fun firstEven(nums: List<Int>): Int? {\n    nums.forEach { if (it % 2 == 0) return it }   // returns from firstEven\n    return null\n}\n\nfun main() {\n    println(\"firstEven([3, 5, 8, 9]): ${firstEven(listOf(3, 5, 8, 9))}\")\n    println(\"firstEven([3, 5]): ${firstEven(listOf(3, 5))}\")\n}\n",
+   "out": "firstEven([3, 5, 8, 9]): 8\nfirstEven([3, 5]): null\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "sees-later.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tx := 1\n\tshow := func() { fmt.Println(\"x:\", x) }\n\tx = 2\n\tshow()\n}\n",
+   "out": "x: 2\n",
+   "lang": "go",
+   "exit": 0
+  }
+ },
+ "exercises": {
+  "callbacks": {
+   "starter": "// Three functions that call a closure they are given. Every parameter below is\n// `FnOnce`, because `FnOnce` accepts every closure and so the starter compiles.\n// Write the body of each function, read the compiler's complaint, and change the trait\n// to the most permissive one that works: `FnOnce` if the function calls it once,\n// `FnMut` if it calls it several times, `Fn` if it calls it through a shared reference.\n\n// Calls `job` once and returns what it gives back.\nfn run_once(job: impl FnOnce() -> String) -> String {\n    todo!(\"call job once and return its result\")\n}\n\n// Calls `tick` `times` times.\nfn repeat(times: u32, tick: impl FnOnce()) {\n    todo!(\"call tick `times` times\")\n}\n\nstruct Button<F> {\n    on_click: F,\n}\n\nimpl<F: FnOnce() -> i32> Button<F> {\n    // Takes `&self`, so it can be called any number of times on a shared button.\n    fn click(&self) -> i32 {\n        todo!(\"call on_click through &self\")\n    }\n}\n\nfn main() {\n    // This closure hands `name` over, so it can only run once.\n    let name = String::from(\"ferris\");\n    assert_eq!(run_once(move || name), \"ferris\");\n\n    // This one changes `total`, so it runs many times but needs `mut` access.\n    let mut total = 0;\n    repeat(3, || total += 2);\n    assert_eq!(total, 6);\n    repeat(0, || total += 100);\n    assert_eq!(total, 6);\n\n    // This one only reads `limit`, so a shared button can call it again and again.\n    let limit = 10;\n    let button = Button {\n        on_click: || limit * 2,\n    };\n    assert_eq!(button.click(), 20);\n    assert_eq!(button.click(), 20);\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "// Three functions that call a closure they are given. Pick the trait each parameter\n// needs: `FnOnce` if the function calls it once, `FnMut` if it calls it several times,\n// `Fn` if it calls it through a shared reference (`&self`).\n\n// Calls `job` once and returns what it gives back.\nfn run_once(job: impl FnOnce() -> String) -> String {\n    job()\n}\n\n// Calls `tick` `times` times.\nfn repeat(times: u32, mut tick: impl FnMut()) {\n    for _ in 0..times {\n        tick();\n    }\n}\n\nstruct Button<F> {\n    on_click: F,\n}\n\nimpl<F: Fn() -> i32> Button<F> {\n    // Takes `&self`, so it can be called any number of times on a shared button.\n    fn click(&self) -> i32 {\n        (self.on_click)()\n    }\n}\n\nfn main() {\n    // This closure hands `name` over, so it can only run once.\n    let name = String::from(\"ferris\");\n    assert_eq!(run_once(move || name), \"ferris\");\n\n    // This one changes `total`, so it runs many times but needs `mut` access.\n    let mut total = 0;\n    repeat(3, || total += 2);\n    assert_eq!(total, 6);\n    repeat(0, || total += 100);\n    assert_eq!(total, 6);\n\n    // This one only reads `limit`, so a shared button can call it again and again.\n    let limit = 10;\n    let button = Button {\n        on_click: || limit * 2,\n    };\n    assert_eq!(button.click(), 20);\n    assert_eq!(button.click(), 20);\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "closest": {
+   "starter": "// Most closures you write call a method that takes one: `retain`, `sort_by_key`.\n// Here both use a local variable from the function around them.\n\n// Removes the words in `banned`, then sorts the rest by how far their length (in\n// bytes) is from `target`, nearest first. Words the same distance away stay in\n// alphabetical order.\nfn closest(words: &mut Vec<String>, target: usize, banned: &[&str]) {\n    todo!(\"retain the words that are not banned, then sort_by_key with a key that uses `target`\")\n}\n\nfn main() {\n    let mut words: Vec<String> = [\"pear\", \"fig\", \"banana\", \"kiwi\", \"apple\", \"plum\"]\n        .iter()\n        .map(|w| w.to_string())\n        .collect();\n    closest(&mut words, 4, &[\"apple\"]);\n    // distance 0: kiwi, pear, plum (alphabetical); distance 1: fig; distance 2: banana\n    assert_eq!(words, [\"kiwi\", \"pear\", \"plum\", \"fig\", \"banana\"]);\n\n    // A different target changes the order; a banned word that is not there is fine.\n    closest(&mut words, 6, &[\"grape\"]);\n    assert_eq!(words, [\"banana\", \"kiwi\", \"pear\", \"plum\", \"fig\"]);\n\n    // Nothing left, nothing to sort.\n    let mut few = vec![String::from(\"fig\")];\n    closest(&mut few, 3, &[\"fig\"]);\n    assert!(few.is_empty());\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "// Most closures you write call a method that takes one: `retain`, `sort_by_key`.\n// Here both use a local variable from the function around them.\n\n// Removes the words in `banned`, then sorts the rest by how far their length (in\n// bytes) is from `target`, nearest first. Words the same distance away stay in\n// alphabetical order.\nfn closest(words: &mut Vec<String>, target: usize, banned: &[&str]) {\n    words.retain(|w| !banned.contains(&w.as_str()));\n    words.sort_by_key(|w| (w.len().abs_diff(target), w.clone()));\n}\n\nfn main() {\n    let mut words: Vec<String> = [\"pear\", \"fig\", \"banana\", \"kiwi\", \"apple\", \"plum\"]\n        .iter()\n        .map(|w| w.to_string())\n        .collect();\n    closest(&mut words, 4, &[\"apple\"]);\n    // distance 0: kiwi, pear, plum (alphabetical); distance 1: fig; distance 2: banana\n    assert_eq!(words, [\"kiwi\", \"pear\", \"plum\", \"fig\", \"banana\"]);\n\n    // A different target changes the order; a banned word that is not there is fine.\n    closest(&mut words, 6, &[\"grape\"]);\n    assert_eq!(words, [\"banana\", \"kiwi\", \"pear\", \"plum\", \"fig\"]);\n\n    // Nothing left, nothing to sort.\n    let mut few = vec![String::from(\"fig\")];\n    closest(&mut few, 3, &[\"fig\"]);\n    assert!(few.is_empty());\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "compose": {
+   "starter": "// Three functions that return a closure. Each returned closure must keep working after\n// the function that made it has returned, so it has to own what it uses.\n\n// A closure that adds `n` to its argument.\nfn make_adder(n: i32) -> impl Fn(i32) -> i32 {\n    |_x| todo!(\"return a closure that adds `n`; it uses `n` after this function is gone\")\n}\n\n// A closure that returns a running total: each call adds `step` and returns the total.\n// Every counter made by this function has its own total.\nfn make_counter(step: i32) -> impl FnMut() -> i32 {\n    || todo!(\"return a closure with its own `total`; each call adds `step` and returns it\")\n}\n\n// A closure that applies `first` to its argument and then `second` to the result.\nfn compose(first: impl Fn(i32) -> i32, second: impl Fn(i32) -> i32) -> impl Fn(i32) -> i32 {\n    |_x| todo!(\"return a closure that calls both; it must own `first` and `second`\")\n}\n\nfn main() {\n    let add2 = make_adder(2);\n    let add10 = make_adder(10);\n    assert_eq!(add2(1), 3);\n    assert_eq!(add10(1), 11);\n\n    // Two counters made by the same function do not share a total, even when their\n    // calls are interleaved.\n    let mut by_one = make_counter(1);\n    let mut by_five = make_counter(5);\n    assert_eq!(by_one(), 1);\n    assert_eq!(by_one(), 2);\n    assert_eq!(by_five(), 5);\n    assert_eq!(by_one(), 3);\n    assert_eq!(by_five(), 10);\n\n    let add_then_double = compose(make_adder(1), |x| x * 2);\n    let double_then_add = compose(|x| x * 2, make_adder(1));\n    assert_eq!(add_then_double(5), 12);\n    assert_eq!(double_then_add(5), 11);\n\n    // A composed closure can be composed again.\n    let add3 = compose(make_adder(1), make_adder(2));\n    let add_then_double_then_negate = compose(add_then_double, |x| -x);\n    assert_eq!(add3(0), 3);\n    assert_eq!(add_then_double_then_negate(5), -12);\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "// Three functions that return a closure. Each returned closure must keep working after\n// the function that made it has returned, so it has to own what it uses.\n\n// A closure that adds `n` to its argument.\nfn make_adder(n: i32) -> impl Fn(i32) -> i32 {\n    move |x| x + n\n}\n\n// A closure that returns a running total: each call adds `step` and returns the total.\n// Every counter made by this function has its own total.\nfn make_counter(step: i32) -> impl FnMut() -> i32 {\n    let mut total = 0;\n    move || {\n        total += step;\n        total\n    }\n}\n\n// A closure that applies `first` to its argument and then `second` to the result.\nfn compose(first: impl Fn(i32) -> i32, second: impl Fn(i32) -> i32) -> impl Fn(i32) -> i32 {\n    move |x| second(first(x))\n}\n\nfn main() {\n    let add2 = make_adder(2);\n    let add10 = make_adder(10);\n    assert_eq!(add2(1), 3);\n    assert_eq!(add10(1), 11);\n\n    // Two counters made by the same function do not share a total, even when their\n    // calls are interleaved.\n    let mut by_one = make_counter(1);\n    let mut by_five = make_counter(5);\n    assert_eq!(by_one(), 1);\n    assert_eq!(by_one(), 2);\n    assert_eq!(by_five(), 5);\n    assert_eq!(by_one(), 3);\n    assert_eq!(by_five(), 10);\n\n    let add_then_double = compose(make_adder(1), |x| x * 2);\n    let double_then_add = compose(|x| x * 2, make_adder(1));\n    assert_eq!(add_then_double(5), 12);\n    assert_eq!(double_then_add(5), 11);\n\n    // A composed closure can be composed again.\n    let add3 = compose(make_adder(1), make_adder(2));\n    let add_then_double_then_negate = compose(add_then_double, |x| -x);\n    assert_eq!(add3(0), 3);\n    assert_eq!(add_then_double_then_negate(5), -12);\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "registry": {
+   "starter": "// A registry of named callbacks. `on` stores a handler under a name; `fire` calls every\n// handler stored under that name, in the order they were added, and collects what they\n// return. A name with no handlers gives an empty Vec.\nstruct Registry {\n    handlers: Vec<(String, Box<dyn Fn(&str) -> String>)>,\n}\n\nimpl Registry {\n    fn new() -> Registry {\n        Registry {\n            handlers: Vec::new(),\n        }\n    }\n\n    // `'static` means the closure may not borrow local variables: it must own what it uses.\n    fn on(&mut self, name: &str, handler: impl Fn(&str) -> String + 'static) {\n        todo!(\"box the handler and push it with its name\")\n    }\n\n    fn fire(&self, name: &str, arg: &str) -> Vec<String> {\n        todo!(\"call each handler whose name matches, in order\")\n    }\n}\n\nfn main() {\n    let mut registry = Registry::new();\n    let prefix = String::from(\"hello\");\n    registry.on(\"greet\", move |who| format!(\"{prefix}, {who}\"));\n    registry.on(\"greet\", |who| who.to_uppercase());\n    registry.on(\"count\", |text| text.len().to_string());\n    registry.on(\"greeting\", |_| String::from(\"not a greet\"));\n    registry.on(\"\", |_| String::from(\"empty name\"));\n\n    assert_eq!(registry.fire(\"greet\", \"ana\"), [\"hello, ana\", \"ANA\"]);\n    assert_eq!(registry.fire(\"count\", \"hello\"), [\"5\"]);\n    assert!(registry.fire(\"missing\", \"x\").is_empty());\n    // Only an exact name matches: \"greet\" is a prefix of \"greeting\", \"count\" is not.\n    assert_eq!(registry.fire(\"greeting\", \"x\"), [\"not a greet\"]);\n    assert_eq!(registry.fire(\"gree\", \"x\"), Vec::<String>::new());\n    assert_eq!(registry.fire(\"\", \"x\"), [\"empty name\"]);\n\n    let empty = Registry::new();\n    assert!(empty.fire(\"greet\", \"x\").is_empty());\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "// A registry of named callbacks. `on` stores a handler under a name; `fire` calls every\n// handler stored under that name, in the order they were added, and collects what they\n// return. A name with no handlers gives an empty Vec.\nstruct Registry {\n    handlers: Vec<(String, Box<dyn Fn(&str) -> String>)>,\n}\n\nimpl Registry {\n    fn new() -> Registry {\n        Registry {\n            handlers: Vec::new(),\n        }\n    }\n\n    // `'static` means the closure may not borrow local variables: it must own what it uses.\n    fn on(&mut self, name: &str, handler: impl Fn(&str) -> String + 'static) {\n        self.handlers.push((name.to_string(), Box::new(handler)));\n    }\n\n    fn fire(&self, name: &str, arg: &str) -> Vec<String> {\n        let mut results = Vec::new();\n        for (registered, handler) in &self.handlers {\n            if registered == name {\n                results.push(handler(arg));\n            }\n        }\n        results\n    }\n}\n\nfn main() {\n    let mut registry = Registry::new();\n    let prefix = String::from(\"hello\");\n    registry.on(\"greet\", move |who| format!(\"{prefix}, {who}\"));\n    registry.on(\"greet\", |who| who.to_uppercase());\n    registry.on(\"count\", |text| text.len().to_string());\n    registry.on(\"greeting\", |_| String::from(\"not a greet\"));\n    registry.on(\"\", |_| String::from(\"empty name\"));\n\n    assert_eq!(registry.fire(\"greet\", \"ana\"), [\"hello, ana\", \"ANA\"]);\n    assert_eq!(registry.fire(\"count\", \"hello\"), [\"5\"]);\n    assert!(registry.fire(\"missing\", \"x\").is_empty());\n    // Only an exact name matches: \"greet\" is a prefix of \"greeting\", \"count\" is not.\n    assert_eq!(registry.fire(\"greeting\", \"x\"), [\"not a greet\"]);\n    assert_eq!(registry.fire(\"gree\", \"x\"), Vec::<String>::new());\n    assert_eq!(registry.fire(\"\", \"x\"), [\"empty name\"]);\n\n    let empty = Registry::new();\n    assert!(empty.fire(\"greet\", \"x\").is_empty());\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}

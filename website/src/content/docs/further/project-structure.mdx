@@ -1,0 +1,143 @@
+---
+title: "Project structure: crates, workspaces and features"
+description: "How a Rust project grows: a library and a binary in one package, several packages in a workspace, features that switch parts on and off, shared lints and a declared minimum Rust version."
+---
+
+import { Files, Remember, Session, Tree } from '../../../components/guide'
+
+[Modules](/learn/modules/) showed how code is split inside one crate. This page covers the next sizes up, controlled from `Cargo.toml`: a package with a library and programs, a **workspace** of several packages, and **features** that switch parts of a package on and off. The project is a small word counter, `wordstat`.
+
+<Remember>A package has a `Cargo.toml`. A workspace shares one `Cargo.lock` and one `target/` between packages. A feature is a name in `[features]` that code can test with `cfg(feature = "...")`.</Remember>
+
+<Tree guide="further-project-structure" dir="rust" name="wordstat" title="Project layout" notes={{"Cargo.toml":"the workspace: members, shared settings","rustfmt.toml":"formatter settings","clippy.toml":"linter settings","crates/wordstat/src/lib.rs":"the library crate","crates/wordstat/src/main.rs":"a program that uses the library","crates/wordstat/src/bin/dump.rs":"a second program","crates/wordstat/tests/cli.rs":"an integration test","crates/wordstat-report/src/main.rs":"another package, a user of the library","Cargo.lock":"one for the whole workspace"}} />
+
+<Files guide="further-project-structure" dir="rust" files={["Cargo.toml","crates/wordstat/Cargo.toml","crates/wordstat-report/Cargo.toml"]} />
+
+## A library and programs in one package
+
+`src/lib.rs` is the library crate, named after the package. `src/main.rs` and the files in `src/bin/` are programs, and each file in `tests/` is an integration test, compiled as a separate crate ([Cargo targets](https://doc.rust-lang.org/cargo/reference/cargo-targets.html); [Testing](/build/testing/) shows tests running). The programs and tests call the library through its public items, as any other crate would. This is how Cargo sees the workspace, printed by `cargo metadata` ([docs](https://doc.rust-lang.org/cargo/commands/cargo-metadata.html)):
+
+<Session guide="further-project-structure" run="layout" />
+
+With two programs, `default-run = "wordstat"` names the one a plain `cargo run` starts ([manifest](https://doc.rust-lang.org/cargo/reference/manifest.html#the-default-run-field)). The library:
+
+<Files guide="further-project-structure" dir="rust" files={["crates/wordstat/src/lib.rs","crates/wordstat/src/count.rs","crates/wordstat/src/error.rs"]} />
+
+<Files guide="further-project-structure" dir="rust" files={["crates/wordstat/src/main.rs"]} run="run" />
+
+The `wordstat-report` package depends on `wordstat` like an outside user (the second step). In the third step there are no words, so the library's error reaches the program, which exits with status 1.
+
+## A workspace shares what should be shared
+
+The root `Cargo.toml` has no `[package]`, only `[workspace]`. The Cargo Book says "All packages share a common `Cargo.lock` file which resides in the workspace root" and a common output directory, `target` ([Workspaces](https://doc.rust-lang.org/cargo/reference/workspaces.html)). It also recommends one folder of members listed with a glob, `members = ["crates/*"]`, so a new crate needs no edit to the list.
+
+Three tables in the root file are inherited by the members:
+
+- `[workspace.package]`: the version, edition, `rust-version` and licence are written once, and each member says `version.workspace = true`.
+- `[workspace.dependencies]`: a dependency's version is written once (`serde_json = "1.0"`), and a member says `serde_json = { workspace = true }`. The path dependency on `wordstat` is declared there too.
+- `[workspace.lints]`: see Lints, below.
+
+The one lock file has 13 entries, but `cargo tree` shows 7 packages in this build: the two workspace packages and five crates under `serde_json`. The other six (`serde`, `serde_derive`, `syn`, `quote`, `proc-macro2`, `unicode-ident`) are there because the lock file also records dependencies a crate can use for optional features; `serde_core` lists `serde_derive`. This build does not use them.
+
+<Session guide="further-project-structure" run="locked" />
+
+[Packages and crates](/learn/modules/#packages-and-crates) has the vocabulary.
+
+## What the library shows and what it keeps
+
+In `lib.rs`, `mod count;` is private, and `pub use count::{Stats, count_words};` re-exports the two names users need ([Re-exports](/learn/modules/#re-exports)). That way the file layout can change without changing the paths users write. `pub(crate)` marks things the rest of this crate may use but users may not. Another package can reach neither, and the compiler says so:
+
+<Session guide="further-project-structure" run="private" />
+
+The error type is a plain `enum Error` with `Display` and `std::error::Error` written by hand, marked `#[non_exhaustive]`. Outside its crate, a `match` on such an enum needs a wildcard arm ([Reference](https://doc.rust-lang.org/reference/attributes/type_system.html)), so adding a variant later does not break callers. A library offers a concrete type so callers can match on it; [Errors in applications](/build/app-errors/) covers the program side.
+
+## Features
+
+A feature is a name that turns on optional code and optional dependencies. `json = ["dep:serde_json"]` makes `serde_json` a dependency only when `json` is on, and `#[cfg(feature = "json")]` includes `mod json;` and the `to_json` method only then. `required-features = ["json"]` on the `dump` program tells Cargo to skip it otherwise ([Cargo targets](https://doc.rust-lang.org/cargo/reference/cargo-targets.html)). With the feature off Cargo explains what to do; with it on the program runs, and the dependency tree differs:
+
+<Session guide="further-project-structure" run="features" />
+
+In the last two steps, `cargo test -p wordstat` runs one doc test and a plain `cargo test` at the root runs two. `wordstat-report` asks for `features = ["json"]`, and when several packages in one build use a dependency, Cargo "will use the union of all features enabled on that dependency" ([Features](https://doc.rust-lang.org/cargo/reference/features.html)). Building the whole workspace therefore switched `json` on for `wordstat` too. So features should only add things: the build you run may have more on than the one you wrote the code for. The API Guidelines ask for `json`, not `use-json` ([C-FEATURE](https://rust-lang.github.io/api-guidelines/naming.html)).
+
+Use a gated item with the feature off and you get a plain "method not found" that does not mention the feature, so a missing `features = [...]` is the first thing to check:
+
+<Session guide="further-project-structure" run="gated" />
+
+## Lints, formatting and the minimum Rust version
+
+`[workspace.lints]` sets lint levels once, and each member opts in with `[lints] workspace = true`. This workspace forbids `unsafe_code`, asks for documentation on public items and warns on `dbg!` ([`[lints]`](https://doc.rust-lang.org/cargo/reference/manifest.html#the-lints-section)). `clippy.toml` holds settings for individual Clippy lints (here a lower argument limit), and `rustfmt.toml` holds formatter settings (here `max_width = 80`, where the default is 100) ([rustfmt](https://github.com/rust-lang/rustfmt/blob/master/Configurations.md), [Clippy](https://doc.rust-lang.org/clippy/configuration.html)). A copy of the library with three problems added (an undocumented public function, a `dbg!`, five arguments) shows them at work: Clippy counts `5/4` because `clippy.toml` lowered its limit to 4. Then the same run with `missing_docs` raised to `deny`:
+
+<Session guide="further-project-structure" run="lints-warn" />
+
+<Session guide="further-project-structure" run="try-deny" />
+
+`cargo fmt --check` passes (no output) on the project:
+
+<Session guide="further-project-structure" run="fmt" />
+
+`rust-version = "1.85"` declares the oldest compiler the package supports (the MSRV, minimum supported Rust version). Its main effect is a version comparison: on an older compiler Cargo "will report that as an error to the user" ([rust-version](https://doc.rust-lang.org/cargo/reference/rust-version.html)). It does not compile your code with the old compiler (see the [CI guide](https://doc.rust-lang.org/cargo/guide/continuous-integration.html)). Declare a version above the installed one and Cargo refuses, naming `wordstat` once for each target it builds (the library and two programs):
+
+<Session guide="further-project-structure" run="msrv-refused" />
+
+Whether the declared version is true is something you test. This session installs 1.85.0 next to 1.99.1 (needs network; the image is ARM64) and runs the tests with it. They passed here, once, on this one project. With `resolver = "3"`, Cargo prefers dependency versions that fit your `rust-version` ([Resolver](https://doc.rust-lang.org/cargo/reference/resolver.html)). It is the default for edition 2024, but a workspace root with no package has no edition, so the root file sets it.
+
+<Session guide="further-project-structure" run="msrv-check" />
+
+## Documentation, doc tests and names
+
+`//!` documents the crate or module that contains it and `///` the item after it. `cargo doc` builds the HTML, and `cargo test` compiles and runs the code blocks in those comments. Lines that start with `# ` are hidden in the docs but compiled, so a final `# Ok::<(), wordstat::Error>(())` lets an example use `?` ([rustdoc book](https://doc.rust-lang.org/rustdoc/write-documentation/documentation-tests.html)). Timings in these sessions are masked, and the two doc tests can print in either order:
+
+<Session guide="further-project-structure" run="docs" />
+
+Names follow [RFC 430](https://rust-lang.github.io/rfcs/0430-finalizing-naming-conventions.html): `UpperCamelCase` for types and traits, `snake_case` for modules and functions, `SCREAMING_SNAKE_CASE` for constants (RFC 430 says `snake_case` for crates; the API Guidelines call that unclear). The [API Guidelines](https://rust-lang.github.io/api-guidelines/naming.html) add, for example, `as_` for a free borrowed view, `to_` for an expensive conversion and `into_` for one that consumes its input.
+
+## `Cargo.lock` and looking at dependencies
+
+The Cargo FAQ says whether to commit it "is dependent on the needs of your package", and that the lock file "does not affect the consumers of your package, only `Cargo.toml` does that" ([FAQ](https://doc.rust-lang.org/cargo/faq.html)). So the lock decides what your own builds and CI use; a library's users resolve versions from your `Cargo.toml`. This project commits it because it has programs. `cargo tree` prints the dependency graph and `-i` inverts it to show who depends on a package ([cargo tree](https://doc.rust-lang.org/cargo/commands/cargo-tree.html)).
+
+## The same job in your language
+
+The sessions below run the same split in Go (two modules, a build tag as the feature, an `internal` package) and in npm (two packages and an `exports` field). The other rows name the closest mechanism and link its documentation; they were not run.
+
+| Language | Several packages in one repo | A part you switch on | A name kept private | Run here |
+| --- | --- | --- | --- | --- |
+| Rust | workspace, `members` | feature, `cfg(feature)` | private `mod`, `pub(crate)` | yes (above) |
+| Go | `go.work` with `use` ([modules reference](https://go.dev/ref/mod)) | build tag: `//go:build json`, `-tags json` ([build constraints](https://pkg.go.dev/cmd/go#hdr-Build_constraints)) | a lower-case name, or an `internal/` directory ([internal packages](https://pkg.go.dev/cmd/go#hdr-Internal_packages)) | yes |
+| JavaScript (Node), TypeScript | npm `workspaces` ([docs](https://docs.npmjs.com/cli/v11/using-npm/workspaces)) | not run | the `exports` field of `package.json` ([Node docs](https://nodejs.org/docs/latest-v24.x/api/packages.html)) | yes |
+| Java | Maven modules, built together by one Maven run ([guide](https://maven.apache.org/guides/mini/guide-multiple-modules.html)) | not run | not run | no |
+| Kotlin | Gradle multi-project build, `include(...)` in `settings.gradle.kts` ([docs](https://docs.gradle.org/current/userguide/multi_project_builds.html)) | not run | not run | no |
+| C# | a solution holding projects ([docs](https://learn.microsoft.com/en-us/visualstudio/ide/solutions-and-projects-in-visual-studio)) | not run | not run | no |
+| Python | not run | extras: `[project.optional-dependencies]` ([spec](https://packaging.python.org/en/latest/specifications/pyproject-toml/)) | a leading underscore is a convention, not run ([PEP 8](https://peps.python.org/pep-0008/#descriptive-naming-styles)) | no |
+| C, C++ | CMake targets joined with `target_link_libraries()` ([buildsystem manual](https://cmake.org/cmake/help/latest/manual/cmake-buildsystem.7.html)) | `option()` ([docs](https://cmake.org/cmake/help/latest/command/option.html)) | not run | no |
+
+Go first. The program builds with the workspace, and the program that needs `ToJSON` fails to compile until the tag is given:
+
+<Files guide="further-project-structure" dir="langs" files={["go/go.work","go/wordstat/stats.go","go/wordstat/json.go","go/app/cmd/dump/main.go"]} run="go" lang="go" />
+
+Go's compiler enforces `internal`: a package outside `wordstat` that imports `wordstat/internal/words` is refused:
+
+<Session guide="further-project-structure" run="go-internal" />
+
+Two differences from Cargo, both visible above. A Go build tag switches files in a package; it does not make a dependency optional, and `encoding/json` was in the standard library all along. And Go's `internal` rule is about directories, where Rust's privacy follows `mod` and `pub` items. npm's `exports` is closer to Rust's private modules: only the listed entry points can be imported.
+
+<Files guide="further-project-structure" dir="langs" files={["npm/package.json","npm/packages/wordstat/package.json","npm/packages/app/index.js"]} />
+
+<Session guide="further-project-structure" run="npm" />
+
+## Try it yourself
+
+Run each in the project. The session ran tasks 1 and 2; task 3 is the `deny` run above.
+
+1. `cargo build -p wordstat --features nope`. Cargo refuses a feature the package does not define, and says so.
+2. `cargo tree --workspace -i serde_json`. The tree reads from `serde_json` upward: `wordstat` needs it, and `wordstat-report` needs `wordstat`.
+3. Add `pub fn pad(a: usize, b: usize, c: usize, d: usize, e: usize) -> usize { dbg!(a + b + c + d + e) }` to `crates/wordstat/src/lib.rs`, change `missing_docs = "warn"` to `"deny"` in the root `Cargo.toml`, and run `cargo clippy --workspace`. The missing-docs warning becomes an error and the build stops.
+
+<Session guide="further-project-structure" run="try" />
+
+## Read more
+
+- The Cargo Book: [Workspaces](https://doc.rust-lang.org/cargo/reference/workspaces.html), [Features](https://doc.rust-lang.org/cargo/reference/features.html), [Rust version](https://doc.rust-lang.org/cargo/reference/rust-version.html); the Book's [Cargo Workspaces](https://doc.rust-lang.org/book/ch14-03-cargo-workspaces.html)
+- [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/) and [rustdoc: documentation tests](https://doc.rust-lang.org/rustdoc/write-documentation/documentation-tests.html)
+- In this course: [Modules](/learn/modules/), [Testing](/build/testing/), [Errors in applications](/build/app-errors/), [Finding and using crates](/start/using-crates/)
+
+<p class="lr-fine">Versions on this page: Rust 1.99.1, with 1.85.0 for the MSRV check, and serde_json as pinned in <code>Cargo.lock</code>. Go and Node are the versions in the runner image.</p>

@@ -1,0 +1,228 @@
+{
+ "id": "strings",
+ "title": "Strings",
+ "part": "data",
+ "intro": "Rust has two string types. `String` owns its text and can grow. `&str` is a borrowed, read-only view into text that lives somewhere else.",
+ "coming_from": {
+  "go": "`&str` looks like your `string`: read-only UTF-8 bytes, and `len()` counts bytes. The difference is lifetime. A Go substring shares its parent's bytes and the GC keeps the parent alive; a `&str` borrows from a `String` and can't outlive it, which the compiler checks. Slicing that cuts a rune gives Go invalid UTF-8 silently, while Rust panics. `range` gives (byte index, rune), which is `char_indices()`, not `chars()`.",
+  "kotlin": "Rust's `String` owns its text like a Kotlin `String`, but it can change, like a `StringBuilder`. `&str` has no Kotlin twin: it is a borrowed view into someone else's text, with no copy, and it can't outlive the string it points into. Rust stores UTF-8, not UTF-16, so `.len()` counts bytes and `.chars().count()` counts characters.",
+  "python": "Your `str` splits into two types: `String` owns text and can grow, `&str` is a borrowed view. Both are UTF-8 bytes, so `.len()` counts bytes, and slicing like `&s[0..1]` uses byte positions and panics if it cuts a character in half.",
+  "typescript": "JS strings are UTF-16, but Rust strings are UTF-8, so `.len()` counts bytes and `.chars()` walks characters like `for...of`. A `String` can also be changed in place with `push_str` when it's `mut`, and `&str` is a borrowed view of one.",
+  "java": "Rust's `String` owns its text like a Java `String`, but can grow like a `StringBuilder`. `&str` is a borrowed, read-only view into text with no copy, and it can't outlive the string it points into. Rust text is UTF-8, so `len()` counts bytes, and `s[1]` won't compile; use `chars()` to walk characters.",
+  "csharp": "`String` is an owned, growable string (think `StringBuilder`), and `&str` is close to `ReadOnlySpan<char>`: a borrowed view that can't outlive its owner. Rust stores UTF-8, not UTF-16, so `len()` counts bytes, and indexing with `s[1]` is not allowed.",
+  "c": "`String` is a heap buffer that frees itself, and `&str` is a pointer plus a length, like your `%.*s` view. Rust strings are always valid UTF-8, carry their length instead of a `'\\0'`, and can't be indexed by byte with `s[1]`.",
+  "cpp": "`String` is like `std::string` and `&str` like `std::string_view`. But `std::string` holds any bytes, while Rust guarantees valid UTF-8. Rust also refuses `s[1]`, and the borrow checker stops a `&str` from outliving the `String` it views."
+ },
+ "notes": [
+  "Rule of thumb: a function that only reads text takes `&str`. A struct field that keeps text uses `String`.",
+  "A `&String` turns into a `&str` automatically when you pass it, so `fn f(s: &str)` accepts both.",
+  "`.len()` counts bytes, not characters. `é` takes 2 bytes, so \"héllo\" is 6 bytes and 5 characters.",
+  "Text written in quotes, like `\"hi\"`, is already a `&str`. Use `String::from(\"hi\")` or `\"hi\".to_string()` when you need an owned String."
+ ],
+ "gotcha": {
+  "title": "Indexing a string like an array",
+  "verdict": "rust-rule",
+  "looks_fine": "In Go, `s[1]` gives you a byte. For plain English text, that byte is the second letter, so it looks like it works.",
+  "rust_sees": "Rust stores text as UTF-8, where one character can be 1 to 4 bytes. Byte 1 of \"héllo\" is the first half of `é`.",
+  "why": "`s[1]` could mean byte 1 (half of `é`) or character 1. Look at the outputs: the same line gives a raw byte in some languages (Go, C, C++) and a character or UTF-16 unit in others (Python, Java, Kotlin, C#, TypeScript). Rust won't guess which you meant. Ask for characters with `.chars()`, or raw bytes with `.as_bytes()`.",
+  "langs": {
+   "go": {
+    "status": "runs",
+    "says": "Go runs this and prints 195. `s[1]` is a single byte, the first half of `é`, not a character.",
+    "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\ts := \"héllo\"\n\tsecond := s[1]\n\tfmt.Println(second)\n}\n",
+    "out": "195\n"
+   },
+   "kotlin": {
+    "status": "runs",
+    "says": "Kotlin runs this and prints é. Kotlin indexes UTF-16 units, and `é` is one unit, so you get the whole character.",
+    "code": "fun main() {\n    val s = \"héllo\"\n    val second = s[1]\n    println(second)\n}\n",
+    "out": "é\n"
+   },
+   "python": {
+    "status": "runs",
+    "says": "Python prints é. A Python str is indexed by characters (code points), not bytes, so `s[1]` gives a whole character.",
+    "code": "s = \"héllo\"\nsecond = s[1]\nprint(second)\n",
+    "out": "é\n"
+   },
+   "typescript": {
+    "status": "runs",
+    "says": "Prints é. `s[1]` picks a UTF-16 unit, and `é` fits in one, so it is a whole character here.",
+    "code": "const s = \"héllo\";\nconst second = s[1];\nconsole.log(second);\n",
+    "out": "é\n"
+   },
+   "java": {
+    "status": "runs",
+    "says": "`charAt(1)` gives `é` here because Java strings are made of UTF-16 units, and `é` fits in one.",
+    "code": "public class Main {\n    public static void main(String[] args) {\n        String s = \"héllo\";\n        char second = s.charAt(1);\n        System.out.println(second);\n    }\n}\n",
+    "out": "é\n"
+   },
+   "csharp": {
+    "status": "runs",
+    "says": "C# strings are indexed by UTF-16 `char`, not by byte, and `é` fits in one, so `s[1]` is é.",
+    "code": "var s = \"héllo\";\nvar second = s[1];\nConsole.WriteLine(second);\n",
+    "out": "é\n"
+   },
+   "c": {
+    "status": "wrong",
+    "says": "C indexes bytes, and `s[1]` is the first of the two bytes in é. Whether `char` is signed depends on the platform. These outputs come from Linux on ARM64, where it is unsigned, so this prints 195. On x86 and on Apple-silicon Macs it is signed, and the same program prints -61. Either way you get a byte, not é.",
+    "code": "#include <stdio.h>\n\nint main(void) {\n    const char *s = \"héllo\";\n    char second = s[1];\n    printf(\"%d\\n\", second);\n    return 0;\n}\n",
+    "out": "195\n"
+   },
+   "cpp": {
+    "status": "wrong",
+    "says": "`s[1]` is the first byte of the two-byte `é`. These outputs come from Linux on ARM64, where `char` is unsigned, so this prints 195 like Go. On x86 and on Apple-silicon Macs `char` is signed, and the same program prints -61. Either way you get a byte, not é.",
+    "code": "#include <iostream>\n#include <string>\n\nint main() {\n    std::string s = \"héllo\";\n    auto second = s[1];\n    std::cout << int(second) << \"\\n\";\n}\n",
+    "out": "195\n"
+   }
+  },
+  "code": "fn main() {\n    let s = String::from(\"héllo\");\n    let second = s[1];\n    println!(\"{second}\");\n}\n",
+  "error": "error[E0277]: the type `str` cannot be indexed by `{integer}`\n --> src/main.rs:3:20\n  |\n3 |     let second = s[1];\n  |                    ^ string indices are ranges of `usize`\n  |\n  = help: the trait `SliceIndex<str>` is not implemented for `{integer}`\n  = note: you can use `.chars().nth()` or `.bytes().nth()`\n          for more information, see chapter 8 in The Book: <https://doc.rust-lang.org/book/ch08-02-strings.html#indexing-into-strings>\n  ... (notes pointing into the standard library trimmed)",
+  "error_code": "E0277",
+  "fixed": {
+   "code": "fn main() {\n    let s = String::from(\"héllo\");\n    let second = s.chars().nth(1);        // Some('é'): characters, not bytes\n    let byte = s.as_bytes()[1];           // 195: the raw byte, if you want it\n    println!(\"{second:?} {byte}\");\n}\n",
+   "out": "Some('é') 195\n"
+  }
+ },
+ "order": 25,
+ "program": {
+  "rust": {
+   "code": "fn main() {\n    let owned: String = String::from(\"héllo\");   // owns the text, can grow\n    let view: &str = &owned[0..1];                // a view into it, no copy\n\n    let mut s = String::from(\"go\");\n    s.push_str(\" + rust\");\n\n    println!(\"{owned} {view} {s}\");\n    println!(\"bytes={} chars={}\", owned.len(), owned.chars().count());\n    for c in owned.chars() {\n        print!(\"[{c}]\");\n    }\n    println!();\n}\n",
+   "out": "héllo h go + rust\nbytes=6 chars=5\n[h][é][l][l][o]\n"
+  },
+  "go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"strings\"\n\t\"unicode/utf8\"\n)\n\nfunc main() {\n\towned := \"héllo\"\n\tview := owned[0:1]\n\n\tvar b strings.Builder\n\tb.WriteString(\"go\")\n\tb.WriteString(\" + rust\")\n\ts := b.String()\n\n\tfmt.Println(owned, view, s)\n\tfmt.Printf(\"bytes=%d chars=%d\\n\", len(owned), utf8.RuneCountInString(owned))\n\tfor _, c := range owned {\n\t\tfmt.Printf(\"[%c]\", c)\n\t}\n\tfmt.Println()\n}\n",
+   "out": "héllo h go + rust\nbytes=6 chars=5\n[h][é][l][l][o]\n"
+  },
+  "kotlin": {
+   "code": "fun main() {\n    val owned = \"héllo\"\n    val view = owned.substring(0, 1)\n\n    val s = StringBuilder(\"go\")\n    s.append(\" + rust\")\n\n    println(\"$owned $view $s\")\n    println(\"bytes=${owned.toByteArray().size} chars=${owned.length}\")\n    for (c in owned) {\n        print(\"[$c]\")\n    }\n    println()\n}\n",
+   "out": "héllo h go + rust\nbytes=6 chars=5\n[h][é][l][l][o]\n"
+  },
+  "python": {
+   "code": "owned = \"héllo\"  # str is a sequence of characters, and immutable\nview = owned[0:1]  # slicing makes a new string\n\ns = \"go\"\ns += \" + rust\"  # builds a new string\n\nprint(f\"{owned} {view} {s}\")\nprint(f\"bytes={len(owned.encode())} chars={len(owned)}\")\nfor c in owned:\n    print(f\"[{c}]\", end=\"\")\nprint()\n",
+   "out": "héllo h go + rust\nbytes=6 chars=5\n[h][é][l][l][o]\n"
+  },
+  "typescript": {
+   "code": "const owned = \"héllo\";          // strings can't be changed in place\nconst view = owned.slice(0, 1); // slice makes a new string\n\nlet s = \"go\";\ns += \" + rust\";                 // makes a new string and reassigns s\n\nconsole.log(`${owned} ${view} ${s}`);\nconst bytes = new TextEncoder().encode(owned).length; // UTF-8 bytes\nconst chars = [...owned].length;                      // real characters\nconsole.log(`bytes=${bytes} chars=${chars}`);\n\nlet line = \"\";\nfor (const c of owned) { // for...of walks characters, not UTF-16 units\n  line += `[${c}]`;\n}\nconsole.log(line);\n",
+   "out": "héllo h go + rust\nbytes=6 chars=5\n[h][é][l][l][o]\n"
+  },
+  "java": {
+   "code": "import java.nio.charset.StandardCharsets;\n\npublic class Main {\n    public static void main(String[] args) {\n        String owned = \"héllo\";               // Strings never change\n        String view = owned.substring(0, 1);  // a new String\n\n        var s = new StringBuilder(\"go\");      // for text that grows\n        s.append(\" + rust\");\n\n        System.out.println(owned + \" \" + view + \" \" + s);\n        int bytes = owned.getBytes(StandardCharsets.UTF_8).length;\n        System.out.println(\"bytes=\" + bytes + \" chars=\" + owned.length());\n        for (char c : owned.toCharArray()) {\n            System.out.print(\"[\" + c + \"]\");\n        }\n        System.out.println();\n    }\n}\n",
+   "out": "héllo h go + rust\nbytes=6 chars=5\n[h][é][l][l][o]\n"
+  },
+  "csharp": {
+   "code": "using System.Text;\n\nvar owned = \"héllo\";                            // strings never change\nReadOnlySpan<char> view = owned.AsSpan(0, 1);   // a view into it, no copy\n\nvar s = new StringBuilder(\"go\");                // the growable kind\ns.Append(\" + rust\");\n\nConsole.WriteLine($\"{owned} {view} {s}\");\nConsole.WriteLine($\"bytes={Encoding.UTF8.GetByteCount(owned)} chars={owned.Length}\");\nforeach (var c in owned)\n{\n    Console.Write($\"[{c}]\");\n}\nConsole.WriteLine();\n",
+   "out": "héllo h go + rust\nbytes=6 chars=5\n[h][é][l][l][o]\n"
+  },
+  "c": {
+   "code": "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n\nint main(void) {\n    const char *owned = \"héllo\";       // bytes ending in '\\0' (UTF-8)\n    // a \"view\" is a pointer plus a length; %.*s prints that many bytes\n    const char *view = owned;\n    int view_len = 1;\n\n    // a growable string: allocate room, then append\n    char *s = malloc(32);\n    strcpy(s, \"go\");\n    strcat(s, \" + rust\");\n\n    printf(\"%s %.*s %s\\n\", owned, view_len, view, s);\n\n    // count characters: skip UTF-8 continuation bytes (10xxxxxx)\n    size_t chars = 0;\n    for (const char *p = owned; *p; p++) {\n        if (((unsigned char)*p & 0xC0) != 0x80) chars++;\n    }\n    printf(\"bytes=%zu chars=%zu\\n\", strlen(owned), chars);\n\n    // print each character: a lead byte plus its continuation bytes\n    for (const char *p = owned; *p;) {\n        const char *start = p++;\n        while (((unsigned char)*p & 0xC0) == 0x80) p++;\n        printf(\"[%.*s]\", (int)(p - start), start);\n    }\n    printf(\"\\n\");\n    free(s);\n    return 0;\n}\n",
+   "out": "héllo h go + rust\nbytes=6 chars=5\n[h][é][l][l][o]\n"
+  },
+  "cpp": {
+   "code": "#include <iostream>\n#include <string>\n#include <string_view>\n\nint main() {\n    std::string owned = \"héllo\";                       // owns the text (UTF-8 bytes), can grow\n    std::string_view view = std::string_view(owned).substr(0, 1);   // a view into it, no copy\n\n    std::string s = \"go\";\n    s += \" + rust\";\n\n    std::cout << owned << \" \" << view << \" \" << s << \"\\n\";\n\n    // std::string counts bytes. Counting characters means skipping UTF-8 continuation bytes.\n    std::size_t chars = 0;\n    for (unsigned char b : owned) {\n        if ((b & 0xC0) != 0x80) chars++;\n    }\n    std::cout << \"bytes=\" << owned.size() << \" chars=\" << chars << \"\\n\";\n\n    for (std::size_t i = 0; i < owned.size();) {\n        std::size_t len = 1;\n        while (i + len < owned.size() && (static_cast<unsigned char>(owned[i + len]) & 0xC0) == 0x80) len++;\n        std::cout << \"[\" << owned.substr(i, len) << \"]\";\n        i += len;\n    }\n    std::cout << \"\\n\";\n}\n",
+   "out": "héllo h go + rust\nbytes=6 chars=5\n[h][é][l][l][o]\n"
+  }
+ },
+ "faq": [],
+ "snippets": {
+  "building.rs": {
+   "code": "fn main() {\n    // Two ways to make an owned String from text. They do the same thing.\n    let a = String::from(\"one\");\n    let b = \"two\".to_string();\n    println!(\"{a} {b}\");\n\n    // Grow one in place.\n    let mut s = String::new();\n    s.push_str(\"Hello\");\n    s.push(','); // push takes a single char\n    s.push_str(\" world\");\n    println!(\"{s}\");\n\n    // format! builds a new String from any mix of values, like println! without printing.\n    let user = \"ana\";\n    let visits = 3;\n    let line = format!(\"{user} has visited {visits} times\");\n    println!(\"{line}\");\n\n    // Joining a list.\n    let words = [\"red\", \"green\", \"blue\"];\n    println!(\"join: {}\", words.join(\", \"));\n    println!(\"concat: {}\", words.concat());\n\n    // Building in a loop: reserve the space once if you know roughly how much.\n    let mut csv = String::with_capacity(64);\n    for n in 1..=5 {\n        if !csv.is_empty() {\n            csv.push(',');\n        }\n        csv.push_str(&n.to_string());\n    }\n    println!(\"{csv}\");\n}\n",
+   "out": "one two\nHello, world\nana has visited 3 times\njoin: red, green, blue\nconcat: redgreenblue\n1,2,3,4,5\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "changing.rs": {
+   "code": "fn main() {\n    // These return a new String and leave the original alone.\n    let title = \"Rust for Gophers\";\n    println!(\"replace: {}\", title.replace(\"Gophers\", \"everyone\"));\n    println!(\"to_lowercase: {}\", title.to_lowercase());\n    println!(\"to_uppercase: {}\", title.to_uppercase());\n    println!(\"straße upper: {}\", \"straße\".to_uppercase()); // ß becomes SS\n\n    // These change a String in place, so it must be `mut`.\n    let mut s = String::from(\"hello world\");\n    s.insert(0, '>');\n    s.insert_str(1, \"> \");\n    println!(\"after insert: {s:?}\");\n    println!(\"pop returned: {:?}\", s.pop()); // removes and returns the last char\n    s.truncate(5); // keep the first 5 bytes\n    println!(\"after truncate(5): {s:?}\");\n    s.retain(|c| c != '>'); // keep only what the closure says yes to\n    println!(\"after retain: {s:?}\");\n    s.clear();\n    println!(\"after clear: {s:?}\");\n\n    // Comparing.\n    println!(\"\\\"Rust\\\" == \\\"rust\\\": {}\", \"Rust\" == \"rust\");\n    println!(\"ignoring case: {}\", \"Rust\".eq_ignore_ascii_case(\"rust\"));\n    println!(\"\\\"apple\\\" vs \\\"banana\\\": {:?}\", \"apple\".cmp(\"banana\"));\n\n    let mut names = vec![\"bo\", \"Cy\", \"ana\"];\n    names.sort(); // byte order: every capital comes before every lowercase letter\n    println!(\"sort: {names:?}\");\n    names.sort_by_key(|n| n.to_lowercase()); // what a person expects\n    println!(\"sort_by_key(lowercase): {names:?}\");\n}\n",
+   "out": "replace: Rust for everyone\nto_lowercase: rust for gophers\nto_uppercase: RUST FOR GOPHERS\nstraße upper: STRASSE\nafter insert: \">> hello world\"\npop returned: Some('d')\nafter truncate(5): \">> he\"\nafter retain: \" he\"\nafter clear: \"\"\n\"Rust\" == \"rust\": false\nignoring case: true\n\"apple\" vs \"banana\": Less\nsort: [\"Cy\", \"ana\", \"bo\"]\nsort_by_key(lowercase): [\"ana\", \"bo\", \"Cy\"]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "chars-and-bytes.rs": {
+   "code": "fn main() {\n    let word = \"naïve\";\n    println!(\"{} bytes, {} chars\", word.len(), word.chars().count());\n\n    // chars: Unicode scalar values. bytes: the raw UTF-8.\n    let chars: Vec<char> = word.chars().collect();\n    let bytes: Vec<u8> = word.bytes().collect();\n    println!(\"chars: {chars:?}\");\n    println!(\"bytes: {bytes:?}\");\n\n    // char_indices: each char with the byte position it starts at.\n    let indices: Vec<(usize, char)> = word.char_indices().collect();\n    println!(\"char_indices: {indices:?}\");\n\n    // The nth character is a walk, not a jump: O(n).\n    println!(\"chars().nth(2): {:?}\", word.chars().nth(2));\n\n    // Slicing uses byte positions. get() returns None instead of panicking\n    // when the range would cut a character in half.\n    println!(\"get(0..2): {:?}\", word.get(0..2));\n    println!(\"get(0..3): {:?}\", word.get(0..3));\n    println!(\"get(0..4): {:?}\", word.get(0..4));\n\n    // A char is always 4 bytes in memory, whatever it encodes to in a string.\n    println!(\"size of a char: {}\", size_of::<char>());\n    // One thing a person sees can be several chars: this flag is two, in 8 bytes.\n    let flag = \"🇵🇹\";\n    println!(\"flag: {} chars, {} bytes\", flag.chars().count(), flag.len());\n}\n",
+   "out": "6 bytes, 5 chars\nchars: ['n', 'a', 'ï', 'v', 'e']\nbytes: [110, 97, 195, 175, 118, 101]\nchar_indices: [(0, 'n'), (1, 'a'), (2, 'ï'), (4, 'v'), (5, 'e')]\nchars().nth(2): Some('ï')\nget(0..2): Some(\"na\")\nget(0..3): None\nget(0..4): Some(\"naï\")\nsize of a char: 4\nflag: 2 chars, 8 bytes\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "converting.rs": {
+   "code": "fn main() {\n    // Text to a number: parse. It returns a Result, because the text might not be one.\n    let n: i32 = \"42\".parse().unwrap();\n    let price = \"9.99\".parse::<f64>().unwrap(); // or name the type with ::<>\n    println!(\"n + 1 = {}, price * 2 = {}\", n + 1, price * 2.0);\n\n    match \"forty-two\".parse::<i32>() {\n        Ok(n) => println!(\"got {n}\"),\n        Err(e) => println!(\"not a number: {e}\"),\n    }\n\n    // A number (or anything that implements Display) to text.\n    let s = 3.5.to_string();\n    println!(\"to_string: {s:?}\");\n    println!(\n        \"format!: {:?}\",\n        format!(\"{:>8.2}|{:<6}|{:06}\", 3.14159, \"left\", 42)\n    );\n\n    // Bytes and text. Every String is valid UTF-8, so bytes that aren't get checked.\n    println!(\"as_bytes: {:?}\", \"hé\".as_bytes());\n    println!(\n        \"from_utf8 (good): {:?}\",\n        String::from_utf8(vec![104, 195, 169])\n    );\n    println!(\n        \"from_utf8 (bad) is_err: {}\",\n        String::from_utf8(vec![104, 255]).is_err()\n    );\n    println!(\n        \"from_utf8_lossy: {}\",\n        String::from_utf8_lossy(&[104, 255, 105])\n    );\n\n    // Reversing is a job for chars, not bytes.\n    let reversed: String = \"héllo\".chars().rev().collect();\n    println!(\"reversed: {reversed}\");\n}\n",
+   "out": "n + 1 = 43, price * 2 = 19.98\nnot a number: invalid digit found in string\nto_string: \"3.5\"\nformat!: \"    3.14|left  |000042\"\nas_bytes: [104, 195, 169]\nfrom_utf8 (good): Ok(\"hé\")\nfrom_utf8 (bad) is_err: true\nfrom_utf8_lossy: h�i\nreversed: olléh\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "index.fail.rs": {
+   "code": "fn main() {\n    let s = String::from(\"hello\");\n    let first = s[0];\n    println!(\"{first}\");\n}\n",
+   "error": "error[E0277]: the type `str` cannot be indexed by `{integer}`\n --> src/main.rs:3:19\n  |\n3 |     let first = s[0];\n  |                   ^ string indices are ranges of `usize`\n  |\n  = help: the trait `SliceIndex<str>` is not implemented for `{integer}`\n  = note: you can use `.chars().nth()` or `.bytes().nth()`\n          for more information, see chapter 8 in The Book: <https://doc.rust-lang.org/book/ch08-02-strings.html#indexing-into-strings>\n  ... (notes pointing into the standard library trimmed)",
+   "lang": "rust"
+  },
+  "memory.rs": {
+   "code": "fn main() {\n    let s = String::from(\"héllo\");\n    let v: &str = &s[0..3];\n\n    println!(\"s: len {} capacity {}\", s.len(), s.capacity());\n    println!(\"v: {v:?}, len {}\", v.len());\n    // Same address: v points into s's bytes. Nothing was copied.\n    println!(\"same start: {}\", v.as_ptr() == s.as_ptr());\n    println!(\n        \"size on the stack: String {} bytes, &str {} bytes\",\n        size_of::<String>(),\n        size_of::<&str>()\n    );\n}\n",
+   "out": "s: len 6 capacity 6\nv: \"hé\", len 3\nsame start: true\nsize on the stack: String 24 bytes, &str 16 bytes\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "no-small-strings.rs": {
+   "code": "fn main() {\n    // String::new() has not allocated anything yet.\n    let empty = String::new();\n    println!(\"String::new(): capacity {}\", empty.capacity());\n\n    // Two bytes of text, and they still go on the heap.\n    let short = String::from(\"hi\");\n    println!(\"\\\"hi\\\": len {}, capacity {}\", short.len(), short.capacity());\n\n    // If the text were stored inside the String itself (as C++ does for short\n    // strings), its address would fall inside the String's own 24 bytes.\n    let header = &short as *const String as usize;\n    let text = short.as_ptr() as usize;\n    let inside = text >= header && text < header + size_of::<String>();\n    println!(\"text stored inside the String: {inside}\");\n    println!(\"size_of::<String>(): {} bytes\", size_of::<String>());\n}\n",
+   "out": "String::new(): capacity 0\n\"hi\": len 2, capacity 2\ntext stored inside the String: false\nsize_of::<String>(): 24 bytes\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "plus-moves.fail.rs": {
+   "code": "fn main() {\n    let hello = String::from(\"Hello, \");\n    let world = String::from(\"world\");\n    let greeting = hello + &world;\n    println!(\"{greeting}\");\n    println!(\"{hello}\"); // hello was moved into greeting\n}\n",
+   "error": "error[E0382]: borrow of moved value: `hello`\n --> src/main.rs:6:16\n  |\n2 |     let hello = String::from(\"Hello, \");\n  |         ----- move occurs because `hello` has type `String`, which does not implement the `Copy` trait\n3 |     let world = String::from(\"world\");\n4 |     let greeting = hello + &world;\n  |                    ----- value moved here\n5 |     println!(\"{greeting}\");\n6 |     println!(\"{hello}\"); // hello was moved into greeting\n  |                ^^^^^ value borrowed here after move\n  |\nhelp: consider cloning the value if the performance cost is acceptable\n  |\n4 |     let greeting = hello.clone() + &world;\n  |                         ++++++++\n",
+   "lang": "rust"
+  },
+  "plus.rs": {
+   "code": "fn main() {\n    let hello = String::from(\"Hello, \");\n    let world = String::from(\"world\");\n\n    // + takes the left String by value and appends to its buffer. The right side\n    // is only read, so it is borrowed with &.\n    let greeting = hello + &world;\n    println!(\"{greeting}\");\n    println!(\"{world}\"); // still fine: world was only borrowed\n\n    // For more than two pieces, format! reads better and borrows everything.\n    let a = String::from(\"tic\");\n    let b = String::from(\"tac\");\n    let c = String::from(\"toe\");\n    let all = format!(\"{a}-{b}-{c}\");\n    println!(\"{all} ({a} is still here)\");\n}\n",
+   "out": "Hello, world\nworld\ntic-tac-toe (tic is still here)\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "searching.rs": {
+   "code": "fn main() {\n    let path = \"/home/ana/notes/rust.md\";\n\n    println!(\"len: {}\", path.len()); // length in bytes\n    println!(\"is_empty: {}\", path.is_empty());\n    println!(\"contains(\\\"notes\\\"): {}\", path.contains(\"notes\"));\n    println!(\"starts_with('/'): {}\", path.starts_with('/'));\n    println!(\"ends_with(\\\".md\\\"): {}\", path.ends_with(\".md\"));\n\n    // find gives a byte position, wrapped in Option because it might not be there.\n    println!(\"find('/'): {:?}\", path.find('/'));\n    println!(\"rfind('/'): {:?}\", path.rfind('/'));\n    println!(\"find(\\\"python\\\"): {:?}\", path.find(\"python\"));\n\n    // Matching with a closure: the first digit, if any.\n    let code = \"room-42b\";\n    println!(\n        \"first digit at: {:?}\",\n        code.find(|c: char| c.is_ascii_digit())\n    );\n\n    // Count how often something appears.\n    println!(\"\\\"an\\\" in banana: {}\", \"banana\".matches(\"an\").count());\n}\n",
+   "out": "len: 23\nis_empty: false\ncontains(\"notes\"): true\nstarts_with('/'): true\nends_with(\".md\"): true\nfind('/'): Some(0)\nrfind('/'): Some(15)\nfind(\"python\"): None\nfirst digit at: Some(5)\n\"an\" in banana: 2\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "slice-mid-char.panic.rs": {
+   "code": "fn main() {\n    let word = \"naïve\";\n    // ï takes bytes 2 and 3. Ending a slice at byte 3 cuts it in half.\n    let start = &word[0..3];\n    println!(\"{start}\");\n}\n",
+   "out": "\nthread 'main' (1) panicked at src/main.rs:4:22:\nend byte index 3 is not a char boundary; it is inside 'ï' (bytes 2..4 of string)\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+   "lang": "rust",
+   "exit": 101
+  },
+  "splitting.rs": {
+   "code": "fn main() {\n    // split gives an iterator of &str pieces. collect turns it into a Vec.\n    let parts: Vec<&str> = \"a,b,,c\".split(',').collect();\n    println!(\"split(','): {parts:?}\");\n\n    // Whitespace of any kind and length, with no empty pieces.\n    let words: Vec<&str> = \"  the   quick\\tbrown\\nfox \".split_whitespace().collect();\n    println!(\"split_whitespace: {words:?}\");\n\n    // One line at a time (handles \\n and \\r\\n).\n    for (i, line) in \"first\\nsecond\\r\\nthird\".lines().enumerate() {\n        println!(\"{i}: {line}\");\n    }\n\n    // Split once, at the first match: perfect for key=value.\n    if let Some((key, value)) = \"port=8080\".split_once('=') {\n        println!(\"key={key} value={value}\");\n    }\n\n    // At most n pieces.\n    let v: Vec<&str> = \"2026-10-24T10:30\".splitn(2, 'T').collect();\n    println!(\"splitn(2, 'T'): {v:?}\");\n\n    // Trimming returns a smaller view of the same text: nothing is copied.\n    let raw = \"   padded \\n\";\n    println!(\"trim: {:?}\", raw.trim());\n    println!(\"trim_start: {:?}\", raw.trim_start());\n    println!(\"trim_end: {:?}\", raw.trim_end());\n    println!(\"trim_matches('x'): {:?}\", \"xxhixx\".trim_matches('x'));\n\n    // strip_prefix / strip_suffix: Some(rest) if it was there, None if not.\n    println!(\"strip_prefix on v1.2.3: {:?}\", \"v1.2.3\".strip_prefix('v'));\n    println!(\"strip_prefix on 1.2.3: {:?}\", \"1.2.3\".strip_prefix('v'));\n}\n",
+   "out": "split(','): [\"a\", \"b\", \"\", \"c\"]\nsplit_whitespace: [\"the\", \"quick\", \"brown\", \"fox\"]\n0: first\n1: second\n2: third\nkey=port value=8080\nsplitn(2, 'T'): [\"2026-10-24\", \"10:30\"]\ntrim: \"padded\"\ntrim_start: \"padded \\n\"\ntrim_end: \"   padded\"\ntrim_matches('x'): \"hi\"\nstrip_prefix on v1.2.3: Some(\"1.2.3\")\nstrip_prefix on 1.2.3: None\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "which-type.rs": {
+   "code": "// A function that only reads text takes &str. It then accepts every kind of string.\nfn shout(text: &str) -> String {\n    text.to_uppercase()\n}\n\n// A struct that keeps text owns it: String.\nstruct User {\n    name: String,\n}\n\nfn main() {\n    let literal = \"hello\"; // &'static str: baked into the program\n    let owned = String::from(\"world\"); // String: on the heap, yours to change\n    let user = User {\n        name: String::from(\"ana\"),\n    };\n\n    println!(\"{}\", shout(literal));\n    println!(\"{}\", shout(&owned)); // &String turns into &str by itself\n    println!(\"{}\", shout(&user.name));\n    println!(\"{}\", shout(&owned[1..3])); // a slice of a String is a &str too\n}\n",
+   "out": "HELLO\nWORLD\nANA\nOR\n",
+   "lang": "rust",
+   "exit": 0
+  }
+ },
+ "exercises": {
+  "initials": {
+   "starter": "/// \"Ada Lovelace\" -> \"AL\". Words are separated by any whitespace.\nfn initials(name: &str) -> String {\n    todo!(\"take the first char of each word, uppercased\")\n}\n\nfn main() {\n    assert_eq!(initials(\"Ada Lovelace\"), \"AL\");\n    assert_eq!(initials(\"  grace   brewster hopper \"), \"GBH\");\n    assert_eq!(initials(\"Émilie du Châtelet\"), \"ÉDC\");\n    assert_eq!(initials(\"\"), \"\");\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "/// \"Ada Lovelace\" -> \"AL\". Words are separated by any whitespace.\nfn initials(name: &str) -> String {\n    // This uses iterator methods from the Iterators lesson; a for loop works too\n    // (see initials_with_a_loop below).\n    name.split_whitespace()\n        .filter_map(|word| word.chars().next())\n        .flat_map(char::to_uppercase)\n        .collect()\n}\n\n/// The same thing with a plain for loop.\n#[allow(dead_code)]\nfn initials_with_a_loop(name: &str) -> String {\n    let mut out = String::new();\n    for word in name.split_whitespace() {\n        if let Some(first) = word.chars().next() {\n            // to_uppercase can give more than one char ('ß' becomes \"SS\").\n            for upper in first.to_uppercase() {\n                out.push(upper);\n            }\n        }\n    }\n    out\n}\n\nfn main() {\n    assert_eq!(initials(\"Ada Lovelace\"), \"AL\");\n    assert_eq!(initials(\"  grace   brewster hopper \"), \"GBH\");\n    assert_eq!(initials(\"Émilie du Châtelet\"), \"ÉDC\");\n    assert_eq!(initials(\"\"), \"\");\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "parse-settings": {
+   "starter": "/// Turn \"name = Ada; age=36 ;city= London\" into pairs, trimming spaces around every\n/// key and value. Skip pieces with no '=' and empty pieces.\nfn parse_settings(text: &str) -> Vec<(String, String)> {\n    todo!(\"split on ';', then split_once('=') and trim\")\n}\n\nfn main() {\n    let got = parse_settings(\"name = Ada; age=36 ;city= London\");\n    assert_eq!(\n        got,\n        vec![\n            (\"name\".to_string(), \"Ada\".to_string()),\n            (\"age\".to_string(), \"36\".to_string()),\n            (\"city\".to_string(), \"London\".to_string()),\n        ]\n    );\n    assert_eq!(\n        parse_settings(\";;junk; a=b;\"),\n        vec![(\"a\".to_string(), \"b\".to_string())]\n    );\n    assert!(parse_settings(\"\").is_empty());\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "/// Turn \"name = Ada; age=36 ;city= London\" into pairs, trimming spaces around every\n/// key and value. Skip pieces with no '=' and empty pieces.\nfn parse_settings(text: &str) -> Vec<(String, String)> {\n    // This uses iterator methods from the Iterators lesson; a for loop works too\n    // (see parse_settings_with_a_loop below).\n    text.split(';')\n        .filter_map(|piece| piece.split_once('='))\n        .map(|(key, value)| (key.trim().to_string(), value.trim().to_string()))\n        .collect()\n}\n\n/// The same thing with a plain for loop.\n#[allow(dead_code)]\nfn parse_settings_with_a_loop(text: &str) -> Vec<(String, String)> {\n    let mut pairs = Vec::new();\n    for piece in text.split(';') {\n        if let Some((key, value)) = piece.split_once('=') {\n            pairs.push((key.trim().to_string(), value.trim().to_string()));\n        }\n    }\n    pairs\n}\n\nfn main() {\n    let got = parse_settings(\"name = Ada; age=36 ;city= London\");\n    assert_eq!(\n        got,\n        vec![\n            (\"name\".to_string(), \"Ada\".to_string()),\n            (\"age\".to_string(), \"36\".to_string()),\n            (\"city\".to_string(), \"London\".to_string()),\n        ]\n    );\n    assert_eq!(\n        parse_settings(\";;junk; a=b;\"),\n        vec![(\"a\".to_string(), \"b\".to_string())]\n    );\n    assert!(parse_settings(\"\").is_empty());\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "truncate-chars": {
+   "starter": "/// Shorten `text` to at most `max` characters (not bytes), adding \"…\" when it was cut.\n/// It must never panic, whatever the text.\nfn truncate_chars(text: &str, max: usize) -> String {\n    todo!(\"find where character number `max` starts with char_indices\")\n}\n\nfn main() {\n    assert_eq!(truncate_chars(\"hello\", 10), \"hello\");\n    assert_eq!(truncate_chars(\"hello world\", 5), \"hello…\");\n    assert_eq!(truncate_chars(\"naïve café\", 4), \"naïv…\");\n    assert_eq!(truncate_chars(\"🦀🦀🦀\", 2), \"🦀🦀…\");\n    assert_eq!(truncate_chars(\"\", 3), \"\");\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "/// Shorten `text` to at most `max` characters (not bytes), adding \"…\" when it was cut.\n/// It must never panic, whatever the text.\nfn truncate_chars(text: &str, max: usize) -> String {\n    // char_indices finds the byte where character number `max` starts, if there is one.\n    // nth is an iterator method from the Iterators lesson; a for loop works too\n    // (see truncate_chars_with_a_loop below).\n    match text.char_indices().nth(max) {\n        Some((byte, _)) => format!(\"{}…\", &text[..byte]),\n        None => text.to_string(),\n    }\n}\n\n/// The same thing with a plain for loop.\n#[allow(dead_code)]\nfn truncate_chars_with_a_loop(text: &str, max: usize) -> String {\n    let mut count = 0;\n    for (byte, _) in text.char_indices() {\n        if count == max {\n            // `byte` is where a character starts, so slicing here is safe.\n            return format!(\"{}…\", &text[..byte]);\n        }\n        count += 1;\n    }\n    text.to_string()\n}\n\nfn main() {\n    assert_eq!(truncate_chars(\"hello\", 10), \"hello\");\n    assert_eq!(truncate_chars(\"hello world\", 5), \"hello…\");\n    assert_eq!(truncate_chars(\"naïve café\", 4), \"naïv…\");\n    assert_eq!(truncate_chars(\"🦀🦀🦀\", 2), \"🦀🦀…\");\n    assert_eq!(truncate_chars(\"\", 3), \"\");\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}

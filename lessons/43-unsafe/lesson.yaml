@@ -1,0 +1,112 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "unsafe, honestly"
+part: "further"
+intro: >-
+  `unsafe` does not turn the compiler off. It unlocks a short list of operations the compiler
+  cannot check, such as reading through a raw pointer, and moves the proof to you: you write the
+  conditions down and promise they hold. You can write whole programs without it. It is there for
+  talking to C, for building the pieces the standard library is made of, and for data structures
+  the borrow checker cannot express. The craft is to keep the promise small and wrap it in a
+  function that is safe to call.
+coming_from:
+  go: >-
+    Go has the `unsafe` package: `unsafe.Pointer` and `unsafe.Add` give you pointer arithmetic, as
+    the program above shows. A file that imports `unsafe` can use it anywhere, with no block marking
+    each use. Rust marks every use and expects a `// SAFETY:` comment saying why it is sound.
+  kotlin: >-
+    Kotlin has no `unsafe` keyword. On the JVM the low-level tools are Java's: `sun.misc.Unsafe`
+    and the `java.lang.foreign` API that the program above uses. They are library calls, not a
+    language boundary: no keyword or block marks the code that uses them, though the JDK now prints warnings.
+  python: >-
+    Python has no raw pointers in the language. The `ctypes` module is the escape hatch, and its
+    documentation says that indexing a `ctypes` pointer can "access or change arbitrary memory locations".
+    Rust draws that line in the language: the `unsafe` keyword, checked by the compiler.
+  typescript: >-
+    TypeScript has no pointers and no way to read memory by address. Its escape hatches (`as`, `any`)
+    switch off the type checker but not memory safety. The nearest thing to the program above is a
+    `DataView` over an `ArrayBuffer`, which is bounds-checked.
+  java: >-
+    Java hides raw memory behind APIs, not a keyword: `sun.misc.Unsafe` (now warning that it will be
+    removed) and the `java.lang.foreign` API that the program above uses, which is bounds-checked.
+    The JDK now warns when you use either, but they are library calls. In Rust the keyword marks
+    each block, and calling an `unsafe fn` is itself unsafe.
+  csharp: >-
+    C# has an `unsafe` keyword for pointers, and the compiler refuses it unless the project sets
+    `AllowUnsafeBlocks`. By default `unsafe` there places no obligation on callers; in Rust an `unsafe
+    fn` does. The program above avoids the keyword with the `Unsafe` class.
+  c: >-
+    C has no safe subset marked in the language: pointer arithmetic, indexing past the end and
+    use after free all compile. Rust's `unsafe` adds a boundary, not a new power: inside it you can do
+    what C does (with stricter rules for references), outside it the compiler checks.
+  cpp: >-
+    C++ has the same unchecked pointers as C, plus checked alternatives such as `at()` that you have to choose.
+    Rust inverts the default: the checked forms are what you get, and the unchecked ones are
+    behind `unsafe`, with a name (`get_unchecked`) that says so.
+notes:
+  - >-
+    `unsafe` does not turn off the borrow checker. A reference inside an `unsafe` block is still
+    checked. The keyword unlocks five main operations (the Reference lists a few more): dereference a raw pointer, call an `unsafe fn`,
+    use a `static mut`, implement an `unsafe trait`, and read a `union` field.
+  - >-
+    Making a raw pointer is safe. Reading or writing through it is not, because only you know
+    whether it is null, dangling, misaligned or aliased.
+  - >-
+    An `unsafe fn` lists conditions its caller must meet. An `unsafe` block says "I checked them,
+    here is why". Write the why in a `// SAFETY:` comment, and the conditions in a `# Safety` section.
+  - >-
+    The point is a safe abstraction: a function whose checks make every call sound, so callers never
+    write `unsafe`. The standard library's `Vec` and `split_at_mut` work this way.
+gotcha:
+  title: "Reading through a raw pointer without `unsafe`"
+  verdict: "fine-elsewhere"
+  looks_fine: >-
+    You made a pointer to the first element and want the second, as you would in C, with Go's
+    `unsafe` package or with Python's `ctypes`: move the pointer along and read.
+  rust_sees: >-
+    `p.add(1)` is a call to an `unsafe` function (it needs the result to stay inside the same
+    allocation) and `*` on a raw pointer is a dereference. Both are among the operations that only
+    an `unsafe` block allows, so the compiler reports each.
+  why: >-
+    The compiler cannot see what `p` points at. It could be null, freed, misaligned or already
+    borrowed, and a read through it would then be undefined behavior. An `unsafe` block says you
+    checked, and the `// SAFETY:` comment is where you write what you checked.
+  langs:
+    go:
+      status: "runs"
+      says: >-
+        Go compiles this and prints `second: 20`. The `import "unsafe"` line is the marker; the
+        compiler asks for no block and no reason at the place of use.
+    kotlin:
+      status: "none"
+      says: >-
+        Kotlin on the JVM has no pointers to dereference. The JVM's raw-memory APIs are Java's, and
+        they are calls, not syntax.
+    python:
+      status: "runs"
+      says: >-
+        Python prints `second: 20`. `ctypes` pointers can be indexed with no marker, and its
+        documentation says that you can use them to "access or change arbitrary memory locations".
+    typescript:
+      status: "none"
+      says: >-
+        TypeScript has no pointers. The nearest thing is a `DataView`, which reads by byte offset
+        inside an `ArrayBuffer`.
+    java:
+      status: "none"
+      says: >-
+        Java has no pointers in the language. Reading memory by address goes through `sun.misc.Unsafe`
+        or `java.lang.foreign`, which are library calls and not syntax.
+    csharp:
+      status: "refuses"
+      says: >-
+        C# refuses this too: `CS0214`, pointers may only be used in an unsafe context. It has the same
+        idea, and it adds a project switch (`AllowUnsafeBlocks`) before an `unsafe` block compiles at all.
+    c:
+      status: "runs"
+      says: >-
+        C prints `second: 20`. Pointer arithmetic is ordinary C: it needs no marker.
+    cpp:
+      status: "runs"
+      says: >-
+        C++ prints `second: 20`. Pointer arithmetic on `data()` needs no marker, and `at()` is the
+        checked alternative you have to choose.

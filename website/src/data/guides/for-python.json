@@ -1,0 +1,378 @@
+{
+ "id": "for-python",
+ "files": {
+  "ex": {
+   "differs.rs": "fn main() {\n    for text in [\"1_000\", \" 12 \"] {\n        println!(\"{text:?}.parse::<i32>(): {:?}\", text.parse::<i32>());\n    }\n\n    let xs = vec![1, 2, 3, 4];\n    println!(\"xs.get(1..10): {:?}\", xs.get(1..10));\n\n    let mut words = vec![\"éé\", \"abc\"];\n    words.sort_by_key(|s| s.len());\n    println!(\"sort_by_key(len): {words:?}\");\n\n    println!(\"xs[1..10]: {:?}\", &xs[1..10]);\n}\n",
+   "h10_async.rs": "async fn hello() {\n    println!(\"hello\");\n}\n\nfn main() {\n    hello();\n    println!(\"after the call\");\n}\n",
+   "h1_types.rs": "fn add(a: i32, b: i32) -> i32 {\n    a + b\n}\n\nfn main() {\n    let count: i32 = \"five\";\n    println!(\"{}\", add(\"ab\", \"cd\"));\n    println!(\"{count}\");\n}\n",
+   "h2_alias.rs": "fn main() {\n    let a = vec![1, 2, 3];\n    let mut b = a;\n    b.push(4);\n    println!(\"{a:?}\");\n}\n",
+   "h2_fixed.rs": "fn add_bonus(scores: &mut Vec<i32>) {\n    scores.push(100);\n}\n\nfn main() {\n    let mut a = vec![1, 2, 3];\n    let mut b = a.clone();\n    b.push(4);\n    println!(\"{a:?} {b:?}\");\n    add_bonus(&mut a);\n    println!(\"{a:?}\");\n}\n",
+   "h3_default.rs": "fn add_item(item: &str, bucket: Option<Vec<String>>) -> Vec<String> {\n    let mut bucket = bucket.unwrap_or_default();\n    bucket.push(item.to_string());\n    bucket\n}\n\nfn main() {\n    println!(\"{:?}\", add_item(\"a\", None));\n    println!(\"{:?}\", add_item(\"b\", None));\n}\n",
+   "h3_missing.rs": "fn add_item(item: &str, bucket: Option<Vec<String>>) -> Vec<String> {\n    let mut bucket = bucket.unwrap_or_default();\n    bucket.push(item.to_string());\n    bucket\n}\n\nfn main() {\n    println!(\"{:?}\", add_item(\"a\"));\n}\n",
+   "h4_errors.rs": "use std::num::ParseIntError;\n\nfn parse_port(text: &str) -> Result<u16, ParseIntError> {\n    text.parse()\n}\n\nfn main() {\n    for text in [\"8080\", \"http\"] {\n        match parse_port(text) {\n            Ok(port) => println!(\"{port}\"),\n            Err(e) => println!(\"bad port: {e}\"),\n        }\n    }\n}\n",
+   "h5_none.rs": "use std::collections::HashMap;\n\nfn main() {\n    let mut users = HashMap::new();\n    users.insert(\"ada\", \"Ada Lovelace\");\n    println!(\"{}\", users.get(\"bob\").to_uppercase());\n}\n",
+   "h6_duck.rs": "trait Shape {\n    fn area(&self) -> u32;\n}\n\nstruct Square;\n\nimpl Shape for Square {\n    fn area(&self) -> u32 {\n        4\n    }\n}\n\nstruct Rock;\n\nfn main() {\n    let shapes: Vec<Box<dyn Shape>> = vec![Box::new(Square), Box::new(Rock)];\n    for shape in &shapes {\n        println!(\"{}\", shape.area());\n    }\n}\n",
+   "h7_lazy.rs": "fn square(n: i32) -> i32 {\n    println!(\"squaring {n}\");\n    n * n\n}\n\nfn main() {\n    let nums = [1, 2, 3];\n    nums.iter().map(|&n| square(n));\n    println!(\"chain written, never consumed\");\n    let lazy = nums.iter().map(|&n| square(n));\n    println!(\"iterator made\");\n    let list: Vec<i32> = lazy.collect();\n    println!(\"{list:?}\");\n}\n",
+   "h8_struct.rs": "struct Point {\n    x: i32,\n    y: i32,\n}\n\nfn main() {\n    let mut p = Point { x: 1, y: 2 };\n    p.xx = 10;\n    println!(\"{} {}\", p.x, p.y);\n}\n",
+   "h9_rc.rs": "use std::rc::Rc;\nuse std::thread;\n\nfn main() {\n    let count = Rc::new(0);\n    let handle = thread::spawn(move || println!(\"{count}\"));\n    handle.join().unwrap();\n}\n",
+   "h9_threads.rs": "use std::sync::{Arc, Mutex};\nuse std::thread;\n\nconst N: u64 = 2_000_000;\n\nfn add_one(n: u64) -> u64 {\n    n + 1\n}\n\nfn main() {\n    let count = Arc::new(Mutex::new(0));\n    let handles: Vec<_> = (0..4)\n        .map(|_| {\n            let count = Arc::clone(&count);\n            thread::spawn(move || {\n                for _ in 0..N {\n                    let mut guard = count.lock().unwrap();\n                    *guard = add_one(*guard);\n                }\n            })\n        })\n        .collect();\n    for handle in handles {\n        handle.join().unwrap();\n    }\n    println!(\"expected: {}\", 4 * N);\n    println!(\"got:      {}\", *count.lock().unwrap());\n}\n",
+   "idioms.rs": "use std::fmt::Debug;\nuse std::fs;\n\nfn show<T: Debug>(label: &str, value: T) {\n    println!(\"{label}: {value:?}\");\n}\n\nstruct Guard;\n\nimpl Guard {\n    fn new() -> Guard {\n        println!(\"open\");\n        Guard\n    }\n}\n\nimpl Drop for Guard {\n    fn drop(&mut self) {\n        println!(\"close\");\n    }\n}\n\nfn port_or_default(text: &str) -> i32 {\n    text.parse::<i32>().unwrap_or(-1)\n}\n\nfn main() {\n    let nums = [1, 2, 3, 4];\n    let words = vec![\"pear\", \"fig\", \"apple\"];\n    let text = \"a,b,c\";\n    let s = \"héllo\";\n    let xs = [1, 2, 3, 4];\n    let m = std::collections::HashMap::from([(\"a\", 1)]);\n    let x: Option<i32> = None;\n    let items = vec![7];\n    fs::write(\"note.txt\", \"hello\\n\").unwrap();\n\n    show(\"map\", nums.iter().map(|n| n * n).collect::<Vec<_>>());\n    show(\n        \"filter\",\n        nums.iter().filter(|n| *n % 2 == 0).collect::<Vec<_>>(),\n    );\n    show(\"sorted by length\", {\n        let mut w = words.clone();\n        w.sort_by_key(|s| s.len());\n        w\n    });\n    show(\n        \"enumerate\",\n        words\n            .iter()\n            .enumerate()\n            .map(|(i, w)| format!(\"{i}:{w}\"))\n            .collect::<Vec<_>>(),\n    );\n    show(\"contains\", text.contains(\"b,\"));\n    show(\"split\", text.split(',').collect::<Vec<_>>());\n    show(\"join\", words.join(\", \"));\n    show(\"chars\", s.chars().count());\n    show(\"bytes\", s.len());\n    show(\"slice\", xs[1..3].to_vec());\n    show(\"get default\", m.get(\"c\").copied().unwrap_or(0));\n    show(\"none default\", x.unwrap_or(5));\n    show(\"parse\", port_or_default(\"4x\"));\n    show(\"floor division\", (-7_i32).div_euclid(2));\n    show(\"big int\", 2_u128.pow(100));\n    show(\"truthy list\", !items.is_empty());\n    show(\"file\", fs::read_to_string(\"note.txt\").unwrap());\n    show(\"format\", format!(\"{:>5}\", 42));\n    {\n        let _guard = Guard::new();\n        println!(\"work\");\n    }\n}\n"
+  },
+  "py": {
+   "differs.py": "import json\n\n\ndef show(label, value):\n    print(f\"{label}: {json.dumps(value, ensure_ascii=False)}\")\n\n\nfor text in [\"1_000\", \" 12 \"]:\n    show(f\"int({text!r})\", int(text))\n\nxs = [1, 2, 3, 4]\nshow(\"xs[1:10]\", xs[1:10])\n\nwords = [\"éé\", \"abc\"]\nshow(\"sorted(words, key=len)\", sorted(words, key=len))\n",
+   "h10_async.py": "import asyncio\n\n\nasync def hello():\n    print(\"hello\")\n\n\nasync def main():\n    hello()\n    print(\"after the call\")\n    await hello()\n\n\nasyncio.run(main())\n",
+   "h1_types.py": "def add(a: int, b: int) -> int:\n    return a + b\n\n\ncount: int = \"five\"\nprint(add(\"ab\", \"cd\"))\nprint(count)\n",
+   "h2_alias.py": "a = [1, 2, 3]\nb = a\nb.append(4)\nprint(a)\n\n\ndef add_bonus(scores):\n    scores.append(100)\n\n\nadd_bonus(a)\nprint(a)\n",
+   "h3_default.py": "def add_item(item, bucket=[]):\n    bucket.append(item)\n    return bucket\n\n\nprint(add_item(\"a\"))\nprint(add_item(\"b\"))\n\n\ndef add_item_fixed(item, bucket=None):\n    if bucket is None:\n        bucket = []\n    bucket.append(item)\n    return bucket\n\n\nprint(add_item_fixed(\"a\"))\nprint(add_item_fixed(\"b\"))\n",
+   "h4_errors.py": "def parse_port(text):\n    return int(text)\n\n\nfor text in [\"8080\", \"http\"]:\n    try:\n        print(parse_port(text))\n    except ValueError as e:\n        print(\"bad port:\", e)\n",
+   "h5_none.py": "users = {\"ada\": \"Ada Lovelace\"}\ncount = 0\nprint(count or 5)\nprint(users.get(\"bob\").upper())\n",
+   "h6_duck.py": "class Square:\n    def area(self):\n        return 4\n\n\nclass Rock:\n    pass\n\n\nshapes = [Square(), Rock()]\nfor shape in shapes:\n    print(shape.area())\n",
+   "h7_lazy.py": "def square(n):\n    print(\"squaring\", n)\n    return n * n\n\n\nnums = [1, 2, 3]\nas_list = [square(n) for n in nums]\nprint(\"list built\")\nas_gen = (square(n) for n in nums)\nprint(\"generator made\")\nprint(list(as_gen))\n",
+   "h8_class.py": "from dataclasses import dataclass\n\n\n@dataclass\nclass Point:\n    x: int\n    y: int\n\n\np = Point(1, 2)\np.xx = 10  # a typo, and also a brand new attribute\np.z = 3\nprint(p.__dict__)\n",
+   "h9_threads.py": "import threading\n\ncount = 0\nN = 2_000_000\n\n\ndef add_one(n):\n    return n + 1\n\n\ndef work():\n    global count\n    for _ in range(N):\n        count = add_one(count)  # read, call a function, write back\n\n\nthreads = [threading.Thread(target=work) for _ in range(4)]\nfor t in threads:\n    t.start()\nfor t in threads:\n    t.join()\nprint(\"expected:\", 4 * N)\nprint(\"got:     \", count)\n",
+   "idioms.py": "import json\nfrom pathlib import Path\n\n\ndef show(label, value):\n    print(f\"{label}: {json.dumps(value, ensure_ascii=False)}\")\n\n\nclass Guard:\n    def __enter__(self):\n        print(\"open\")\n\n    def __exit__(self, *exc):\n        print(\"close\")\n\n\ndef port_or_default(text):\n    try:\n        return int(text)\n    except ValueError:\n        return -1\n\n\nnums = [1, 2, 3, 4]\nwords = [\"pear\", \"fig\", \"apple\"]\ntext = \"a,b,c\"\ns = \"héllo\"\nxs = [1, 2, 3, 4]\nd = {\"a\": 1}\nx = None\nitems = [7]\nPath(\"note.txt\").write_text(\"hello\\n\")\n\nshow(\"map\", [n * n for n in nums])\nshow(\"filter\", [n for n in nums if n % 2 == 0])\nshow(\"sorted by length\", sorted(words, key=len))\nshow(\"enumerate\", [f\"{i}:{w}\" for i, w in enumerate(words)])\nshow(\"contains\", \"b,\" in text)\nshow(\"split\", text.split(\",\"))\nshow(\"join\", \", \".join(words))\nshow(\"chars\", len(s))\nshow(\"bytes\", len(s.encode()))\nshow(\"slice\", xs[1:3])\nshow(\"get default\", d.get(\"c\", 0))\nshow(\"none default\", x if x is not None else 5)\nshow(\"parse\", port_or_default(\"4x\"))\nshow(\"floor division\", -7 // 2)\nshow(\"big int\", 2**100)\nshow(\"truthy list\", bool(items))\nshow(\"file\", Path(\"note.txt\").read_text())\nshow(\"format\", f\"{42:>5}\")\nwith Guard():\n    print(\"work\")\n",
+   "pyproject.toml": "[project]\nname = \"wordcount\"\nversion = \"0.1.0\"\nrequires-python = \">=3.13\"\ndependencies = []\n\n[tool.pytest.ini_options]\ntestpaths = [\".\"]\n",
+   "test_wordcount.py": "from wordcount import word_count\n\n\ndef test_counts_ignoring_case():\n    counts = word_count(\"the cat and The hat\")\n    assert counts[\"the\"] == 2\n    assert counts[\"cat\"] == 1\n",
+   "wordcount.py": "from collections import Counter\n\n\ndef word_count(text: str) -> Counter[str]:\n    \"\"\"Count how often each word appears, ignoring case.\"\"\"\n    return Counter(word.lower() for word in text.split())\n\n\nif __name__ == \"__main__\":\n    for word, n in sorted(word_count(\"the cat and The hat\").items()):\n        print(f\"{word}: {n}\")\n"
+  },
+  "rust": {
+   "Cargo.lock": "# This file is automatically @generated by Cargo.\n# It is not intended for manual editing.\nversion = 4\n\n[[package]]\nname = \"wordcount\"\nversion = \"0.1.0\"\n",
+   "Cargo.toml": "[package]\nname = \"wordcount\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\n",
+   "src/main.rs": "use std::collections::HashMap;\n\n/// Count how often each word appears, ignoring case.\nfn word_count(text: &str) -> HashMap<String, usize> {\n    let mut counts = HashMap::new();\n    for word in text.split_whitespace() {\n        *counts.entry(word.to_lowercase()).or_insert(0) += 1;\n    }\n    counts\n}\n\nfn main() {\n    let counts = word_count(\"the cat and The hat\");\n    let mut words: Vec<_> = counts.iter().collect();\n    words.sort();\n    for (word, n) in words {\n        println!(\"{word}: {n}\");\n    }\n}\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n\n    #[test]\n    fn counts_ignoring_case() {\n        let counts = word_count(\"the cat and The hat\");\n        assert_eq!(counts[\"the\"], 2);\n        assert_eq!(counts[\"cat\"], 1);\n    }\n}\n"
+  }
+ },
+ "sessions": {
+  "h1-py": [
+   {
+    "show": "$ python3 h1_types.py",
+    "out": "abcd\nfive\n",
+    "exit": 0
+   }
+  ],
+  "h1-rs": [
+   {
+    "show": "$ cargo run",
+    "out": "error[E0308]: mismatched types\n --> src/main.rs:6:22\n  |\n6 |     let count: i32 = \"five\";\n  |                ---   ^^^^^^ expected `i32`, found `&str`\n  |                |\n  |                expected due to this\n\nerror[E0308]: arguments to this function are incorrect\n --> src/main.rs:7:20\n  |\n7 |     println!(\"{}\", add(\"ab\", \"cd\"));\n  |                    ^^^ ----  ---- expected `i32`, found `&str`\n  |                        |\n  |                        expected `i32`, found `&str`\n  |\nnote: function defined here\n --> src/main.rs:1:4\n  |\n1 | fn add(a: i32, b: i32) -> i32 {\n  |    ^^^ ------  ------\n\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "h2-py": [
+   {
+    "show": "$ python3 h2_alias.py",
+    "out": "[1, 2, 3, 4]\n[1, 2, 3, 4, 100]\n",
+    "exit": 0
+   }
+  ],
+  "h2-rs": [
+   {
+    "show": "$ cargo run",
+    "out": "error[E0382]: borrow of moved value: `a`\n --> src/main.rs:5:16\n  |\n2 |     let a = vec![1, 2, 3];\n  |         - move occurs because `a` has type `Vec<i32>`, which does not implement the `Copy` trait\n3 |     let mut b = a;\n  |                 - value moved here\n4 |     b.push(4);\n5 |     println!(\"{a:?}\");\n  |                ^ value borrowed here after move\n  |\nhelp: consider cloning the value if the performance cost is acceptable\n  |\n3 |     let mut b = a.clone();\n  |                  ++++++++\n\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "h3-py": [
+   {
+    "show": "$ python3 h3_default.py",
+    "out": "['a']\n['a', 'b']\n['a']\n['b']\n",
+    "exit": 0
+   }
+  ],
+  "h3-rs": [
+   {
+    "show": "$ cargo run",
+    "out": "[\"a\"]\n[\"b\"]\n",
+    "exit": 0
+   }
+  ],
+  "h4-py": [
+   {
+    "show": "$ python3 h4_errors.py",
+    "out": "8080\nbad port: invalid literal for int() with base 10: 'http'\n",
+    "exit": 0
+   }
+  ],
+  "h4-rs": [
+   {
+    "show": "$ cargo run",
+    "out": "8080\nbad port: invalid digit found in string\n",
+    "exit": 0
+   }
+  ],
+  "h5-py": [
+   {
+    "show": "$ python3 h5_none.py",
+    "out": "5\nTraceback (most recent call last):\n  File \"/home/you/habits/h5_none.py\", line 4, in <module>\n    print(users.get(\"bob\").upper())\n          ^^^^^^^^^^^^^^^^^^^^^^\nAttributeError: 'NoneType' object has no attribute 'upper'\n",
+    "exit": 1,
+    "error": true
+   }
+  ],
+  "h5-rs": [
+   {
+    "show": "$ cargo run",
+    "out": "error[E0599]: no method named `to_uppercase` found for enum `Option<T>` in the current scope\n --> src/main.rs:6:37\n  |\n6 |     println!(\"{}\", users.get(\"bob\").to_uppercase());\n  |                                     ^^^^^^^^^^^^ method not found in `Option<&&str>`\n  |\nhelp: consider using `Option::expect` to unwrap the `&&str` value, panicking if the value is an `Option::None`\n  |\n6 |     println!(\"{}\", users.get(\"bob\").expect(\"REASON\").to_uppercase());\n  |                                    +++++++++++++++++\n\n  ... (notes pointing into the standard library trimmed)\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "h6-py": [
+   {
+    "show": "$ python3 h6_duck.py",
+    "out": "4\nTraceback (most recent call last):\n  File \"/home/you/habits/h6_duck.py\", line 12, in <module>\n    print(shape.area())\n          ^^^^^^^^^^\nAttributeError: 'Rock' object has no attribute 'area'\n",
+    "exit": 1,
+    "error": true
+   }
+  ],
+  "h6-rs": [
+   {
+    "show": "$ cargo run",
+    "out": "error[E0277]: the trait bound `Rock: Shape` is not satisfied\n  --> src/main.rs:16:62\n   |\n16 |     let shapes: Vec<Box<dyn Shape>> = vec![Box::new(Square), Box::new(Rock)];\n   |                                                              ^^^^^^^^^^^^^^ unsatisfied trait bound\n   |\nhelp: the trait `Shape` is not implemented for `Rock`\n  --> src/main.rs:13:1\n   |\n13 | struct Rock;\n   | ^^^^^^^^^^^\nhelp: the trait `Shape` is implemented for `Square`\n  --> src/main.rs:7:1\n   |\n 7 | impl Shape for Square {\n   | ^^^^^^^^^^^^^^^^^^^^^\n   = note: required for the cast from `Box<Rock>` to `Box<dyn Shape>`\n\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "h7-py": [
+   {
+    "show": "$ python3 h7_lazy.py",
+    "out": "squaring 1\nsquaring 2\nsquaring 3\nlist built\ngenerator made\nsquaring 1\nsquaring 2\nsquaring 3\n[1, 4, 9]\n",
+    "exit": 0
+   }
+  ],
+  "h7-rs": [
+   {
+    "show": "$ cargo run",
+    "out": "warning: unused `Map` that must be used\n --> src/main.rs:8:5\n  |\n8 |     nums.iter().map(|&n| square(n));\n  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  |\n  = note: iterators are lazy and do nothing unless consumed\n  = note: `#[warn(unused_must_use)]` (part of `#[warn(unused)]`) on by default\nhelp: use `let _ = ...` to ignore the resulting value\n  |\n8 |     let _ = nums.iter().map(|&n| square(n));\n  |     +++++++\n\nwarning: `wordcount` (bin \"wordcount\") generated 1 warning\n\nchain written, never consumed\niterator made\nsquaring 1\nsquaring 2\nsquaring 3\n[1, 4, 9]\n",
+    "exit": 0
+   }
+  ],
+  "h8-py": [
+   {
+    "show": "$ python3 h8_class.py",
+    "out": "{'x': 1, 'y': 2, 'xx': 10, 'z': 3}\n",
+    "exit": 0
+   }
+  ],
+  "h8-rs": [
+   {
+    "show": "$ cargo run",
+    "out": "error[E0609]: no field `xx` on type `Point`\n --> src/main.rs:8:7\n  |\n8 |     p.xx = 10;\n  |       ^^ unknown field\n  |\nhelp: a field with a similar name exists\n  |\n8 -     p.xx = 10;\n8 +     p.x = 10;\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "h9-py": [
+   {
+    "show": "$ python3 h9_threads.py",
+    "out": "expected: 8000000\ngot:      5162450\n",
+    "exit": 0,
+    "varies": true
+   }
+  ],
+  "h9-rs": [
+   {
+    "show": "$ cargo run",
+    "out": "expected: 8000000\ngot:      8000000\n",
+    "exit": 0
+   }
+  ],
+  "h10-py": [
+   {
+    "show": "$ python3 h10_async.py",
+    "out": "/home/you/habits/h10_async.py:9: RuntimeWarning: coroutine 'hello' was never awaited\n  hello()\nRuntimeWarning: Enable tracemalloc to get the object allocation traceback\nafter the call\nhello\n",
+    "exit": 0
+   }
+  ],
+  "h10-rs": [
+   {
+    "show": "$ cargo run",
+    "out": "warning: unused implementer of `Future` that must be used\n --> src/main.rs:6:5\n  |\n6 |     hello();\n  |     ^^^^^^^\n  |\n  = note: futures do nothing unless you `.await` or poll them\n  = note: `#[warn(unused_must_use)]` (part of `#[warn(unused)]`) on by default\n\nwarning: `wordcount` (bin \"wordcount\") generated 1 warning\n\nafter the call\n",
+    "exit": 0
+   }
+  ],
+  "h2-fixed": [
+   {
+    "show": "$ cargo run",
+    "out": "[1, 2, 3] [1, 2, 3, 4]\n[1, 2, 3, 100]\n",
+    "exit": 0
+   }
+  ],
+  "h3-missing": [
+   {
+    "show": "$ cargo run",
+    "out": "error[E0061]: this function takes 2 arguments but 1 argument was supplied\n --> src/main.rs:8:22\n  |\n8 |     println!(\"{:?}\", add_item(\"a\"));\n  |                      ^^^^^^^^----- argument #2 of type `Option<Vec<String>>` is missing\n  |\nnote: function defined here\n --> src/main.rs:1:4\n  |\n1 | fn add_item(item: &str, bucket: Option<Vec<String>>) -> Vec<String> {\n  |    ^^^^^^^^             ---------------------------\nhelp: provide the argument\n  |\n8 |     println!(\"{:?}\", add_item(\"a\", /* Option<Vec<String>> */));\n  |                                  +++++++++++++++++++++++++++\n\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "h9-rc": [
+   {
+    "show": "$ cargo run",
+    "out": "error[E0277]: `Rc<i32>` cannot be sent between threads safely\n --> src/main.rs:6:32\n  |\n6 |     let handle = thread::spawn(move || println!(\"{count}\"));\n  |                  ------------- -------^^^^^^^^^^^^^^^^^^^^\n  |                  |             |\n  |                  |             `Rc<i32>` cannot be sent between threads safely\n  |                  |             within this `{closure@src/main.rs:6:32: 6:39}`\n  |                  required by a bound introduced by this call\n  |\n  = help: within `{closure@src/main.rs:6:32: 6:39}`, the trait `Send` is not implemented for `Rc<i32>`\nnote: required because it's used within this closure\n --> src/main.rs:6:32\n  |\n6 |     let handle = thread::spawn(move || println!(\"{count}\"));\n  |                                ^^^^^^^\n  ... (notes pointing into the standard library trimmed)\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "idioms": [
+   {
+    "show": "$ python3 idioms.py | tee python.txt",
+    "out": "map: [1, 4, 9, 16]\nfilter: [2, 4]\nsorted by length: [\"fig\", \"pear\", \"apple\"]\nenumerate: [\"0:pear\", \"1:fig\", \"2:apple\"]\ncontains: true\nsplit: [\"a\", \"b\", \"c\"]\njoin: \"pear, fig, apple\"\nchars: 5\nbytes: 6\nslice: [2, 3]\nget default: 0\nnone default: 5\nparse: -1\nfloor division: -4\nbig int: 1267650600228229401496703205376\ntruthy list: true\nfile: \"hello\\n\"\nformat: \"   42\"\nopen\nwork\nclose\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo run",
+    "out": "map: [1, 4, 9, 16]\nfilter: [2, 4]\nsorted by length: [\"fig\", \"pear\", \"apple\"]\nenumerate: [\"0:pear\", \"1:fig\", \"2:apple\"]\ncontains: true\nsplit: [\"a\", \"b\", \"c\"]\njoin: \"pear, fig, apple\"\nchars: 5\nbytes: 6\nslice: [2, 3]\nget default: 0\nnone default: 5\nparse: -1\nfloor division: -4\nbig int: 1267650600228229401496703205376\ntruthy list: true\nfile: \"hello\\n\"\nformat: \"   42\"\nopen\nwork\nclose\n",
+    "exit": 0
+   },
+   {
+    "show": "$ diff python.txt rust.txt",
+    "out": "diff exit code: 0\n21\n",
+    "exit": 0
+   }
+  ],
+  "differs": [
+   {
+    "show": "$ python3 differs.py",
+    "out": "int('1_000'): 1000\nint(' 12 '): 12\nxs[1:10]: [2, 3, 4]\nsorted(words, key=len): [\"éé\", \"abc\"]\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo run",
+    "out": "\"1_000\".parse::<i32>(): Err(ParseIntError { kind: InvalidDigit })\n\" 12 \".parse::<i32>(): Err(ParseIntError { kind: InvalidDigit })\nxs.get(1..10): None\nsort_by_key(len): [\"abc\", \"éé\"]\n\nthread 'main' (22) panicked at src/main.rs:13:36:\nrange end index 10 out of range for slice of length 4\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "rust-tools": [
+   {
+    "show": "$ cargo build; echo \"exit code $?\"",
+    "out": "exit code 0\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo test",
+    "out": "running 1 test\ntest tests::counts_ignoring_case ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo run",
+    "out": "and: 1\ncat: 1\nhat: 1\nthe: 2\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo fmt --check; echo \"exit code $?\"",
+    "out": "exit code 0\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo clippy; echo \"exit code $?\"",
+    "out": "exit code 0\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo doc --no-deps",
+    "out": " Documenting wordcount v0.1.0 (/home/you/habits)\n\n   Generated target/doc/wordcount/index.html\n",
+    "exit": 0
+   },
+   {
+    "show": "$ ls $CARGO_HOME/bin",
+    "out": "cargo\t      cargo-miri     rust-analyzer  rust-lldb  rustfmt\ncargo-clippy  clippy-driver  rust-gdb\t    rustc      rustup\ncargo-fmt     rls\t     rust-gdbgui    rustdoc\n",
+    "exit": 0
+   }
+  ],
+  "python-tools": [
+   {
+    "show": "$ python3 -m venv .venv   # fails in this image: no ensurepip",
+    "out": "The virtual environment was not created successfully because ensurepip is not\navailable.  On Debian/Ubuntu systems, you need to install the python3-venv\npackage using the following command.\n\n    apt install python3.13-venv\n\nYou may need to use sudo with that command.  After installing the python3-venv\npackage, recreate your virtual environment.\n\nFailing command: /home/you/habits/.venv/bin/python3\n\n",
+    "exit": 1,
+    "error": true
+   },
+   {
+    "show": "$ python3 -m venv --without-pip .venv",
+    "out": "",
+    "exit": 0
+   },
+   {
+    "show": "$ curl -O https://bootstrap.pypa.io/get-pip.py && .venv/bin/python get-pip.py   # needs network; get-pip.py is not pinned",
+    "out": "",
+    "exit": 0
+   },
+   {
+    "show": "$ .venv/bin/pip install pytest==9.1.1 mypy==2.4.0 ruff==0.17.2   # needs network; their own dependencies are not pinned",
+    "out": "",
+    "exit": 0
+   },
+   {
+    "show": "$ .venv/bin/mypy h1_types.py",
+    "out": "h1_types.py:5: error: Incompatible types in assignment (expression has type \"str\", variable has type \"int\")  [assignment]\nh1_types.py:6: error: Argument 1 to \"add\" has incompatible type \"str\"; expected \"int\"  [arg-type]\nh1_types.py:6: error: Argument 2 to \"add\" has incompatible type \"str\"; expected \"int\"  [arg-type]\nFound 3 errors in 1 file (checked 1 source file)\n",
+    "exit": 1,
+    "error": true
+   },
+   {
+    "show": "$ .venv/bin/pytest -q",
+    "out": ".                                                                        [100%]\n1 passed in 0.00s\n",
+    "exit": 0,
+    "varies": true
+   },
+   {
+    "show": "$ .venv/bin/ruff format --check wordcount.py test_wordcount.py; .venv/bin/ruff check wordcount.py test_wordcount.py",
+    "out": "2 files already formatted\nAll checks passed!\n",
+    "exit": 0
+   },
+   {
+    "show": "$ python3 -m pydoc wordcount",
+    "out": "Help on module wordcount:\n\nNAME\n    wordcount\n\nFUNCTIONS\n    word_count(text: str) -> collections.Counter[str]\n        Count how often each word appears, ignoring case.\n\nFILE\n    /home/you/habits/wordcount.py\n\n",
+    "exit": 0
+   },
+   {
+    "show": "$ python3 -c \"import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project'])\"",
+    "out": "{'name': 'wordcount', 'version': '0.1.0', 'requires-python': '>=3.13', 'dependencies': []}\n",
+    "exit": 0
+   }
+  ],
+  "try-1": [
+   {
+    "show": "$ cargo run    # after changing the println! line to users.get(\"bob\").map(|name| name.to_uppercase()) printed with {:?}",
+    "out": "None\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo run    # after changing \"bob\" to \"ada\"",
+    "out": "Some(\"ADA LOVELACE\")\n",
+    "exit": 0
+   }
+  ],
+  "try-2": [
+   {
+    "show": "$ cargo run    # after adding impl Shape for Rock { fn area(&self) -> u32 { 0 } }",
+    "out": "4\n0\n",
+    "exit": 0
+   }
+  ],
+  "try-3": [
+   {
+    "show": "$ cargo run    # after changing add_bonus(&mut a) to add_bonus(&a)",
+    "out": "error[E0308]: mismatched types\n  --> src/main.rs:10:15\n   |\n10 |     add_bonus(&a);\n   |     --------- ^^ types differ in mutability\n   |     |\n   |     arguments to this function are incorrect\n   |\n   = note: expected mutable reference `&mut Vec<i32>`\n                      found reference `&Vec<{integer}>`\nnote: function defined here\n  --> src/main.rs:1:4\n   |\n 1 | fn add_bonus(scores: &mut Vec<i32>) {\n   |    ^^^^^^^^^ ---------------------\n\nFor more information about this error, try `rustc --explain E0308`.\nerror: could not compile `wordcount` (bin \"wordcount\") due to 1 previous error\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "versions": [
+   {
+    "show": "$ python3 --version",
+    "out": "Python 3.13.5\n",
+    "exit": 0
+   },
+   {
+    "show": "$ rustc --version",
+    "out": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo --version",
+    "out": "cargo 1.99.1 (5f94df478 2026-08-27)\n",
+    "exit": 0
+   }
+  ]
+ }
+}

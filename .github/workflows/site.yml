@@ -1,0 +1,82 @@
+name: Site
+
+# Builds the website on every push and PR; deploys to Cloudflare Pages from main.
+# Deploying needs two repository secrets: CLOUDFLARE_API_TOKEN (with the
+# "Cloudflare Pages: Edit" permission) and CLOUDFLARE_ACCOUNT_ID.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: site-${{ github.ref }}
+  # Never cancel on main: a cancelled run can stop a deploy halfway.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: website
+    steps:
+      - uses: actions/checkout@v7
+      # Astro runs on Node, not bun, and needs a Node newer than the runner's default.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26.8.1'
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.0'
+      - run: bun install --frozen-lockfile
+      # Every output on the site comes from src/data/runs.json and guides/*.runs.json,
+      # which are committed. This re-derives the pages' data from that cache and checks
+      # every claim (the gotcha fails to compile, the fix runs, "crashes in C" crashes).
+      # It needs no Docker; a program whose result is missing from the cache fails here,
+      # so outputs cannot be forgotten. Re-running the programs is freshness.yml's job.
+      - name: Every claim on the site holds
+        run: bun run extract --check
+      - name: Generated data is committed
+        run: |
+          git diff --exit-code -- src/data ../guides || {
+            git --no-pager diff --stat -- src/data ../guides | tail -30
+            echo "::error::website/src/data is out of date: run 'bun run extract' in website/ and commit the result"
+            exit 1
+          }
+      - run: bun run build
+      # A smoke check rather than a snapshot: a build that quietly produces almost no
+      # pages is the failure worth catching. Raise the floor as lessons land.
+      - name: The build produced a site
+        run: |
+          test -f dist/index.html
+          n=$(find dist -name '*.html' | wc -l)
+          echo "pages: $n"
+          test "$n" -ge 50
+      - name: No broken internal links
+        run: bun run check-links
+      - uses: actions/upload-artifact@v7
+        with:
+          name: site
+          path: website/dist
+          retention-days: 3
+
+  deploy:
+    name: Deploy
+    needs: [build]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: site
+          path: dist
+      - uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=learningrust --branch=main

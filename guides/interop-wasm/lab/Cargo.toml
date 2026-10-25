@@ -1,0 +1,11 @@
+[workspace]
+resolver = "3"
+members = ["adder", "tiny", "bindgen", "wasi", "gotcha"]
+
+# `cargo build --profile small`: the same code, built for size.
+[profile.small]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true

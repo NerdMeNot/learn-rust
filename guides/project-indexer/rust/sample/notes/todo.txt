@@ -1,0 +1,3 @@
+buy milk
+write the indexer
+run the tests

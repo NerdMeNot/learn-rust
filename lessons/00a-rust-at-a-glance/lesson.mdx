@@ -1,0 +1,252 @@
+<p class="lr-layer">The toolkit</p>
+
+This page is a map, not a lesson. Each symbol gets a name, a one-sentence meaning, and a link to the lesson that teaches it properly. You will not understand every meaning yet, and you do not need to. Coming from another language? There is a phrasebook for [C and C++](/for/c-cpp/), [C#](/for/csharp/), [Go](/for/go/), [Java](/for/java/), [Kotlin](/for/kotlin/), [Python](/for/python/) and [TypeScript](/for/typescript/). The aim is to read the shape of a Rust file: what is a function, what is a type, what is a call, what is a block. Outputs on this page come from Linux on 64-bit ARM with Rust 1.99.1.
+
+## One program, whole
+
+This program counts the words in some text and reports on them. It uses most of the syntax you will see everywhere. The numbered comments match the table below it.
+
+<Snippet file="tour.rs" />
+
+Three things help while reading it:
+
+- A file is a list of **items** (`struct`, `fn`). Each item's contents sit in `{ }`, and indentation is only for readers. The program starts at `fn main`.
+- A line ending in `;` is a statement. The last line of a block with **no** `;`, such as `Ok(Report { words, longest })`, is the value the block produces. A block that ends in `}` (`if`, `for`, `match`) needs no `;` after it, and nor does a `struct`.
+- By convention, types that you or the library define (`Report`, `String`, `Result`) start with a capital letter, and variables and functions are lowercase.
+
+## The program, token by token
+
+The build compiles and runs every form in these tables.
+
+| Mark | You see | It means | Learn more |
+|---|---|---|---|
+| 1 | `// …` | a comment, to the end of the line. `#` is not a comment in Rust | |
+| 2 | `#[derive(Debug)]` | an **attribute**: a note to the compiler about the next item. This one asks it to write the code that lets `{:?}` print a `Report` | a later lesson |
+| 3 | `struct Report { words: usize, … }` | a type made of named fields, with the type after the name and a `:`. `i32` is a whole number in 32 bits, `u8` one in 8 bits (0 to 255), `f64` a decimal number; `u` means never negative, and `usize` is the type of lengths. Rust makes you pick | [Structs](/learn/structs/), [Numbers and Types](/learn/types/) |
+| 4 | `fn analyze(text: &str) -> Result<Report, String>` | `fn` defines a function, each parameter is `name: Type`, and the result type follows `->`. `&` is a **reference**: access to a value someone else owns, like a pointer that cannot be null. `&str` is a view of text (what a string literal is), and `String` is text you own and can grow. `Result<Report, String>` is either `Ok(a Report)` or `Err(a String)`: a failure is an ordinary value that is returned, and nothing is thrown | [Functions](/learn/functions/), [Borrowing](/learn/borrowing/), [Errors](/learn/errors/) |
+| 5 | `let mut longest = String::new();` | `let` creates a variable, and it cannot change unless you add `mut`. `::` reaches a function that belongs to a type or module | [Variables](/learn/variables/) |
+| 6 | `for word in … { }`, `text.split_whitespace()`, `words += 1;` | a loop with no parentheses. `.` calls a method on a value or reads a field, also through a reference: there is no `->` | [Loops](/learn/loops/), [Methods](/learn/methods/) |
+| 7 | `if cond { }` | the condition needs no parentheses, and the braces are required | [If / Else](/learn/if-else/) |
+| 8 | `return Err(…);` | leaves the function now with that value | [Functions](/learn/functions/) |
+| 9 | `Ok(Report { words, longest })` | no `;`, so this is the function's result. `words` alone means `words: words` | [Functions](/learn/functions/) |
+| 10 | `fn main() -> Result<(), String>` | `()` is the unit value, which means "nothing". `main` returns it on success | [Functions](/learn/functions/) |
+| 11 | `analyze("…")?` | the `?` operator, not a ternary. On `Err` it returns that error from this function now, converting its type with `From` when the types differ; on `Ok` it gives you the value inside | [Errors](/learn/errors/) |
+| 12 | `println!("{report:?}")` | the `!` marks a **macro** call: it looks like a function call but is expanded by the compiler. `{}` takes the next argument, `{name}` takes the variable `name`, and `:?` is the debugging format | [Hello World](/learn/hello-world/) |
+| 13 | `\|s: &str\| s.to_uppercase()` | a **closure**: a small function written inline | [Closures](/learn/closures/) |
+| 14 | `match … { 0 => …, 1..=3 => …, n => … }` | picks the first arm whose **pattern** (a shape the value is compared to) fits. `=>` separates the pattern from its result. `1..=3` includes 3 and `1..3` stops before it. A bare name such as `n` matches anything and holds the value | [Match](/learn/match/) |
+
+## What the shapes look like in your language
+
+Pick your language in "Coming from" at the top of the page.
+
+<ForLang only="go">
+
+| You write in Go | In Rust |
+|---|---|
+| `x := 5`, or `const x = 5` (known when compiling) | `let mut x = 5;`, or `const X: i32 = 5;` |
+| `func add(a, b int) int { return a + b }` | `fn add(a: i32, b: i32) -> i32 { a + b }` |
+| `for i := 0; i < 3; i++ { }` | `for i in 0..3 { }` |
+| `for _, w := range words { }` | `for w in &words { }` |
+| `switch n { case 1: … default: … }` | `match n { 1 => …, _ => … }` |
+| `n, err := parse(s)`, then `if err != nil { return err }` | `let n = parse(s)?;` |
+
+- `?` is that `if err != nil` pair in one character. A Rust `Result` is one value, not a `(value, error)` pair. `?` only compiles in a function whose return type can hold the failure ([a slip below](#slips-in-the-first-hour)).
+- Rust repeats the type for every parameter: there is no `a, b int`. A plain `let x = 5;`, which cannot change, has no Go twin.
+- Capital letters are naming style, not export: `pub` makes a name visible outside its module, and private is the default.
+- `{:?}` is close to `%v`.
+
+</ForLang>
+
+<ForLang only="java">
+
+| You write in Java | In Rust |
+|---|---|
+| `int x = 5;`, or `final int x = 5;` | `let mut x = 5;`, or `let x = 5;` |
+| `static int add(int a, int b) { return a + b; }` | `fn add(a: i32, b: i32) -> i32 { a + b }` |
+| `for (int i = 0; i < 3; i++) { }` | `for i in 0..3 { }` |
+| `for (String w : words) { }` | `for w in &words { }` |
+| `String s = switch (n) { case 1 -> "one"; default -> "many"; };` | `let s = match n { 1 => "one", _ => "many" };` |
+| `int n = Integer.parseInt(s);` (an unchecked exception: nothing marks the call. A checked one would add `throws` to the signature, nearer to Rust's `Result`) | `let n = parse(s)?;` (the failure is returned, and the `?` shows where) |
+
+- `Err` is not an exception: it is an ordinary value that is returned. Nothing is thrown or caught, and `?` is the return.
+- `String::new()` is a call, not a method reference: `::` is only a path.
+- `interface` is `trait` (a type has one only if an `impl … for` says so), `import` is `use`, `public` is `pub`, and `@Override`-style annotations are `#[…]`. Rust's `@` is not one (see below).
+
+</ForLang>
+
+<ForLang only="kotlin">
+
+| You write in Kotlin | In Rust |
+|---|---|
+| `var x = 5`, or `val x = 5` | `let mut x = 5;`, or `let x = 5;` |
+| `fun add(a: Int, b: Int): Int = a + b` | `fn add(a: i32, b: i32) -> i32 { a + b }` |
+| `for (i in 0 until 3) { }` | `for i in 0..3 { }` |
+| `for (i in 0..3) { }` runs for 0, 1, 2 **and 3** | `for i in 0..=3 { }`. Plain `0..3` stops before 3 |
+| `for (w in words) { }` | `for w in &words { }` |
+| `when (n) { 1 -> "one"; else -> "many" }` | `match n { 1 => "one", _ => "many" }` |
+| `val n = s.toInt()` (a failure throws; Kotlin has no checked exceptions) | `let n = parse(s)?;` (the failure is returned, and the `?` shows where) |
+
+`Err` is not an exception: it is an ordinary value that is returned, and `?` is the return.
+
+</ForLang>
+
+<ForLang only="csharp">
+
+| You write in C# | In Rust |
+|---|---|
+| `var x = 5;`, or `const int x = 5;` (known when compiling) | `let mut x = 5;`, or `const X: i32 = 5;` |
+| `static int Add(int a, int b) => a + b;` | `fn add(a: i32, b: i32) -> i32 { a + b }` |
+| `for (int i = 0; i < 3; i++) { }` | `for i in 0..3 { }` |
+| `foreach (var w in words) { }` | `for w in &words { }` |
+| `n switch { 1 => "one", _ => "many" }` | `match n { 1 => "one", _ => "many" }` |
+| `int n = int.Parse(s);` (a failure throws) | `let n = parse(s)?;` (the failure is returned, and the `?` shows where) |
+
+- A plain `let x = 5;`, which cannot change, has no C# twin for locals.
+- The C# switch expression has the same `_` and `=>`. When a case is missing C# warns, and Rust refuses to compile.
+- `Err` is an ordinary value that is returned, not an exception.
+
+</ForLang>
+
+<ForLang only="python">
+
+| You write in Python | In Rust |
+|---|---|
+| `x = 5`, or `X: Final = 5` (only a type checker enforces it) | `let mut x = 5;`, or `let x = 5;` |
+| `def add(a: int, b: int) -> int: return a + b` | `fn add(a: i32, b: i32) -> i32 { a + b }` |
+| `for i in range(3):` | `for i in 0..3 { }` |
+| `for w in words:` | `for w in &words { }` |
+| `match n:` with `case 1:` and `case _:` | `match n { 1 => "one", _ => "many" }` |
+| `n = int(s)` (a failure raises `ValueError`) | `let n = s.parse::<i32>()?;` (the failure is returned, and the `?` shows where) |
+
+- Python's `int` has no size limit; in Rust you pick `i32`, `u8` and so on. `{:?}` is like `repr`. `Err` is a returned value, not an exception.
+
+</ForLang>
+
+<ForLang only="typescript">
+
+| You write in TypeScript | In Rust |
+|---|---|
+| `let x = 5;`, or `const x = 5;` | `let mut x = 5;`, or `let x = 5;` |
+| `function add(a: number, b: number): number { return a + b; }` | `fn add(a: i32, b: i32) -> i32 { a + b }` |
+| `for (let i = 0; i < 3; i++) { }` | `for i in 0..3 { }` |
+| `for (const w of words) { }` | `for w in &words { }` |
+| `switch (n) { case 1: … break; default: … }` | `match n { 1 => …, _ => … }` |
+| `const n = parse(s);` (a `throw` inside `parse` leaves your function) | `let n = parse(s)?;` (the failure is returned, and the `?` shows where) |
+
+- `number` is one type; Rust has `i32`, `u8`, `f64` and others, and you pick.
+- `?` is not a ternary and not `?.`. A `match` has no `break` and no fall-through.
+
+</ForLang>
+
+<ForLang only="c cpp">
+
+| You write in C or C++ | In Rust |
+|---|---|
+| `int x = 5;`, or `const int x = 5;` | `let mut x = 5;`, or `let x = 5;` |
+| `int add(int a, int b) { return a + b; }` | `fn add(a: i32, b: i32) -> i32 { a + b }` |
+| `for (int i = 0; i < 3; i++) { }` | `for i in 0..3 { }` |
+| C++: `for (const auto& w : words) { }`. C: an index loop | `for w in &words { }` |
+| `switch (n) { case 1: … break; default: … }` | `match n { 1 => …, _ => … }` |
+| C: `if (parse(s, &n) != 0) return -1;`. C++: `int n = std::stoi(s);` (a failure throws) | `let n = parse(s)?;` |
+
+- `match` has no `break` and no fall-through, and it must cover every case.
+- `?` is not a ternary. `#[…]` is not the preprocessor, and `use` pastes no file as `#include` does.
+- C++: `&` and `&mut` are `const T&` and `T&`. `<T>` is a template, and `where` is like `requires`, but the body is checked once against the bounds you write. `self` is `this`, written out. `Err` is a returned value, not an exception.
+
+</ForLang>
+
+In the loop rows, the `&` in `for w in &words` borrows the list. Without it the loop would use `words` up ([Ownership](/learn/ownership/)).
+
+## The rest of the symbols
+
+The tour covered `let mut fn -> ; {} () :: . & ? ! # |x| => ..=`. These are the words and symbols it did not use. The next table covers the ones that mean two things.
+
+| Symbol | Meaning | Learn more |
+|---|---|---|
+| `trait` | a named set of methods that a type can have: Rust's interface | [Traits](/learn/traits/) |
+| `impl` | `impl Square { … }` adds methods to a type, outside its `struct` body. `impl Describe for Square { … }` gives it a trait's methods | [Methods](/learn/methods/), [Traits](/learn/traits/) |
+| `self`, `&self`, `Self` | in a method: the value it is called on, written as the first parameter (`&self` borrows it). `Self` is the type itself | [Methods](/learn/methods/) |
+| `where` | lists, after a signature, what a generic type must be able to do | [Generics](/learn/generics/) |
+| `<T>` | a type parameter: a placeholder for a type, as in `Vec<i32>`, a growable list of `i32` | [Generics](/learn/generics/) |
+| `dyn` | a value whose type is not named, only the trait it has. Which method runs is looked up at run time | [Traits](/learn/traits/), then [Trait objects](/learn/trait-objects/) |
+| `pub`, `mod`, `use` | `pub` makes an item visible outside its module (the default is private). `mod` makes a module, a named group of items. `use` makes a name shorter | [Modules](/learn/modules/) |
+| `as` | converts between simple types, mostly numbers: `n as f64`. In a `use`, it renames | [Numbers and Types](/learn/types/) |
+| `[ ]` | indexes `v[0]`, builds an array `[1, 2, 3]`, and writes the array type `[u32; 3]` and the slice type `&[u32]`, a borrowed view of a list | [Vectors and Slices](/learn/vectors/) |
+| `@` | in a pattern: `n @ 1..=9` matches the range and names the value `n` | [Patterns](https://doc.rust-lang.org/book/ch19-03-pattern-syntax.html) |
+| `#![…]` | an attribute about the item that encloses it, usually the whole file | a later lesson |
+| `///`, `//!` | a doc comment: documentation for the item below it (`///`) or around it (`//!`) | a later lesson |
+
+### Symbols that mean two things
+
+| Symbol | Job 1 | Job 2 |
+|---|---|---|
+| `&` | a reference: `&x` borrows without owning, and `&mut x` may change ([Borrowing](/learn/borrowing/), [Mutable Borrows](/learn/mutable-borrows/)) | bit-and: `a & b` |
+| `*` | follow a reference: `*r` | multiply: `a * b` |
+| `\|` | a closure's parameters: `\|a, b\| …` | bit-or `a \| b`, or "either" in a pattern: `1 \| 2 =>` |
+| `..` | a range: `0..3` | "and the rest", in a struct (`Point { x: 9, ..p }`) or a pattern (`[first, ..]`) |
+| `_` | "any value, I don't need it" ([Match](/learn/match/)), or a type for the compiler to fill in (`Vec<_>`) | a separator inside a number: `1_000_000` |
+| `!` | a macro call: `println!`. In `-> !`, "never returns" | "not": `!done` |
+| `'` | names a lifetime (`'a`, [Lifetimes](/learn/lifetimes/)) or a loop (`'outer:`) | a character: `'a'`. Text uses double quotes |
+| `<` | less-than: `1 < 2` | the start of type arguments: `Vec<i32>` |
+
+The last pair has a rule of its own. In a type, `Vec<i32>` is fine. In an expression, `parse<i32>()` would look like two comparisons, so Rust asks for `::` first: `parse::<i32>()`. The Rust Reference says the `::` "is required before the opening `<` for generic arguments to avoid ambiguity with the less-than operator" ([Paths](https://doc.rust-lang.org/reference/paths.html)). It is nicknamed the **turbofish**. This program runs one line for each job:
+
+<Snippet file="lookalikes.rs" />
+
+<p class="lr-layer">Going deeper</p>
+
+## Paths and dots
+
+`::` and `.` are not interchangeable. `::` walks a **path** to a name: a module, a type, a function or a constant. `.` works on a value you already hold: a field, or a method called on it. A method call such as `s.len()` can also be written as a path, with the value passed in:
+
+<Snippet file="path-vs-dot.rs" />
+
+`s.len()` and `String::len(&s)` give the same answer.
+
+## Slips in the first hour
+
+The missing `mut` is the [gotcha at the top of the page](#gotcha). Here are other slips that come from habits in other languages. Leaving the `!` off a macro:
+
+<Snippet file="no-bang.fail.rs" />
+
+The compiler knows a macro of that name exists and says where to put the `!`. A one-line `if` without braces:
+
+<Snippet file="no-braces.fail.rs" />
+
+This one has no error code. The body of an `if` or a loop needs braces, even for one statement (a `match` arm or a closure takes a bare expression). And a field you can read in your own language, but that is private here:
+
+<Snippet file="private.fail.rs" />
+
+The Rust Reference says that "by default, everything is private" ([Visibility and privacy](https://doc.rust-lang.org/reference/visibility-and-privacy.html)), with two exceptions: trait items and enum variants. Last, `?` in a function that returns nothing:
+
+<Snippet file="question-mark-main.fail.rs" />
+
+E0277. `?` needs somewhere to send the failure, so the function's return type must be one that can hold it: a `Result` for a `Result`, an `Option` for an `Option`. The `help:` shows a return type to add. The tour program's `main` returns `Result<(), String>`, which works because its errors are already `String`s.
+
+<p class="lr-layer">Practice</p>
+
+The first exercise trains reading, not writing: it shows a short program and asks what six calls give.
+
+<Exercise name="tour-values" title="Read this: what do the calls give?">
+Do not run the program to find out. Read the `match` and the `?` and fill in each answer. One call lands just past a range, and two fail in different places. An `Err` holds a `String`, so write a bare text as `Err("oops".to_string())`.
+</Exercise>
+
+<Exercise name="sum-to" title="Count to n, including n">
+Write `sum_to(n)`: the sum of `1` through `n`, with `n` counted. Use `let mut`, a `for` loop and `..=`. The check for `n = 1` catches the off-by-one that `1..n` gives.
+</Exercise>
+
+<Exercise name="count-evens" title="Count the even numbers">
+Write `count_evens` for a slice of numbers (`&[i32]`, a borrowed list). Loop over it with `for n in nums`, and test each `n` with `n % 2 == 0`. The checks include an empty slice, zero and negative numbers.
+</Exercise>
+
+<Exercise name="age-group" title="Name the range">
+Write `age_group`, a `match` with `0 =>`, ranges with `@`, and a bare name for the rest. Each arm builds a `String`: `String::from("baby")`, or `format!("child ({n})")`, which fills in `{n}` like `println!` does. The checks include 12 and 13, 19 and 20: the edges where `..=` and the next range meet.
+</Exercise>
+
+## Read more
+
+- The Rust Book, [Appendix B: Operators and Symbols](https://doc.rust-lang.org/book/appendix-02-operators.html) and [Appendix A: Keywords](https://doc.rust-lang.org/book/appendix-01-keywords.html): the complete lists the symbol tables are cut from.
+- The Rust Book, [Functions](https://doc.rust-lang.org/book/ch03-03-how-functions-work.html), [Control Flow](https://doc.rust-lang.org/book/ch03-05-control-flow.html) and [Pattern Syntax](https://doc.rust-lang.org/book/ch19-03-pattern-syntax.html) (`@`, `..`, `|`, `_`).
+- The Rust Book, [Validating References with Lifetimes](https://doc.rust-lang.org/book/ch10-03-lifetime-syntax.html): what `'a` does and does not do.
+- The Rust Reference, [Tokens](https://doc.rust-lang.org/reference/tokens.html), [Paths](https://doc.rust-lang.org/reference/paths.html), [Comments](https://doc.rust-lang.org/reference/comments.html) and [Visibility and privacy](https://doc.rust-lang.org/reference/visibility-and-privacy.html): the exact rules for each.
+- Rust by Example, [Formatted print](https://doc.rust-lang.org/rust-by-example/hello/print.html) and [Expressions](https://doc.rust-lang.org/rust-by-example/expression.html).

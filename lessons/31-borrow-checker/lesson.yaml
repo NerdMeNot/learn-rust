@@ -1,0 +1,121 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Working with the Borrow Checker"
+part: "smart-pointers"
+intro: >-
+  The borrow checker is the part of the compiler that enforces ownership, borrowing and
+  mutable borrows. When it says no, the program is usually one small change away from
+  compiling: borrow instead of move, copy a small value out first, split a struct into
+  parts, take a value out with `take`, or keep an index instead of a reference. Each
+  fix has a cost, and some errors point at a design that should change.
+coming_from:
+  go: >-
+    Go lets any pointer write and keeps whatever is reachable alive. The habits that meet a
+    Rust error are a pointer into a slice that `append` then moves, two slices sharing one
+    array, a pointer to the `range` variable (before Go 1.22), and a method that changes a
+    struct while a loop reads another part of it.
+  kotlin: >-
+    Two names can reach one object and either can change it. `List` is a read-only view, and
+    `MutableList` or a cast gets the writes back. Rust puts "read" or "change" in the
+    signature (`&` or `&mut`) and refuses a second writer.
+  python: >-
+    `b = a` makes a second name for one list, and either name changes it. That is documented
+    behaviour, not a bug. In Rust two names that both change one list are E0499: one owner
+    changes it and the other borrows it for a call, or you clone.
+  typescript: >-
+    `const b = a` is a second name for the same array, and either can push. In Rust two
+    names that both change one array are E0499: one owner changes it and the other borrows it
+    for a call, or you clone.
+  java: >-
+    Two names can reach one object and any of them can change it. A getter that returns the
+    internal `List` lets the caller change it unless you wrap it
+    (`Collections.unmodifiableList`). Rust's `&[T]` getter is read-only, and objects that
+    point at each other become ids, or `Rc` with `Weak`.
+  csharp: >-
+    A property that returns the internal `List<T>` lets the caller change it, unless it
+    returns an `IReadOnlyList<T>`. Rust's `&[T]` getter is read-only, and a separate
+    `&mut self` method says that the caller may change.
+  c: >-
+    A `realloc` that moves an array leaves every pointer into it dangling. GCC's `-Wall`
+    warns about a direct use after `realloc`, and says nothing when the `realloc` is inside a
+    `push` helper. Rust refuses the push while a reference into the array is alive.
+  cpp: >-
+    A moved-from `std::string` or `std::vector` is valid but in an unspecified state
+    (libstdc++ leaves it empty), so `v[0]` on a moved-from vector crashes. A reference into
+    a vector survives a `push_back` until it does not. Rust refuses both at compile time:
+    a moved value cannot be used, and a push cannot happen while a reference is alive.
+notes:
+  - >-
+    Read a borrow error as three places: where the value was moved or borrowed, the use
+    that clashes, and a later use that keeps the first alive. A fix moves one of the three.
+  - >-
+    `self.note(..)` takes `&mut self`, which borrows all of `self`. A field access such as
+    `self.log.push(..)` names one field, and the compiler can see that two fields are
+    separate places. Either use the field, work out what to do first and then call the
+    method, or split the struct.
+  - >-
+    `clone` is a fix that compiles and costs a copy. It is right for a small value that you
+    need twice, and wrong when two parts of the program must see the same changes.
+  - >-
+    When an error keeps coming back, change the design: one owner per piece of state,
+    indices or keys instead of references between values, and "decide with `&self`, then
+    apply with `&mut self`".
+gotcha:
+  title: "A method call while a field is being read"
+  verdict: "fine-elsewhere"
+  looks_fine: >-
+    In these languages a loop reads one list while a helper method appends to another list
+    of the same object. Nothing is wrong with it.
+  rust_sees: >-
+    E0502: cannot borrow `*self` as mutable because it is also borrowed as immutable. The loop
+    borrows `self.items`. `self.note(..)` takes `&mut self`, which borrows the whole of
+    `self`, and `items` is part of it. The compiler checks the call with the signature alone,
+    so it must assume `note` could change `items` while the loop reads it.
+  why: >-
+    This run is fine because `note` only touches `log`. The compiler reasons from the
+    signature, not the body, and a `note` that also pushed to `items` would change a list
+    while a loop walks it. That is a real bug, and the languages differ in what it does:
+    an exception in Java, Kotlin and C#; in Go the loop never reaches the new items; in
+    Python and TypeScript it visits them, so the loop may never end (removing an item
+    instead makes it skip the next one); undefined behaviour in C and C++.
+    [Mutable borrows](/learn/mutable-borrows/#changing-a-list-while-looping-over-it) has the
+    runs. Name the field (`self.log.push(..)`), work out what to log first and call the
+    method afterwards (as `fixed.rs` does), or split the struct so the log is its own type.
+  langs:
+    go:
+      status: "runs"
+      says: >-
+        Go runs this and prints the log. `range` reads the slice once at the start, and
+        `note` appends to a different slice.
+    kotlin:
+      status: "runs"
+      says: >-
+        Kotlin runs this and prints the log. `note` changes `log`, not the list the loop
+        walks, so there is no `ConcurrentModificationException`.
+    python:
+      status: "runs"
+      says: >-
+        Python prints the log. `note` changes `self.log`, not the list being looped over.
+    typescript:
+      status: "runs"
+      says: >-
+        Prints the log. `note` pushes to `log`, not to the array the loop walks.
+    java:
+      status: "runs"
+      says: >-
+        Java runs this and prints the log. `note` adds to `log`; the list being iterated is
+        not changed, so no `ConcurrentModificationException`.
+    csharp:
+      status: "runs"
+      says: >-
+        C# runs this and prints the log. `foreach` walks `items`; `Note` changes `Log`, a
+        different list.
+    c:
+      status: "runs"
+      says: >-
+        C runs this and prints the log. `note` writes into the `log` array of the same
+        struct; the loop reads `items`. Nothing checks that `note` stays away from `items`.
+    cpp:
+      status: "runs"
+      says: >-
+        C++ runs this and prints the log. `note` pushes to `log`. If it pushed to `items`
+        the push could reallocate the vector under the loop's iterators, and nothing would say so.

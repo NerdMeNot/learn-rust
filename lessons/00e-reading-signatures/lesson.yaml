@@ -1,0 +1,116 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Reading a function signature"
+part: "syntax"
+intro: >-
+  A function's signature is everything before its body: the name, the parameters, the result
+  type, and any conditions on generic types. In Rust it packs in a lot, because it also says
+  what a function may change, whether it can fail, and what its generic types must be able to
+  do. This page reads real signatures from the standard library, piece by piece, and shows the
+  `use`, `pub` and `::` syntax that finds them.
+coming_from:
+  go: >-
+    `func Largest[T cmp.Ordered](list []T) T` becomes `fn largest<T: PartialOrd>(list: &[T]) -> &T`:
+    the type parameter and its bound go in `<>` after the name, and the result follows `->`. Go's
+    `int` is 32 or 64 bits by platform (64 on the runner), so write `i64` to pin it, or `isize` to
+    follow the platform. The `&` in `&[T]` borrows the list (a view of its items) instead of taking it.
+  kotlin: >-
+    `fun <T : Comparable<T>> largest(list: List<T>): T` becomes `fn largest<T: PartialOrd>(list: &[T]) -> &T`.
+    The type parameter moves after the name, `->` replaces the `:` before the result, and the `&`
+    in `&[T]` borrows the list (a view of its items) instead of taking it.
+  python: >-
+    A hinted signature like `def largest(items: Sequence[T]) -> T` becomes `fn largest<T: PartialOrd>(list: &[T]) -> &T`.
+    The interpreter ignores hints; the Rust compiler checks every piece before the program runs.
+    `PartialOrd` plays the part of the `Comparable` protocol in the main program, and a call with a
+    type that lacks it is a compile error.
+  typescript: >-
+    `function largest<T extends number | string>(list: T[]): T` becomes `fn largest<T: PartialOrd>(list: &[T]) -> &T`.
+    `extends` turns into a colon, and the bound names an ability (a trait) such as comparing with
+    `>`, not a union of types. Breaking the bound is a compile error, as it is in TypeScript.
+  java: >-
+    `static <T extends Comparable<T>> T largest(List<T> list)` becomes `fn largest<T: PartialOrd>(list: &[T]) -> &T`.
+    The type parameter follows the name, `extends` turns into a colon, and the result follows `->`.
+    The `&` in `&[T]` borrows the list (a view of its items) instead of taking it.
+  csharp: >-
+    `static T Largest<T>(IReadOnlyList<T> list) where T : IComparable<T>` becomes `fn largest<T: PartialOrd>(list: &[T]) -> &T`.
+    Rust has a `where` clause too, but a short bound sits inside the `<>`. The result follows `->`,
+    and the `&` in `&[T]` borrows the list (a view of its items).
+  c: >-
+    C has no generic functions (`_Generic` only chooses between per-type ones), so
+    `int largest_int(const int *list, int n)` is written once per type.
+    Rust writes one `fn largest<T: PartialOrd>(list: &[T]) -> &T`: the `[T]` slice knows its own
+    length, and `&` is a reference, a pointer the compiler checks.
+  cpp: >-
+    `template <std::totally_ordered T> const T& largest(const std::vector<T>&)` becomes
+    `fn largest<T: PartialOrd>(list: &[T]) -> &T`. A trait bound is the nearest thing to a C++20
+    concept, but a type meets a trait only by declaring it. `&T` is like `const T&`, and `&[T]`
+    accepts an array, a `Vec` or part of one.
+notes:
+  - >-
+    A generic function lists its type parameters in `<>` after its name. `T: PartialOrd` is a
+    bound: it says a `T` must be able to be compared with `>` and `<`, and `+` joins several bounds.
+  - >-
+    `&T` is a borrowed look at a `T`, `&mut T` a borrow that may change it, and a bare `T` hands the
+    value over (small types such as integers are copied instead). The signature tells you which.
+  - >-
+    The result follows `->`. `Option<&T>` means "maybe a reference", and `Result<T, E>` means "a
+    `T`, or an error `E`", so a signature says whether a call can come back empty or fail.
+  - >-
+    Read a long signature in this order: the name, the parameters, the result, and the bounds last.
+    `::` walks a path such as `std::cmp::max`, and `use` brings a name in so you can write it short.
+gotcha:
+  title: "Comparing a type that has no bound"
+  verdict: "rust-rule"
+  looks_fine: >-
+    In Python, TypeScript and C++ a function can compare two values of a type `T` it knows nothing
+    about: `if item > best`. The check comes later, or never, so the code looks complete.
+  rust_sees: >-
+    Inside `largest<T>`, `T` is any type at all, and a type is not promised to have `>`. Rust checks
+    the body against what the signature promises, so the signature must say it: `T: PartialOrd`.
+  why: >-
+    Rust reads a generic function once, as written, and refuses anything its bounds do not allow. The
+    error comes with a `help:` that spells out the bound to add. Go, Kotlin, Java and C# refuse the
+    same code and need their own spelling (`cmp.Ordered`, `Comparable<T>`, `IComparable<T>`);
+    TypeScript, Python and C++ accept it, as the outputs show.
+  langs:
+    go:
+      status: "refuses"
+      says: >-
+        Go refuses: with `[T any]`, `>` is not allowed, because `any` includes types that cannot be
+        ordered. Go needs `[T cmp.Ordered]`, which plays the part of `T: PartialOrd` but is a fixed
+        list of built-in types; a Rust trait can be implemented for your own types too.
+    kotlin:
+      status: "refuses"
+      says: >-
+        Kotlin refuses: an unbounded `T` has no `>`. Write `<T : Comparable<T>>`.
+    python:
+      status: "runs"
+      says: >-
+        Python prints the same. Nothing in `largest` says what it needs: `>` is tried on whatever
+        arrives, and a list that cannot be ordered, such as `[3, "nine", 4]`, raises a `TypeError`
+        only when that call runs.
+    typescript:
+      status: "runs"
+      says: >-
+        TypeScript compiles this under `strict` and prints the same: it asks only that both sides of
+        `>` have the same type, not that the type can be ordered. So `largest` on objects compiles and
+        quietly returns the first one. The `extends number | string` in the main program is what makes it safe.
+    java:
+      status: "refuses"
+      says: >-
+        Java refuses: `>` works only on numeric types, so a generic needs `T extends Comparable<T>`
+        and `compareTo`.
+    csharp:
+      status: "refuses"
+      says: >-
+        C# refuses (CS0019): add `where T : IComparable<T>` and call `CompareTo`.
+    c:
+      status: "runs"
+      says: >-
+        C prints the same. It has no generic functions, so there is no `T` to leave unbounded: you
+        write one function per type, as the main program does.
+    cpp:
+      status: "runs"
+      says: >-
+        C++ compiles and prints the same. An expression that depends on `T`, such as `>`, is checked
+        when the template is used with a type; the page shows the error for a type with no `>`. A
+        C++20 `requires` clause or concept states the bound up front, as Rust does.

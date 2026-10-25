@@ -1,0 +1,267 @@
+{
+ "id": "further-project-structure",
+ "files": {
+  "fixes": {
+   "gated-main.rs": "//! Prints each word in its arguments with its count, most frequent first.\n\nuse std::process::ExitCode;\n\nfn main() -> ExitCode {\n    let text = std::env::args().skip(1).collect::<Vec<_>>().join(\" \");\n    match wordstat::count_words(&text) {\n        Ok(stats) => {\n            println!(\"{}\", stats.to_json());\n            ExitCode::SUCCESS\n        }\n        Err(e) => {\n            eprintln!(\"wordstat: {e}\");\n            ExitCode::FAILURE\n        }\n    }\n}\n",
+   "go-peek.go": "package main\n\nimport (\n\t\"fmt\"\n\n\t\"example.com/wordstat/internal/words\"\n)\n\nfunc main() {\n\tfmt.Println(words.Normalize(\"Hello!\"))\n}\n",
+   "lints-lib.rs": "//! Count the words in a piece of text.\n//!\n//! ```\n//! let stats = wordstat::count_words(\"the cat and the dog\")?;\n//! assert_eq!(stats.total(), 5);\n//! assert_eq!(stats.get(\"the\"), 2);\n//! # Ok::<(), wordstat::Error>(())\n//! ```\n\nmod count;\nmod error;\n#[cfg(feature = \"json\")]\nmod json;\n\npub use count::{Stats, count_words};\npub use error::Error;\n\npub fn pad(a: usize, b: usize, c: usize, d: usize, e: usize) -> usize {\n    dbg!(a + b + c + d + e)\n}\n",
+   "msrv.Cargo.toml": "[workspace]\nmembers = [\"crates/*\"]\nresolver = \"3\"\n\n[workspace.package]\nversion = \"0.1.0\"\nedition = \"2024\"\nrust-version = \"1.100\"\nlicense = \"MIT OR Apache-2.0\"\n\n[workspace.dependencies]\nserde_json = \"1.0\"\nwordstat = { path = \"crates/wordstat\", version = \"0.1.0\" }\n\n[workspace.lints.rust]\nunsafe_code = \"forbid\"\nmissing_docs = \"warn\"\n\n[workspace.lints.clippy]\ndbg_macro = \"warn\"\n",
+   "peek.rs": "//! Reaches for things the library keeps to itself.\n\nfn main() {\n    let word = wordstat::count::normalize(\"Hello!\");\n    let stats = wordstat::count_words(\"a b\").unwrap();\n    println!(\"{word} {:?}\", stats.counts());\n}\n"
+  },
+  "langs": {
+   "go/app/cmd/dump/main.go": "package main\n\nimport (\n\t\"fmt\"\n\t\"os\"\n\t\"strings\"\n\n\t\"example.com/wordstat\"\n)\n\nfunc main() {\n\tcounts, err := wordstat.Count(strings.Join(os.Args[1:], \" \"))\n\tif err != nil {\n\t\tfmt.Fprintln(os.Stderr, \"dump:\", err)\n\t\tos.Exit(1)\n\t}\n\tfmt.Println(wordstat.ToJSON(counts))\n}\n",
+   "go/app/go.mod": "module example.com/app\n\ngo 1.24\n",
+   "go/app/main.go": "package main\n\nimport (\n\t\"fmt\"\n\t\"os\"\n\t\"strings\"\n\n\t\"example.com/wordstat\"\n)\n\nfunc main() {\n\tcounts, err := wordstat.Count(strings.Join(os.Args[1:], \" \"))\n\tif err != nil {\n\t\tfmt.Fprintln(os.Stderr, \"app:\", err)\n\t\tos.Exit(1)\n\t}\n\tfmt.Println(len(counts), \"different words\")\n}\n",
+   "go/go.work": "go 1.24\n\nuse (\n\t./wordstat\n\t./app\n)\n",
+   "go/wordstat/go.mod": "module example.com/wordstat\n\ngo 1.24\n",
+   "go/wordstat/internal/words/words.go": "// Package words is internal: only code under example.com/wordstat may import it.\npackage words\n\nimport \"strings\"\n\nfunc Normalize(w string) string {\n\treturn strings.ToLower(strings.Trim(w, \".,!?;:\\\"'()\"))\n}\n",
+   "go/wordstat/json.go": "//go:build json\n\npackage wordstat\n\nimport \"encoding/json\"\n\n// ToJSON is only compiled with `-tags json`.\nfunc ToJSON(counts map[string]int) string {\n\tb, _ := json.Marshal(counts)\n\treturn string(b)\n}\n",
+   "go/wordstat/stats.go": "// Package wordstat counts the words in a piece of text.\npackage wordstat\n\nimport (\n\t\"errors\"\n\t\"strings\"\n\n\t\"example.com/wordstat/internal/words\"\n)\n\n// ErrEmpty is returned when the text has no words.\nvar ErrEmpty = errors.New(\"no words to count\")\n\n// Count returns how often each word appears.\nfunc Count(text string) (map[string]int, error) {\n\tcounts := map[string]int{}\n\tfor _, w := range strings.Fields(text) {\n\t\tcounts[words.Normalize(w)]++\n\t}\n\tif len(counts) == 0 {\n\t\treturn nil, ErrEmpty\n\t}\n\treturn counts, nil\n}\n",
+   "npm/package.json": "{\n  \"name\": \"wordstat-workspace\",\n  \"private\": true,\n  \"workspaces\": [\"packages/*\"]\n}\n",
+   "npm/packages/app/index.js": "import { count } from \"wordstat\";\n\nconsole.log(count(\"the cat and the dog\"));\n",
+   "npm/packages/app/package.json": "{\n  \"name\": \"app\",\n  \"version\": \"0.1.0\",\n  \"type\": \"module\",\n  \"dependencies\": { \"wordstat\": \"*\" }\n}\n",
+   "npm/packages/app/peek.js": "import { normalize } from \"wordstat/normalize.js\";\n\nconsole.log(normalize(\"Hello!\"));\n",
+   "npm/packages/wordstat/index.js": "import { normalize } from \"./normalize.js\";\n\nexport function count(text) {\n  const counts = {};\n  for (const w of text.split(/\\s+/).filter(Boolean)) {\n    const k = normalize(w);\n    counts[k] = (counts[k] ?? 0) + 1;\n  }\n  return counts;\n}\n",
+   "npm/packages/wordstat/normalize.js": "export function normalize(w) {\n  return w.replace(/^[^\\p{L}\\p{N}]+|[^\\p{L}\\p{N}]+$/gu, \"\").toLowerCase();\n}\n",
+   "npm/packages/wordstat/package.json": "{\n  \"name\": \"wordstat\",\n  \"version\": \"0.1.0\",\n  \"type\": \"module\",\n  \"exports\": { \".\": \"./index.js\" }\n}\n"
+  },
+  "rust": {
+   "Cargo.lock": "# This file is automatically @generated by Cargo.\n# It is not intended for manual editing.\nversion = 4\n\n[[package]]\nname = \"itoa\"\nversion = \"1.0.18\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682\"\n\n[[package]]\nname = \"memchr\"\nversion = \"2.8.3\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98\"\n\n[[package]]\nname = \"proc-macro2\"\nversion = \"1.0.107\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9\"\ndependencies = [\n \"unicode-ident\",\n]\n\n[[package]]\nname = \"quote\"\nversion = \"1.0.47\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"1fbf4db142a473a8d80c26bbf18454ed458bf8d26c8219c331daecfdbd079001\"\ndependencies = [\n \"proc-macro2\",\n]\n\n[[package]]\nname = \"serde\"\nversion = \"1.0.229\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"4148590afebada386688f18773da617792bf2ef03ffc1e4cbd2b1d45b023e0ba\"\ndependencies = [\n \"serde_core\",\n]\n\n[[package]]\nname = \"serde_core\"\nversion = \"1.0.229\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"67dca2c9c51e58a4791a4b1ed58308b39c64224d349a935ab5039aa360942a48\"\ndependencies = [\n \"serde_derive\",\n]\n\n[[package]]\nname = \"serde_derive\"\nversion = \"1.0.229\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"e7a5d71263a5a7d47b41f6b3f06ba276f10cc18b0931f1799f710578e2309348\"\ndependencies = [\n \"proc-macro2\",\n \"quote\",\n \"syn\",\n]\n\n[[package]]\nname = \"serde_json\"\nversion = \"1.0.154\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"e7e9cc8b1b85264074fbcc02a88680c4096b1e47df8f739dceb03bf482f04bd6\"\ndependencies = [\n \"itoa\",\n \"memchr\",\n \"serde\",\n \"serde_core\",\n \"zmij\",\n]\n\n[[package]]\nname = \"syn\"\nversion = \"3.0.9\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"d78c8dee4c7bf0e14673097256fed6142ce9d3b85a408189d07482442145823b\"\ndependencies = [\n \"proc-macro2\",\n \"quote\",\n \"unicode-ident\",\n]\n\n[[package]]\nname = \"unicode-ident\"\nversion = \"1.0.27\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563\"\n\n[[package]]\nname = \"wordstat\"\nversion = \"0.1.0\"\ndependencies = [\n \"serde_json\",\n]\n\n[[package]]\nname = \"wordstat-report\"\nversion = \"0.1.0\"\ndependencies = [\n \"wordstat\",\n]\n\n[[package]]\nname = \"zmij\"\nversion = \"1.0.23\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b\"\n",
+   "Cargo.toml": "[workspace]\nmembers = [\"crates/*\"]\nresolver = \"3\"\n\n[workspace.package]\nversion = \"0.1.0\"\nedition = \"2024\"\nrust-version = \"1.85\"\nlicense = \"MIT OR Apache-2.0\"\n\n[workspace.dependencies]\nserde_json = \"1.0\"\nwordstat = { path = \"crates/wordstat\", version = \"0.1.0\" }\n\n[workspace.lints.rust]\nunsafe_code = \"forbid\"\nmissing_docs = \"warn\"\n\n[workspace.lints.clippy]\ndbg_macro = \"warn\"\n",
+   "clippy.toml": "too-many-arguments-threshold = 4\n",
+   "crates/wordstat/Cargo.toml": "[package]\nname = \"wordstat\"\ndescription = \"Count the words in a piece of text\"\ndefault-run = \"wordstat\"\nversion.workspace = true\nedition.workspace = true\nrust-version.workspace = true\nlicense.workspace = true\n\n[features]\n# Off by default: `Stats::to_json` and the `dump` program need serde_json.\njson = [\"dep:serde_json\"]\n\n[dependencies]\nserde_json = { workspace = true, optional = true }\n\n[[bin]]\nname = \"dump\"\nrequired-features = [\"json\"]\n\n[lints]\nworkspace = true\n",
+   "crates/wordstat/src/bin/dump.rs": "//! Prints the counts as JSON. Built only with `--features json`.\n\nfn main() {\n    let text = std::env::args().skip(1).collect::<Vec<_>>().join(\" \");\n    match wordstat::count_words(&text) {\n        Ok(stats) => println!(\"{}\", stats.to_json()),\n        Err(e) => {\n            eprintln!(\"dump: {e}\");\n            std::process::exit(1);\n        }\n    }\n}\n",
+   "crates/wordstat/src/count.rs": "use std::collections::BTreeMap;\n\nuse crate::Error;\n\n/// How often each word appeared, with the words in alphabetical order.\n#[derive(Debug, Default)]\npub struct Stats {\n    counts: BTreeMap<String, usize>,\n}\n\n/// Counts the words in `text`, ignoring case and surrounding punctuation.\n///\n/// # Errors\n///\n/// Returns [`Error::Empty`] when `text` has no words.\npub fn count_words(text: &str) -> Result<Stats, Error> {\n    let mut stats = Stats::default();\n    for word in text.split_whitespace() {\n        *stats.counts.entry(normalize(word)).or_insert(0) += 1;\n    }\n    if stats.counts.is_empty() {\n        return Err(Error::Empty);\n    }\n    Ok(stats)\n}\n\n// Only this crate needs to know how words are normalised.\npub(crate) fn normalize(word: &str) -> String {\n    word.trim_matches(|c: char| !c.is_alphanumeric())\n        .to_lowercase()\n}\n\nimpl Stats {\n    /// The number of words counted, repeats included.\n    pub fn total(&self) -> usize {\n        self.counts.values().sum()\n    }\n\n    /// How often `word` appeared (0 if it did not).\n    pub fn get(&self, word: &str) -> usize {\n        self.counts.get(word).copied().unwrap_or(0)\n    }\n\n    /// The words and their counts, most frequent first; ties in alphabetical\n    /// order.\n    pub fn most_common(&self) -> Vec<(&str, usize)> {\n        let mut all: Vec<_> =\n            self.counts.iter().map(|(w, n)| (w.as_str(), *n)).collect();\n        all.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));\n        all\n    }\n\n    // Visible to the rest of this crate (the `json` module), not to users.\n    #[cfg_attr(not(feature = \"json\"), allow(dead_code))]\n    pub(crate) fn counts(&self) -> &BTreeMap<String, usize> {\n        &self.counts\n    }\n}\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n\n    #[test]\n    fn ignores_case_and_punctuation() {\n        let stats = count_words(\"Go, go! GO?\").unwrap();\n        assert_eq!(stats.get(\"go\"), 3);\n    }\n\n    #[test]\n    fn empty_text_is_an_error() {\n        assert_eq!(count_words(\"  \").unwrap_err(), Error::Empty);\n    }\n}\n",
+   "crates/wordstat/src/error.rs": "use std::fmt;\n\n/// What can go wrong when counting words.\n#[derive(Debug, PartialEq, Eq)]\n#[non_exhaustive]\npub enum Error {\n    /// The text had no words in it.\n    Empty,\n}\n\nimpl fmt::Display for Error {\n    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {\n        match self {\n            Error::Empty => f.write_str(\"no words to count\"),\n        }\n    }\n}\n\nimpl std::error::Error for Error {}\n",
+   "crates/wordstat/src/json.rs": "use crate::Stats;\n\nimpl Stats {\n    /// The counts as a JSON object. Needs the `json` feature.\n    ///\n    /// ```\n    /// let stats = wordstat::count_words(\"b a b\")?;\n    /// assert_eq!(stats.to_json(), r#\"{\"a\":1,\"b\":2}\"#);\n    /// # Ok::<(), wordstat::Error>(())\n    /// ```\n    pub fn to_json(&self) -> String {\n        serde_json::json!(self.counts()).to_string()\n    }\n}\n",
+   "crates/wordstat/src/lib.rs": "//! Count the words in a piece of text.\n//!\n//! ```\n//! let stats = wordstat::count_words(\"the cat and the dog\")?;\n//! assert_eq!(stats.total(), 5);\n//! assert_eq!(stats.get(\"the\"), 2);\n//! # Ok::<(), wordstat::Error>(())\n//! ```\n\nmod count;\nmod error;\n#[cfg(feature = \"json\")]\nmod json;\n\npub use count::{Stats, count_words};\npub use error::Error;\n",
+   "crates/wordstat/src/main.rs": "//! Prints each word in its arguments with its count, most frequent first.\n\nuse std::process::ExitCode;\n\nfn main() -> ExitCode {\n    let text = std::env::args().skip(1).collect::<Vec<_>>().join(\" \");\n    match wordstat::count_words(&text) {\n        Ok(stats) => {\n            for (word, n) in stats.most_common() {\n                println!(\"{n:>3} {word}\");\n            }\n            ExitCode::SUCCESS\n        }\n        Err(e) => {\n            eprintln!(\"wordstat: {e}\");\n            ExitCode::FAILURE\n        }\n    }\n}\n",
+   "crates/wordstat/tests/cli.rs": "use std::process::Command;\n\n// Cargo builds the `wordstat` binary for integration tests and tells us where it is.\nfn wordstat(args: &[&str]) -> std::process::Output {\n    Command::new(env!(\"CARGO_BIN_EXE_wordstat\"))\n        .args(args)\n        .output()\n        .expect(\"could not start wordstat\")\n}\n\n#[test]\nfn prints_the_most_common_word_first() {\n    let out = wordstat(&[\"a\", \"b\", \"b\"]);\n    assert!(out.status.success());\n    assert_eq!(String::from_utf8_lossy(&out.stdout), \"  2 b\\n  1 a\\n\");\n}\n\n#[test]\nfn no_words_is_a_failure() {\n    let out = wordstat(&[]);\n    assert!(!out.status.success());\n}\n",
+   "crates/wordstat-report/Cargo.toml": "[package]\nname = \"wordstat-report\"\nversion.workspace = true\nedition.workspace = true\nrust-version.workspace = true\nlicense.workspace = true\npublish = false\n\n[dependencies]\nwordstat = { workspace = true, features = [\"json\"] }\n\n[lints]\nworkspace = true\n",
+   "crates/wordstat-report/src/main.rs": "//! Uses the library the way another crate would: only its public API.\n\nfn main() -> Result<(), wordstat::Error> {\n    let stats = wordstat::count_words(\"to be or not to be\")?;\n    println!(\"{} words, as JSON: {}\", stats.total(), stats.to_json());\n    Ok(())\n}\n",
+   "rustfmt.toml": "max_width = 80\n"
+  }
+ },
+ "sessions": {
+  "layout": [
+   {
+    "show": "$ cargo metadata --format-version 1 --no-deps    # then print each package and its targets",
+    "out": "wordstat ['lib wordstat', 'bin dump', 'bin wordstat', 'test cli']\nwordstat-report ['bin wordstat-report']\n",
+    "exit": 0
+   }
+  ],
+  "run": [
+   {
+    "show": "$ cargo run -p wordstat -- the cat and the dog the",
+    "out": "  3 the\n  1 and\n  1 cat\n  1 dog\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo run -q -p wordstat-report",
+    "out": "6 words, as JSON: {\"be\":2,\"not\":1,\"or\":1,\"to\":2}\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo run -p wordstat    # no words",
+    "out": "wordstat: no words to count\n",
+    "exit": 1,
+    "error": true
+   }
+  ],
+  "features": [
+   {
+    "show": "$ cargo run -p wordstat --bin dump -- the cat the dog",
+    "out": "error: target `dump` in package `wordstat` requires the features: `json`\nConsider enabling them by passing, e.g., `--features=\"json\"`\n",
+    "exit": 101,
+    "error": true
+   },
+   {
+    "show": "$ cargo run -q -p wordstat --features json --bin dump -- the cat the dog",
+    "out": "{\"cat\":1,\"dog\":1,\"the\":2}\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo tree -p wordstat",
+    "out": "wordstat v0.1.0 (/home/you/wordstat/crates/wordstat)\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo tree -p wordstat --features json",
+    "out": "wordstat v0.1.0 (/home/you/wordstat/crates/wordstat)\n└── serde_json v1.0.154\n    ├── itoa v1.0.18\n    ├── memchr v2.8.3\n    ├── serde_core v1.0.229\n    └── zmij v1.0.23\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo test -p wordstat    # timings replaced by X.XXs",
+    "out": "test count::tests::ignores_case_and_punctuation ... ok\ntest count::tests::empty_text_is_an_error ... ok\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in X.XXs\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in X.XXs\n\ntest no_words_is_a_failure ... ok\ntest prints_the_most_common_word_first ... ok\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in X.XXs\n   Doc-tests wordstat\ntest crates/wordstat/src/lib.rs - (line 3) ... ok\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in X.XXs\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo test    # the whole workspace; timings replaced by X.XXs; the doc tests can print in either order",
+    "out": "test count::tests::empty_text_is_an_error ... ok\ntest count::tests::ignores_case_and_punctuation ... ok\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in X.XXs\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in X.XXs\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in X.XXs\n\ntest no_words_is_a_failure ... ok\ntest prints_the_most_common_word_first ... ok\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in X.XXs\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in X.XXs\n   Doc-tests wordstat\ntest crates/wordstat/src/lib.rs - (line 3) ... ok\ntest crates/wordstat/src/json.rs - json::Stats::to_json (line 6) ... ok\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in X.XXs\n",
+    "exit": 0,
+    "varies": true
+   }
+  ],
+  "gated": [
+   {
+    "show": "$ cargo build -p wordstat",
+    "out": "error[E0599]: no method named `to_json` found for struct `Stats` in the current scope\n --> crates/wordstat/src/main.rs:9:34\n  |\n9 |             println!(\"{}\", stats.to_json());\n  |                                  ^^^^^^^ method not found in `Stats`\n\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "private": [
+   {
+    "show": "$ cargo build -p wordstat --bin peek",
+    "out": "error[E0603]: module `count` is private\n  --> crates/wordstat/src/bin/peek.rs:4:26\n   |\n 4 |     let word = wordstat::count::normalize(\"Hello!\");\n   |                          ^^^^^  --------- function `normalize` is not publicly re-exported\n   |                          |\n   |                          private module\n   |\nnote: the module `count` is defined here\n  --> crates/wordstat/src/lib.rs:10:1\n   |\n10 | mod count;\n   | ^^^^^^^^^\n\nerror[E0624]: method `counts` is private\n  --> crates/wordstat/src/bin/peek.rs:6:35\n   |\n 6 |     println!(\"{word} {:?}\", stats.counts());\n   |                                   ^^^^^^ private method\n   |\n  ::: crates/wordstat/src/count.rs:55:5\n   |\n55 |     pub(crate) fn counts(&self) -> &BTreeMap<String, usize> {\n   |     ------------------------------------------------------- private method defined here\n\nSome errors have detailed explanations: E0603, E0624.\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "lints-warn": [
+   {
+    "show": "$ cargo clippy --workspace",
+    "out": "warning: this function has too many arguments (5/4)\n  --> crates/wordstat/src/lib.rs:18:1\n   |\n18 | pub fn pad(a: usize, b: usize, c: usize, d: usize, e: usize) -> usize {\n   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n   |\n   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#too_many_arguments\n   = note: `#[warn(clippy::too_many_arguments)]` on by default\n\nwarning: the `dbg!` macro is intended as a debugging tool\n  --> crates/wordstat/src/lib.rs:19:5\n   |\n19 |     dbg!(a + b + c + d + e)\n   |     ^^^^^^^^^^^^^^^^^^^^^^^\n   |\n   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#dbg_macro\n   = note: requested on the command line with `-W clippy::dbg-macro`\nhelp: remove the invocation before committing it to a version control system\n   |\n19 -     dbg!(a + b + c + d + e)\n19 +     a + b + c + d + e\n   |\n\nwarning: missing documentation for a function\n  --> crates/wordstat/src/lib.rs:18:1\n   |\n18 | pub fn pad(a: usize, b: usize, c: usize, d: usize, e: usize) -> usize {\n   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n   |\n   = note: requested on the command line with `-W missing-docs`\n\nwarning: `wordstat` (lib) generated 3 warnings (run `cargo clippy --fix --lib -p wordstat -- ` to apply 1 suggestion)\n\n",
+    "exit": 0
+   }
+  ],
+  "try": [
+   {
+    "show": "$ cargo build -p wordstat --features nope",
+    "out": "error: the package 'wordstat' does not contain this feature: nope\n",
+    "exit": 101,
+    "error": true
+   },
+   {
+    "show": "$ cargo tree --workspace -i serde_json",
+    "out": "serde_json v1.0.154\n└── wordstat v0.1.0 (/home/you/wordstat/crates/wordstat)\n    └── wordstat-report v0.1.0 (/home/you/wordstat/crates/wordstat-report)\n",
+    "exit": 0
+   }
+  ],
+  "try-deny": [
+   {
+    "show": "$ cargo clippy --workspace    # after changing missing_docs to \"deny\" in Cargo.toml",
+    "out": "warning: this function has too many arguments (5/4)\n  --> crates/wordstat/src/lib.rs:18:1\n   |\n18 | pub fn pad(a: usize, b: usize, c: usize, d: usize, e: usize) -> usize {\n   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n   |\n   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#too_many_arguments\n   = note: `#[warn(clippy::too_many_arguments)]` on by default\n\nwarning: the `dbg!` macro is intended as a debugging tool\n  --> crates/wordstat/src/lib.rs:19:5\n   |\n19 |     dbg!(a + b + c + d + e)\n   |     ^^^^^^^^^^^^^^^^^^^^^^^\n   |\n   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#dbg_macro\n   = note: requested on the command line with `-W clippy::dbg-macro`\nhelp: remove the invocation before committing it to a version control system\n   |\n19 -     dbg!(a + b + c + d + e)\n19 +     a + b + c + d + e\n   |\n\nerror: missing documentation for a function\n  --> crates/wordstat/src/lib.rs:18:1\n   |\n18 | pub fn pad(a: usize, b: usize, c: usize, d: usize, e: usize) -> usize {\n   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n   |\n   = note: requested on the command line with `-D missing-docs`\n\nwarning: `wordstat` (lib) generated 2 warnings\nerror: could not compile `wordstat` (lib) due to 1 previous error; 2 warnings emitted\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "fmt": [
+   {
+    "show": "$ cargo fmt --check",
+    "out": "",
+    "exit": 0
+   }
+  ],
+  "docs": [
+   {
+    "show": "$ cargo doc --no-deps -p wordstat",
+    "out": " Documenting wordstat v0.1.0 (/home/you/wordstat/crates/wordstat)\n\n   Generated target/doc/wordstat/index.html\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo test --doc -p wordstat --features json    # timings masked; the two tests can print in either order",
+    "out": "   Doc-tests wordstat\n\nrunning 2 tests\ntest crates/wordstat/src/lib.rs - (line 3) ... ok\ntest crates/wordstat/src/json.rs - json::Stats::to_json (line 6) ... ok\n\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in X.XXs\n\n",
+    "exit": 0,
+    "varies": true
+   }
+  ],
+  "msrv-refused": [
+   {
+    "show": "$ cargo build",
+    "out": "error: rustc 1.99.1 is not supported by the following packages:\n  wordstat@0.1.0 requires rustc 1.100\n  wordstat@0.1.0 requires rustc 1.100\n  wordstat@0.1.0 requires rustc 1.100\n  wordstat-report@0.1.0 requires rustc 1.100\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "msrv-check": [
+   {
+    "show": "$ rustup toolchain install 1.85.0 --profile minimal    # needs network",
+    "out": "  1.85.0-aarch64-unknown-linux-gnu installed - rustc 1.85.0 (4d91de4e4 2025-02-17)\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo +1.85.0 --version",
+    "out": "cargo 1.85.0 (d73d2caf9 2024-12-31)\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo +1.85.0 test    # timings replaced by X.XXs; the doc tests can print in either order",
+    "out": "test count::tests::empty_text_is_an_error ... ok\ntest count::tests::ignores_case_and_punctuation ... ok\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in X.XXs\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in X.XXs\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in X.XXs\n\ntest no_words_is_a_failure ... ok\ntest prints_the_most_common_word_first ... ok\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in X.XXs\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in X.XXs\n   Doc-tests wordstat\ntest crates/wordstat/src/json.rs - json::Stats::to_json (line 6) ... ok\ntest crates/wordstat/src/lib.rs - (line 3) ... ok\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in X.XXs\n",
+    "exit": 0,
+    "varies": true
+   }
+  ],
+  "locked": [
+   {
+    "show": "$ cargo build --locked",
+    "out": "",
+    "exit": 0
+   },
+   {
+    "show": "$ grep -c \"^name = \" Cargo.lock    # packages in the one lock file",
+    "out": "13\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo tree --workspace --prefix none    # then without paths, sorted, one line per package",
+    "out": "itoa v1.0.18\nmemchr v2.8.3\nserde_core v1.0.229\nserde_json v1.0.154\nwordstat v0.1.0\nwordstat-report v0.1.0\nzmij v1.0.23\n",
+    "exit": 0
+   },
+   {
+    "show": "$ sed -n '/^name = \"serde_core\"/,/^$/p' Cargo.lock    # its dependencies, as the lock file lists them",
+    "out": "dependencies = [\n \"serde_derive\",\n]\n",
+    "exit": 0
+   }
+  ],
+  "go": [
+   {
+    "show": "$ go run example.com/app the cat and the dog the",
+    "out": "4 different words\n",
+    "exit": 0
+   },
+   {
+    "show": "$ go run example.com/app/cmd/dump the cat the dog",
+    "out": "# example.com/app/cmd/dump\napp/cmd/dump/main.go:17:23: undefined: wordstat.ToJSON\n",
+    "exit": 1,
+    "error": true
+   },
+   {
+    "show": "$ go run -tags json example.com/app/cmd/dump the cat the dog",
+    "out": "{\"cat\":1,\"dog\":1,\"the\":2}\n",
+    "exit": 0
+   }
+  ],
+  "go-internal": [
+   {
+    "show": "$ go build example.com/app/peek",
+    "out": "package example.com/app/peek\n\tapp/peek/main.go:6:2: use of internal package example.com/wordstat/internal/words not allowed\n",
+    "exit": 1,
+    "error": true
+   }
+  ],
+  "npm": [
+   {
+    "show": "$ npm install",
+    "out": "",
+    "exit": 0
+   },
+   {
+    "show": "$ npm ls",
+    "out": "wordstat-workspace@ /home/you/wordstat/npm\n├─┬ app@0.1.0 -> ./packages/app\n│ └── wordstat@0.1.0 deduped -> ./packages/wordstat\n└── wordstat@0.1.0 -> ./packages/wordstat\n\n",
+    "exit": 0
+   },
+   {
+    "show": "$ node packages/app/index.js",
+    "out": "{ the: 2, cat: 1, and: 1, dog: 1 }\n",
+    "exit": 0
+   },
+   {
+    "show": "$ node packages/app/peek.js",
+    "out": "Error [ERR_PACKAGE_PATH_NOT_EXPORTED]: Package subpath './normalize.js' is not defined by \"exports\" in /home/you/wordstat/npm/node_modules/wordstat/package.json imported from /home/you/wordstat/npm/packages/app/peek.js\n",
+    "exit": 1,
+    "error": true
+   }
+  ]
+ }
+}

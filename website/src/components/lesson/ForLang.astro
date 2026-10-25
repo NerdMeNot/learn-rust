@@ -1,0 +1,20 @@
+---
+// A part of a lesson only for readers coming from certain languages. It shows when
+// the reader's "Coming from" choice is one of them (CSS in Head.astro), so a Go reader
+// gets the Go mapping and a C++ reader the C++ details, without wading through both.
+//
+//   <ForLang only="go">In Go, `strings.Cut` is `split_once`.</ForLang>
+//   <ForLang only="c cpp" title="For C and C++ readers">…</ForLang>
+import { LANG, OTHERS, type Lang } from '../../lib/langs'
+
+interface Props { only: string; title?: string }
+const langs = Astro.props.only.split(/\s+/).filter(Boolean) as Lang[]
+for (const l of langs) if (!OTHERS.includes(l)) throw new Error(`ForLang: unknown language "${l}"`)
+const names = langs.map(l => LANG[l].name)
+const label = Astro.props.title ?? `Coming from ${names.length > 1 ? names.slice(0, -1).join(', ') + ' or ' + names.at(-1) : names[0]}`
+const color = langs.length === 1 ? LANG[langs[0]].color : 'var(--sl-color-accent)'
+---
+<aside class:list={['lr-forlang', ...langs.map(l => `lr-for-${l}`)]} style={`--c:${color}`}>
+  <p class="lr-lbl">{label}</p>
+  <div class="lr-forlang-body"><slot /></div>
+</aside>

@@ -1,0 +1,456 @@
+{
+ "id": "threads",
+ "title": "Threads",
+ "part": "concurrency",
+ "intro": "`thread::spawn` runs a closure on a new OS thread. `join` waits for that thread to finish.",
+ "coming_from": {
+  "go": "`thread::spawn` is `go func()`. `handle.join()` waits for that one thread and hands back its return value, where `wg.Wait()` waits for a count and returns nothing; the nearest Rust to a `WaitGroup` is `thread::scope`, or handles joined in turn. Each Rust thread is an operating-system thread, where goroutines are scheduled by Go's runtime onto fewer of them (the page counts both). A panic in a thread comes back to `join` as an `Err`, where a goroutine's panic ends the program. The closure needs `move` to take the data it uses.",
+  "kotlin": "`thread::spawn` is `thread { }`, and both start a thread of the operating system. Rust's `join()` also gives back the closure's result, as an `Err` if the thread panicked. The closure needs `move` to take ownership of what it uses.",
+  "python": "`thread::spawn` plus `join()` is `threading.Thread` plus `join()`, or `pool.submit` plus `future.result()`. A Rust thread is an operating-system thread like a Python one, and Rust has no global interpreter lock. A Python thread's exception is printed and `join()` returns as if nothing happened; here `join()` returns an `Err`.",
+  "typescript": "There is no worker file or `postMessage`: `thread::spawn` runs a closure on another thread in the same program. `move` hands the data to the thread instead of copying it (a worker gets a structured clone, except for a `SharedArrayBuffer`), and `join()` waits and gives back the result.",
+  "java": "`thread::spawn` starts an operating-system thread (Java calls it a platform thread), like `new Thread`, and `join()` returns the closure's value, like `Future.get()`. The difference is that the closure can't borrow locals, so you `move` them in, or use `thread::scope` to borrow them for the length of the scope.",
+  "csharp": "`thread::spawn` is `new Thread`, not `Task.Run`: it is not a thread-pool thread, and `join()` hands back the closure's return value. The closure must own what it uses, so you write `move`, since no garbage collector keeps borrowed locals alive.",
+  "c": "`thread::spawn` is `pthread_create` with a typed closure instead of a `void *` argument, and `join()` returns its result. The compiler refuses a thread that borrows a local, unless you use `thread::scope`, which joins before the local goes away.",
+  "cpp": "`thread::spawn(move || ...)` is `std::thread` with a lambda that captures by move, and `join()` returns the closure's value. Dropping a `JoinHandle` without joining detaches the thread, where destroying a joinable `std::thread` calls `std::terminate`. `std::jthread` joins in its destructor."
+ },
+ "notes": [
+  "Each Rust thread is an operating-system thread (the Book calls this the 1:1 model). For many tasks that mostly wait, Rust code usually uses async on a runtime crate such as Tokio instead: [Async Basics](/learn/async-basics/) starts there.",
+  "`join()` returns a `Result` because the thread might have panicked. `.unwrap()` on that `Err` starts a new panic in the joining thread.",
+  "`thread::scope` lets threads borrow local variables, because the scope joins all of them before it ends.",
+  "`std` has no way to kill or interrupt a thread. To stop one, share a flag it checks or close the channel it reads from."
+ ],
+ "gotcha": {
+  "title": "A thread that borrows a local variable",
+  "verdict": "fine-elsewhere",
+  "looks_fine": "A goroutine can use `names` freely. The garbage collector keeps `names` alive as long as anything still uses it.",
+  "rust_sees": "Without `move`, the closure only borrows `names`. `names` is freed when `main` ends. And `spawn` makes no promise that the thread finishes before then. It could run forever.",
+  "why": "You call `join` here, so it would be fine. But the compiler judges `spawn` by its signature, not by what you do afterwards. Remove the `join` and you would have a thread reading freed memory. So Rust asks the thread to take ownership with `move`.",
+  "langs": {
+   "go": {
+    "status": "runs",
+    "says": "Go runs this and prints 3. The goroutine reads `names` from `main` directly, and the garbage collector keeps the slice alive.",
+    "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"sync\"\n)\n\nfunc main() {\n\tnames := []string{\"a\", \"b\", \"c\"}\n\tvar wg sync.WaitGroup\n\twg.Add(1)\n\tgo func() {\n\t\tdefer wg.Done()\n\t\tfmt.Println(len(names))\n\t}()\n\twg.Wait()\n}\n",
+    "out": "3\n"
+   },
+   "kotlin": {
+    "status": "runs",
+    "says": "Kotlin runs this and prints 3. The thread reads `names` directly, and the garbage collector keeps the list alive.",
+    "code": "import kotlin.concurrent.thread\n\nfun main() {\n    val names = listOf(\"a\", \"b\", \"c\")\n    val t = thread { println(names.size) }\n    t.join()\n}\n",
+    "out": "3\n"
+   },
+   "python": {
+    "status": "runs",
+    "says": "Python prints 3. The thread reads `names` from the main program directly, and the garbage collector keeps the list alive.",
+    "code": "import threading\n\nnames = [\"a\", \"b\", \"c\"]\nt = threading.Thread(target=lambda: print(len(names)))\nt.start()\nt.join()\n",
+    "out": "3\n"
+   },
+   "typescript": {
+    "status": "crash",
+    "says": "Compiles, then the worker throws `ReferenceError: names is not defined`. A worker runs in its own separate JavaScript world and can't see the main thread's variables.",
+    "code": "import { Worker } from \"node:worker_threads\";\n\nconst names = [\"a\", \"b\", \"c\"];\n// the worker's code runs in a separate JS world\nnew Worker(\"console.log(names.length)\", { eval: true });\n",
+    "out": "\nnode:internal/event_target:1149\n  process.nextTick(() => { throw err; });\n                           ^\n[worker eval]:1\nconsole.log(names.length)\n            ^\n\nReferenceError: names is not defined\n    at [worker eval]:1:13\n    at runScriptInThisContext (node:internal/vm:219:10)\n    at node:internal/process/execution:451:12\n    at [worker eval]-wrapper:6:24\n    at runScriptInContext (node:internal/process/execution:449:60)\n    at evalFunction (node:internal/process/execution:283:30)\n    at evalTypeScript (node:internal/process/execution:295:3)\n    at MessagePort.<anonymous> (node:internal/main/worker_thread:191:9)\n    at [nodejs.internal.kHybridDispatch] (node:internal/event_target:869:20)\n    at MessagePort.<anonymous> (node:internal/per_context/messageport:23:28)\n\nNode.js v24.22.1\n"
+   },
+   "java": {
+    "status": "runs",
+    "says": "The lambda captures a reference to the list, and the garbage collector keeps it alive, so this prints 3. Java only asks that the captured variable is never reassigned.",
+    "code": "import java.util.List;\n\npublic class Main {\n    public static void main(String[] args) throws InterruptedException {\n        var names = List.of(\"a\", \"b\", \"c\");\n        var t = new Thread(() -> {\n            System.out.println(names.size());\n        });\n        t.start();\n        t.join();\n    }\n}\n",
+    "out": "3\n"
+   },
+   "csharp": {
+    "status": "runs",
+    "says": "The lambda captures names, and the garbage collector keeps it alive while the thread runs, so this prints 3.",
+    "code": "string[] names = [\"a\", \"b\", \"c\"];\nvar t = new Thread(() =>\n{\n    Console.WriteLine(names.Length);\n});\nt.Start();\nt.Join();\n",
+    "out": "3\n"
+   },
+   "c": {
+    "status": "runs",
+    "says": "C hands the thread a pointer to `names` on main's stack. It works because main waits with `pthread_join`, but nothing checks that it does.",
+    "code": "#include <pthread.h>\n#include <stdio.h>\n\nvoid *worker(void *arg) {\n    const char **names = arg;   // points at main's local array\n    size_t len = 0;\n    while (names[len] != NULL) len++;\n    printf(\"%zu\\n\", len);\n    return NULL;\n}\n\nint main(void) {\n    const char *names[] = {\"a\", \"b\", \"c\", NULL};\n    pthread_t t;\n    pthread_create(&t, NULL, worker, names);\n    pthread_join(t, NULL);\n    return 0;\n}\n",
+    "out": "3\n"
+   },
+   "cpp": {
+    "status": "runs",
+    "says": "Capturing `names` by reference compiles and prints 3. It is only safe because `join()` runs before `names` goes away; `detach()` would leave a dangling reference.",
+    "code": "#include <iostream>\n#include <string>\n#include <thread>\n#include <vector>\n\nint main() {\n    std::vector<std::string> names{\"a\", \"b\", \"c\"};\n    std::thread t([&] {\n        std::cout << names.size() << \"\\n\";\n    });\n    t.join();\n}\n",
+    "out": "3\n"
+   }
+  },
+  "code": "use std::thread;\n\nfn main() {\n    let names = vec![\"a\", \"b\", \"c\"];\n    let handle = thread::spawn(|| {\n        println!(\"{}\", names.len());\n    });\n    handle.join().unwrap();\n}\n",
+  "error": "error[E0373]: closure may outlive the current function, but it borrows `names`, which is owned by the current function\n --> src/main.rs:5:32\n  |\n5 |     let handle = thread::spawn(|| {\n  |                                ^^ may outlive borrowed value `names`\n6 |         println!(\"{}\", names.len());\n  |                        ----- `names` is borrowed here\n  |\nnote: function requires argument type to outlive `'static`\n --> src/main.rs:5:18\n  |\n5 |       let handle = thread::spawn(|| {\n  |  __________________^\n6 | |         println!(\"{}\", names.len());\n7 | |     });\n  | |______^\nhelp: to force the closure to take ownership of `names` (and any other referenced variables), use the `move` keyword\n  |\n5 |     let handle = thread::spawn(move || {\n  |                                ++++\n",
+  "error_code": "E0373",
+  "fixed": {
+   "code": "use std::thread;\n\nfn main() {\n    let names = vec![\"a\", \"b\", \"c\"];\n    let handle = thread::spawn(move || {\n        println!(\"{}\", names.len());\n    });\n    handle.join().unwrap();\n}\n",
+   "out": "3\n"
+  }
+ },
+ "order": 41,
+ "program": {
+  "rust": {
+   "code": "use std::thread;\n\nfn main() {\n    let names = vec![\"a\", \"b\", \"c\"];\n\n    let handle = thread::spawn(move || {     // move: the thread takes names\n        for n in &names {\n            println!(\"worker sees {n}\");\n        }\n        names.len()                          // threads can return a value\n    });\n\n    let count = handle.join().unwrap();      // wait for the thread\n    println!(\"worker counted {count}\");\n}\n",
+   "out": "worker sees a\nworker sees b\nworker sees c\nworker counted 3\n"
+  },
+  "go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"sync\"\n)\n\nfunc main() {\n\tnames := []string{\"a\", \"b\", \"c\"}\n\tvar count int\n\tvar wg sync.WaitGroup\n\n\twg.Add(1)\n\tgo func() {\n\t\tdefer wg.Done()\n\t\tfor _, n := range names {\n\t\t\tfmt.Println(\"worker sees\", n)\n\t\t}\n\t\tcount = len(names)\n\t}()\n\n\twg.Wait()\n\tfmt.Println(\"worker counted\", count)\n}\n",
+   "out": "worker sees a\nworker sees b\nworker sees c\nworker counted 3\n"
+  },
+  "kotlin": {
+   "code": "import kotlin.concurrent.thread\n\nfun main() {\n    val names = listOf(\"a\", \"b\", \"c\")\n    var count = 0\n\n    val t = thread {\n        for (n in names) {\n            println(\"worker sees $n\")\n        }\n        count = names.size\n    }\n\n    t.join()\n    println(\"worker counted $count\")\n}\n",
+   "out": "worker sees a\nworker sees b\nworker sees c\nworker counted 3\n"
+  },
+  "python": {
+   "code": "from concurrent.futures import ThreadPoolExecutor\n\nnames = [\"a\", \"b\", \"c\"]\n\n\ndef work() -> int:\n    for n in names:\n        print(f\"worker sees {n}\")\n    return len(names)  # a thread can hand back a value through a future\n\n\nwith ThreadPoolExecutor() as pool:\n    future = pool.submit(work)\n    count = future.result()  # wait for the thread\nprint(f\"worker counted {count}\")\n",
+   "out": "worker sees a\nworker sees b\nworker sees c\nworker counted 3\n"
+  },
+  "typescript": {
+   "code": "import { Worker, isMainThread, parentPort, workerData } from \"node:worker_threads\";\n\nif (isMainThread) {\n  const names = [\"a\", \"b\", \"c\"];\n  // this same file runs again in the worker; names is copied to it\n  const worker = new Worker(__filename, { workerData: names });\n\n  let count = 0;\n  worker.on(\"message\", (n: number) => (count = n)); // the worker's answer\n  worker.on(\"exit\", () => console.log(`worker counted ${count}`));\n} else {\n  const names: string[] = workerData;\n  for (const n of names) {\n    console.log(`worker sees ${n}`);\n  }\n  parentPort!.postMessage(names.length);\n}\n",
+   "out": "worker sees a\nworker sees b\nworker sees c\nworker counted 3\n"
+  },
+  "java": {
+   "code": "import java.util.List;\nimport java.util.concurrent.Executors;\n\npublic class Main {\n    public static void main(String[] args) throws Exception {\n        var names = List.of(\"a\", \"b\", \"c\");\n\n        try (var pool = Executors.newSingleThreadExecutor()) {\n            // a Callable can return a value, unlike a plain Thread\n            var future = pool.submit(() -> {\n                for (var n : names) {\n                    System.out.println(\"worker sees \" + n);\n                }\n                return names.size();\n            });\n\n            int count = future.get();   // wait for the worker\n            System.out.println(\"worker counted \" + count);\n        }\n    }\n}\n",
+   "out": "worker sees a\nworker sees b\nworker sees c\nworker counted 3\n"
+  },
+  "csharp": {
+   "code": "string[] names = [\"a\", \"b\", \"c\"];\n\n// Task.Run runs the work on a pool thread. It can return a value.\nvar worker = Task.Run(() =>\n{\n    foreach (var n in names)\n    {\n        Console.WriteLine($\"worker sees {n}\");\n    }\n    return names.Length;\n});\n\nvar count = await worker;    // wait for it\nConsole.WriteLine($\"worker counted {count}\");\n",
+   "out": "worker sees a\nworker sees b\nworker sees c\nworker counted 3\n"
+  },
+  "c": {
+   "code": "#include <pthread.h>\n#include <stdio.h>\n\nstruct Job {\n    const char *names[3];\n    size_t len;\n    size_t count;   // the thread writes its answer here\n};\n\nvoid *worker(void *arg) {\n    struct Job *job = arg;\n    for (size_t i = 0; i < job->len; i++) {\n        printf(\"worker sees %s\\n\", job->names[i]);\n    }\n    job->count = job->len;\n    return NULL;\n}\n\nint main(void) {\n    struct Job job = {{\"a\", \"b\", \"c\"}, 3, 0};\n\n    pthread_t t;\n    pthread_create(&t, NULL, worker, &job);\n    pthread_join(t, NULL);              // wait for the thread\n\n    printf(\"worker counted %zu\\n\", job.count);\n    return 0;\n}\n",
+   "out": "worker sees a\nworker sees b\nworker sees c\nworker counted 3\n"
+  },
+  "cpp": {
+   "code": "#include <future>\n#include <iostream>\n#include <string>\n#include <utility>\n#include <vector>\n\nint main() {\n    std::vector<std::string> names{\"a\", \"b\", \"c\"};\n\n    // std::async runs the lambda on a new thread and hands back its result later\n    auto result = std::async(std::launch::async, [names = std::move(names)] {   // the thread takes names\n        for (const auto& n : names) {\n            std::cout << \"worker sees \" << n << \"\\n\";\n        }\n        return names.size();\n    });\n\n    auto count = result.get();   // wait for the thread\n    std::cout << \"worker counted \" << count << \"\\n\";\n}\n",
+   "out": "worker sees a\nworker sees b\nworker sees c\nworker counted 3\n"
+  }
+ },
+ "faq": [],
+ "snippets": {
+  "builder.rs": {
+   "code": "use std::thread::{self, Builder};\n\nfn main() {\n    println!(\"main thread name: {:?}\", thread::current().name());\n\n    let handle = Builder::new()\n        .name(\"indexer\".to_string())\n        .stack_size(256 * 1024)\n        .spawn(|| {\n            // a thread can ask for its own name\n            let me = thread::current();\n            format!(\"hello from {:?}\", me.name())\n        })\n        .expect(\"the OS refused to create the thread\");\n    println!(\"{}\", handle.join().unwrap());\n\n    let unnamed = thread::spawn(|| thread::current().name().map(String::from));\n    println!(\"a plain spawn is named: {:?}\", unnamed.join().unwrap());\n}\n",
+   "out": "main thread name: Some(\"main\")\nhello from Some(\"indexer\")\na plain spawn is named: None\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-others.rs": {
+   "code": "use std::cell::Cell;\nuse std::sync::Arc;\nuse std::sync::atomic::{AtomicBool, Ordering};\nuse std::thread;\n\nthread_local! {\n    static COUNTER: Cell<u32> = const { Cell::new(0) };\n}\n\nfn main() {\n    // park / unpark: sleep until another thread says so (loop: wake-ups can be spurious)\n    let ready = Arc::new(AtomicBool::new(false));\n    let flag = Arc::clone(&ready);\n    let waiter = thread::spawn(move || {\n        while !flag.load(Ordering::Acquire) {\n            thread::park();\n        }\n        \"woken\"\n    });\n    ready.store(true, Ordering::Release);\n    waiter.thread().unpark();\n    assert_eq!(waiter.join().unwrap(), \"woken\");\n\n    // yield_now is a hint to the scheduler, with no visible result\n    thread::yield_now();\n\n    // is_finished is true once the closure has returned\n    let done = thread::spawn(|| 1);\n    while !done.is_finished() {\n        thread::yield_now();\n    }\n    assert_eq!(done.join().unwrap(), 1);\n\n    // an unnamed thread has no name; ids are unique per thread\n    let id_here = thread::current().id();\n    let id_there = thread::spawn(|| thread::current().id()).join().unwrap();\n    assert_ne!(id_here, id_there);\n    // thread_local!: every thread has its own copy, starting fresh\n    COUNTER.set(10);\n    let theirs = thread::spawn(|| {\n        COUNTER.set(COUNTER.get() + 1);\n        COUNTER.get()\n    })\n    .join()\n    .unwrap();\n    assert_eq!((theirs, COUNTER.get()), (1, 10));\n    println!(\"others hold\");\n}\n",
+   "out": "others hold\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-scope-panic.rs": {
+   "code": "use std::panic::{self, AssertUnwindSafe};\nuse std::sync::atomic::{AtomicBool, Ordering};\nuse std::thread;\n\nfn main() {\n    panic::set_hook(Box::new(|_| {})); // keep the expected panics quiet\n\n    // a scoped thread that panics and is never joined: the scope itself panics\n    let outcome = panic::catch_unwind(AssertUnwindSafe(|| {\n        thread::scope(|s| {\n            s.spawn(|| panic!(\"inside the scope\"));\n        });\n    }));\n    let payload = outcome.expect_err(\"the scope should have panicked\");\n    let text = payload.downcast_ref::<&str>().copied().unwrap_or(\"\");\n    assert_eq!(text, \"a scoped thread panicked\");\n\n    // joined by hand: the scope returns normally and join holds the Err\n    let joined = thread::scope(|s| s.spawn(|| panic!(\"inside the scope\")).join().is_err());\n    assert!(joined);\n    // a panic does not cancel the sibling threads: the scope waits for them to finish\n    let sibling_finished = AtomicBool::new(false);\n    let outcome = panic::catch_unwind(AssertUnwindSafe(|| {\n        thread::scope(|s| {\n            s.spawn(|| panic!(\"inside the scope\"));\n            s.spawn(|| {\n                thread::yield_now();\n                sibling_finished.store(true, Ordering::SeqCst);\n            });\n        });\n    }));\n    assert!(outcome.is_err());\n    assert!(sibling_finished.load(Ordering::SeqCst));\n    println!(\"scope facts hold\");\n}\n",
+   "out": "scope facts hold\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "join-result.rs": {
+   "code": "use std::thread;\n\nfn main() {\n    let handle = thread::spawn(|| {\n        println!(\"in the thread\");\n        6 * 7\n    });\n    // join waits for the thread, then hands back what the closure returned\n    let result = handle.join();\n    println!(\"join gave: {:?}\", result);\n}\n",
+   "out": "in the thread\njoin gave: Ok(42)\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "join-unwrap.panic.rs": {
+   "code": "use std::thread;\n\nfn main() {\n    let handle = thread::spawn(|| -> i32 { panic!(\"worker failed\") });\n    let n = handle.join().unwrap();\n    println!(\"never reached: {n}\");\n}\n",
+   "out": "\nthread '<unnamed>' (1) panicked at src/main.rs:4:44:\nworker failed\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\nthread 'main' (1) panicked at src/main.rs:5:27:\ncalled `Result::unwrap()` on an `Err` value: Any { .. }\n",
+   "lang": "rust",
+   "exit": 101
+  },
+  "loop-var.fail.rs": {
+   "code": "use std::thread;\n\nfn main() {\n    let mut handles = Vec::new();\n    for i in 0..3 {\n        handles.push(thread::spawn(|| println!(\"thread {i}\")));\n    }\n    for h in handles {\n        h.join().unwrap();\n    }\n}\n",
+   "error": "error[E0373]: closure may outlive the current function, but it borrows `i`, which is owned by the current function\n --> src/main.rs:6:36\n  |\n6 |         handles.push(thread::spawn(|| println!(\"thread {i}\")));\n  |                                    ^^                   - `i` is borrowed here\n  |                                    |\n  |                                    may outlive borrowed value `i`\n  |\nnote: function requires argument type to outlive `'static`\n --> src/main.rs:6:22\n  |\n6 |         handles.push(thread::spawn(|| println!(\"thread {i}\")));\n  |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nhelp: to force the closure to take ownership of `i` (and any other referenced variables), use the `move` keyword\n  |\n6 |         handles.push(thread::spawn(move || println!(\"thread {i}\")));\n  |                                    ++++\n",
+   "lang": "rust"
+  },
+  "main-returns.rs": {
+   "code": "use std::sync::mpsc;\nuse std::thread;\n\nstruct Noisy;\nimpl Drop for Noisy {\n    fn drop(&mut self) {\n        println!(\"child: Noisy dropped\");\n    }\n}\n\nfn main() {\n    let (started_tx, started_rx) = mpsc::channel();\n\n    // the handle is dropped at once: dropping a JoinHandle detaches the thread\n    thread::spawn(move || {\n        let _guard = Noisy;\n        started_tx.send(()).unwrap();\n        loop {\n            thread::park(); // sleeps until unparked; nobody ever unparks it\n        }\n    });\n\n    // the channel is only here to know the child is running before main ends\n    started_rx.recv().unwrap();\n    println!(\"main: the child is running, and main returns now\");\n}\n",
+   "out": "main: the child is running, and main returns now\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "many-threads.rs": {
+   "code": "use std::sync::Barrier;\nuse std::thread;\n\nconst N: usize = 10_000;\n\nfn main() {\n    // wait() returns only once N + 1 threads are waiting: N workers and main\n    let barrier = Barrier::new(N + 1);\n\n    let total: usize = thread::scope(|s| {\n        let handles: Vec<_> = (0..N)\n            .map(|_| {\n                s.spawn(|| {\n                    barrier.wait();\n                    1\n                })\n            })\n            .collect();\n        barrier.wait(); // so all N threads were alive at the same time\n        handles.into_iter().map(|h| h.join().unwrap()).sum()\n    });\n\n    println!(\"threads alive at once: {N}, each added 1, total: {total}\");\n    assert_eq!(total, N);\n}\n",
+   "out": "threads alive at once: 10000, each added 1, total: 10000\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "many.rs": {
+   "code": "use std::thread;\n\nfn main() {\n    let inputs = vec![5u64, 3, 8, 1];\n\n    // start every thread first, then join them in the order they were started\n    let handles: Vec<_> = inputs\n        .iter()\n        .map(|&n| thread::spawn(move || (1..=n).product::<u64>()))\n        .collect();\n\n    let results: Vec<u64> = handles.into_iter().map(|h| h.join().unwrap()).collect();\n    println!(\"factorials: {:?}\", results);\n    assert_eq!(results, vec![120, 6, 40320, 1]);\n}\n",
+   "out": "factorials: [120, 6, 40320, 1]\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "named-panic.panic.rs": {
+   "code": "use std::thread::Builder;\n\nfn main() {\n    let handle = Builder::new()\n        .name(\"indexer\".to_string())\n        .spawn(|| panic!(\"disk full\"))\n        .unwrap();\n    // join's Err is a value; unwrap turns it into a panic in main\n    handle.join().unwrap();\n}\n",
+   "out": "\nthread 'indexer' (1) panicked at src/main.rs:6:19:\ndisk full\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\nthread 'main' (1) panicked at src/main.rs:9:19:\ncalled `Result::unwrap()` on an `Err` value: Any { .. }\n",
+   "lang": "rust",
+   "exit": 101
+  },
+  "nested-result.rs": {
+   "code": "use std::thread;\n\nfn parse(text: &'static str) -> thread::JoinHandle<Result<u32, std::num::ParseIntError>> {\n    thread::spawn(move || text.parse::<u32>())\n}\n\nfn main() {\n    // two layers: join says whether the thread panicked, the inner Result is the job's own\n    let good = parse(\"17\").join();\n    let bad = parse(\"seventeen\").join();\n    println!(\"good: {:?}\", good);\n    println!(\"bad: {:?}\", bad);\n\n    // flatten both layers with ? in a function that returns a Result\n    fn total() -> Result<u32, Box<dyn std::error::Error>> {\n        let a = parse(\"20\").join().map_err(|_| \"thread panicked\")??;\n        let b = parse(\"22\").join().map_err(|_| \"thread panicked\")??;\n        Ok(a + b)\n    }\n    println!(\"total: {:?}\", total().unwrap());\n}\n",
+   "out": "good: Ok(Ok(17))\nbad: Ok(Err(ParseIntError { kind: InvalidDigit }))\ntotal: 42\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "panic-join.rs": {
+   "code": "use std::thread;\n\n// Runs one failing thread to the end and reports what join gave back.\nfn report(name: &str, handle: thread::JoinHandle<i32>) {\n    match handle.join() {\n        Ok(n) => println!(\"{name}: returned {n}\"),\n        Err(payload) => {\n            let as_str = payload.downcast_ref::<&str>().is_some();\n            let as_string = payload.downcast_ref::<String>().is_some();\n            println!(\"{name}: panicked; payload is &str: {as_str}, String: {as_string}\");\n        }\n    }\n}\n\nfn main() {\n    // fixed text is a &str; so is a \"formatted\" message the compiler can fold into fixed text\n    report(\"literal\", thread::spawn(|| panic!(\"worker failed\")));\n    report(\"folded\", thread::spawn(|| panic!(\"boom {}\", 1)));\n    // a message built from a value only known at run time is a String\n    report(\n        \"built\",\n        thread::spawn(|| {\n            let v: Vec<i32> = Vec::new();\n            v[0]\n        }),\n    );\n    println!(\"main carries on\");\n}\n",
+   "out": "\nthread '<unnamed>' (1) panicked at src/main.rs:17:40:\nworker failed\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nliteral: panicked; payload is &str: true, String: false\n\nthread '<unnamed>' (1) panicked at src/main.rs:18:39:\nboom 1\nfolded: panicked; payload is &str: true, String: false\n\nthread '<unnamed>' (1) panicked at src/main.rs:24:14:\nindex out of bounds: the len is 0 but the index is 0\nbuilt: panicked; payload is &str: false, String: true\nmain carries on\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "parallelism.rs": {
+   "code": "use std::thread;\n\nfn main() {\n    let n = thread::available_parallelism().expect(\"the OS would not say\");\n    // the number belongs to the machine running this page: only a bound is stable\n    println!(\"at least one: {}\", n.get() >= 1);\n}\n",
+   "out": "at least one: true\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "round-trip.rs": {
+   "code": "use std::thread;\n\nfn main() {\n    let numbers = vec![42, 7, 19, 3];\n    let before = numbers.as_ptr();\n\n    // move the Vec in, work on it, return it: ownership goes there and back\n    let handle = thread::spawn(move || {\n        let mut numbers = numbers;\n        numbers.sort();\n        numbers\n    });\n    let sorted = handle.join().unwrap();\n\n    println!(\"sorted: {:?}\", sorted);\n    println!(\"same buffer, nothing copied: {}\", sorted.as_ptr() == before);\n}\n",
+   "out": "sorted: [3, 7, 19, 42]\nsame buffer, nothing copied: true\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "scope-mut.fail.rs": {
+   "code": "use std::thread;\n\nfn main() {\n    let mut count = 0;\n    thread::scope(|s| {\n        s.spawn(|| count += 1);\n        s.spawn(|| count += 1);\n    });\n    println!(\"count: {count}\");\n}\n",
+   "error": "error[E0499]: cannot borrow `count` as mutable more than once at a time\n --> src/main.rs:7:17\n  |\n5 |     thread::scope(|s| {\n  |                    - has type `&'1 Scope<'1, '_>`\n6 |         s.spawn(|| count += 1);\n  |         ----------------------\n  |         |       |  |\n  |         |       |  first borrow occurs due to use of `count` in closure\n  |         |       first mutable borrow occurs here\n  |         argument requires that `count` is borrowed for `'1`\n7 |         s.spawn(|| count += 1);\n  |                 ^^ ----- second borrow occurs due to use of `count` in closure\n  |                 |\n  |                 second mutable borrow occurs here\n  ... (notes pointing into the standard library trimmed)",
+   "lang": "rust"
+  },
+  "scope.rs": {
+   "code": "use std::thread;\n\nfn main() {\n    let words = vec![\"alpha\", \"beta\", \"gamma\", \"delta\"];\n    let mut longest = 0;\n\n    // no move, no Arc: the scope joins every thread before it returns\n    let total = thread::scope(|s| {\n        let counting = s.spawn(|| words.iter().map(|w| w.len()).sum::<usize>());\n        s.spawn(|| longest = words.iter().map(|w| w.len()).max().unwrap_or(0));\n        counting.join().unwrap()\n    });\n\n    println!(\"total letters: {total}\");\n    println!(\"longest word: {longest}\");\n    println!(\"words is still ours: {}\", words.len());\n}\n",
+   "out": "total letters: 19\nlongest word: 5\nwords is still ours: 4\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "share-by-clone.rs": {
+   "code": "use std::thread;\n\nfn main() {\n    let names = vec![String::from(\"a\"), String::from(\"b\")];\n\n    // the thread gets its own copy; main keeps the original\n    let for_thread = names.clone();\n    let handle = thread::spawn(move || for_thread.len());\n\n    println!(\"main still has {} names\", names.len());\n    println!(\"the thread counted {}\", handle.join().unwrap());\n}\n",
+   "out": "main still has 2 names\nthe thread counted 2\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "stop-channel.rs": {
+   "code": "use std::sync::mpsc;\nuse std::thread;\n\nfn main() {\n    let (tx, rx) = mpsc::channel();\n\n    // the worker's loop ends when every sender is gone: the channel is closed\n    let worker = thread::spawn(move || {\n        let mut sum = 0;\n        for job in rx {\n            sum += job;\n        }\n        sum\n    });\n\n    for job in 1..=3 {\n        tx.send(job).unwrap();\n    }\n    drop(tx); // closing the channel is the stop signal\n    println!(\n        \"worker added up {} before it stopped\",\n        worker.join().unwrap()\n    );\n}\n",
+   "out": "worker added up 6 before it stopped\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "stop-flag.rs": {
+   "code": "use std::sync::atomic::{AtomicBool, Ordering};\nuse std::thread;\n\nfn main() {\n    let stop = AtomicBool::new(false);\n\n    // the worker checks the flag; nothing else can make it stop\n    let result = thread::scope(|s| {\n        let worker = s.spawn(|| {\n            while !stop.load(Ordering::Relaxed) {\n                thread::yield_now(); // a real worker does a bit of work here\n            }\n            \"stopped because the flag was set\"\n        });\n        stop.store(true, Ordering::Relaxed);\n        worker.join().unwrap()\n    });\n    println!(\"worker: {result}\");\n}\n",
+   "out": "worker: stopped because the flag was set\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "use-after-move.fail.rs": {
+   "code": "use std::thread;\n\nfn main() {\n    let names = vec![String::from(\"a\"), String::from(\"b\")];\n    let handle = thread::spawn(move || names.len());\n    println!(\"main still has {} names\", names.len());\n    handle.join().unwrap();\n}\n",
+   "error": "error[E0382]: borrow of moved value: `names`\n --> src/main.rs:6:41\n  |\n4 |     let names = vec![String::from(\"a\"), String::from(\"b\")];\n  |         ----- move occurs because `names` has type `Vec<String>`, which does not implement the `Copy` trait\n5 |     let handle = thread::spawn(move || names.len());\n  |                                ------- ----- variable moved due to use in closure\n  |                                |\n  |                                value moved into closure here\n6 |     println!(\"main still has {} names\", names.len());\n  |                                         ^^^^^ value borrowed here after move\n  |\nhelp: consider cloning the value before moving it into the closure\n  |\n5 ~     let value = names.clone();\n6 ~     let handle = thread::spawn(move || value.len());",
+   "lang": "rust"
+  },
+  "async-blocks.cpp": {
+   "code": "#include <atomic>\n#include <chrono>\n#include <future>\n#include <iostream>\n#include <thread>\n\nint main() {\n    std::atomic<bool> finished = false;\n    {\n        auto future = std::async(std::launch::async, [&] {\n            std::this_thread::sleep_for(std::chrono::milliseconds(200));\n            finished = true;\n        });\n    }   // the future is destroyed unused, and its destructor waits for the task\n    std::cout << std::boolalpha << \"next line: the task has already finished: \" << finished << \"\\n\";\n}\n",
+   "out": "next line: the task has already finished: true\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "cancel.cs": {
+   "code": "using var source = new CancellationTokenSource();\nvar worker = new Thread(() =>\n{\n    source.Token.WaitHandle.WaitOne(); // a real worker checks IsCancellationRequested\n    Console.WriteLine(\"worker: cancellation was requested\");\n});\nworker.Start();\nsource.Cancel();\nworker.Join();\n",
+   "out": "worker: cancellation was requested\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "cancel.go": {
+   "code": "package main\n\nimport (\n\t\"context\"\n\t\"fmt\"\n)\n\nfunc main() {\n\tctx, cancel := context.WithCancel(context.Background())\n\tdone := make(chan string)\n\tgo func() {\n\t\t<-ctx.Done() // a real worker checks this between pieces of work\n\t\tdone <- \"goroutine: ctx.Err() is \" + ctx.Err().Error()\n\t}()\n\tcancel()\n\tfmt.Println(<-done)\n}\n",
+   "out": "goroutine: ctx.Err() is context canceled\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "cancel.java": {
+   "code": "public class Main {\n    public static void main(String[] args) throws Exception {\n        var worker = new Thread(() -> {\n            try {\n                Thread.sleep(60_000); // a blocking call: interrupt() wakes it\n                System.out.println(\"worker: slept the whole minute\");\n            } catch (InterruptedException e) {\n                System.out.println(\"worker: interrupted\");\n            }\n        });\n        worker.start();\n        worker.interrupt();\n        worker.join();\n    }\n}\n",
+   "out": "worker: interrupted\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "cancel.py": {
+   "code": "import threading\n\nstop = threading.Event()\n\n\ndef work():\n    stop.wait()  # a real worker checks stop.is_set() between pieces of work\n    print(\"worker: the event was set\")\n\n\nt = threading.Thread(target=work)\nt.start()\nstop.set()\nt.join()\n",
+   "out": "worker: the event was set\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "executor.py": {
+   "code": "from concurrent.futures import ThreadPoolExecutor\n\n\ndef parse(text):\n    return int(text)\n\n\nwith ThreadPoolExecutor() as pool:\n    good = pool.submit(parse, \"17\")\n    bad = pool.submit(parse, \"seventeen\")\n    print(\"good.result():\", good.result())\n    try:\n        bad.result()  # the worker's exception is raised here\n    except ValueError as e:\n        print(\"bad.result() raised ValueError:\", e)\n",
+   "out": "good.result(): 17\nbad.result() raised ValueError: invalid literal for int() with base 10: 'seventeen'\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "forgot-join.crash.cpp": {
+   "code": "#include <iostream>\n#include <thread>\n\nint main() {\n    std::thread t([] {});\n    std::cout << \"main: leaving without join() or detach()\\n\";\n}   // t is destroyed while still joinable: std::terminate\n",
+   "out": "main: leaving without join() or detach()\nterminate called without an active exception\n",
+   "lang": "cpp",
+   "exit": -6
+  },
+  "gil.py": {
+   "code": "import sys\nimport threading\nimport time\n\nprint(\"GIL enabled:\", sys._is_gil_enabled())\n\n\ndef waiting():\n    time.sleep(0.2)  # what waiting for I/O looks like to the interpreter\n\n\ndef counting():\n    n = 0\n    for _ in range(3_000_000):  # Python bytecode, which needs the lock\n        n += 1\n\n\ndef run_four_threads(work):\n    \"\"\"Wall-clock seconds and CPU seconds (all threads added up) for four threads at once.\"\"\"\n    threads = [threading.Thread(target=work) for _ in range(4)]\n    wall, cpu = time.perf_counter(), time.process_time()\n    for t in threads:\n        t.start()\n    for t in threads:\n        t.join()\n    return time.perf_counter() - wall, time.process_time() - cpu\n\n\nwall, _ = run_four_threads(waiting)\nprint(\"4 threads that wait took less than 2 sleeps:\", wall < 0.4)  # one after another: 4\n\nwall, cpu = run_four_threads(counting)\n# more CPU time than wall time would mean that two threads ran at the same moment\nprint(\"4 threads counting ran at the same moment:\", cpu > 1.3 * wall)\n",
+   "out": "GIL enabled: True\n4 threads that wait took less than 2 sleeps: True\n4 threads counting ran at the same moment: False\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "join-status.c": {
+   "code": "#include <errno.h>\n#include <pthread.h>\n#include <stdio.h>\n#include <string.h>\n\nvoid *worker(void *arg) {\n    (void)arg;\n    return (void *)42;                       // the thread's value travels as a void *\n}\n\nint main(void) {\n    pthread_t t;\n    pthread_create(&t, NULL, worker, NULL);\n    void *result;\n    int status = pthread_join(t, &result);   // the int is about the join call itself\n    printf(\"join status: %d, the thread's value: %ld\\n\", status, (long)result);\n\n    status = pthread_join(pthread_self(), NULL); // a join that cannot work\n    printf(\"joining myself: status %d (%s)\\n\", status, strerror(status));\n    return 0;\n}\n",
+   "out": "join status: 0, the thread's value: 42\njoining myself: status 35 (Resource deadlock avoided)\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "jthread-stop.cpp": {
+   "code": "#include <atomic>\n#include <iostream>\n#include <thread>\n\nint main() {\n    std::atomic<bool> saw_stop = false;\n    {\n        std::jthread t([&](std::stop_token st) {\n            while (!st.stop_requested()) std::this_thread::yield();\n            saw_stop = true;\n        });\n        t.request_stop();\n    }   // ~jthread joins\n    std::cout << \"worker saw the stop request: \" << std::boolalpha << saw_stop << \"\\n\";\n}\n",
+   "out": "worker saw the stop request: true\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "jthread.cpp": {
+   "code": "#include <iostream>\n#include <thread>\n\nint main() {\n    std::cout << \"main: starting the worker\\n\";\n    {\n        std::jthread t([] { std::cout << \"worker ran\\n\"; });\n    }   // ~jthread joins, so the worker has finished here\n    std::cout << \"main: after the block\\n\";\n}\n",
+   "out": "main: starting the worker\nworker ran\nmain: after the block\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "loopvar.go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"sync\"\n)\n\nfunc main() {\n\tresults := make([]int, 4)\n\tvar wg sync.WaitGroup\n\tfor i := 0; i < 4; i++ {\n\t\twg.Go(func() { results[i] = i * i }) // since Go 1.22 each iteration has its own i\n\t}\n\twg.Wait()\n\tfmt.Println(\"results:\", results)\n}\n",
+   "out": "results: [0 1 4 9]\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "main-returns.c": {
+   "code": "#include <pthread.h>\n#include <stdio.h>\n#include <unistd.h>\n\nstatic pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;\nstatic pthread_cond_t started = PTHREAD_COND_INITIALIZER;\nstatic int running = 0;\n\nvoid *worker(void *arg) {\n    (void)arg;\n    pthread_mutex_lock(&lock);\n    running = 1;\n    pthread_cond_signal(&started);\n    pthread_mutex_unlock(&lock);\n    pause();                                  // sleeps until a signal arrives\n    printf(\"worker: woke up\\n\");\n    return NULL;\n}\n\nint main(void) {\n    pthread_t t;\n    pthread_create(&t, NULL, worker, NULL);   // never joined\n    pthread_mutex_lock(&lock);\n    while (!running) pthread_cond_wait(&started, &lock);\n    pthread_mutex_unlock(&lock);\n    printf(\"main: the worker is running, and main returns now\\n\");\n    return 0;                                 // ends the whole process\n}\n",
+   "out": "main: the worker is running, and main returns now\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "main-returns.cs": {
+   "code": "var go = new ManualResetEventSlim(false);\nvar never = new ManualResetEventSlim(false);\n\nvar foreground = new Thread(() =>\n{\n    go.Wait();\n    Console.WriteLine(\"foreground: finished after Main returned\");\n});\nforeground.Start(); // foreground by default\n\nvar background = new Thread(() => never.Wait()) { IsBackground = true };\nbackground.Start();\n\nConsole.WriteLine(\"main: returning\");\ngo.Set();\n",
+   "out": "main: returning\nforeground: finished after Main returned\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "main-returns.go": {
+   "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tstarted := make(chan struct{})\n\tblock := make(chan struct{}) // nobody ever sends or closes this\n\tgo func() {\n\t\tdefer fmt.Println(\"goroutine: deferred call ran\")\n\t\tclose(started)\n\t\t<-block\n\t}()\n\t<-started\n\tfmt.Println(\"main: the goroutine is running, and main returns now\")\n}\n",
+   "out": "main: the goroutine is running, and main returns now\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "main-returns.java": {
+   "code": "import java.util.concurrent.CountDownLatch;\n\npublic class Main {\n    public static void main(String[] args) throws Exception {\n        var go = new CountDownLatch(1);\n        var never = new CountDownLatch(1);\n\n        var worker = new Thread(() -> {\n            try {\n                go.await();\n            } catch (InterruptedException e) {\n            }\n            System.out.println(\"worker: finished after main returned\");\n        });\n        worker.start(); // non-daemon by default\n\n        var daemon = new Thread(() -> {\n            try {\n                never.await(); // blocks forever\n            } catch (InterruptedException e) {\n            }\n        });\n        daemon.setDaemon(true);\n        daemon.start();\n\n        System.out.println(\"main: returning\");\n        go.countDown();\n    }\n}\n",
+   "out": "main: returning\nworker: finished after main returned\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "main-returns.py": {
+   "code": "import threading\n\ngo = threading.Event()\nnever = threading.Event()\n\n\ndef worker():\n    go.wait()\n    print(\"worker: finished after main returned\")\n\n\nthreading.Thread(target=worker).start()  # non-daemon by default\nthreading.Thread(target=never.wait, daemon=True).start()  # blocks forever\n\nprint(\"main: returning\")\ngo.set()\n",
+   "out": "main: returning\nworker: finished after main returned\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "main-returns.ts": {
+   "code": "import { Worker } from \"node:worker_threads\";\n\n// the worker waits for a message, so it cannot print before main has\nconst worker = new Worker(\n  `require(\"node:worker_threads\").parentPort.once(\"message\", () =>\n     console.log(\"worker: finished after main reached the end of the file\"));`,\n  { eval: true },\n);\nworker.on(\"exit\", (code: number) => console.log(`main: worker exited with code ${code}`));\nconsole.log(\"main: reached the end of the file\");\nworker.postMessage(\"go\");\n",
+   "out": "main: reached the end of the file\nworker: finished after main reached the end of the file\nmain: worker exited with code 0\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "os-threads.go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"os\"\n\t\"sync\"\n)\n\nfunc main() {\n\tvar ready, done sync.WaitGroup\n\trelease := make(chan struct{})\n\tfor i := 0; i < 1000; i++ {\n\t\tready.Add(1)\n\t\tdone.Add(1)\n\t\tgo func() {\n\t\t\tdefer done.Done()\n\t\t\tready.Done()\n\t\t\t<-release // blocked on a channel, not on the OS\n\t\t}()\n\t}\n\tready.Wait()\n\tduring, _ := os.ReadDir(\"/proc/self/task\")\n\tfmt.Println(\"goroutines started: 1000\")\n\tfmt.Println(\"OS threads fewer than the goroutines:\", len(during) < 1000)\n\tclose(release)\n\tdone.Wait()\n}\n",
+   "out": "goroutines started: 1000\nOS threads fewer than the goroutines: true\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "pool.cs": {
+   "code": "var onPool = await Task.Run(() => Thread.CurrentThread.IsThreadPoolThread);\nConsole.WriteLine($\"Task.Run runs on a pool thread: {onPool}\");\n\nbool? dedicated = null;\nvar t = new Thread(() => dedicated = Thread.CurrentThread.IsThreadPoolThread);\nt.Start();\nt.Join();\nConsole.WriteLine($\"new Thread runs on a pool thread: {dedicated}\");\n\n// a Task that throws keeps the exception until you await it, like Rust's join\nvar failing = Task.Run(() => { throw new InvalidOperationException(\"task failed\"); });\ntry\n{\n    await failing;\n}\ncatch (InvalidOperationException e)\n{\n    Console.WriteLine($\"await rethrew: {e.Message}\");\n}\n",
+   "out": "Task.Run runs on a pool thread: True\nnew Thread runs on a pool thread: False\nawait rethrew: task failed\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "pthread-exit.c": {
+   "code": "#include <pthread.h>\n#include <stdio.h>\n\nstatic pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;\nstatic pthread_cond_t changed = PTHREAD_COND_INITIALIZER;\nstatic int started = 0, go = 0;\n\nvoid *worker(void *arg) {\n    (void)arg;\n    pthread_mutex_lock(&lock);\n    started = 1;\n    pthread_cond_broadcast(&changed);\n    while (!go) pthread_cond_wait(&changed, &lock);\n    pthread_mutex_unlock(&lock);\n    printf(\"worker: still running after main called pthread_exit\\n\");\n    return NULL;\n}\n\nint main(void) {\n    pthread_t t;\n    pthread_create(&t, NULL, worker, NULL);\n    pthread_mutex_lock(&lock);\n    while (!started) pthread_cond_wait(&changed, &lock);\n    printf(\"main: calling pthread_exit instead of returning\\n\");\n    go = 1;\n    pthread_cond_broadcast(&changed);\n    pthread_mutex_unlock(&lock);\n    pthread_exit(NULL);                      // main ends; the process lives on\n}\n",
+   "out": "main: calling pthread_exit instead of returning\nworker: still running after main called pthread_exit\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "terminate.ts": {
+   "code": "import { Worker } from \"node:worker_threads\";\n\nconst worker = new Worker(`while (true) {}`, { eval: true }); // never returns on its own\nworker.terminate().then(() => {\n  console.log(\"terminate() stopped the endless loop from outside\");\n});\n",
+   "out": "terminate() stopped the endless loop from outside\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "thread-panics.crash.cpp": {
+   "code": "#include <iostream>\n#include <stdexcept>\n#include <thread>\n\nint main() {\n    std::thread t([] { throw std::runtime_error(\"worker failed\"); });\n    t.join();\n    std::cout << \"main: never reached\\n\";\n}\n",
+   "out": "terminate called after throwing an instance of 'std::runtime_error'\n  what():  worker failed\n",
+   "lang": "cpp",
+   "exit": -6
+  },
+  "thread-panics.crash.cs": {
+   "code": "var t = new Thread(() =>\n{\n    throw new InvalidOperationException(\"worker failed\");\n});\nt.Start();\nt.Join();\nConsole.WriteLine(\"main: never reached\");\n",
+   "out": "Unhandled exception. System.InvalidOperationException: worker failed\n   at Program.<>c.<<Main>$>b__0_0() in Program.cs:line 3\n   at System.Threading.Thread.StartCallback()\n",
+   "lang": "csharp",
+   "exit": -6
+  },
+  "thread-panics.crash.go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"sync\"\n)\n\nfunc main() {\n\tvar wg sync.WaitGroup\n\twg.Add(1)\n\tgo func() {\n\t\tvar v []int\n\t\tfmt.Println(\"goroutine: about to index an empty slice\")\n\t\tfmt.Println(v[0]) // panics here, so the next line never runs\n\t\twg.Done()\n\t}()\n\twg.Wait()\n\tfmt.Println(\"main: never reached\")\n}\n",
+   "out": "goroutine: about to index an empty slice\npanic: runtime error: index out of range [0] with length 0\n\ngoroutine 7 [running]:\nmain.main.func1()\n\tmain.go:14 +0x50\ncreated by main.main in goroutine 1\n\tmain.go:11 +0x80\n",
+   "varies": true,
+   "lang": "go",
+   "exit": 2
+  },
+  "thread-panics.java": {
+   "code": "import java.util.concurrent.Executors;\nimport java.util.concurrent.ExecutionException;\n\npublic class Main {\n    public static void main(String[] args) throws Exception {\n        // a plain Thread: the exception ends that thread; join() just returns\n        var t = new Thread(() -> {\n            throw new IllegalStateException(\"worker failed\");\n        }, \"worker-1\");\n        t.start();\n        t.join();\n        System.out.println(\"main: join returned normally\");\n\n        // a Future from an executor hands the failure back, like Rust's join\n        try (var pool = Executors.newSingleThreadExecutor()) {\n            var f = pool.submit(() -> {\n                throw new IllegalStateException(\"task failed\");\n            });\n            try {\n                f.get();\n            } catch (ExecutionException e) {\n                System.out.println(\"main: get() threw ExecutionException, cause: \" + e.getCause());\n            }\n        }\n    }\n}\n",
+   "out": "Exception in thread \"worker-1\" java.lang.IllegalStateException: worker failed\n\tat Main.lambda$main$0(Main.java:8)\n\tat java.base/java.lang.Thread.run(Thread.java:1474)\nmain: join returned normally\nmain: get() threw ExecutionException, cause: java.lang.IllegalStateException: task failed\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "thread-panics.kt": {
+   "code": "import kotlin.concurrent.thread\n\nfun main() {\n    // kotlin.concurrent.thread starts a java.lang.Thread\n    val t = thread(name = \"worker-1\") {\n        throw IllegalStateException(\"worker failed\")\n    }\n    t.join()\n    println(\"main: join returned normally\")\n}\n",
+   "out": "Exception in thread \"worker-1\" java.lang.IllegalStateException: worker failed\n\tat MainKt.main$lambda$0(Main.kt:6)\n\tat kotlin.concurrent.ThreadsKt$thread$thread$1.run(Thread.kt:30)\nmain: join returned normally\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "thread-panics.py": {
+   "code": "import threading\n\n\ndef work():\n    raise RuntimeError(\"worker failed\")\n\n\nt = threading.Thread(target=work, name=\"worker-1\")\nt.start()\nt.join()  # join does not raise\nprint(\"main: join returned normally\")\n",
+   "out": "Exception in thread worker-1:\nTraceback (most recent call last):\n  File \"/usr/lib/python3.13/threading.py\", line 1043, in _bootstrap_inner\n    self.run()\n    ~~~~~~~~^^\n  File \"/usr/lib/python3.13/threading.py\", line 994, in run\n    self._target(*self._args, **self._kwargs)\n    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"main.py\", line 5, in work\n    raise RuntimeError(\"worker failed\")\nRuntimeError: worker failed\nmain: join returned normally\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "thread-panics.ts": {
+   "code": "import { Worker } from \"node:worker_threads\";\n\nconst worker = new Worker(`throw new Error(\"worker failed\");`, { eval: true });\nworker.on(\"error\", (e: Error) => console.log(`main: the worker's error arrived as an event: ${e.message}`));\nworker.on(\"exit\", (code: number) => console.log(`main: worker exited with code ${code}`));\n",
+   "out": "main: the worker's error arrived as an event: worker failed\nmain: worker exited with code 1\n",
+   "lang": "typescript",
+   "exit": 0
+  },
+  "virtual.java": {
+   "code": "import java.io.File;\nimport java.util.ArrayList;\nimport java.util.concurrent.CountDownLatch;\n\npublic class Main {\n    static int osThreads() {\n        return new File(\"/proc/self/task\").list().length;\n    }\n\n    public static void main(String[] args) throws Exception {\n        var release = new CountDownLatch(1);\n        var started = new CountDownLatch(1000);\n        var threads = new ArrayList<Thread>();\n        for (int i = 0; i < 1000; i++) {\n            threads.add(Thread.ofVirtual().start(() -> {\n                started.countDown();\n                try {\n                    release.await();\n                } catch (InterruptedException e) {\n                }\n            }));\n        }\n        started.await();\n        System.out.println(\"virtual threads started: 1000, isVirtual: \" + threads.get(0).isVirtual());\n        System.out.println(\"OS threads fewer than the virtual threads: \" + (osThreads() < 1000));\n        release.countDown();\n        for (var t : threads) t.join();\n    }\n}\n",
+   "out": "virtual threads started: 1000, isVirtual: true\nOS threads fewer than the virtual threads: true\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "worker-copy.ts": {
+   "code": "import { Worker } from \"node:worker_threads\";\n\nconst names = [\"a\", \"b\", \"c\"];\nconst counter = new Int32Array(new SharedArrayBuffer(4));\nconst worker = new Worker(\n  `const { workerData, parentPort } = require(\"node:worker_threads\");\n   workerData.names.push(\"added in the worker\");\n   Atomics.add(workerData.counter, 0, 5);\n   parentPort.postMessage(workerData.names.length);`,\n  { eval: true, workerData: { names, counter } },\n);\nworker.on(\"message\", (n: number) => {\n  console.log(`the array was copied: the worker's has ${n} items, main's has ${names.length}`);\n  console.log(`the SharedArrayBuffer was not: main reads ${Atomics.load(counter, 0)} after the worker added 5`);\n});\n",
+   "out": "the array was copied: the worker's has 4 items, main's has 3\nthe SharedArrayBuffer was not: main reads 5 after the worker added 5\n",
+   "lang": "typescript",
+   "exit": 0
+  }
+ },
+ "exercises": {
+  "chunk-sums": {
+   "starter": "#![forbid(unsafe_code)]\n\nuse std::sync::Mutex;\nuse std::thread::{self, ThreadId};\n\n// The checks use this to record which thread ran each chunk, and where the chunk starts in\n// memory. Ignore it for now.\nstatic SEEN: Mutex<Vec<(ThreadId, usize)>> = Mutex::new(Vec::new());\n\n/// The work for one chunk. It records which thread ran it and the chunk's address.\nfn total(chunk: &[u64]) -> u64 {\n    SEEN.lock()\n        .unwrap()\n        .push((thread::current().id(), chunk.as_ptr() as usize));\n    chunk.iter().sum()\n}\n\n/// Cuts `data` into chunks of `ceil(len / parts)` elements (so at most `parts` chunks, and\n/// none when `data` is empty), calls `f` on each chunk on its own thread, and gives back the\n/// results in chunk order. `data` is borrowed, never copied. `parts` is at least 1.\n/// `f` is a plain function (`fn` pointer): it cannot capture anything, so any thread may call it.\nfn chunk_results(data: &[u64], parts: usize, f: fn(&[u64]) -> u64) -> Vec<u64> {\n    todo!(\n        \"chunks() panics on a chunk size of 0, so handle empty data first; the threads must borrow their chunks from `data`, not copy them\"\n    )\n}\n\nfn main() {\n    let data: Vec<u64> = (1..=10).collect();\n\n    assert_eq!(chunk_results(&data, 3, total), vec![10, 26, 19]); // [1..=4] [5..=8] [9, 10]\n    {\n        let seen = SEEN.lock().unwrap();\n        let mut ids: Vec<_> = seen.iter().map(|(id, _)| format!(\"{id:?}\")).collect();\n        ids.sort();\n        ids.dedup();\n        assert_eq!(ids.len(), 3, \"each chunk needs its own thread\");\n        assert!(\n            !seen.iter().any(|(id, _)| *id == thread::current().id()),\n            \"not on main\"\n        );\n\n        // borrowed, not copied: each chunk starts inside `data`'s own memory,\n        // 4 elements (32 bytes) after the one before\n        let start = data.as_ptr() as usize;\n        let mut offsets: Vec<usize> = seen.iter().map(|(_, p)| p.wrapping_sub(start)).collect();\n        offsets.sort();\n        assert_eq!(\n            offsets,\n            vec![0, 32, 64],\n            \"the chunks must be slices of `data`\"\n        );\n    }\n\n    assert_eq!(chunk_results(&data, 1, total), vec![55]);\n    assert_eq!(\n        chunk_results(&data, 20, total),\n        vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]\n    );\n    assert_eq!(chunk_results(&[], 4, total), Vec::<u64>::new());\n\n    // the data is still ours afterwards, and the order of results is the order of chunks\n    assert_eq!(data.len(), 10);\n    let firsts = chunk_results(&data, 5, |c| c[0]);\n    assert_eq!(firsts, vec![1, 3, 5, 7, 9]);\n\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "#![forbid(unsafe_code)]\n\nuse std::sync::Mutex;\nuse std::thread::{self, ThreadId};\n\n// The checks use this to record which thread ran each chunk, and where the chunk starts in\n// memory. Ignore it for now.\nstatic SEEN: Mutex<Vec<(ThreadId, usize)>> = Mutex::new(Vec::new());\n\n/// The work for one chunk. It records which thread ran it and the chunk's address.\nfn total(chunk: &[u64]) -> u64 {\n    SEEN.lock()\n        .unwrap()\n        .push((thread::current().id(), chunk.as_ptr() as usize));\n    chunk.iter().sum()\n}\n\n/// Cuts `data` into chunks of `ceil(len / parts)` elements (so at most `parts` chunks, and\n/// none when `data` is empty), calls `f` on each chunk on its own thread, and gives back the\n/// results in chunk order. `data` is borrowed, never copied. `parts` is at least 1.\n/// `f` is a plain function (`fn` pointer): it cannot capture anything, so any thread may call it.\nfn chunk_results(data: &[u64], parts: usize, f: fn(&[u64]) -> u64) -> Vec<u64> {\n    if data.is_empty() {\n        return Vec::new();\n    }\n    let size = data.len().div_ceil(parts);\n    thread::scope(|s| {\n        let handles: Vec<_> = data\n            .chunks(size)\n            .map(|chunk| s.spawn(move || f(chunk)))\n            .collect();\n        handles.into_iter().map(|h| h.join().unwrap()).collect()\n    })\n}\n\nfn main() {\n    let data: Vec<u64> = (1..=10).collect();\n\n    assert_eq!(chunk_results(&data, 3, total), vec![10, 26, 19]); // [1..=4] [5..=8] [9, 10]\n    {\n        let seen = SEEN.lock().unwrap();\n        let mut ids: Vec<_> = seen.iter().map(|(id, _)| format!(\"{id:?}\")).collect();\n        ids.sort();\n        ids.dedup();\n        assert_eq!(ids.len(), 3, \"each chunk needs its own thread\");\n        assert!(\n            !seen.iter().any(|(id, _)| *id == thread::current().id()),\n            \"not on main\"\n        );\n\n        // borrowed, not copied: each chunk starts inside `data`'s own memory,\n        // 4 elements (32 bytes) after the one before\n        let start = data.as_ptr() as usize;\n        let mut offsets: Vec<usize> = seen.iter().map(|(_, p)| p.wrapping_sub(start)).collect();\n        offsets.sort();\n        assert_eq!(\n            offsets,\n            vec![0, 32, 64],\n            \"the chunks must be slices of `data`\"\n        );\n    }\n\n    assert_eq!(chunk_results(&data, 1, total), vec![55]);\n    assert_eq!(\n        chunk_results(&data, 20, total),\n        vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]\n    );\n    assert_eq!(chunk_results(&[], 4, total), Vec::<u64>::new());\n\n    // the data is still ours afterwards, and the order of results is the order of chunks\n    assert_eq!(data.len(), 10);\n    let firsts = chunk_results(&data, 5, |c| c[0]);\n    assert_eq!(firsts, vec![1, 3, 5, 7, 9]);\n\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "divide-all": {
+   "starter": "#![forbid(unsafe_code)]\n\nuse std::sync::Mutex;\nuse std::thread::{self, ThreadId};\n\n// The checks use this to record which thread ran each call. Ignore it for now.\nstatic SEEN: Mutex<Vec<ThreadId>> = Mutex::new(Vec::new());\n\n/// The work for one input. It records which thread ran it. It panics on 0 (with fixed text)\n/// and on 7 (with a message built from the input).\nfn work(n: i32) -> i32 {\n    SEEN.lock().unwrap().push(thread::current().id());\n    assert!(n != 7, \"unlucky input {n}\");\n    100 / n\n}\n\n/// Calls `work` for every input, each call on its own new thread. Gives back one entry per\n/// input, in the order of `inputs`: `Ok(result)`, or `Err(message)` if that call panicked.\nfn run_all(inputs: Vec<i32>) -> Vec<Result<i32, String>> {\n    todo!(\n        \"keep the JoinHandles, then join them in order; a failed join holds the panic's payload, which you can ask for a &str or a String (see 'A thread that panics')\"\n    )\n}\n\nfn main() {\n    let got = run_all(vec![5, 0, 7, 20]);\n    assert_eq!(\n        got,\n        vec![\n            Ok(20),\n            Err(\"attempt to divide by zero\".to_string()),\n            Err(\"unlucky input 7\".to_string()),\n            Ok(5)\n        ],\n        \"one entry per input, in input order; a panic must not stop the others\"\n    );\n\n    // every call ran on a thread of its own, and not on main's\n    {\n        let seen = SEEN.lock().unwrap();\n        assert_eq!(seen.len(), 4);\n        let mut ids: Vec<_> = seen.iter().map(|id| format!(\"{id:?}\")).collect();\n        ids.sort();\n        ids.dedup();\n        assert_eq!(ids.len(), 4, \"each input needs its own thread\");\n        assert!(!seen.contains(&thread::current().id()), \"not on main\");\n    }\n\n    assert_eq!(run_all(vec![]), Vec::<Result<i32, String>>::new());\n    assert_eq!(run_all(vec![4]), vec![Ok(25)]);\n\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "#![forbid(unsafe_code)]\n\nuse std::sync::Mutex;\nuse std::thread::{self, ThreadId};\n\n// The checks use this to record which thread ran each call. Ignore it for now.\nstatic SEEN: Mutex<Vec<ThreadId>> = Mutex::new(Vec::new());\n\n/// The work for one input. It records which thread ran it. It panics on 0 (with fixed text)\n/// and on 7 (with a message built from the input).\nfn work(n: i32) -> i32 {\n    SEEN.lock().unwrap().push(thread::current().id());\n    assert!(n != 7, \"unlucky input {n}\");\n    100 / n\n}\n\n/// Calls `work` for every input, each call on its own new thread. Gives back one entry per\n/// input, in the order of `inputs`: `Ok(result)`, or `Err(message)` if that call panicked.\nfn run_all(inputs: Vec<i32>) -> Vec<Result<i32, String>> {\n    let handles: Vec<_> = inputs\n        .into_iter()\n        .map(|n| thread::spawn(move || work(n)))\n        .collect();\n    handles\n        .into_iter()\n        .map(|h| {\n            h.join().map_err(|payload| {\n                if let Some(s) = payload.downcast_ref::<&str>() {\n                    s.to_string()\n                } else if let Some(s) = payload.downcast_ref::<String>() {\n                    s.clone()\n                } else {\n                    \"unknown panic\".to_string()\n                }\n            })\n        })\n        .collect()\n}\n\nfn main() {\n    let got = run_all(vec![5, 0, 7, 20]);\n    assert_eq!(\n        got,\n        vec![\n            Ok(20),\n            Err(\"attempt to divide by zero\".to_string()),\n            Err(\"unlucky input 7\".to_string()),\n            Ok(5)\n        ],\n        \"one entry per input, in input order; a panic must not stop the others\"\n    );\n\n    // every call ran on a thread of its own, and not on main's\n    {\n        let seen = SEEN.lock().unwrap();\n        assert_eq!(seen.len(), 4);\n        let mut ids: Vec<_> = seen.iter().map(|id| format!(\"{id:?}\")).collect();\n        ids.sort();\n        ids.dedup();\n        assert_eq!(ids.len(), 4, \"each input needs its own thread\");\n        assert!(!seen.contains(&thread::current().id()), \"not on main\");\n    }\n\n    assert_eq!(run_all(vec![]), Vec::<Result<i32, String>>::new());\n    assert_eq!(run_all(vec![4]), vec![Ok(25)]);\n\n    println!(\"all checks passed\");\n}\n",
+    "out": "\nthread '<unnamed>' (1) panicked at src/main.rs:14:5:\nattempt to divide by zero\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\nthread '<unnamed>' (1) panicked at src/main.rs:13:5:\nunlucky input 7\nall checks passed\n"
+   }
+  },
+  "update-parts": {
+   "starter": "#![forbid(unsafe_code)]\n\nuse std::sync::Mutex;\nuse std::thread::{self, ThreadId};\n\n// The checks use this to record which thread ran each part, and where the part starts in\n// memory. Ignore it for now.\nstatic SEEN: Mutex<Vec<(ThreadId, usize)>> = Mutex::new(Vec::new());\n\n/// The work for one part: add the part's length to each element. It records its thread and\n/// the part's address.\nfn add_len(part: &mut [i32]) {\n    SEEN.lock()\n        .unwrap()\n        .push((thread::current().id(), part.as_ptr() as usize));\n    let n = part.len() as i32;\n    for x in part.iter_mut() {\n        *x += n;\n    }\n}\n\n/// Cuts `data` into parts of `ceil(len / parts)` elements and calls `f` on each part on its\n/// own thread. The parts are slices of `data` itself: nothing is copied, `data` changes in\n/// place. `parts` is at least 1.\nfn update_parts(data: &mut [i32], parts: usize, f: fn(&mut [i32])) {\n    todo!(\n        \"two threads cannot hold &mut to the whole slice (E0499): cut it into pieces that do not overlap, and borrow one piece per thread\"\n    )\n}\n\nfn main() {\n    let mut data = vec![0; 7];\n    update_parts(&mut data, 3, add_len);\n    assert_eq!(data, vec![3, 3, 3, 3, 3, 3, 1]); // parts of 3, 3 and 1\n    {\n        let seen = SEEN.lock().unwrap();\n        let mut ids: Vec<_> = seen.iter().map(|(id, _)| format!(\"{id:?}\")).collect();\n        ids.sort();\n        ids.dedup();\n        assert_eq!(ids.len(), 3, \"each part needs its own thread\");\n        assert!(\n            !seen.iter().any(|(id, _)| *id == thread::current().id()),\n            \"not on main\"\n        );\n\n        // changed in place: each part starts inside `data`'s own memory,\n        // 3 elements (12 bytes) after the one before\n        let start = data.as_ptr() as usize;\n        let mut offsets: Vec<usize> = seen.iter().map(|(_, p)| p.wrapping_sub(start)).collect();\n        offsets.sort();\n        assert_eq!(\n            offsets,\n            vec![0, 12, 24],\n            \"the parts must be slices of `data`\"\n        );\n    }\n\n    let before = data.as_ptr();\n    update_parts(&mut data, 2, |p| p.reverse());\n    assert_eq!(data.as_ptr(), before);\n    assert_eq!(\n        data,\n        vec![3, 3, 3, 3, 1, 3, 3],\n        \"each part reversed on its own\"\n    );\n\n    let mut empty: Vec<i32> = Vec::new();\n    update_parts(&mut empty, 4, add_len);\n    assert!(empty.is_empty());\n\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "#![forbid(unsafe_code)]\n\nuse std::sync::Mutex;\nuse std::thread::{self, ThreadId};\n\n// The checks use this to record which thread ran each part, and where the part starts in\n// memory. Ignore it for now.\nstatic SEEN: Mutex<Vec<(ThreadId, usize)>> = Mutex::new(Vec::new());\n\n/// The work for one part: add the part's length to each element. It records its thread and\n/// the part's address.\nfn add_len(part: &mut [i32]) {\n    SEEN.lock()\n        .unwrap()\n        .push((thread::current().id(), part.as_ptr() as usize));\n    let n = part.len() as i32;\n    for x in part.iter_mut() {\n        *x += n;\n    }\n}\n\n/// Cuts `data` into parts of `ceil(len / parts)` elements and calls `f` on each part on its\n/// own thread. The parts are slices of `data` itself: nothing is copied, `data` changes in\n/// place. `parts` is at least 1.\nfn update_parts(data: &mut [i32], parts: usize, f: fn(&mut [i32])) {\n    if data.is_empty() {\n        return;\n    }\n    let size = data.len().div_ceil(parts);\n    thread::scope(|s| {\n        for part in data.chunks_mut(size) {\n            s.spawn(move || f(part));\n        }\n    });\n}\n\nfn main() {\n    let mut data = vec![0; 7];\n    update_parts(&mut data, 3, add_len);\n    assert_eq!(data, vec![3, 3, 3, 3, 3, 3, 1]); // parts of 3, 3 and 1\n    {\n        let seen = SEEN.lock().unwrap();\n        let mut ids: Vec<_> = seen.iter().map(|(id, _)| format!(\"{id:?}\")).collect();\n        ids.sort();\n        ids.dedup();\n        assert_eq!(ids.len(), 3, \"each part needs its own thread\");\n        assert!(\n            !seen.iter().any(|(id, _)| *id == thread::current().id()),\n            \"not on main\"\n        );\n\n        // changed in place: each part starts inside `data`'s own memory,\n        // 3 elements (12 bytes) after the one before\n        let start = data.as_ptr() as usize;\n        let mut offsets: Vec<usize> = seen.iter().map(|(_, p)| p.wrapping_sub(start)).collect();\n        offsets.sort();\n        assert_eq!(\n            offsets,\n            vec![0, 12, 24],\n            \"the parts must be slices of `data`\"\n        );\n    }\n\n    let before = data.as_ptr();\n    update_parts(&mut data, 2, |p| p.reverse());\n    assert_eq!(data.as_ptr(), before);\n    assert_eq!(\n        data,\n        vec![3, 3, 3, 3, 1, 3, 3],\n        \"each part reversed on its own\"\n    );\n\n    let mut empty: Vec<i32> = Vec::new();\n    update_parts(&mut empty, 4, add_len);\n    assert!(empty.is_empty());\n\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}

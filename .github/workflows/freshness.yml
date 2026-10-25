@@ -1,0 +1,47 @@
+name: Freshness
+
+# Re-runs every program on the site from scratch in the runner image and fails if any
+# output changed. Weekly, because things outside the repo move: crates.io, the Go module
+# proxy, a base image security update. Also on any change to the runner itself.
+on:
+  schedule:
+    - cron: '17 4 * * 1'
+  push:
+    branches: [main]
+    paths: ['tools/runner/**', 'rust-toolchain.toml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rerun:
+    name: Re-run every program
+    # ARM, like the machines the committed outputs were made on: a few C outputs depend
+    # on the CPU (whether `char` is signed), so x86 would report false changes.
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.0'
+      - name: Build the runner image
+        run: docker build -t learnrust-runner:dev tools/runner
+      - run: bun install --frozen-lockfile
+        working-directory: website
+      - name: Run everything, ignoring the cache
+        working-directory: website
+        run: bun run extract --fresh --check
+      - name: Nothing changed
+        run: |
+          if ! git diff --stat --exit-code -- website/src/data ':!website/src/data/**/*.runs.json' ':!website/src/data/runs.json'; then
+            echo "::error::outputs changed when re-run; review the diff, then commit the new data"
+            git diff -- website/src/data/lessons website/src/data/guides | head -300
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: extract-report
+          path: website/src/data/extract-report*.txt

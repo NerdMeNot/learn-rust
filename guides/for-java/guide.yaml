@@ -1,0 +1,192 @@
+# Rust for Java developers: the Java programs and the Rust programs behind each habit.
+name: habits
+sessions:
+  # ---- Rust programs that run (the Rust side of a habit)
+  inherit:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin inherit
+  cleanup:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin cleanup
+  generics:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin generics
+  shared:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin shared
+  noframes:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin noframes
+        expect: fail
+  derive:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin derive
+  idioms-rust:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin idioms
+  # ---- Rust programs that the compiler refuses: fails/<name>.rs is copied to src/bin/fail.rs
+  fail-null:
+    dir: rust
+    overlay:
+      src/bin/fail.rs: fails/null.rs
+    steps:
+      - cmd: cargo run --bin fail
+        expect: fail
+  fail-moved:
+    dir: rust
+    overlay:
+      src/bin/fail.rs: fails/moved.rs
+    steps:
+      - cmd: cargo run --bin fail
+        expect: fail
+  fail-immutable:
+    dir: rust
+    overlay:
+      src/bin/fail.rs: fails/immutable.rs
+    steps:
+      - cmd: cargo run --bin fail
+        expect: fail
+  fail-result:
+    dir: rust
+    overlay:
+      src/bin/fail.rs: fails/result.rs
+    steps:
+      - cmd: cargo run --bin fail
+        expect: fail
+  fail-longest:
+    dir: rust
+    overlay:
+      src/bin/fail.rs: fails/longest.rs
+    steps:
+      - cmd: cargo run --bin fail
+        expect: fail
+  fail-equals:
+    dir: rust
+    overlay:
+      src/bin/fail.rs: fails/equals.rs
+    steps:
+      - cmd: cargo run --bin fail
+        expect: fail
+  fail-spawn:
+    dir: rust
+    overlay:
+      src/bin/fail.rs: fails/spawn.rs
+    steps:
+      - cmd: cargo run --bin fail
+        expect: fail
+  # ---- The Java side of each habit
+  java-inherit:
+    dir: java
+    steps:
+      - cmd: javac Inherit.java && java Inherit
+  java-nulls:
+    dir: java
+    steps:
+      - cmd: javac Nulls.java && java Nulls
+        expect: fail
+  java-alias:
+    dir: java
+    steps:
+      - cmd: javac Alias.java && java Alias
+  java-final:
+    dir: java
+    steps:
+      - cmd: javac Final.java && java Final
+  java-parse:
+    dir: java
+    steps:
+      - cmd: javac Parse.java && java Parse
+        expect: fail
+  java-longest:
+    dir: java
+    steps:
+      - cmd: javac Longest.java && java Longest
+  java-cleanup:
+    dir: java
+    steps:
+      - cmd: javac Cleanup.java && java Cleanup
+  java-erasure:
+    dir: java
+    steps:
+      - cmd: javac Erasure.java && java Erasure
+  java-records:
+    dir: java
+    steps:
+      - cmd: javac Records.java && java Records
+  java-racy:
+    dir: java
+    steps:
+      - cmd: javac Racy.java && java Racy
+        varies: true
+  java-idioms:
+    dir: java
+    steps:
+      - cmd: javac Idioms.java && java Idioms
+  # ---- Toolchain map
+  tools-rust:
+    dir: tools-rust
+    steps:
+      - cmd: cargo new demo
+      - cmd: cargo build
+        varies: true
+      - cmd: cargo test
+        varies: true
+      - cmd: cargo fmt --check
+      - cmd: cargo clippy
+      - cmd: cargo doc --no-deps
+      - cmd: cargo run
+  tools-java:
+    dir: tools-java
+    steps:
+      - cmd: javac -Xlint:all Slug.java
+      - cmd: java Slug
+      - cmd: java Slug.java
+      - cmd: javadoc -quiet -d docs Slug.java
+      - cmd: command -v jshell
+      - cmd: jdb -version
+  tools-absent:
+    dir: tools-java
+    steps:
+      - cmd: |-
+          for t in mvn gradle gdb lldb rust-gdb; do command -v $t || echo "$t: not found"; done
+        show: '$ for t in mvn gradle gdb lldb rust-gdb; do command -v $t || echo "$t: not found"; done'
+      - cmd: cargo --list | grep -ci repl || true
+        show: '$ cargo --list | grep -ci repl    # how many cargo commands mention a REPL'
+  # ---- Try it yourself
+  try-moved:
+    dir: rust
+    overlay:
+      src/bin/fail.rs: fails/moved.rs
+    steps:
+      - cmd: |-
+          sed 's/let mut b = a;/let mut b = a.clone();/' src/bin/fail.rs > src/bin/one.rs && cargo run --bin one
+        show: '$ cargo run --bin one    # with: let mut b = a.clone();'
+      - cmd: |-
+          sed 's/let a = vec/let mut a = vec/; s/let mut b = a;/let b = \&mut a;/' src/bin/fail.rs > src/bin/two.rs && cargo run --bin two
+        show: '$ cargo run --bin two    # with: let mut a = vec![...]; let b = &mut a;'
+  try-option:
+    dir: rust
+    overlay:
+      src/bin/fail.rs: fails/null.rs
+    steps:
+      - cmd: |-
+          sed -e 's/let ana: i32 = ages.get("ana");/let ana = ages.get("ana").copied().unwrap_or(0);/' -e '/println!/a\    println!("bo: {}", ages.get("bo").copied().unwrap_or(0));' src/bin/fail.rs > src/bin/fixed.rs && cargo run --bin fixed
+        show: '$ cargo run --bin fixed    # with: .get("ana").copied().unwrap_or(0), and a lookup of "bo"'
+  try-racy-java:
+    dir: java
+    steps:
+      - cmd: javac Racy.java && for i in 1 2 3; do java Racy; done
+        show: $ for i in 1 2 3; do java Racy; done
+        varies: true
+  try-racy-rust:
+    dir: rust
+    steps:
+      - cmd: for i in 1 2 3; do cargo run -q --bin shared; done
+        show: $ for i in 1 2 3; do cargo run --bin shared; done

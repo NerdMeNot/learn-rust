@@ -1,0 +1,92 @@
+# Command-line tools with clap
+name: todo-cli
+sessions:
+  run:
+    dir: rust
+    steps:
+      - cmd: cargo run -- add "learn clap" -p 1 --verbose
+      - cmd: cargo run -- add "learn clap" -p abc
+        expect: fail # clap exits 2 on a usage error
+      - cmd: cargo run -- --help
+      - cmd: cargo run -- add --help
+      - cmd: cargo run -- add
+        expect: fail
+  # Things to try: each step is one task from the page's "Try it yourself".
+  try:
+    dir: rust
+    steps:
+      - cmd: cargo run -- --version
+      - cmd: cargo run -- add "learn clap" -p 300
+        expect: fail
+      - cmd: cargo run -- ad "learn clap"
+        expect: fail
+      - cmd: cargo run -- add "-draft"
+        expect: fail
+      - cmd: cargo run -- add -- "-draft"
+  # Global flags: with `global = true` (the main.rs on the page) --verbose works after the
+  # subcommand; with the attribute taken out of a copy it is refused there.
+  global:
+    dir: rust
+    steps:
+      - cmd: cargo run -- add "learn clap" --verbose
+        show: '$ cargo run -- add "learn clap" --verbose    # with global = true'
+      - cmd: |-
+          sed -i 's/, global = true//' src/main.rs && cargo run -- add "learn clap" --verbose
+        show: '$ cargo run -- add "learn clap" --verbose    # after deleting ", global = true"'
+        expect: fail
+      - cmd: cargo run -- --verbose add "learn clap"
+        show: '$ cargo run -- --verbose add "learn clap"    # still without global = true'
+  # The compiler checks the match when a subcommand is added (fixes/new-command.rs).
+  new-command:
+    dir: rust
+    overlay:
+      src/main.rs: fixes/new-command.rs
+    steps:
+      - cmd: cargo build
+        expect: fail
+  go:
+    dir: go
+    steps:
+      - cmd: go build -o todo .
+      - cmd: ./todo -verbose add -priority 1 "learn flags"
+      - cmd: ./todo -h
+      - cmd: ./todo add
+        expect: fail
+      - cmd: ./todo add -priority 1 "learn flags" -verbose
+  # The same tool with each language's own parser, where the image has one (the page's table).
+  langs:
+    dir: langs
+    steps:
+      - cmd: node --version && python3 --version
+        show: '$ node --version && python3 --version'
+      - cmd: python3 todo.py --verbose add "learn argparse" -p 1
+        cwd: py
+        show: '$ python3 todo.py --verbose add "learn argparse" -p 1   # Python, argparse'
+      - cmd: python3 todo.py add "learn argparse" --verbose
+        cwd: py
+        expect: fail
+        show: '$ python3 todo.py add "learn argparse" --verbose   # Python'
+      - cmd: python3 todo.py add "learn argparse" -p abc
+        cwd: py
+        expect: fail
+        show: '$ python3 todo.py add "learn argparse" -p abc   # Python'
+      - cmd: node todo.ts add "learn parseArgs" --verbose -p 1
+        cwd: ts
+        show: '$ node todo.ts add "learn parseArgs" --verbose -p 1   # TypeScript, node:util parseArgs'
+      - cmd: node todo.ts add "learn parseArgs" -p abc
+        cwd: ts
+        expect: fail
+        show: '$ node todo.ts add "learn parseArgs" -p abc   # TypeScript'
+      - cmd: gcc -Wall -o todo todo.c
+        cwd: c
+        show: '$ gcc -Wall -o todo todo.c   # C, getopt'
+      - cmd: ./todo -v add "learn getopt" -p 1
+        cwd: c
+        show: '$ ./todo -v add "learn getopt" -p 1   # C'
+      - cmd: ./todo add "learn getopt" -v
+        cwd: c
+        show: '$ ./todo add "learn getopt" -v   # C (glibc)'
+      - cmd: ./todo add "learn getopt" -p abc
+        cwd: c
+        expect: fail
+        show: '$ ./todo add "learn getopt" -p abc   # C'

@@ -1,0 +1,4 @@
+CREATE TABLE notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    text TEXT NOT NULL CHECK (length(text) > 0)
+);

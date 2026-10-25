@@ -1,0 +1,175 @@
+---
+title: "Rust syntax cheat sheet"
+description: "A printable reference: the main symbols, habits from other languages with the compiler error each one gets, the expression rules, how to read a signature, format strings and naming."
+---
+
+import { Files, Session } from '../../../components/guide'
+
+**Print this page:** use your browser's Print command (Ctrl+P or Cmd+P), or choose "Save as PDF" in the print dialog. Every error code, and the program behind each fix, comes from a run in Rust 1.99.1, edition 2024; the collapsed "Runs" boxes show the programs and what they printed. Cells with `..` or `...`, and the signature without its body, are elided placeholders, not runs. This sheet links the lessons instead of teaching again.
+
+<div class="cheat-block">
+
+## Symbols
+
+| Symbol | Meaning | Lesson |
+|---|---|---|
+| `let`, `mut` | bind a name; fixed unless `mut` | [Variables](/learn/variables/) |
+| `fn`, `->` | define a function; the result type follows `->` | [Functions](/learn/functions/) |
+| `;` | ends a statement and drops its value | [Statements](/learn/statements-expressions/) |
+| `{ }` | a block; its last line, with no `;`, is its value | [Statements](/learn/statements-expressions/) |
+| `( )` | call, grouping, tuple `(1, 'x')`; `()` is "nothing" | [Tuples](/learn/tuples/) |
+| `[ ]` | index `v[0]`, array `[1, 2]`, slice type `&[T]` | [Vectors](/learn/vectors/) |
+| `::` | a path: module, type or function | [Signatures](/learn/reading-signatures/#paths-use-pub-and-mod) |
+| `.` | a field or a method of a value | [Methods](/learn/methods/) |
+| `&`, `&mut` | borrow to read; borrow to change | [Borrowing](/learn/borrowing/), [Mutable borrows](/learn/mutable-borrows/) |
+| `*` | follow a reference `*m`; also multiply | [Borrowing](/learn/borrowing/) |
+| `'a`, `'outer:` | a lifetime; a loop label | [Lifetimes](/learn/lifetimes/), [Loops](/learn/loops/) |
+| `!` | a macro call (`println!`); also "not": `!done` | [Macros and attributes](/learn/macros-attributes-naming/) |
+| `?` | on `Err` or `None`, return it now; else the value inside. The function must return a `Result` or `Option` | [Errors](/learn/errors/) |
+| `#[...]` | an attribute for the next item | [Macros and attributes](/learn/macros-attributes-naming/) |
+| `\|x\|` | a closure (an inline function) | [Closures](/learn/closures/) |
+| `=>` | a `match` arm: pattern, then result | [Match](/learn/match/) |
+| `..`, `..=` | range without or with its end; "the rest" in a pattern | [Loops](/learn/loops/) |
+| `_` | ignore this; digit separator `1_000` | [Patterns](/learn/patterns/) |
+| `@` | name a value and test it: `n @ 3..=9` | [Patterns](/learn/patterns/) |
+| `<T>`, `where` | a type parameter; its bounds after the signature | [Generics](/learn/generics/) |
+| `as` | convert a number: `7 as f64` | [Declarations and types](/learn/declarations-types/#as-and-the-turbofish) |
+| `impl` | add methods, or implement a trait for a type | [Methods](/learn/methods/), [Traits](/learn/traits/) |
+| `dyn` | a trait object: the method is found at run time | [Trait objects](/learn/trait-objects/) |
+| `pub`, `use`, `mod` | visible outside; shorten a name; a module | [Modules](/learn/modules/) |
+| `///` | a doc comment on the next item | [Macros and attributes](/learn/macros-attributes-naming/) |
+
+<details>
+<summary>Runs: one program that uses every symbol above</summary>
+
+<Files guide="cheatsheet-syntax" dir="rust" files={["src/bin/symbols.rs"]} run="symbols" />
+
+</details>
+
+</div>
+
+<div class="cheat-block">
+
+## You write, in Rust
+
+Syntax errors stop at the parser and have no code. The others carry the code shown.
+
+| You write | Code | In Rust |
+|---|---|---|
+| `x++;` | none | `x += 1;` |
+| `let n = big ? 10 : 1;` | none | `let n = if big { 10 } else { 1 };` |
+| `for (let mut i = 0; i < 3; i++)` | none | `for i in 0..3`, `(0..9).step_by(3)` |
+| `let a = null;` and `let b: String = None;` | E0425, E0308 | `let b: Option<String> = None;`, then `match` or `if let` |
+| `let wide: i64 = small;` (an `i32`) | E0308 | `i64::from(small)`, `f64::from(small) * 1.5` |
+| `area(width = 3, height = 4)` | E0425 | a struct: `Rect { width: 3, height: 4 }` |
+| two `fn show`, one per type | E0428, E0308 | one trait, `impl Show for i32`, `impl Show for &str` |
+| `switch (n) { case 1: ... break; }` | none | `match n { 1 => .., 2 \| 3 => .., _ => .. }` |
+| `try { ... } catch (e) { ... }` | none | return a `Result`, pass it up with `?` |
+| `if count { ... }` (an integer) | E0308 | `count != 0`, `!items.is_empty()` |
+| `let first = s[0];` (a `String`) | E0277 | `s.chars().next()`, `s.as_bytes()[0]`, `&s[0..1]` (panics inside a character) |
+| `n == 1.0` (`n` an integer) | E0277, E0308 | `n == 1`, or `f64::from(n) == 1.0` (`n` an `i32`) |
+| `a === b` | none | `==`, between two values of one type |
+
+Taught in [what Rust doesn't have](/learn/what-rust-lacks/), with the [null](/learn/option/#you-cant-use-an-option-as-the-value), [string indexing](/learn/strings/#why-s0-doesnt-compile) and [overloading](/learn/methods/#constructors-overloading-and-default-arguments) details in their own lessons. All codes: [error index](/errors/).
+
+<details>
+<summary>Runs: each failing line compiled, and the fixes</summary>
+
+<Session guide="cheatsheet-syntax" run="codes" />
+
+<Files guide="cheatsheet-syntax" dir="rust" files={["src/bin/fixes.rs"]} run="fixes" />
+
+</details>
+
+</div>
+
+<div class="cheat-block">
+
+## Expression or statement
+
+1. The last line of a block, with no `;`, is its value.
+2. A `;` drops the value, so the block is worth `()`.
+3. `if`, `match` and `loop` are expressions: `let c = if a > 10 { "big" } else { "small" };`.
+4. Assignment and `+=` are worth `()`.
+5. A function body is a block, so no `return` is needed at the end. `n * 2;` there is E0308.
+
+See [Statements and expressions](/learn/statements-expressions/#the-semicolon-decides).
+
+<details>
+<summary>Runs: rules 1 to 5</summary>
+
+<Files guide="cheatsheet-syntax" dir="rust" files={["src/bin/exprs.rs"]} run="exprs" />
+
+</details>
+
+</div>
+
+<div class="cheat-block">
+
+## Reading a signature
+
+```rust
+pub fn longest_by<'a, T, K>(items: &'a [T], key: impl Fn(&T) -> K) -> Option<&'a T>
+where
+    K: Ord + Display,
+```
+
+| Piece | Reads as |
+|---|---|
+| `pub fn longest_by` | a public function |
+| `<'a, T, K>` | placeholders: a lifetime and two types, filled in by the call |
+| `items: &'a [T]` | a borrowed slice of any `T`; the caller keeps the list |
+| `key: impl Fn(&T) -> K` | any closure that takes `&T` and returns a `K` |
+| `-> Option<&'a T>` | maybe one item, borrowed from `items` for `'a`; `None` if the slice is empty |
+| `where K: Ord + Display` | `K` must be orderable and printable |
+
+More in [Reading a signature](/learn/reading-signatures/#decoding-five-signatures).
+
+<details>
+<summary>Runs: this signature, called</summary>
+
+<Files guide="cheatsheet-syntax" dir="rust" files={["src/bin/sig.rs"]} run="sig" />
+
+</details>
+
+</div>
+
+<div class="cheat-block">
+
+## Format strings
+
+Left column: the format string. Right: what `format!` made of it, between bars. `{}` is for people, `{:?}` for programmers; `{:#?}` spreads over lines. A spec is `{`, a name or position, `:`, then fill, alignment (`<` `^` `>`), sign (`+`), `#`, `0`, width, `.precision` and a type (`?`, `x`, `b`), then `}`; `1$` takes the width from argument 1. Syntax: [Format strings](/learn/macros-attributes-naming/#format-strings); more in [Formatting](/learn/formatting/).
+
+<Session guide="cheatsheet-syntax" run="fmt" />
+
+<details>
+<summary>Runs: the program</summary>
+
+<Files guide="cheatsheet-syntax" dir="rust" files={["src/bin/fmt.rs"]} />
+
+</details>
+
+</div>
+
+<div class="cheat-block">
+
+## Naming
+
+| What | Style | Example |
+|---|---|---|
+| variables, functions, methods, modules, fields | `snake_case` | `user_count`, `parse_line` |
+| structs, enums, traits, variants | `UpperCamelCase` | `UserAccount`, `Shape::Circle` |
+| constants, statics | `SCREAMING_SNAKE_CASE` | `MAX_USERS` |
+| type parameters, lifetimes | short `UpperCamelCase`, often `T`; short lowercase | `T`, `'a` |
+| method prefixes | `as_` borrows, `to_` makes a new value, `into_` consumes | `as_str`, `to_uppercase`, `into_bytes` |
+
+The style rules are lints (`non_snake_case` and others); the prefixes come from the [API Guidelines](https://rust-lang.github.io/api-guidelines/naming.html#ad-hoc-conversions-follow-as_-to_-into_-conventions-c-conv). See [Naming](/learn/declarations-types/#naming).
+
+<details>
+<summary>Runs: every name above, with <code>#![deny(nonstandard_style)]</code></summary>
+
+<Files guide="cheatsheet-syntax" dir="rust" files={["src/bin/naming.rs"]} run="naming" />
+
+</details>
+
+</div>

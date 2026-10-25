@@ -1,0 +1,155 @@
+---
+title: "Your first project with Cargo"
+description: "Let's get Rust installed, set up your editor, and make, build and run a real project. Cargo, Rust's all-in-one tool, does almost all of it."
+---
+
+import { Files, Remember, Session, Tree } from '../../../components/guide'
+
+Let's get Rust installed, set up your editor, and make, build and run a real project. Cargo, Rust's all-in-one tool, does almost all of it.
+
+<Remember>If you're wondering how to do something to a Rust project, the answer usually starts with `cargo`.</Remember>
+
+## 1. Install Rust
+
+Rust is installed with **rustup**, which also installs Cargo and lets you update everything with one command. On macOS or Linux, run this in a terminal and accept the defaults:
+
+```text
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+On Windows, download and run `rustup-init.exe` from [rustup.rs](https://rustup.rs), which adds "You may also need the [Visual Studio prerequisites](https://rust-lang.github.io/rustup/installation/windows-msvc.html)": rustup may ask you to install the Visual Studio C++ build tools first, and Rust programs need them to link. (On Linux and macOS a C linker, usually from `gcc` or Xcode's command line tools, plays the same part.) Then open a new terminal and check it worked. The runs on this page use the versions below:
+
+<Session guide="first-project" run="versions" />
+
+Later, `rustup update` moves you to the newest Rust. A new stable version comes out every six weeks, and the Book says "Each upgrade should be painless" ([the Book: Stability Without Stagnation](https://doc.rust-lang.org/book/appendix-07-nightly-rust.html)). rustup's default profile also installs `cargo fmt` and `cargo clippy` for section 5 ([rustup book: Profiles](https://rust-lang.github.io/rustup/concepts/profiles.html)).
+
+## 2. Set up your editor
+
+In most editors the thing that matters is **rust-analyzer**, a language server: the program that gives an editor go to definition, completion, refactorings, and errors from `rustc` (and clippy, if you ask for it, below) ([its manual](https://rust-analyzer.github.io/book/)). It also shows [inlay hints](https://rust-analyzer.github.io/book/features.html#inlay-hints) (variable types as grey text) and can [add a missing `use` line](https://rust-analyzer.github.io/book/features.html#auto-import). Each editor gets it a little differently:
+
+| Editor | What to do | Docs |
+| --- | --- | --- |
+| VS Code | the **rust-analyzer** extension, which bundles the server. Uninstall the old, unmaintained "Rust" extension | [rust-analyzer: VS Code](https://rust-analyzer.github.io/book/vs_code.html), [VS Code: Rust](https://code.visualstudio.com/docs/languages/rust) |
+| JetBrains | **RustRover**, JetBrains' own Rust IDE (separate from rust-analyzer's docs); it detects your toolchain or offers to download rustup | [RustRover quick start](https://www.jetbrains.com/help/rust/quick-start-guide-rustrover.html) |
+| Zed | Rust support is built in. It uses a `rust-analyzer` found on your `PATH`, or else installs its own | [Zed: Rust](https://zed.dev/docs/languages/rust) |
+| Helix | `rust-analyzer` is its default Rust language server; its docs say to set up the server first | [Helix: language support](https://docs.helix-editor.com/lang-support.html) |
+| Neovim | built-in LSP client plus `nvim-lspconfig`; the manual's one line is `vim.lsp.enable('rust_analyzer')` | [rust-analyzer: Vim/Neovim](https://rust-analyzer.github.io/book/other_editors.html#vimneovim) |
+
+Editors that use rust-analyzer, other than VS Code and Zed (which can fetch their own), need the binary on your machine; rustup can install it with `rustup component add rust-analyzer` (the [Profiles page](https://rust-lang.github.io/rustup/concepts/profiles.html) above says IDE tools are added manually with `rustup component add`), and rust-analyzer's own [Helix notes](https://rust-analyzer.github.io/book/other_editors.html) say "it won't install rust-analyzer automatically". No editor was run for this page: each row follows the linked official page.
+
+Two settings are worth finding:
+
+- **Format on save.** VS Code: turn on *Editor: Format On Save*; the Rust formatter is `rustfmt`, the same one `cargo fmt` runs. RustRover: *Settings | Rust | Rustfmt*, tick *Use Rustfmt instead of the built-in formatter*, then *Configure actions on save* and tick *Reformat code* ([RustRover: Rustfmt](https://www.jetbrains.com/help/rust/rustfmt.html)).
+- **Clippy hints inline.** rust-analyzer runs `cargo check` on save by default (`checkOnSave` and `check.command`, [its configuration page](https://rust-analyzer.github.io/book/configuration.html)). In VS Code `settings.json`, `"rust-analyzer.check.command": "clippy"` makes it run clippy instead ([rust-analyzer: Diagnostics](https://rust-analyzer.github.io/book/diagnostics.html)).
+
+:::tip[We've got you]
+If you can't see the grey type hints, look for an "inlay hints" setting in your editor. They are a quick way to learn what the compiler thinks your code means.
+:::
+
+## 3. Make a project
+
+<Session guide="first-project" run="new" />
+
+Here's what you get. The `.git/` folder is there because `cargo new` starts a git repository unless you are already inside one ([`cargo new`](https://doc.rust-lang.org/cargo/commands/cargo-new.html)):
+
+<Tree guide="first-project" dir="rust" name="hello" title="Project layout" extra={[".git/"]} hide={["Cargo.lock"]} notes={{".git":"a fresh git repository","src/main.rs":"your program starts here",".gitignore":"already ignores target/","Cargo.toml":"your project's settings and dependencies"}} />
+
+`Cargo.toml` describes your project and its dependencies, like `package.json`, `go.mod` or `pyproject.toml`:
+
+<Files guide="first-project" dir="rust" files={["Cargo.toml"]} />
+
+And `src/main.rs` is your program. `cargo new` makes a binary project, and `main` in this file is where it starts. The `!` in `println!` marks a macro ([Macros, attributes and comments](/learn/macros-attributes-naming/#the--a-macro-call)):
+
+<Files guide="first-project" dir="rust" files={["src/main.rs"]} />
+
+## 4. Build and run
+
+These are the commands you'll type all day. Here's real output from each one (build times are shown as `[time]s` because they differ on every machine):
+
+<Session guide="first-project" run="build" />
+
+- `cargo run` builds a debug version and runs it.
+- `cargo check` only checks your code for errors, without producing a program. The Book says it is often much faster than a build, and it's what rust-analyzer runs when you save (section 2).
+- `cargo build --release` makes an optimised program in `target/release/`. That's the one you ship or benchmark.
+
+After the first build, two new things appear:
+
+<Tree guide="first-project" dir="rust" name="hello" title="After cargo build" extra={[".git/", "target/debug/hello"]} notes={{"target":"new: everything Cargo builds","target/debug/hello":"your program (plus build caches)","Cargo.lock":"new: exact versions, commit it"}} />
+
+- **`target/`** holds everything Cargo builds, including your program at `target/debug/hello`. It can get big. It's already in `.gitignore`, and Cargo rebuilds what it needs if you delete it (`cargo clean` does that, [docs](https://doc.rust-lang.org/cargo/commands/cargo-clean.html)).
+- **`Cargo.lock`** records the exact version of every library you use. For a program like this one, commit it, so everyone builds the same thing ([Cargo.toml vs Cargo.lock](https://doc.rust-lang.org/cargo/guide/cargo-toml-vs-cargo-lock.html)).
+
+:::tip[We've got you]
+Release builds turn optimisations on, so the program usually runs faster ([the Book](https://doc.rust-lang.org/book/ch01-03-hello-cargo.html)). If something seems slow, try `--release` before worrying. Every run on this page is a debug build unless it says `--release`.
+:::
+
+## 5. Keep it tidy: fmt and clippy
+
+`cargo fmt` formats your code in the community's standard style, so style is one less thing to argue about in code review. Here is a badly laid-out file. `--check` lists what would change and exits with an error; plain `cargo fmt` rewrites the file:
+
+<Files guide="first-project" dir="messy" files={["src/main.rs"]} />
+
+<Session guide="first-project" run="fmt" />
+
+`cargo clippy` is a linter: its README says it has over 800 lints. It points out code that works but could be simpler or clearer, and tells you how. This file compiles, and clippy still has two remarks:
+
+<Files guide="first-project" dir="clumsy" files={["src/main.rs"]} />
+
+<Session guide="first-project" run="clippy" />
+
+Run both before you commit, or let your editor do it (section 2). [Macros, attributes and comments](/learn/macros-attributes-naming/#tidying-cargo-fmt-and-cargo-clippy) runs both on snippets.
+
+## Try it yourself
+
+1. **Greet someone by name.** Replace `src/main.rs` with this, then run `cargo run` and `cargo run -- Ferris`. `|| "world".to_string()` is a small function that only runs if there is no name. Everything after `--` goes to your program, and `nth(1)` skips the first item, which [the docs](https://doc.rust-lang.org/std/env/fn.args.html) say is traditionally the program's own path. With no name it prints `Hello, world!`; with one it prints `Hello, Ferris!`:
+
+   <Files guide="first-project" dir="greet" files={["src/main.rs"]} />
+
+   <Session guide="first-project" run="greet" />
+
+2. **Break it on purpose.** Change the first line of `main` to `let count: i32 = "three";` (leave the `println!` under it) and run `cargo check`. The compiler stops with `E0308`, points at the string, and says it expected `i32`. Nothing ran:
+
+   <Session guide="first-project" run="broken" />
+
+3. **Let clippy fix its own remarks.** Paste the clumsy file from section 5 into `src/main.rs` of a fresh project and run `cargo clippy --fix`. Cargo refuses, because a project made by `cargo new` has uncommitted files and a fix edits them. Commit first, or add `--allow-dirty`. Clippy reports "Fixed src/main.rs (2 fixes)", and the file now says `if done` and `names.is_empty()`:
+
+   <Session guide="first-project" run="fix" only={[3, 4, 5]} />
+
+## The same jobs in your language
+
+| Language | New project | Run | Check only | Release build | Test | Format | Lint |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Rust | `cargo new` | `cargo run` | `cargo check` | `cargo build --release` | `cargo test` | `cargo fmt` | `cargo clippy` |
+| Go | `go mod init` (you write `main.go`) | `go run .` | `go vet ./...` | `go build` (one default mode) | `go test ./...` | `gofmt` | `go vet`, `staticcheck` |
+| Python | `uv init` | `python3 main.py` | `python3 -m py_compile` (syntax only); `mypy` for types | nothing to compile | `python3 -m unittest`, `pytest` | `ruff format` | `ruff check` |
+| TypeScript | `npm init` | `node main.ts` (Node 22.18 or newer) | `tsc --noEmit` | `tsc` | `node --test`, `vitest` | `prettier` | `eslint` |
+| Java | `gradle init` | `java Main.java`, `gradle run` | `javac` (compiling is the check) | `gradle build` | `gradle test` | `google-java-format`, `spotless` | `checkstyle`, Error Prone |
+| Kotlin | `gradle init` | `gradle run` | `kotlinc` (compiling is the check) | `gradle build` | `gradle test` | `ktlint` | `detekt` |
+| C# | `dotnet new console` | `dotnet run` | `dotnet build` | `dotnet publish -c Release` | `dotnet test` | `dotnet format` | analysers, which run in `dotnet build` |
+| C | write a `Makefile` or `CMakeLists.txt` | build, then run the binary | `gcc -fsyntax-only` | `gcc -O2` | `ctest` | `clang-format` | `clang-tidy` |
+| C++ | write a `Makefile` or `CMakeLists.txt` | build, then run the binary | `g++ -fsyntax-only` | `g++ -O2` | `ctest` | `clang-format` | `clang-tidy` |
+
+Many cells are separate tools, not part of the language's own toolchain (`uv`, `mypy`, `pytest`, `ruff`, `vitest`, `prettier`, `eslint`, `staticcheck`, Gradle, `ktlint`, `detekt`, `clang-*`). The image has Go, Node, Java, Kotlin, Python, .NET and GCC but not those, so their cells are the usual names, not runs.
+
+<details>
+<summary>The runs behind the table</summary>
+
+<Session guide="first-project" run="langs" />
+
+Most of the checks (`go vet`, `gofmt -l`, `tsc --noEmit`, `javac`, `kotlinc`, `py_compile`, the two `-fsyntax-only` runs and `dotnet format`) print nothing when they find nothing wrong. Not run: Gradle, `uv`, `ruff`, `mypy`, `pytest`, `vitest`, `prettier`, `eslint`, `ktlint`, `detekt`, `clang-format`, `clang-tidy`, `ctest`, `dotnet build` and `dotnet test`.
+
+</details>
+
+## Read more
+
+- [The Rust Book, chapter 1.3: Hello, Cargo!](https://doc.rust-lang.org/book/ch01-03-hello-cargo.html) and [Appendix D: Useful development tools](https://doc.rust-lang.org/book/appendix-04-useful-development-tools.html) (rustfmt, `cargo fix`, Clippy, rust-analyzer)
+- [The Cargo Book: Creating a new package](https://doc.rust-lang.org/cargo/guide/creating-a-new-project.html) and [`cargo fix`](https://doc.rust-lang.org/cargo/commands/cargo-fix.html)
+- [Clippy documentation](https://doc.rust-lang.org/clippy/), [the list of lints](https://rust-lang.github.io/rust-clippy/stable/index.html) and [rustfmt](https://rust-lang.github.io/rustfmt/)
+
+## Where to next
+
+- Need a library? [Finding and using crates](/start/using-crates/).
+- Program getting long? [Splitting code into files](/start/files-and-modules/), then the [Modules](/learn/modules/) lesson for the full set of rules.
+- Ready for the language itself? Start with [Hello World](/learn/hello-world/).
+
+<p class="lr-fine">Paths in Cargo's output are shown as /home/you.</p>

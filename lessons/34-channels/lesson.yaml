@@ -1,0 +1,113 @@
+# Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
+title: "Channels"
+part: "concurrency"
+intro: >-
+  Channels send values from one thread to another. Sending a value moves it into the
+  channel.
+coming_from:
+  go: >-
+    `mpsc::channel()` is a queue that grows, so `send` does not wait for the receiver the
+    way a send on `make(chan T)` does. `sync_channel(n)` is `make(chan T, n)`, and
+    `sync_channel(0)` is the unbuffered kind. There is no `close`: the channel ends when
+    every sender is dropped, and there is no `select` in the standard library.
+  kotlin: >-
+    A channel is like a `LinkedBlockingQueue`, but `send` moves the value in, so the sender
+    can't touch it afterwards, and only one thread receives (a Kotlin coroutine `Channel`
+    may have several receivers; a Rust `Receiver` cannot be shared). When every sender is
+    dropped the channel closes and `for msg in rx` ends, so no `"DONE"` marker is needed.
+  python: >-
+    A channel is like `queue.Queue`, and `for msg in rx` stops by itself when every
+    sender is gone, so you don't need a `None` marker (or `shutdown()`, new in Python
+    3.13). `send` moves the value, so the sender can't change it afterwards.
+  typescript: >-
+    A channel is like `postMessage` between workers, except that `postMessage` copies the
+    data (unless you transfer it) and `send` moves it. `for msg in rx` blocks a
+    thread, with no callback, until every sender has been dropped; a `MessagePort` has
+    no such count.
+  java: >-
+    `mpsc::channel()` is a `LinkedBlockingQueue`, but `send` moves the value, so the
+    sender can't touch it afterwards. The channel closes by itself when every sender is
+    dropped, so no `DONE` marker is needed.
+  csharp: >-
+    `mpsc::channel()` is `Channel.CreateUnbounded<T>()`, and `for msg in rx` is `await
+    foreach` over `ReadAllAsync()`, except it blocks a thread instead of awaiting.
+    Dropping the last `tx` closes it like `Writer.Complete()`, and `send` moves the
+    value so the sender can't change it later.
+  c: >-
+    C has no channels, so you'd build a queue with a mutex and a condition variable (or use
+    a pipe for bytes).
+    `mpsc::channel()` is that queue, ready made; it closes when the last sender is
+    dropped, and the compiler stops the sender from using a value after sending it.
+  cpp: >-
+    The standard library has no channel, so `mpsc::channel()` replaces your mutex,
+    `condition_variable` and queue class. `send` moves like `std::move`, but Rust then
+    rejects any later use of the moved-from variable, which C++ accepts.
+notes:
+  - >-
+    `mpsc` means multiple producers, single consumer. Clone `tx` to have several senders;
+    the receiver cannot be cloned.
+  - >-
+    You never call `close`. The channel closes when every sender has gone away, here
+    when the thread ends, and `for msg in rx` ends with it.
+  - >-
+    `send` returns a `Result`, because the receiving side might already be gone.
+    `.unwrap()` here means "crash if nobody is listening".
+gotcha:
+  title: "Changing a value after sending it"
+  verdict: "rust-rule"
+  looks_fine: >-
+    In Go, Java, Kotlin, C#, Python and C you can send a list and keep changing it. The
+    receiver holds the same list, so it sees your later change, at a moment you don't control: two threads
+    use one list and nothing orders their accesses.
+  rust_sees: >-
+    `send(msg)` moves `msg` into the channel. After that line, the sending thread
+    doesn't own it anymore, so it can't touch it.
+  why: >-
+    Once you send something, it belongs to the receiver. The sender can't touch it
+    anymore, so two threads never fight over it, and the compiler checks this for you.
+  langs:
+    go:
+      status: "race"
+      mode: "race"
+      says: >-
+        Go printed receiver sees [99 2]. The channel passed a slice that shares its
+        array, so the sender's later change showed up on the other side. Built with
+        the race detector, as here, it also reports a data race.
+    kotlin:
+      status: "race"
+      says: >-
+        Kotlin printed receiver sees [99, 2]. The queue passed the same list object, not
+        a copy, so the sender's change after `put` showed up on the other side.
+    python:
+      status: "race"
+      says: >-
+        Python prints receiver sees [99, 2]. The queue passes the same list object, not
+        a copy, so the sender's change after `put` shows up on the other side.
+    typescript:
+      status: "runs"
+      says: >-
+        Prints [ 1, 2 ]. `postMessage` copies the array when you send it, so the later
+        push only changes the sender's copy.
+    java:
+      status: "race"
+      says: >-
+        The queue passes a reference, not a copy, so the receiver sees the 3 the sender
+        added after sending. Nothing stops both threads from touching the same list.
+    csharp:
+      status: "race"
+      says: >-
+        The channel passes a reference to the same List, so the sender's later change
+        shows up and the receiver sees [99, 2]. Send a copy, or stop touching it after
+        sending.
+    c:
+      status: "race"
+      mode: "tsan"
+      says: >-
+        C hands over a pointer, so the sender still has the same array. The receiver
+        sees 99, and ThreadSanitizer reports the data race.
+    cpp:
+      status: "wrong"
+      says: >-
+        This compiles cleanly. `std::move` hands the vector to the channel and leaves
+        `msg` in a valid but unspecified state (empty with libstdc++), so `push_back(3)`
+        lands in a leftover vector the receiver never sees.

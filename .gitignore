@@ -1,0 +1,40 @@
+# Build output, from every Rust project in the repo (every guides/*/rust project)
+target/
+node_modules/
+dist/
+.astro/
+.wrangler/
+
+# Compiled leftovers (host builds of lesson snippets and guide projects)
+lessons/**/*.bin
+*.o
+*.a
+*.so
+*.dylib
+*.class
+*.node
+*.whl
+*.egg-info/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Secrets and local settings
+.env
+.env.*
+!.env.example
+.dev.vars
+.claude/
+
+# Editors, OS, logs
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.log
+
+# Extract reports are for reading, not committing.
+website/src/data/extract-report*.txt

@@ -1,0 +1,281 @@
+<p class="lr-layer">The toolkit</p>
+
+Rust has three loops: `for` goes through a sequence of values, `while` repeats while a `bool` condition holds, and `loop` repeats until a `break`. `while let` is a `while` that tests a pattern. There is no three-part `for` and no `do ... while` ([what replaces them](/learn/what-rust-lacks/#operators-and-loops)). Outputs come from Linux on 64-bit ARM with Rust 1.99.1.
+
+| Loop | Use it when | Its value |
+|---|---|---|
+| `for x in seq { }` | you have a range, an array or another sequence | `()` |
+| `while cond { }` | a `bool` decides whether to go again | `()` |
+| `while let Some(x) = expr { }` | you keep taking items until none is left | `()` |
+| `loop { }` | there is no natural condition; you leave with `break` | whatever follows `break` |
+
+Only `loop` can `break` with a value (`let x = loop { break 5; };`). [Statements and expressions](/learn/statements-expressions/#if-without-else-and-loops-that-give-a-value) shows the error `for` and `while` give if you try.
+
+## Ranges
+
+A **range** is a value that stands for a run of numbers (or `char`s): `a..b` stops before `b` and `a..=b` includes it. The end is read once, when the loop starts.
+
+<Snippet file="ranges.rs" />
+
+The trap is `4..0`: it is not a countdown. It is empty, so the body never runs, with no error. `rev` and `step_by` are methods on the range ([Iterators](/learn/iterators/)); wrap the range in parentheses before calling one. `step_by` counts from the front of whatever it receives, so order matters.
+
+<Snippet file="rev-step.rs" />
+
+## Looping over a list
+
+A `for` loop takes anything that produces items one at a time, such as an array. `.iter()` hands out references to the items; `.enumerate()` pairs each with its position, and `(i, name)` unpacks the pair:
+
+<Snippet file="for-array.rs" />
+
+[Looping Over a Collection](/learn/for-collections/) covers `for x in v`, `&v` and `&mut v`.
+
+## The loop variable
+
+The name after `for` is a new variable on every pass, and it belongs to the loop. It cannot be assigned unless you write `mut`, and even then only that pass sees the change. Python's `for` and TypeScript's `for...of` work the same way; the three-part `for` of C, Java, C#, Go and TypeScript keeps one counter that the body can change.
+
+<Snippet file="skip-by-hand.rs" />
+
+Five passes, whatever the body does to `i`. Without `mut` the assignment does not compile, and after the loop the name is gone:
+
+<Snippet file="loop-var-assign.fail.rs" />
+
+<Snippet file="scope.fail.rs" />
+
+## `loop`, `break` and `continue`
+
+`break` leaves the loop. `continue` skips the rest of this pass. In a `loop`, `break value` makes the whole loop evaluate to that value, so the result can be a plain `let` instead of a `mut` variable. A `loop` with the test at the end runs the body first, as `do ... while` does elsewhere:
+
+<Snippet file="break-value.rs" />
+
+## A step you write yourself
+
+A step that is not +1 (`i *= 2`, two cursors walking towards each other) is a `while` with the step in the body. The catch: `continue` skips the rest of the pass, including a step or test written at the end. The last two loops below would run on, so each has a guard:
+
+<Snippet file="continue-skips.rs" />
+
+## Labels
+
+A name written `'outer:` in front of a loop lets `break 'outer` and `continue 'outer` act on that loop from inside an inner one. (The `'` is the one lifetimes use; [Rust at a glance](/learn/rust-at-a-glance/) lists both.) `break 'label value` works on a labelled `loop`, and a plain block can carry a label too and be left with a value.
+
+<Snippet file="labels.rs" />
+
+A `break` inside a `match` leaves the enclosing loop, not the `match` ([why there is no fall-through](/learn/what-rust-lacks/#no-fall-through-and-break-in-a-match)):
+
+<Snippet file="break-in-match.rs" />
+
+## `while let`
+
+`while let PATTERN = expr` runs the body while the pattern fits, and stops the first time it does not. The usual partner is `Vec::pop`, which returns `Some(item)` while the list has items and `None` when it is empty ([Option](/learn/option/), [Vectors](/learn/vectors/)). It suits work that the loop itself adds to. This one walks 1 to 7 as a tree (`n` has children `2n` and `2n + 1`), taking the last child first:
+
+<Snippet file="while-let.rs" />
+
+A `for` over the same list does not compile: the loop is still using the list when `push` changes it ([Borrowing](/learn/borrowing/) explains the rule):
+
+<Snippet file="for-push.fail.rs" />
+
+## Counting down with `usize`
+
+Lengths and indexes are `usize`, an unsigned integer ([Declarations and types](/learn/declarations-types/#the-type-goes-after-the-name)). Rust will not index with an `i32`, and an unsigned counter goes below zero:
+
+<Snippet file="index-i32.fail.rs" />
+
+<Snippet file="underflow.panic.rs" />
+
+The panic comes from `i -= 1` at 0: "attempt to subtract with overflow". The compiler also warns about the test `i >= 0` by default; here that lint is turned into an error to show the message in full:
+
+<Snippet file="underflow-warning.fail.rs" />
+
+That panic is a debug-build check (a plain `cargo run`; [Hello, World](/learn/hello-world/) covers the build kinds). A `--release` build turns `overflow-checks` off ([the Rust Book](https://doc.rust-lang.org/book/ch03-02-data-types.html#integer-overflow), [Cargo profiles](https://doc.rust-lang.org/cargo/reference/profiles.html#overflow-checks)), and `i -= 1` then wraps to the largest `usize`. This program would still panic, at `items[i]`, as the next one does; a loop that does not index would have nothing to stop it.
+
+<Snippet file="wrapped-index.panic.rs" />
+
+Count down with a reversed range instead. It never subtracts, and an empty list is just an empty range:
+
+<Snippet file="countdown.rs" />
+
+## Your language, in Rust
+
+<ForLang only="go" title="What you write today">
+
+| In Go | In Rust |
+|---|---|
+| `for i := 0; i < n; i++ {}` and `for i := range n {}` | `for i in 0..n { }` |
+| `for i := 0; i < n; i += 2 {}` | `for i in (0..n).step_by(2) { }` |
+| `for i := n - 1; i >= 0; i-- {}` | `for i in (0..n).rev() { }` |
+| `for cond {}` | `while cond { }` |
+| `for {}` | `loop { }` |
+| `for i, v := range xs {}` | `for (i, v) in xs.iter().enumerate() { }` |
+| `for _, v := range xs {}` | `for v in &xs { }` ([Looping Over a Collection](/learn/for-collections/)) |
+| `outer:` ... `break outer`, `continue outer` | `'outer:` ... `break 'outer`, `continue 'outer` |
+| `break` inside a `switch` leaves the `switch` | `break` inside a `match` leaves the loop |
+
+Go's three-clause `for` carries a changed `i` into the next pass. `for i := range n` (Go 1.22 and later) gives each pass its own `i`, which is what Rust does:
+
+<Snippet file="skip-by-hand.go" />
+
+Rust printed `0, 3, 2, 3, 4` for the same body, in five passes, and so does `range n`. A `continue` in a three-clause loop still runs `i++`; a Rust `while` that steps by hand skips its `i += 1`. In Go, a `break` in a `switch` inside a `for` leaves only the `switch`:
+
+<Snippet file="switch-break.go" />
+
+The Rust version above stops at 3 and never prints "n: 4". Counting down: Go's `len` is a signed `int`, so `for i := len(xs) - 1; i >= 0; i--` is correct there, and with a `uint` counter it compiles and wraps instead of stopping. Rust refuses the signed index and panics on the unsigned loop, as shown above.
+</ForLang>
+
+<ForLang only="java csharp" title="What you write today">
+
+| In Java or C# | In Rust |
+|---|---|
+| `for (int i = 0; i < n; i++)` | `for i in 0..n { }` |
+| `for (int x : xs)` (Java), `foreach (var x in xs)` (C#) | `for x in xs { }` for an array; other collections in [Looping Over a Collection](/learn/for-collections/) |
+| `IntStream.range(1, 4)` (Java) | `1..4` |
+| `Enumerable.Range(1, 3)` (C#): start and **count** | `1..4`: start and **end** |
+| `do { } while (c);` | `loop { ...; if !c { break; } }` |
+| `while (true) { }` | `loop { }` |
+| `outer:` ... `break outer;` (Java) | `'outer:` ... `break 'outer;` |
+| `break` inside a `switch` leaves the `switch` | `break` inside a `match` leaves the loop |
+
+Same body as the Rust program in "The loop variable":
+
+<Snippet file="skip-by-hand.java" />
+
+<Snippet file="skip-by-hand.cs" />
+
+Rust printed `0, 3, 2, 3, 4` in five passes: a changed `i` does not carry over. A `continue` in a `for` still runs the step, and in a `do ... while` it goes to the test; in the Rust forms it skips your `i += 1` or `if !c { break; }` (see "A step you write yourself").
+</ForLang>
+
+<ForLang only="kotlin" title="What you write today">
+
+| In Kotlin | In Rust |
+|---|---|
+| `for (i in 0 until n)` | `for i in 0..n { }` |
+| `for (i in 0..n)` | `for i in 0..=n { }` |
+| `for (i in n downTo 0)` | `for i in (0..=n).rev() { }` |
+| `for (i in 9 downTo 1 step 3)` | `for i in (1..=9).rev().step_by(3) { }` |
+| `repeat(3) { }` | `for _ in 0..3 { }` |
+| `outer@ for (...)`, `break@outer` | `'outer: for ...`, `break 'outer` |
+| `while (true) { }` | `loop { }` |
+
+Kotlin's `4..0` is empty too; where Kotlin has `downTo`, Rust has `.rev()`. The Kotlin side:
+
+<Snippet file="rev-step.kt" />
+</ForLang>
+
+<ForLang only="python" title="What you write today">
+
+| In Python | In Rust |
+|---|---|
+| `range(n)`, `range(a, b)` | `0..n`, `a..b` |
+| `range(0, 10, 3)` | `(0..10).step_by(3)` |
+| `range(n, -1, -1)` | `(0..=n).rev()` |
+| `range(len(xs))` | `0..xs.len()` |
+| `for i, x in enumerate(xs):` | `for (i, x) in xs.iter().enumerate() { }` |
+| `for x in xs:` | `for x in &xs { }` ([Looping Over a Collection](/learn/for-collections/)) |
+| `while True:` | `loop { }` |
+
+Python's `for ... else` runs the `else` when the loop ended without `break`. Rust has no `else` on a loop; a labelled block that breaks with a value does the same:
+
+<Snippet file="for-else.py" />
+
+<Snippet file="for-else.rs" />
+
+A Python loop variable also outlives the loop, which a Rust one does not (the error shown earlier):
+
+<Snippet file="scope.py" />
+</ForLang>
+
+<ForLang only="typescript" title="What you write today">
+
+| In TypeScript | In Rust |
+|---|---|
+| `for (let i = 0; i < n; i++)` | `for i in 0..n { }` |
+| `for (const x of xs)` | `for x in &xs { }` ([Looping Over a Collection](/learn/for-collections/)) |
+| `for (const k in xs)` | `for (i, x) in xs.iter().enumerate() { }` |
+| `do { } while (c);` | `loop { ...; if !c { break; } }` |
+| `while (true) { }` | `loop { }` |
+| `outer:` ... `break outer;` | `'outer:` ... `break 'outer;` |
+
+`for...in` on an array gives the **keys**, as strings, which is why the Rust column uses `enumerate`:
+
+<Snippet file="forin.ts" />
+
+A `continue` in the three-part `for` still runs `i++`; in the Rust `while` it skips your `i += 1` (see "A step you write yourself").
+</ForLang>
+
+<ForLang only="c cpp" title="What you write today">
+
+| In C or C++ | In Rust |
+|---|---|
+| `for (int i = 0; i < n; i++)` | `for i in 0..n { }` |
+| `for (;;)`, `while (1)` | `loop { }` |
+| `do { } while (c);` | `loop { ...; if !c { break; } }` |
+| `for (const auto& x : xs)` (C++) | `for x in &xs { }` |
+| `for (auto& x : xs)` (C++) | `for x in &mut xs { }` |
+| `for (int i : std::views::iota(1, 4))` (C++20) | `for i in 1..4 { }` |
+| `break` inside a `switch` leaves the `switch` | `break` inside a `match` leaves the loop |
+
+`for (auto x : xs)` copies each element, which is neither Rust row ([Looping Over a Collection](/learn/for-collections/)). In the three-part `for`, `i < n` also reads `n` again on every pass (a Rust range reads its end once):
+
+<Snippet file="skip-by-hand.c" />
+
+Rust printed `0, 3, 2, 3, 4` for the same body. Also, `continue` in a `for` still runs the step, and in a `do ... while` it goes to the test; in the Rust forms it skips your `i += 1` or your `if !c { break; }` (see "A step you write yourself"). Next, `break` in a `switch` in a loop:
+
+<Snippet file="switch-break.c" />
+
+Last, the count-down trap. In C a signed `int` counts down fine; Rust will not index with one. Rust panics at the subtraction in a debug build, where C wraps. gcc's `-Wtype-limits` warns about the test with `-Wextra` (this runner builds with `-Wall -Wextra`); Rust's lint needs no flag. Here `size_t` is 64 bits (Linux ARM64), and a guard stops the loop:
+
+<Snippet file="underflow.c" />
+</ForLang>
+
+<p class="lr-layer">Going deeper</p>
+
+## What `for` does
+
+The [Reference](https://doc.rust-lang.org/reference/expressions/loop-expr.html#iterator-loops) says `for` calls `IntoIterator::into_iter` on the expression and then calls `next()` in a `loop`, leaving at `None`. That is why anything that produces items works, and why a range is an ordinary value rather than special loop syntax (`IntoIterator` is a trait, a set of abilities; [Traits](/learn/traits/)). The `match` below takes `Some(i)` while an item comes and `None` at the end:
+
+<Snippet file="desugar.rs" />
+
+<ForLang only="java kotlin csharp">
+`IntoIterator` plays the role of `Iterable` / `IEnumerable`, and `next()` returning `Some` or `None` is `hasNext()` and `next()` in one call.
+</ForLang>
+
+## `..=` reaches the last value
+
+`0..=255u8` includes 255, the largest `u8`, and the loop still ends. `0..255u8` stops one short:
+
+<Snippet file="u8-range.rs" />
+
+<ForLang only="c cpp">
+The naive C form `for (uint8_t b = 0; b <= 255; b++)` never ends: the test is always true. This one has a guard:
+
+<Snippet file="u8-loop.c" />
+
+The gcc warning shown with the program (`-Wtype-limits`) says the same thing.
+</ForLang>
+
+## No float ranges
+
+`0.0..1.0` is a valid range of `f64`, but `Range` implements `Iterator` only for select types, particularly integers. Count with an integer, then scale:
+
+<Snippet file="float-range.fail.rs" />
+
+<Snippet file="float-steps.rs" />
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Open each exercise in the Playground, replace the `todo!()`, and run it until it prints `all checks passed`.
+
+<Exercise name="collatz" title="Collatz steps, then a first square">
+`collatz_steps` counts the steps to reach 1 (even: halve, odd: triple and add one) with a `while` loop; 6 takes 8 steps and 1 takes none. `first_square_over` finds the smallest `k` whose square exceeds a limit with a `loop` that ends in `break k`.
+</Exercise>
+
+<Exercise name="count-primes" title="Count the primes on a stack">
+Count the primes in a `Vec` by popping numbers off its end (the function owns the list; [Ownership](/learn/ownership/) explains). `stack.pop()` gives `Some(n)` while there are numbers and `None` when the list is empty ([Option](/learn/option/)), so `while let Some(n) = stack.pop()` is the loop. Try the divisors `2..n`; when one divides `n`, a labelled `continue` goes to the next popped number. 0 and 1 are not prime.
+</Exercise>
+
+## Read more
+
+- [The Rust Book, chapter 3.5: Control Flow](https://doc.rust-lang.org/book/ch03-05-control-flow.html), and [3.2: Data Types](https://doc.rust-lang.org/book/ch03-02-data-types.html#integer-overflow) (the Integer Overflow section).
+- [The Rust Reference: Loop expressions](https://doc.rust-lang.org/reference/expressions/loop-expr.html), with the exact expansion of `for`.
+- Rust by Example: [for and range](https://doc.rust-lang.org/rust-by-example/flow_control/for.html), [nesting and labels](https://doc.rust-lang.org/rust-by-example/flow_control/loop/nested.html) and [while let](https://doc.rust-lang.org/rust-by-example/flow_control/while_let.html).
+- The standard library: [`Range`](https://doc.rust-lang.org/std/ops/struct.Range.html) and [`RangeInclusive`](https://doc.rust-lang.org/std/ops/struct.RangeInclusive.html).

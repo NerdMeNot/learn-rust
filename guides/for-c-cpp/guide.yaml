@@ -1,0 +1,234 @@
+# Rust for C and C++ developers
+#
+# Every habit runs in the image: the C with gcc 14 and the C++ with g++ 14 (-std=c++20),
+# both with -Wall -Wextra, and with AddressSanitizer or UBSan where the habit is about
+# undefined behaviour. The Rust runs are cargo bins in habits/. A step that pipes through
+# `head` is there only to keep a sanitizer report short; the pipefail keeps its exit code.
+# ASan prints addresses and process ids, and the Rust panic message prints a thread id, so
+# those steps are marked `varies`.
+name: habits
+sessions:
+  # 1. Who frees it
+  own:
+    dir: habits
+    steps:
+      - cmd: "set -o pipefail; gcc -Wall -Wextra -g -fsanitize=address c/h01_free.c -o h01_free && ./h01_free 2>&1 | head -10"
+        show: "$ gcc -Wall -Wextra -g -fsanitize=address c/h01_free.c -o h01_free && ./h01_free 2>&1 | head -10   # C"
+        expect: fail
+        varies: true
+      - cmd: "set -o pipefail; g++ -std=c++20 -Wall -Wextra -g -fsanitize=address cpp/h01_free.cpp -o h01_free_cpp && ./h01_free_cpp x 2>&1 | head -10"
+        show: "$ g++ -std=c++20 -Wall -Wextra -g -fsanitize=address cpp/h01_free.cpp -o h01_free_cpp && ./h01_free_cpp x 2>&1 | head -10   # C++"
+        expect: fail
+        varies: true
+      - cmd: cargo run --bin h01_drop
+      - cmd: cargo run --bin h01_double_free
+        expect: fail
+  # 2. Reading past the end
+  bounds:
+    dir: habits
+    steps:
+      - cmd: "set -o pipefail; gcc -Wall -Wextra -g -fsanitize=address c/h02_bounds.c -o h02_bounds && ./h02_bounds 2>&1 | head -4"
+        show: "$ gcc -Wall -Wextra -g -fsanitize=address c/h02_bounds.c -o h02_bounds && ./h02_bounds 2>&1 | head -4   # C"
+        expect: fail
+        varies: true
+      - cmd: "set -o pipefail; g++ -std=c++20 -Wall -Wextra -g -fsanitize=address cpp/h02_bounds.cpp -o h02_bounds_cpp && ./h02_bounds_cpp 2>&1 | head -4"
+        show: "$ g++ -std=c++20 -Wall -Wextra -g -fsanitize=address cpp/h02_bounds.cpp -o h02_bounds_cpp && ./h02_bounds_cpp 2>&1 | head -4   # C++, v[i]"
+        expect: fail
+        varies: true
+      - cmd: ./h02_bounds_cpp at
+        show: "$ ./h02_bounds_cpp at   # C++, v.at(i)"
+        expect: fail
+      - cmd: cargo run --bin h02_bounds
+        expect: fail
+        varies: true
+      - cmd: cargo run --release --bin h02_bounds
+        expect: fail
+        varies: true
+  # 3. Moved-from objects
+  move:
+    dir: habits
+    steps:
+      - cmd: g++ -std=c++20 -Wall -Wextra cpp/h03_move.cpp -o h03_move && ./h03_move
+        show: "$ g++ -std=c++20 -Wall -Wextra cpp/h03_move.cpp -o h03_move && ./h03_move   # C++"
+      - cmd: cargo run --bin h03_move
+        expect: fail
+  # 4. A pointer into something that moves
+  invalidate:
+    dir: habits
+    steps:
+      - cmd: "set -o pipefail; gcc -Wall -Wextra -g -fsanitize=address c/h04_realloc.c -o h04_realloc && ./h04_realloc 2>&1 | head -12"
+        show: "$ gcc -Wall -Wextra -g -fsanitize=address c/h04_realloc.c -o h04_realloc && ./h04_realloc 2>&1 | head -12   # C"
+        expect: fail
+        varies: true
+      - cmd: "set -o pipefail; g++ -std=c++20 -Wall -Wextra -g -fsanitize=address cpp/h04_push_back.cpp -o h04_push_back && ./h04_push_back 2>&1 | head -4"
+        show: "$ g++ -std=c++20 -Wall -Wextra -g -fsanitize=address cpp/h04_push_back.cpp -o h04_push_back && ./h04_push_back 2>&1 | head -4   # C++"
+        expect: fail
+        varies: true
+      - cmd: cargo run --bin h04_push
+        expect: fail
+  # 5. NULL
+  optional:
+    dir: habits
+    steps:
+      - cmd: "set -o pipefail; gcc -Wall -Wextra -g -fsanitize=address c/h05_null.c -o h05_null && ./h05_null 2>&1 | head -4"
+        show: "$ gcc -Wall -Wextra -g -fsanitize=address c/h05_null.c -o h05_null && ./h05_null 2>&1 | head -4   # C"
+        expect: fail
+        varies: true
+      - cmd: cargo run --bin h05_option
+      - cmd: cargo run --bin h05_option_fail
+        expect: fail
+  # 6. Declaration order, headers and privacy
+  order:
+    dir: habits
+    steps:
+      - cmd: gcc -Wall -Wextra c/h06_order.c -o h06_order
+        show: "$ gcc -Wall -Wextra c/h06_order.c -o h06_order   # C"
+        expect: fail
+      - cmd: g++ -std=c++20 -Wall -Wextra cpp/h06_order.cpp -o h06_order_cpp
+        show: "$ g++ -std=c++20 -Wall -Wextra cpp/h06_order.cpp -o h06_order_cpp   # C++"
+        expect: fail
+      - cmd: cargo run --bin h06_order
+      - cmd: cargo run --bin h06_private
+        expect: fail
+  # 7. const
+  constness:
+    dir: habits
+    steps:
+      - cmd: gcc -Wall -Wextra c/h07_const.c -o h07_const && ./h07_const
+        show: "$ gcc -Wall -Wextra c/h07_const.c -o h07_const && ./h07_const   # C"
+      - cmd: g++ -std=c++20 -Wall -Wextra cpp/h07_const.cpp -o h07_const_cpp && ./h07_const_cpp
+        show: "$ g++ -std=c++20 -Wall -Wextra cpp/h07_const.cpp -o h07_const_cpp && ./h07_const_cpp   # C++"
+      - cmd: cargo run --bin h07_let
+        expect: fail
+      - cmd: cargo run --bin h07_let_mut
+  # 8. Macros and templates
+  generic:
+    dir: habits
+    steps:
+      - cmd: gcc -Wall -Wextra c/h08_macro.c -o h08_macro && ./h08_macro
+        show: "$ gcc -Wall -Wextra c/h08_macro.c -o h08_macro && ./h08_macro   # C"
+      - cmd: g++ -std=c++20 -Wall -Wextra cpp/h08_template.cpp -o h08_template
+        show: "$ g++ -std=c++20 -Wall -Wextra cpp/h08_template.cpp -o h08_template   # C++"
+        expect: fail
+      - cmd: cargo run --bin h08_generic
+      - cmd: cargo run --bin h08_no_bound
+        expect: fail
+  # 9. Conversions and overflow
+  numbers:
+    dir: habits
+    steps:
+      - cmd: gcc -Wall -Wextra -fsanitize=undefined c/h09_conversions.c -o h09_c && ./h09_c
+        show: "$ gcc -Wall -Wextra -fsanitize=undefined c/h09_conversions.c -o h09_c && ./h09_c   # C"
+      - cmd: g++ -std=c++20 -Wall -Wextra -fsanitize=undefined cpp/h09_conversions.cpp -o h09_cpp && ./h09_cpp
+        show: "$ g++ -std=c++20 -Wall -Wextra -fsanitize=undefined cpp/h09_conversions.cpp -o h09_cpp && ./h09_cpp   # C++"
+      - cmd: cargo run --bin h09_compare_fail
+        expect: fail
+  overflow:
+    dir: habits
+    steps:
+      - cmd: cargo run --bin h09_overflow
+        expect: fail
+        varies: true
+      - cmd: cargo run --release --bin h09_overflow
+  # 10. Errors
+  errors:
+    dir: habits
+    steps:
+      - cmd: gcc -Wall -Wextra c/h10_errors.c -o h10_c && ./h10_c
+        show: "$ gcc -Wall -Wextra c/h10_errors.c -o h10_c && ./h10_c   # C"
+      - cmd: g++ -std=c++20 -Wall -Wextra cpp/h10_errors.cpp -o h10_cpp && ./h10_cpp
+        show: "$ g++ -std=c++20 -Wall -Wextra cpp/h10_errors.cpp -o h10_cpp && ./h10_cpp   # C++"
+        expect: fail
+      - cmd: cargo run --bin h10_result
+        expect: fail
+  # The idiom table: every C, C++ and Rust cell is in these three programs.
+  idioms:
+    dir: habits
+    steps:
+      - cmd: gcc -Wall -Wextra -pthread c/idioms.c -o idioms_c && ./idioms_c
+        show: "$ gcc -Wall -Wextra -pthread c/idioms.c -o idioms_c && ./idioms_c   # C"
+      - cmd: g++ -std=c++20 -Wall -Wextra -pthread cpp/idioms.cpp -o idioms_cpp && ./idioms_cpp
+        show: "$ g++ -std=c++20 -Wall -Wextra -pthread cpp/idioms.cpp -o idioms_cpp && ./idioms_cpp   # C++"
+      - cmd: cargo run --bin idioms
+  # unsafe: the one place a raw pointer may be dereferenced
+  unsafe-check:
+    dir: habits
+    steps:
+      - cmd: cargo run --bin unsafe_deref_fail
+        expect: fail
+  # What you will miss
+  miss-overload:
+    dir: habits
+    steps:
+      - cmd: cargo build --bin miss_overload
+        expect: fail
+  miss-specialise:
+    dir: habits
+    steps:
+      - cmd: g++ -std=c++20 -Wall -Wextra cpp/miss_specialise.cpp -o miss_specialise && ./miss_specialise
+        show: "$ g++ -std=c++20 -Wall -Wextra cpp/miss_specialise.cpp -o miss_specialise && ./miss_specialise   # C++"
+      - cmd: cargo build --bin miss_specialise
+        expect: fail
+  miss-allocator:
+    dir: habits
+    steps:
+      - cmd: g++ -std=c++20 -Wall -Wextra cpp/miss_allocator.cpp -o miss_allocator && ./miss_allocator
+        show: "$ g++ -std=c++20 -Wall -Wextra cpp/miss_allocator.cpp -o miss_allocator && ./miss_allocator   # C++"
+      - cmd: cargo build --bin miss_allocator
+        expect: fail
+  miss-rejected:
+    dir: habits
+    steps:
+      - cmd: cargo build --bin miss_rejected
+        expect: fail
+  miss-fixed:
+    dir: habits
+    steps:
+      - cmd: cargo run --bin miss_rejected_fixed
+  # The toolchain map
+  cmake:
+    dir: cmake
+    steps:
+      - cmd: 'for t in cmake make; do if command -v $t >/dev/null; then echo "$t: found"; else echo "$t: not found"; fi; done'
+        show: "$ for t in cmake make; do command -v $t ...; done"
+      - cmd: "apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq cmake make >/dev/null 2>&1"
+        show: "$ apt-get install cmake make   # needs network"
+      - cmd: cmake -S . -B build
+        varies: true # prints how long configuring took
+      - cmd: cmake --build build
+      - cmd: ./build/hello
+  # What the image has and has not got, for the toolchain table.
+  tools:
+    dir: hello
+    steps:
+      - cmd: 'for t in gcc g++ gdb lldb valgrind clang-format clang-tidy cppcheck cargo rust-gdb rust-lldb; do if command -v $t >/dev/null; then echo "$t: found"; else echo "$t: not found"; fi; done'
+        show: "$ for t in gcc g++ gdb lldb valgrind clang-format clang-tidy cppcheck cargo rust-gdb rust-lldb; do command -v $t ...; done"
+      - cmd: cargo miri --version
+        expect: fail
+  cargo:
+    dir: hello
+    steps:
+      - cmd: cargo run
+      - cmd: cargo test
+      - cmd: cargo fmt --check
+      - cmd: cargo clippy
+      - cmd: cargo doc --no-deps
+  # Try it yourself
+  try-reorder:
+    dir: habits
+    overlay:
+      src/bin/h04_push.rs: fixes/h04_reordered.rs
+    steps:
+      - cmd: cargo run --bin h04_push
+        show: "$ cargo run --bin h04_push   # after moving the println! above v.push(4)"
+  try-overflow-checks:
+    dir: habits
+    steps:
+      - cmd: CARGO_PROFILE_RELEASE_OVERFLOW_CHECKS=true cargo run --release --bin h09_overflow
+        expect: fail
+        varies: true
+  try-exit-code:
+    dir: habits
+    steps:
+      - cmd: cargo run -q --bin h10_result > /dev/null; echo "exit code $?"
+        show: "$ cargo run -q --bin h10_result > /dev/null; echo \"exit code $?\""

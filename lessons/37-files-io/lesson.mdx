@@ -1,0 +1,291 @@
+<p class="lr-layer">The toolkit</p>
+
+Outputs come from Linux on 64-bit ARM, Rust 1.99.1, debug build. Every program on this page that makes files puts them under `std::env::temp_dir()` and deletes them. The runner gives a program an empty standard input. A few programs read `/proc` or use a Unix-only API; they say so.
+
+## Whole files in one call
+
+`fs::write` creates a file, or empties it first, and writes the bytes. `fs::read_to_string` returns a `String`, `fs::read` a `Vec<u8>`. Each takes `impl AsRef<Path>`, so a `&str`, a `String` or a `PathBuf` all work ([Reading signatures](/learn/reading-signatures/) explains that bound).
+
+<Snippet file="whole-file.rs" />
+
+Both read the whole file into memory: fine for a config file or short input you need whole. For a file you do not control (an upload, a log), read pieces with a `BufReader` (below), one line or buffer at a time.
+
+## Errors: `io::Error` and `ErrorKind`
+
+Almost every call that touches the disk returns `io::Result<T>`, which is `Result<T, io::Error>` ([Errors](/learn/errors/) covers `Result`, `?` and `Box<dyn Error>`). `Path::exists`, `is_file` and `is_dir` are the exceptions: they return `bool` and hide the error. The `Display` text comes from the operating system, `kind()` gives a portable `ErrorKind`, and `raw_os_error()` the OS number. `ErrorKind` is `#[non_exhaustive]`, so a `match` needs a wildcard arm ([docs](https://doc.rust-lang.org/std/io/enum.ErrorKind.html)).
+
+<Snippet file="not-found.rs" />
+
+The message does not name the path; add it where you know it. [The translating section](#translating-from-what-you-know) runs the other languages: Go, Java, Kotlin, C#, Python, Node and C++'s `<filesystem>` put the path in the message, and C's `strerror` does not.
+
+`read_to_string` refuses bytes that are not UTF-8 with `InvalidData`; the docs use that exact case as the example. Read the bytes with `fs::read` and decode them yourself, or decide per line. On 1.99.1 `lines()` reports the bad line as an `Err` and then carries on, but the docs promise only the error.
+
+<Snippet file="invalid-utf8.rs" />
+
+## Opening a file: `File`, `OpenOptions` and closing
+
+`File::open` opens for reading, `File::create` for writing (creating or emptying the file). Anything else goes through `OpenOptions`, a builder: `append`, `create_new`, `read(true).write(true)` for both. On Unix `mode` sets the permission bits of a new file (the umask can remove bits) and `fs::set_permissions` changes them later. The [`create_new` docs](https://doc.rust-lang.org/std/fs/struct.OpenOptions.html#method.create_new) call it "atomic": the check and the creation are one step, so no other process can create the file in between (a TOCTOU race, time-of-check to time-of-use). Checking `Path::exists` and then creating is the weaker pattern.
+
+<Snippet file="open-options.rs" />
+
+There is no `close`. The [`File` docs](https://doc.rust-lang.org/std/fs/struct.File.html) say: "Files are automatically closed when they go out of scope." A `File` owns an operating-system handle, and its `Drop` ([Common traits](/learn/common-traits/)) closes it. On Unix the operating system numbers each open file with a **file descriptor**. This program counts the process's descriptors through `/proc/self/fd` (Linux):
+
+<Snippet file="drop-closes.rs" />
+
+`mem::forget` takes a value and never runs its `Drop`, so the descriptor stays open: closing is `Drop`, nothing more. The docs warn: "Errors detected on closing are ignored by the implementation of `Drop`. Use the method `sync_all` if these errors must be manually handled." The [`BufWriter` section](#what-a-bufwriter-buys-counted) runs a failure that a drop hides.
+
+## `Read`, `Write`, `BufRead` and `Seek`
+
+These traits are what `std::io` is for: code that does not care where bytes come from. `Read` takes bytes out, `Write` puts bytes in, `BufRead` adds `lines` and friends to a reader that keeps a buffer, and `Seek` moves the position. Each type implements the ones that fit it:
+
+| Type | `Read` | `Write` | `BufRead` | `Seek` |
+|---|---|---|---|---|
+| `File` | yes | yes | no | yes |
+| `BufReader<File>` | yes | no | yes | yes |
+| `&[u8]` | yes | no | yes | no |
+| `Cursor<Vec<u8>>` | yes | yes | yes | yes |
+| `Vec<u8>` | no | yes | no | no |
+| `Stdin` / `StdinLock` | yes / yes | no | no / yes | no |
+| `Stdout` | no | yes | no | no |
+
+A bare `File` has no buffer, so it is not a `BufRead`: `File::open(p)?.lines()` does not compile; wrap it in a `BufReader`. A function written against the traits ([Traits](/learn/traits/), [Generics](/learn/generics/)) serves every source, and a test needs no disk:
+
+<Snippet file="traits.rs" />
+
+Those methods exist only where the trait is imported (the gotcha above). `Seek` is random access, and a file needs `read(true).write(true)` to do both. `Cursor` is the same traits over memory, a stand-in for a file in tests.
+
+<Snippet file="seek.rs" />
+
+`io::copy(&mut reader, &mut writer)` moves all the bytes between any `Read` and `Write` and returns the count; `fs::copy` copies one file to another.
+
+<Snippet file="copy.rs" />
+
+## Lines and line endings
+
+`BufReader::new(file).lines()` is the everyday way to read line by line. Its items are `io::Result<String>`, and the [docs](https://doc.rust-lang.org/std/io/trait.BufRead.html#method.lines) say each string has no `\n` or `\r\n` at the end. `read_line` appends to a `String` you own, keeps the ending, and returns `Ok(0)` at the end of the input. Nothing translates endings on Linux. Splitting on `\n` yourself leaves the `\r` on Windows lines, a last line without a newline is still a line, and a lone `\r` is not a break.
+
+<Snippet file="line-endings.rs" />
+
+## Paths
+
+A `Path` is to a `PathBuf` what a `&str` is to a `String`: a borrowed view and its owned twin. The methods work on components, not text, so `starts_with` compares whole components:
+
+<Snippet file="paths.rs" />
+
+Three things to remember. `extension` is only the last part (`gz`, not `tar.gz`), without the dot, and a name that only starts with a dot has none ([docs](https://doc.rust-lang.org/std/path/struct.Path.html#method.extension)). `join` with an absolute path replaces everything before it: the [docs](https://doc.rust-lang.org/std/path/struct.Path.html#method.join) say "If `path` is absolute, it replaces the current path." And `components` keeps `..`. A base directory plus user input is therefore not a sandbox.
+
+## Directories, metadata and symlinks
+
+<Snippet file="dirs.rs" />
+
+`read_dir` yields `io::Result<DirEntry>` items, and the [docs](https://doc.rust-lang.org/std/fs/fn.read_dir.html) say the order "can change between calls", so sort. It lists one level; `std` has no recursive walk, so `walk` recurses by hand (the `walkdir` crate is the usual shortcut).
+
+| Task | Call |
+|---|---|
+| make one directory / a whole path | `fs::create_dir` / `fs::create_dir_all` |
+| delete a file / an empty directory | `fs::remove_file` / `fs::remove_dir`, which fails on a non-empty one |
+| delete a directory and everything in it | `fs::remove_dir_all` |
+| size, kind of file | `fs::metadata(path)?` then `.len()`, `.is_file()` |
+| does it exist | `try_exists()`; `exists()` hides errors and, as the docs warn, invites TOCTOU bugs |
+
+A symlink is a file that holds a path. `metadata` and `exists` follow it, `symlink_metadata` looks at the link itself, so a dangling link "does not exist" while the link is still there (`std::os::unix::fs::symlink` is Unix only):
+
+<Snippet file="symlink.rs" />
+
+## Standard output, standard input and `flush`
+
+`print!` and `println!` write to `Stdout`, which keeps a buffer. The [docs](https://doc.rust-lang.org/std/io/struct.Stdout.html) say it is line-buffered "when connected to a terminal", so `print!` without a newline may sit in the buffer and a prompt needs `flush`. This program runs itself twice with its output sent to a file (the runner's own is a terminal) and counts write calls:
+
+<Snippet file="stdout-redirect.rs" />
+
+On 1.99.1 every `println!` made its own write call even to a file. The docs promise only the terminal case, so do not depend on either behaviour. <ForLang only="c cpp">C's stdio switches to full buffering when output is redirected, so `printf` made two write calls for the same 1,000 lines, three with the final flush (`buffering.c`, below); do not assume the same here.</ForLang> Many lines to a file or pipe want `stdout().lock()` in a `BufWriter`, flushed at the end.
+
+`io::stdin().read_line(&mut s)` reads one line, newline included, and `io::stdin().lines()` iterates over the rest. The runner's empty input makes `read_line` return `Ok(0)`.
+
+<Snippet file="stdin.rs" />
+
+<p class="lr-layer">Going deeper</p>
+
+## What a `BufWriter` buys, counted
+
+The `File` docs say it "does not buffer reads and writes", so every `write` on it is a request to the operating system, a **system call**. This program counts the write system calls the process makes, read from `/proc/self/io` (Linux only), for 1,000 lines, first straight into a `File` and then through a `BufWriter`. `File::flush` has nothing to empty (the docs call it "currently a no-op") and made none:
+
+<Snippet file="syscalls.rs" />
+
+`BufWriter` collects small writes and passes them on in large batches (default "currently 8 KiB, but may change"; [docs](https://doc.rust-lang.org/std/io/struct.BufWriter.html)). The 3,000 calls are three per `writeln!`; this one writes to a counter and shows what is handed over and what waits:
+
+<Snippet file="buffering.rs" />
+
+It flushes on drop, but that flush has nowhere to report an error: "It is critical to call `flush` before `BufWriter<W>` is dropped." `/dev/full`, a Linux device that refuses every byte, stands in for a full disk. Without `flush()?` the first function reports success:
+
+<Snippet file="close-errors.rs" />
+
+## `read` and `write` can do less than you asked
+
+`Read::read` fills at most the buffer and returns how many bytes it wrote; for a non-empty buffer, `0` means the end of the input. `Write::write` may accept fewer bytes than offered. `read_to_string`, `read_to_end`, `read_exact` and `write_all` loop until done, or fail; ignoring `write`'s count can lose data, so use `write_all` or `writeln!`.
+
+<Snippet file="short-io.rs" />
+
+## Why a path is not a `String`
+
+On Linux a file name is any bytes except `/` and NUL, so it need not be UTF-8. Names are `OsStr` and `OsString` (`Path` and `PathBuf` wrap them). `to_str` returns an `Option`, `to_string_lossy` replaces bad bytes, and `display()` prints a path. The type tells you when a name is not text.
+
+<Snippet file="osstr.rs" />
+
+## Temporary files that clean up
+
+`std` has `env::temp_dir()` and no unique names (the `tempfile` crate does that). By hand, the process id keeps two overlapping runs apart, and a `Drop` removes the directory when the guard goes out of scope, even when `?` returns early from the function that owns it.
+
+<Snippet file="temp-dir.rs" />
+
+## Replacing a file safely
+
+`fs::write` empties the file first, so a crash mid-write leaves half a file. The usual idiom writes a temporary file in the same directory and renames it over the target. The `rename` [docs](https://doc.rust-lang.org/std/fs/fn.rename.html) say it replaces `to` and "will not work" on a different mount point, so the temporary file goes next to the target. `sync_all` asks the OS to flush the data first, and `create_new` keeps the code from overwriting a file that is not its own.
+
+<Snippet file="atomic-write.rs" />
+
+This run shows the result and the clean-up on failure, not a power cut or a crash between the calls; the page claims nothing about those.
+
+## File locks
+
+`File::lock` (stable since Rust 1.89) locks a whole file; on Unix it is `flock`. The [docs](https://doc.rust-lang.org/std/fs/struct.File.html#method.lock) say it "may be advisory or mandatory" (advisory: other programs can ignore it), so this page tests lock against lock, on handles open for writing, as the docs leave read-only ones unspecified.
+
+<Snippet file="lock.rs" />
+
+## Translating from what you know
+
+All of `std::fs` blocks the thread; async file I/O comes from a runtime ([Async basics](/learn/async-basics/), [Tokio](/build/tokio/)).
+
+<ForLang only="go">
+`os.ReadFile` plus `string()` accepts any bytes (the output shows `utf8.Valid: false` and no error); `read_to_string` checks. `bufio.Scanner` stops at a line over 64 KiB unless you call `sc.Buffer`, a deliberate guard; `bufio.Reader.ReadString('\n')`, like `lines()`, has no cap and reads one huge line whole into memory. An `os.File` is unbuffered, like a Rust `File`. `f.Close()` returns an error that `defer f.Close()` usually drops, and a dropped `File` cannot report one: after writing, call `sync_all()?`.
+
+<Snippet file="files.go" />
+
+<Snippet file="long-line.rs" />
+
+| In Go | In Rust |
+|---|---|
+| `os.ReadFile(p)` returns `[]byte` and an error | `fs::read(p)?`; `fs::read_to_string(p)?` also checks UTF-8 |
+| `os.WriteFile(p, b, 0o644)` | `fs::write(p, b)?`, no mode; `OpenOptionsExt::mode` sets one |
+| `*fs.PathError`, `errors.Is(err, fs.ErrNotExist)` | `io::Error` (no path), `e.kind() == ErrorKind::NotFound` |
+| `filepath.Join("/data", "/etc/hosts")` is `/data/etc/hosts` | `Path::join` with an absolute path replaces: `/etc/hosts` |
+| `io.Reader`, `io.Writer`, `io.Copy`, `io.ReadAll` | `Read`, `Write`, `io::copy`, `read_to_end` |
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+In Rust the scope closes the file, not a keyword. One difference matters when you write: `close()` and `Dispose` flush a buffer and report the failure (the runs below write to `/dev/full`), while a dropped `File` or `BufWriter` cannot. After writing, call `sync_all()?` or `flush()?`.
+</ForLang>
+
+<ForLang only="java">
+<Snippet file="files.java" />
+
+`Files.readString` throws on bad UTF-8 as Rust does (`MalformedInputException`), and `NoSuchFileException` names the path. `Path.resolve` with an absolute path replaces, like `join`. A `FileOutputStream` is unbuffered like a `File`; `BufferedOutputStream` is the `BufWriter`.
+</ForLang>
+
+<ForLang only="kotlin">
+<Snippet file="files.kt" />
+
+`readText` does not throw on bad UTF-8: it puts U+FFFD in its place, and `String::from_utf8_lossy` is the lossy version you choose yourself. Kotlin has the trait-import rule of the gotcha too: `readText` on a `java.nio.file.Path` is an extension function that needs an import. The first program fails, the second compiles:
+
+<Snippet file="import-rule.fail.kt" />
+
+<Snippet file="import-rule.kt" />
+</ForLang>
+
+<ForLang only="csharp">
+<Snippet file="files.cs" />
+
+`File.ReadAllText` also replaces bad bytes with U+FFFD. The missing file raises `DirectoryNotFoundException` because `/no` is the part that is missing. `Path.Combine` with an absolute path replaces, like `join`. A `FileStream` buffers by default (4 KiB), so small writes cost less than on a bare `File`; `bufferSize: 0` gives the bare behaviour.
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+| In Java / Kotlin / C# | In Rust |
+|---|---|
+| `Files.readString`, `readText`, `File.ReadAllText` | `fs::read_to_string(p)?` |
+| `Files.readAllLines`, `readLines()`, `ReadAllLines`; lazy `Files.lines`, `useLines`, `ReadLines` | `fs::read_to_string(p)?.lines()`; `BufReader::new(File::open(p)?).lines()` |
+| `try (var r = ...)`, `.use { }`, `using` | the scope end (a failed close is not reported) |
+| `IOException` (checked in Java) | `io::Error` in a `Result` |
+</ForLang>
+
+<ForLang only="python">
+<Snippet file="files.py" />
+
+Text mode translates line endings unless you pass `newline=''`; Rust's `read_to_string` does not. `for line in f` keeps each `\n`, but `lines()` strips it (`read_line` keeps it). `read_text` takes `encoding=`; Rust reads UTF-8 only, and a bad byte is an `io::Error` of kind `InvalidData`, not a `UnicodeDecodeError`. `open()` buffers (1 write call for 1,000 writes, before the close); a Rust `File` does not, so wrap it in a `BufWriter`. `Path.suffix` keeps the dot where `extension` has none, and `pathlib`'s `/` with an absolute path replaces, like `join`.
+
+| In Python | In Rust |
+|---|---|
+| `Path(p).read_text()`, `read_bytes()` | `fs::read_to_string(p)?`, `fs::read(p)?` |
+| `with open(p) as f:` | the scope end |
+| `open(p, "w")`, `"a"`, `"x"`, `"r+"` | `File::create`, `OpenOptions` with `append(true)`, `create_new(true)`, `read(true).write(true)` |
+| `for line in f:` | `BufReader::new(f).lines()` (no `\n`) |
+| `f.seek(n)`; `FileNotFoundError` | `f.seek(SeekFrom::Start(n))?`; `ErrorKind::NotFound` |
+</ForLang>
+
+<ForLang only="typescript">
+<Snippet file="files.ts" />
+
+`readFileSync(p, "utf8")` replaces bad bytes with U+FFFD and does not throw. Node's message names the path; Rust's does not. `path.join` concatenates where `path.resolve` and Rust's `join` replace. Rust's `std::fs` blocks, like the `*Sync` calls. `fs/promises` runs the same blocking calls on libuv's thread pool, off the event loop, and `tokio::fs` does so on `spawn_blocking`'s pool ([Node](https://nodejs.org/api/fs.html#promises-api), [Tokio](https://docs.rs/tokio/latest/tokio/fs/index.html) docs): non-blocking files come from a runtime, not `std`.
+
+| In TypeScript | In Rust |
+|---|---|
+| `fs.readFileSync(p, "utf8")`, `fs.readFileSync(p)` | `fs::read_to_string(p)?`, `fs::read(p)?` |
+| `fs.mkdirSync(p, { recursive: true })`, `fs.rmSync(p, { recursive: true })` | `fs::create_dir_all`, `fs::remove_dir_all` |
+| `err.code === "ENOENT"` | `e.kind() == ErrorKind::NotFound` |
+| `readline.createInterface` (events, or `for await`) | `BufReader::lines`, a plain loop |
+</ForLang>
+
+<ForLang only="c cpp">
+In C, `fopen` returns `NULL` and sets `errno`; `fclose` is yours to call, and its return value reports a failed write. A `FILE *` and an `ofstream` buffer their output where a Rust `File` does not, so the nearest match is `BufWriter<File>`. In C++ a failed open sets a flag you check with `if (!f)`, and `~ofstream` cannot report a failed close either; `close()` then `fail()` can.
+</ForLang>
+
+<ForLang only="c">
+<Snippet file="files.c" />
+
+The message is the same `strerror` text as Rust's. The descriptor stays open after `leak()` returns: leaving the scope closes nothing. The `fclose` on `/dev/full` returns `-1`, the failed flush that a dropped `BufWriter` hides. The next program redirects standard output to a file, where C switches to full buffering:
+
+<Snippet file="buffering.c" />
+</ForLang>
+
+<ForLang only="cpp">
+<Snippet file="files.cpp" />
+
+The destructor closes the file, as `Drop` does (descriptor counts match `drop-closes.rs`), and an `ofstream` buffers: 1,000 `<<` made 1 write call before the close. `std::filesystem::path` is the nearest relative of `Path`: `/` with an absolute path replaces, like `join`, and `extension()` keeps the dot (`.gz`) where Rust's has none. Its errors name the path, which Rust's do not.
+</ForLang>
+
+<ForLang only="c cpp">
+| In C / C++ | In Rust |
+|---|---|
+| `fopen`, `fclose`; `std::ifstream` | `File::open`, dropped at scope end |
+| a buffered `FILE *` or `ofstream` | `BufReader<File>`, `BufWriter<File>` |
+| `NULL` plus `errno`; `fail()` bit | `io::Result`, with `kind()` and `raw_os_error()` |
+| `fgets`, `getline` | `BufRead::read_line`, `lines()` |
+| `fread` (loops until the count is filled or the input ends) | `Read::read_exact`, `read_to_end` (`Read::read` is one call, like POSIX `read`) |
+| `fwrite`; `fseek` | `BufWriter::write_all`; `Seek::seek` |
+| `std::filesystem::path`, `rename` | `Path`, `PathBuf`, `fs::rename` |
+</ForLang>
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Each exercise has checks in `main`: replace the `todo!()` and run until it prints `all checks passed`. The starters compile and stop at `todo!()`.
+
+<Exercise name="line-stats" title="Statistics from any BufRead, without reading it all">
+Write `stats(reader, limit)`: count the lines, the blank lines and the longest line (in characters) of any `BufRead`, and stop at the first line longer than `limit` characters: count it and read no further. The checks use Windows endings, a last line with no newline, non-ASCII text, bad UTF-8 and a reader that fails (an `Err`, not a skipped line). One reader fails once its bytes are used up, so reading everything first (`read_to_string`, then `str::lines()`) fails.
+</Exercise>
+
+<Exercise name="save-with" title="Replace a file without ever showing half of it">
+Write `save_with(path, fill)`: create a temporary file next to `path` with `create_new` (another name if one is taken), let `fill` write into it, then rename it over `path`. The checks look at the directory while `fill` runs, keep a reader open from before the save, make `fill` fail half way, put a file that is not yours where `settings.txt.tmp` would go, and use a missing directory. A thread opens the target in a loop through 500 saves, so removing the file before the rename fails (by chance, not certainly; a correct solution never trips it). Writing into the target, a temporary file elsewhere, a leftover and a fixed temporary name also fail.
+</Exercise>
+
+<Exercise name="by-extension" title="Group a directory by extension">
+Write `group_by_extension`: the regular files directly inside a directory (one level), grouped by lower-cased extension without the dot, names sorted. The directory holds `.hidden`, `archive.tar.gz`, `a.TXT`, a subdirectory with a file in it and a file whose extension is not UTF-8, so it needs Linux. Splitting at the last dot, forgetting directories or the case, keeping the dot and skipping or unwrapping the odd extension all fail. Forgetting the sort fails only where `read_dir` returns unsorted names, which depends on the file system.
+</Exercise>
+
+## Read more
+
+- [The Rust Book, chapter 12: An I/O project](https://doc.rust-lang.org/book/ch12-00-an-io-project.html) and [Rust by Example: File I/O](https://doc.rust-lang.org/rust-by-example/std_misc/file.html).
+- The standard library: [`std::io`](https://doc.rust-lang.org/std/io/index.html), [`File`](https://doc.rust-lang.org/std/fs/struct.File.html), [`OpenOptions`](https://doc.rust-lang.org/std/fs/struct.OpenOptions.html), [`BufReader`](https://doc.rust-lang.org/std/io/struct.BufReader.html), [`BufWriter`](https://doc.rust-lang.org/std/io/struct.BufWriter.html), [`Path`](https://doc.rust-lang.org/std/path/struct.Path.html), [`OsStr`](https://doc.rust-lang.org/std/ffi/struct.OsStr.html), [`ErrorKind`](https://doc.rust-lang.org/std/io/enum.ErrorKind.html).
+- The traits: [`Read`](https://doc.rust-lang.org/std/io/trait.Read.html), [`Write`](https://doc.rust-lang.org/std/io/trait.Write.html), [`BufRead`](https://doc.rust-lang.org/std/io/trait.BufRead.html), [`Seek`](https://doc.rust-lang.org/std/io/trait.Seek.html), [`Cursor`](https://doc.rust-lang.org/std/io/struct.Cursor.html), [`io::copy`](https://doc.rust-lang.org/std/io/fn.copy.html).
+- [`fs::rename`](https://doc.rust-lang.org/std/fs/fn.rename.html), [`fs::read_dir`](https://doc.rust-lang.org/std/fs/fn.read_dir.html), and the `tempfile` crate ([docs.rs](https://docs.rs/tempfile/latest/tempfile/)) for unique temporary files.
+- Errors: [E0599](https://doc.rust-lang.org/error_codes/E0599.html) (the gotcha), or [this site's index](/errors/).

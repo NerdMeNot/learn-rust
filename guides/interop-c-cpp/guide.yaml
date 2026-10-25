@@ -1,0 +1,246 @@
+# Rust and C/C++: one Rust library called from C, C++, Go, Java, Kotlin, C# and Python,
+# a C library called from Rust (bindgen), and C++ called from Rust (cxx).
+#
+# NEEDS NETWORK: cargo downloads crates (as in every cargo session), cbindgen is installed
+# with `cargo install` the first time a session needs it, and the bindgen session installs
+# libclang with apt-get (the image has no libclang). The extract runs every session of a
+# guide in one container, so the tools installed by an earlier session are still there;
+# each step that needs a tool installs it only if it is missing.
+name: bridge
+sessions:
+  # ---- Declaring the boundary: what edition 2024 refuses
+  old-no-mangle:
+    dir: rust
+    overlay:
+      src/lib.rs: fixes/old-no-mangle.rs
+    steps:
+      - cmd: cargo build --lib
+        expect: fail
+  old-extern-block:
+    dir: rust
+    overlay:
+      src/lib.rs: fixes/old-extern-block.rs
+    steps:
+      - cmd: cargo build --lib
+        expect: fail
+  improper-ctypes:
+    dir: rust
+    overlay:
+      src/lib.rs: fixes/no-ffi-safe-type.rs
+    steps:
+      - cmd: cargo build --lib
+        expect: fail
+  # ---- Rust called from C: the header cbindgen writes, then C using it
+  header:
+    dir: rust
+    steps:
+      - cmd: command -v cbindgen >/dev/null || cargo install -q cbindgen --version 0.29.4 --locked
+        show: '$ cargo install cbindgen --version 0.29.4 --locked   # needs network'
+      - cmd: cbindgen --crate bridge --output bridge.h
+      - cmd: grep -vE '^( [^ ]|/\*|$)' bridge.h
+        show: "$ grep -vE '^( [^ ]|/\\*|$)' bridge.h   # bridge.h without its comments"
+  c-run:
+    dir: rust
+    local_target: true
+    steps:
+      - cmd: command -v cbindgen >/dev/null || cargo install -q cbindgen --version 0.29.4 --locked
+        show: '$ cargo install cbindgen --version 0.29.4 --locked   # needs network'
+      - cmd: cbindgen --crate bridge --output bridge.h
+      - cmd: cargo build
+      - cmd: gcc -Wall -Wextra -I. c/main.c target/debug/libbridge.a -lpthread -ldl -lm -o main && ./main
+      - cmd: cargo rustc -q --lib --crate-type staticlib -- --print native-static-libs 2>&1 | grep native-static-libs
+        show: '$ cargo rustc --lib --crate-type staticlib -- --print native-static-libs'
+  # Layout: the same struct in C and in Rust.
+  layout:
+    dir: rust
+    local_target: true
+    steps:
+      - cmd: command -v cbindgen >/dev/null || cargo install -q cbindgen --version 0.29.4 --locked
+        show: '$ cargo install cbindgen --version 0.29.4 --locked   # needs network'
+      - cmd: cbindgen --crate bridge --output bridge.h
+      - cmd: gcc -I. c/layout.c -o layout && ./layout
+      - cmd: cargo run -q --bin layout
+  # The page's "try it" 1: take #[repr(C)] off Reading.
+  try-repr-c:
+    dir: rust
+    local_target: true
+    steps:
+      - cmd: command -v cbindgen >/dev/null || cargo install -q cbindgen --version 0.29.4 --locked
+        show: '$ cargo install cbindgen --version 0.29.4 --locked   # needs network'
+      - cmd: |-
+          python3 - <<'PY'
+          s = open("src/lib.rs").read()
+          open("src/lib.rs", "w").write(s.replace("#[repr(C)]\npub struct Reading", "pub struct Reading"))
+          PY
+        show: '$ # delete the #[repr(C)] line above pub struct Reading'
+      - cmd: cargo build
+      - cmd: cbindgen --crate bridge --output bridge.h && gcc -I. c/main.c target/debug/libbridge.a -lpthread -ldl -lm -o main 2>&1 | grep -A2 "error:" | head -3
+        show: '$ cbindgen --crate bridge --output bridge.h && gcc -I. c/main.c target/debug/libbridge.a -lpthread -ldl -lm -o main'
+      - cmd: cargo run -q --bin layout
+  # ---- Strings
+  strings:
+    dir: rust
+    steps:
+      - cmd: cargo run -q --bin strings
+  # ---- Who frees what: C using the library under AddressSanitizer
+  ownership:
+    dir: rust
+    local_target: true
+    steps:
+      - cmd: command -v cbindgen >/dev/null || cargo install -q cbindgen --version 0.29.4 --locked
+        show: '$ cargo install cbindgen --version 0.29.4 --locked   # needs network'
+      - cmd: cbindgen --crate bridge --output bridge.h
+      - cmd: cargo build
+      - cmd: gcc -fsanitize=address -g -I. c/main.c target/debug/libbridge.a -lpthread -ldl -lm -o main_asan && ./main_asan
+        show: '$ gcc -fsanitize=address -g -I. c/main.c target/debug/libbridge.a -lpthread -ldl -lm -o main_asan && ./main_asan'
+      - cmd: gcc -fsanitize=address -g -I. c/leak.c target/debug/libbridge.a -lpthread -ldl -lm -o leak
+        show: '$ gcc -fsanitize=address -g -I. c/leak.c target/debug/libbridge.a -lpthread -ldl -lm -o leak'
+      - cmd: |-
+          ./leak 2>&1 | grep -E 'ERROR|Direct leak|in (greeting|main) |SUMMARY'; echo "exit code: ${PIPESTATUS[0]}"
+        show: "$ ./leak 2>&1 | grep -E 'ERROR|Direct leak|in (greeting|main) |SUMMARY'   # the report, trimmed to its key lines"
+        varies: true
+      - cmd: gcc -fsanitize=address -g -I. c/double_free.c target/debug/libbridge.a -lpthread -ldl -lm -o double_free
+        show: '$ gcc -fsanitize=address -g -I. c/double_free.c target/debug/libbridge.a -lpthread -ldl -lm -o double_free'
+      - cmd: |-
+          ./double_free 2>&1 | grep -E 'ERROR|READ of|freed by|previously allocated|from_raw|in (strlen|greeting_free|greeting|main) |SUMMARY'; echo "exit code: ${PIPESTATUS[0]}"
+        show: "$ ./double_free 2>&1 | grep -E 'ERROR|READ of|freed by|previously allocated|from_raw|in (strlen|greeting_free|greeting|main) |SUMMARY'   # trimmed"
+        varies: true
+      - cmd: |-
+          gcc -g -I. c/double_free.c target/debug/libbridge.a -lpthread -ldl -lm -o double_free_plain && ./double_free_plain; echo "exit code: $?"
+        show: '$ gcc -g -I. c/double_free.c target/debug/libbridge.a -lpthread -ldl -lm -o double_free_plain && ./double_free_plain   # no AddressSanitizer'
+        varies: true
+  # ---- Panics at the boundary
+  panic:
+    dir: rust
+    local_target: true
+    steps:
+      - cmd: command -v cbindgen >/dev/null || cargo install -q cbindgen --version 0.29.4 --locked
+        show: '$ cargo install cbindgen --version 0.29.4 --locked   # needs network'
+      - cmd: cbindgen --crate bridge --output bridge.h
+      - cmd: cargo build
+      - cmd: gcc -I. c/panic.c target/debug/libbridge.a -lpthread -ldl -lm -o panic
+        show: '$ gcc -I. c/panic.c target/debug/libbridge.a -lpthread -ldl -lm -o panic'
+      - cmd: |-
+          ./panic 2>&1 | grep -v '^ '; echo "exit code: ${PIPESTATUS[0]}"
+        show: "$ ./panic 2>&1 | grep -v '^ '   # without the backtrace frames, which start with spaces"
+        varies: true
+      - cmd: gcc -I. c/catch.c target/debug/libbridge.a -lpthread -ldl -lm -o catch && ./catch
+        varies: true
+      - cmd: |-
+          g++ -I. cpp/unwind.cpp target/debug/libbridge.a -lpthread -ldl -lm -o unwind && ./unwind; echo "exit code: $?"
+        varies: true
+  # The page's "try it" 2: panic = "abort" in the profile.
+  try-abort:
+    dir: rust
+    local_target: true
+    steps:
+      - cmd: command -v cbindgen >/dev/null || cargo install -q cbindgen --version 0.29.4 --locked
+        show: '$ cargo install cbindgen --version 0.29.4 --locked   # needs network'
+      - cmd: cbindgen --crate bridge --output bridge.h
+      - cmd: printf '\n[profile.dev]\npanic = "abort"\n' >> Cargo.toml && cargo build
+        show: '$ # append [profile.dev] panic = "abort" to Cargo.toml, then: cargo build'
+      - cmd: |-
+          gcc -I. c/catch.c target/debug/libbridge.a -lpthread -ldl -lm -o catch && ./catch; echo "exit code: $?"
+        show: '$ gcc -I. c/catch.c target/debug/libbridge.a -lpthread -ldl -lm -o catch && ./catch'
+        varies: true
+  # ---- Static or dynamic
+  linking:
+    dir: rust
+    local_target: true
+    steps:
+      - cmd: command -v cbindgen >/dev/null || cargo install -q cbindgen --version 0.29.4 --locked
+        show: '$ cargo install cbindgen --version 0.29.4 --locked   # needs network'
+      - cmd: cbindgen --crate bridge --output bridge.h
+      - cmd: cargo build
+      - cmd: ls -l target/debug/libbridge.a target/debug/libbridge.so
+        show: '$ ls -l target/debug/libbridge.a target/debug/libbridge.so   # a debug build, Linux ARM64, rustc 1.99.1'
+        varies: true
+      - cmd: nm -D --defined-only target/debug/libbridge.so | grep ' T '
+        show: "$ nm -D --defined-only target/debug/libbridge.so | grep ' T '   # the exported functions"
+      - cmd: gcc -I. c/main.c target/debug/libbridge.a -lpthread -ldl -lm -o main_static && gcc -I. c/main.c -Ltarget/debug -lbridge -o main_dynamic
+        show: '$ gcc -I. c/main.c target/debug/libbridge.a -lpthread -ldl -lm -o main_static     # and, with -Ltarget/debug -lbridge, main_dynamic'
+      - cmd: ls -l main_static main_dynamic
+        varies: true
+      - cmd: readelf -d main_static | grep NEEDED; echo ---; readelf -d main_dynamic | grep NEEDED
+        show: "$ readelf -d main_static | grep NEEDED; readelf -d main_dynamic | grep NEEDED"
+      - cmd: ./main_dynamic
+        expect: fail
+      - cmd: LD_LIBRARY_PATH=target/debug ./main_dynamic | head -2
+        show: '$ LD_LIBRARY_PATH=target/debug ./main_dynamic | head -2'
+  unmangled:
+    dir: rust
+    local_target: true
+    steps:
+      - cmd: command -v cbindgen >/dev/null || cargo install -q cbindgen --version 0.29.4 --locked
+        show: '$ cargo install cbindgen --version 0.29.4 --locked   # needs network'
+      - cmd: cbindgen --crate bridge --output bridge.h
+      - cmd: sed -i -z 's/#\[unsafe(no_mangle)\]\npub extern "C" fn point_distance/pub extern "C" fn point_distance/' src/lib.rs && cargo build
+        show: '$ # delete #[unsafe(no_mangle)] from point_distance only, then: cargo build'
+      - cmd: nm -C target/debug/libbridge.a 2>/dev/null | grep ' T .*point_distance'
+        show: "$ nm -C target/debug/libbridge.a | grep ' T .*point_distance'"
+      - cmd: gcc -I. c/main.c target/debug/libbridge.a -lpthread -ldl -lm -o main 2>&1 | grep -B1 -A1 'undefined reference'
+        show: '$ gcc -I. c/main.c target/debug/libbridge.a -lpthread -ldl -lm -o main'
+        varies: true
+  # ---- C called from Rust: bindgen needs libclang, which the image does not have
+  bindgen:
+    dir: bindgen
+    local_target: true
+    timeout: 900
+    steps:
+      - cmd: cargo build 2>&1 | grep -o 'Unable to find libclang.*'
+        show: '$ cargo build    # the error line, before libclang is installed'
+      - cmd: |-
+          apt-get update -qq >/dev/null 2>&1; apt-get install -y -qq --no-install-recommends libclang-dev >/dev/null 2>&1; echo "apt-get exit code: $?"; dpkg -s libclang-dev | grep '^Version'
+        show: '$ apt-get install --no-install-recommends libclang-dev   # needs network; the image has no libclang'
+      - cmd: cargo run -q
+        show: '$ cargo run'
+      - cmd: cat $(find target -name bindings.rs)
+        show: '$ cat target/debug/build/stats-sys-*/out/bindings.rs'
+  # ---- C++ called from Rust, and back: cxx
+  cxx:
+    dir: cxx
+    local_target: true
+    timeout: 900
+    steps:
+      - cmd: cargo run -q
+        show: '$ cargo run'
+  # ---- The same Rust library from other languages
+  go:
+    dir: rust
+    local_target: true
+    steps:
+      - cmd: command -v cbindgen >/dev/null || cargo install -q cbindgen --version 0.29.4 --locked
+        show: '$ cargo install cbindgen --version 0.29.4 --locked   # needs network'
+      - cmd: cbindgen --crate bridge --output bridge.h && cargo build
+        show: '$ cbindgen --crate bridge --output bridge.h && cargo build'
+      - cmd: go run .
+        cwd: go
+  java:
+    dir: rust
+    local_target: true
+    steps:
+      - cmd: cargo build
+      - cmd: java --enable-native-access=ALL-UNNAMED java/CallRust.java target/debug/libbridge.so
+      - cmd: java java/CallRust.java target/debug/libbridge.so
+        show: '$ java java/CallRust.java target/debug/libbridge.so   # without --enable-native-access'
+  kotlin:
+    dir: rust
+    local_target: true
+    steps:
+      - cmd: cargo build
+      - cmd: kotlinc kotlin/CallRust.kt -include-runtime -d call.jar && java --enable-native-access=ALL-UNNAMED -jar call.jar target/debug/libbridge.so
+        show: '$ kotlinc kotlin/CallRust.kt -include-runtime -d call.jar && java --enable-native-access=ALL-UNNAMED -jar call.jar target/debug/libbridge.so'
+  python:
+    dir: rust
+    local_target: true
+    steps:
+      - cmd: cargo build
+      - cmd: python3 py/call.py target/debug/libbridge.so
+  csharp:
+    dir: rust
+    local_target: true
+    steps:
+      - cmd: cargo build
+      - cmd: LD_LIBRARY_PATH=../target/debug dotnet run
+        cwd: csharp
+        show: '$ LD_LIBRARY_PATH=../target/debug dotnet run'

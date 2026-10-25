@@ -1,0 +1,352 @@
+{
+ "id": "for-java",
+ "files": {
+  "fails": {
+   "equals.rs": "struct Point {\n    x: i32,\n    y: i32,\n}\n\nfn main() {\n    let a = Point { x: 1, y: 2 };\n    let b = Point { x: 1, y: 2 };\n    println!(\"{}\", a == b);\n}\n",
+   "immutable.rs": "fn main() {\n    let names = Vec::new();\n    names.push(\"ana\");\n    println!(\"{names:?}\");\n}\n",
+   "longest.rs": "fn longest(a: &str, b: &str) -> &str {\n    if a.len() >= b.len() { a } else { b }\n}\n\nfn main() {\n    println!(\"{}\", longest(\"short\", \"a longer string\"));\n}\n",
+   "moved.rs": "fn main() {\n    let a = vec![String::from(\"x\")];\n    let mut b = a;\n    b.push(String::from(\"y\"));\n    println!(\"{a:?}\");\n}\n",
+   "null.rs": "use std::collections::HashMap;\n\nfn main() {\n    let mut ages = HashMap::new();\n    ages.insert(\"ana\", 31);\n    let ana: i32 = ages.get(\"ana\");\n    println!(\"ana: {ana}\");\n}\n",
+   "result.rs": "fn port(text: &str) -> u16 {\n    text.parse()\n}\n\nfn main() {\n    println!(\"{}\", port(\"8080\"));\n}\n",
+   "spawn.rs": "use std::thread;\n\nfn main() {\n    let mut results = Vec::new();\n    let mut handles = Vec::new();\n    for i in 0..4 {\n        handles.push(thread::spawn(move || {\n            for _ in 0..100_000 {\n                results.push(i * 10);\n            }\n        }));\n    }\n    for h in handles {\n        h.join().unwrap();\n    }\n    println!(\"{} items\", results.len());\n}\n"
+  },
+  "java": {
+   "Alias.java": "import java.util.ArrayList;\nimport java.util.List;\n\npublic class Alias {\n    public static void main(String[] args) {\n        List<String> a = new ArrayList<>();\n        a.add(\"x\");\n        List<String> b = a;\n        b.add(\"y\");\n        System.out.println(a);\n        System.out.println(a == b);\n    }\n}\n",
+   "Cleanup.java": "class Res implements AutoCloseable {\n    final String name;\n\n    Res(String name) {\n        this.name = name;\n        System.out.println(\"open \" + name);\n    }\n\n    @Override\n    public void close() {\n        System.out.println(\"close \" + name);\n    }\n}\n\npublic class Cleanup {\n    public static void main(String[] args) {\n        try (Res a = new Res(\"a\"); Res b = new Res(\"b\")) {\n            System.out.println(\"working\");\n        }\n        Res c = new Res(\"c\");\n        System.out.println(\"done\");\n    }\n}\n",
+   "Erasure.java": "import java.util.ArrayList;\nimport java.util.List;\n\npublic class Erasure {\n    public static void main(String[] args) {\n        List<String> words = new ArrayList<>();\n        List<Integer> numbers = new ArrayList<>();\n        numbers.add(1000);\n        numbers.add(1000);\n        System.out.println(words.getClass() == numbers.getClass());\n        System.out.println(words.getClass().getName());\n        System.out.println(numbers.get(0) == numbers.get(1));\n    }\n}\n",
+   "Final.java": "import java.util.ArrayList;\nimport java.util.List;\n\npublic class Final {\n    public static void main(String[] args) {\n        final List<String> names = new ArrayList<>();\n        names.add(\"ana\");\n        names.add(\"bo\");\n        System.out.println(names);\n    }\n}\n",
+   "Idioms.java": "import java.util.ArrayList;\nimport java.util.HashMap;\nimport java.util.List;\nimport java.util.Map;\nimport java.util.Optional;\nimport java.util.concurrent.CompletableFuture;\n\nsealed interface Shape permits Circle, Square {}\nrecord Circle(double radius) implements Shape {}\nrecord Square() implements Shape {}\nrecord Point(int x, int y) {}\n\ninterface Greeter {\n    default String hi() { return \"hi\"; }\n}\n\nclass English implements Greeter {}\n\npublic class Idioms {\n    public static void main(String[] args) {\n        final var x = 1;\n        System.out.println(\"1: \" + x);\n\n        int count = 0;\n        count++;\n        System.out.println(\"2: \" + count);\n\n        int n = 7;\n        String size = n > 5 ? \"big\" : \"small\";\n        System.out.println(\"3: \" + size);\n\n        String level = switch (n) { case 1, 2 -> \"low\"; default -> \"high\"; };\n        System.out.println(\"4: \" + level);\n\n        int len = Optional.of(\"hi\").map(String::length).orElse(0);\n        System.out.println(\"5: \" + len);\n\n        Map<String, Integer> ages = new HashMap<>();\n        ages.put(\"ana\", 31);\n        int bo = ages.getOrDefault(\"bo\", 0);\n        System.out.println(\"6: \" + bo);\n\n        Map<String, Integer> counts = new HashMap<>();\n        counts.merge(\"a\", 1, Integer::sum);\n        System.out.println(\"7: \" + counts.get(\"a\"));\n\n        List<Integer> nums = List.of(1, 2, 3, 4);\n        List<Integer> squares = nums.stream().filter(m -> m % 2 == 0).map(m -> m * m).toList();\n        System.out.println(\"8: \" + squares);\n\n        List<String> names = List.of(\"ana\", \"bo\");\n        StringBuilder seen = new StringBuilder();\n        for (String s : names) {\n            seen.append(s);\n        }\n        System.out.println(\"9: \" + seen);\n\n        System.out.println(\"10: \" + String.join(\", \", names));\n\n        String word = \"héllo\";\n        System.out.println(\"11: \" + word.length() + \" chars\");\n\n        String s = \"eighty\";\n        int parsed;\n        try { parsed = Integer.parseInt(s); } catch (NumberFormatException e) { parsed = -1; }\n        System.out.println(\"12: \" + parsed);\n\n        System.out.println(\"13: \" + new Point(1, 2).equals(new Point(1, 2)));\n\n        for (Shape shape : List.of(new Circle(2.5), new Square())) {\n            if (shape instanceof Circle c) {\n                System.out.println(\"14: circle, radius \" + c.radius());\n            } else {\n                System.out.println(\"14: not a circle\");\n            }\n        }\n\n        System.out.println(\"15: \" + new English().hi());\n\n        List<String> original = List.of(\"a\", \"b\");\n        List<String> copy = new ArrayList<>(original);\n        copy.add(\"c\");\n        System.out.println(\"16: \" + original.size() + \" \" + copy.size());\n\n        System.out.println(\"17: \" + CompletableFuture.supplyAsync(() -> 5).join());\n        System.out.println(\"17 pool: \" + CompletableFuture.supplyAsync(() -> Thread.currentThread().getName()).join());\n\n        Object lock = new Object();\n        int[] box = {0};\n        synchronized (lock) { box[0]++; }\n        System.out.println(\"18: \" + box[0]);\n\n        System.out.println(\"19: \" + (int) 3.9);\n\n        System.out.println(\"20: \" + \"x=\" + n);\n    }\n}\n",
+   "Inherit.java": "class User {\n    String name;\n\n    User(String name) {\n        this.name = name;\n    }\n\n    String describe() {\n        return \"user \" + name;\n    }\n}\n\nclass Admin extends User {\n    Admin(String name) {\n        super(name);\n    }\n\n    @Override\n    String describe() {\n        return \"admin \" + super.describe();\n    }\n}\n\npublic class Inherit {\n    public static void main(String[] args) {\n        User u = new Admin(\"ana\");\n        System.out.println(u.describe());\n        System.out.println(u.name);\n    }\n}\n",
+   "Longest.java": "public class Longest {\n    static String longest(String a, String b) {\n        return a.length() >= b.length() ? a : b;\n    }\n\n    public static void main(String[] args) {\n        String result;\n        {\n            String inner = new String(\"a longer string\");\n            result = longest(\"short\", inner);\n        }\n        System.out.println(result);\n    }\n}\n",
+   "Nulls.java": "import java.util.HashMap;\nimport java.util.Map;\n\npublic class Nulls {\n    public static void main(String[] args) {\n        Map<String, Integer> ages = new HashMap<>();\n        ages.put(\"ana\", 31);\n        int ana = ages.get(\"ana\");\n        System.out.println(\"ana: \" + ana);\n        int bo = ages.get(\"bo\");\n        System.out.println(\"bo: \" + bo);\n    }\n}\n",
+   "Parse.java": "public class Parse {\n    static int port(String text) {\n        return Integer.parseInt(text);\n    }\n\n    public static void main(String[] args) {\n        System.out.println(port(\"8080\"));\n        System.out.println(port(\"eighty\"));\n    }\n}\n",
+   "Racy.java": "import java.util.ArrayList;\nimport java.util.List;\n\npublic class Racy {\n    public static void main(String[] args) throws InterruptedException {\n        List<Integer> results = new ArrayList<>();\n        List<Thread> threads = new ArrayList<>();\n        for (int i = 0; i < 4; i++) {\n            int n = i;\n            threads.add(new Thread(() -> {\n                for (int j = 0; j < 100_000; j++) {\n                    results.add(n * 10);\n                }\n            }));\n        }\n        threads.forEach(Thread::start);\n        for (var t : threads) {\n            t.join();\n        }\n        System.out.println(results.size() + \" items (expected 400000)\");\n    }\n}\n",
+   "Records.java": "class PointClass {\n    private final int x;\n    private final int y;\n\n    PointClass(int x, int y) {\n        this.x = x;\n        this.y = y;\n    }\n\n    int getX() { return x; }\n    int getY() { return y; }\n}\n\nrecord Point(int x, int y) {}\n\npublic class Records {\n    public static void main(String[] args) {\n        System.out.println(new PointClass(1, 2).equals(new PointClass(1, 2)));\n        System.out.println(new Point(1, 2).equals(new Point(1, 2)));\n        System.out.println(new Point(1, 2));\n    }\n}\n"
+  },
+  "rust": {
+   "Cargo.lock": "# This file is automatically @generated by Cargo.\n# It is not intended for manual editing.\nversion = 4\n\n[[package]]\nname = \"habits\"\nversion = \"0.1.0\"\n",
+   "Cargo.toml": "[package]\nname = \"habits\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+   "src/bin/cleanup.rs": "struct Res(&'static str);\n\nimpl Res {\n    fn open(name: &'static str) -> Res {\n        println!(\"open {name}\");\n        Res(name)\n    }\n}\n\nimpl Drop for Res {\n    fn drop(&mut self) {\n        println!(\"close {}\", self.0);\n    }\n}\n\nfn main() {\n    {\n        let _a = Res::open(\"a\");\n        let _b = Res::open(\"b\");\n        println!(\"working\");\n    }\n    let _c = Res::open(\"c\");\n    println!(\"done\");\n}\n",
+   "src/bin/derive.rs": "#[derive(Debug, PartialEq, Eq, Hash)]\nstruct Point {\n    x: i32,\n    y: i32,\n}\n\nfn main() {\n    let a = Point { x: 1, y: 2 };\n    let b = Point { x: 1, y: 2 };\n    println!(\"{}\", a == b);\n    println!(\"{a:?}\");\n}\n",
+   "src/bin/generics.rs": "use std::any::type_name;\n\nfn element_type<T>(_: &Vec<T>) -> &'static str {\n    type_name::<T>()\n}\n\nfn main() {\n    let words: Vec<String> = Vec::new();\n    let numbers: Vec<i32> = vec![1000, 1000, 7];\n    println!(\"{} and {}\", element_type(&words), element_type(&numbers));\n    let gap = numbers[1..].as_ptr().addr() - numbers.as_ptr().addr();\n    println!(\"bytes between neighbours: {gap}\");\n    println!(\"{}\", numbers[0] == numbers[1]);\n}\n",
+   "src/bin/idioms.rs": "use std::collections::HashMap;\nuse std::sync::Mutex;\nuse std::thread;\n\n#[derive(Debug, PartialEq, Eq, Hash)]\nstruct Point {\n    x: i32,\n    y: i32,\n}\n\nenum Shape {\n    Circle(f64),\n    Square,\n}\n\ntrait Greeter {\n    fn hi(&self) -> String {\n        String::from(\"hi\")\n    }\n}\n\nstruct English;\n\nimpl Greeter for English {}\n\nfn main() {\n    let x = 1;\n    println!(\"1: {x}\");\n\n    let mut count = 0;\n    count += 1;\n    println!(\"2: {count}\");\n\n    let n = 7;\n    let size = if n > 5 { \"big\" } else { \"small\" };\n    println!(\"3: {size}\");\n\n    let level = match n {\n        1 | 2 => \"low\",\n        _ => \"high\",\n    };\n    println!(\"4: {level}\");\n\n    let len = Some(\"hi\").map(|s| s.len()).unwrap_or(0);\n    println!(\"5: {len}\");\n\n    let mut ages = HashMap::new();\n    ages.insert(\"ana\", 31);\n    let bo = ages.get(\"bo\").copied().unwrap_or(0);\n    println!(\"6: {bo}\");\n\n    let mut counts = HashMap::new();\n    *counts.entry(\"a\").or_insert(0) += 1;\n    println!(\"7: {}\", counts[\"a\"]);\n\n    let nums = vec![1, 2, 3, 4];\n    let squares = nums\n        .iter()\n        .filter(|n| **n % 2 == 0)\n        .map(|n| n * n)\n        .collect::<Vec<_>>();\n    println!(\"8: {squares:?}\");\n\n    let names = vec![\"ana\", \"bo\"];\n    let mut seen = String::new();\n    for s in &names {\n        seen.push_str(s);\n    }\n    println!(\"9: {seen}\");\n\n    println!(\"10: {}\", names.join(\", \"));\n\n    let word = \"héllo\";\n    println!(\n        \"11: {} chars, len() is {}\",\n        word.chars().count(),\n        word.len()\n    );\n\n    let s = \"eighty\";\n    let parsed = s.parse::<i32>().unwrap_or(-1);\n    println!(\"12: {parsed}\");\n\n    let a = Point { x: 1, y: 2 };\n    let b = Point { x: 1, y: 2 };\n    println!(\"13: {}\", a == b);\n\n    for shape in [Shape::Circle(2.5), Shape::Square] {\n        if let Shape::Circle(r) = shape {\n            println!(\"14: circle, radius {r}\");\n        } else {\n            println!(\"14: not a circle\");\n        }\n    }\n\n    println!(\"15: {}\", English.hi());\n\n    let original = vec![\"a\", \"b\"];\n    let mut copy = original.clone();\n    copy.push(\"c\");\n    println!(\"16: {} {}\", original.len(), copy.len());\n\n    println!(\"17: {}\", thread::spawn(|| 5).join().unwrap());\n\n    let count = Mutex::new(0);\n    *count.lock().unwrap() += 1;\n    println!(\"18: {}\", count.lock().unwrap());\n\n    println!(\"19: {}\", 3.9_f64 as i32);\n\n    println!(\"20: {}\", format!(\"x={n}\"));\n}\n",
+   "src/bin/inherit.rs": "trait Describe {\n    fn describe(&self) -> String;\n}\n\nstruct User {\n    name: String,\n}\n\nstruct Admin {\n    user: User,\n}\n\nimpl Describe for User {\n    fn describe(&self) -> String {\n        format!(\"user {}\", self.name)\n    }\n}\n\nimpl Describe for Admin {\n    fn describe(&self) -> String {\n        format!(\"admin {}\", self.user.describe())\n    }\n}\n\nfn show(thing: &dyn Describe) {\n    println!(\"{}\", thing.describe());\n}\n\nfn main() {\n    let admin = Admin {\n        user: User {\n            name: String::from(\"ana\"),\n        },\n    };\n    show(&admin);\n    println!(\"{}\", admin.user.name);\n}\n",
+   "src/bin/noframes.rs": "fn main() -> Result<(), std::num::ParseIntError> {\n    let port: u16 = \"eighty\".parse()?;\n    println!(\"port {port}\");\n    Ok(())\n}\n",
+   "src/bin/shared.rs": "use std::sync::{Arc, Mutex};\nuse std::thread;\n\nfn main() {\n    let results = Arc::new(Mutex::new(Vec::new()));\n    let mut handles = Vec::new();\n    for i in 0..4 {\n        let results = Arc::clone(&results);\n        handles.push(thread::spawn(move || {\n            for _ in 0..100_000 {\n                results.lock().unwrap().push(i * 10);\n            }\n        }));\n    }\n    for h in handles {\n        h.join().unwrap();\n    }\n    println!(\"{} items (expected 400000)\", results.lock().unwrap().len());\n}\n"
+  },
+  "tools-java": {
+   "Slug.java": "/** Turns a title into a URL slug: lowercase words joined by \"-\". */\npublic class Slug {\n    private Slug() {}\n\n    /**\n     * Builds the slug.\n     *\n     * @param title the text to convert\n     * @return lowercase words joined by \"-\"\n     */\n    public static String slug(String title) {\n        return String.join(\"-\", title.trim().toLowerCase().split(\"\\\\s+\"));\n    }\n\n    /**\n     * Prints the slug of a fixed title.\n     *\n     * @param args not used\n     */\n    public static void main(String[] args) {\n        System.out.println(slug(\"Hello Java World\"));\n    }\n}\n"
+  },
+  "tools-rust": {
+   "Cargo.lock": "# This file is automatically @generated by Cargo.\n# It is not intended for manual editing.\nversion = 4\n\n[[package]]\nname = \"slugtools\"\nversion = \"0.1.0\"\n",
+   "Cargo.toml": "[package]\nname = \"slugtools\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
+   "src/lib.rs": "/// Turns a title into a URL slug: lowercase words joined by `-`.\n///\n/// ```\n/// assert_eq!(slugtools::slug(\"Hello Rust World\"), \"hello-rust-world\");\n/// ```\npub fn slug(title: &str) -> String {\n    title\n        .split_whitespace()\n        .map(str::to_lowercase)\n        .collect::<Vec<_>>()\n        .join(\"-\")\n}\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n\n    #[test]\n    fn joins_words() {\n        assert_eq!(slug(\"Hello Rust World\"), \"hello-rust-world\");\n    }\n\n    #[test]\n    fn ignores_extra_spaces() {\n        assert_eq!(slug(\"  Hello   Rust \"), \"hello-rust\");\n    }\n}\n",
+   "src/main.rs": "fn main() {\n    println!(\"{}\", slugtools::slug(\"Hello Rust World\"));\n}\n"
+  }
+ },
+ "sessions": {
+  "inherit": [
+   {
+    "show": "$ cargo run --bin inherit",
+    "out": "admin user ana\nana\n",
+    "exit": 0
+   }
+  ],
+  "cleanup": [
+   {
+    "show": "$ cargo run --bin cleanup",
+    "out": "open a\nopen b\nworking\nclose b\nclose a\nopen c\ndone\nclose c\n",
+    "exit": 0
+   }
+  ],
+  "generics": [
+   {
+    "show": "$ cargo run --bin generics",
+    "out": "alloc::string::String and i32\nbytes between neighbours: 4\ntrue\n",
+    "exit": 0
+   }
+  ],
+  "shared": [
+   {
+    "show": "$ cargo run --bin shared",
+    "out": "400000 items (expected 400000)\n",
+    "exit": 0
+   }
+  ],
+  "noframes": [
+   {
+    "show": "$ cargo run --bin noframes",
+    "out": "Error: ParseIntError { kind: InvalidDigit }\n",
+    "exit": 1,
+    "error": true
+   }
+  ],
+  "derive": [
+   {
+    "show": "$ cargo run --bin derive",
+    "out": "true\nPoint { x: 1, y: 2 }\n",
+    "exit": 0
+   }
+  ],
+  "idioms-rust": [
+   {
+    "show": "$ cargo run --bin idioms",
+    "out": "1: 1\n2: 1\n3: big\n4: high\n5: 2\n6: 0\n7: 1\n8: [4, 16]\n9: anabo\n10: ana, bo\n11: 5 chars, len() is 6\n12: -1\n13: true\n14: circle, radius 2.5\n14: not a circle\n15: hi\n16: 2 3\n17: 5\n18: 1\n19: 3\n20: x=7\n",
+    "exit": 0
+   }
+  ],
+  "fail-null": [
+   {
+    "show": "$ cargo run --bin fail",
+    "out": "error[E0308]: mismatched types\n --> src/bin/fail.rs:6:20\n  |\n6 |     let ana: i32 = ages.get(\"ana\");\n  |              ---   ^^^^^^^^^^^^^^^ expected `i32`, found `Option<&{integer}>`\n  |              |\n  |              expected due to this\n  |\n  = note: expected type `i32`\n             found enum `Option<&{integer}>`\n\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "fail-moved": [
+   {
+    "show": "$ cargo run --bin fail",
+    "out": "error[E0382]: borrow of moved value: `a`\n --> src/bin/fail.rs:5:16\n  |\n2 |     let a = vec![String::from(\"x\")];\n  |         - move occurs because `a` has type `Vec<String>`, which does not implement the `Copy` trait\n3 |     let mut b = a;\n  |                 - value moved here\n4 |     b.push(String::from(\"y\"));\n5 |     println!(\"{a:?}\");\n  |                ^ value borrowed here after move\n  |\nhelp: consider cloning the value if the performance cost is acceptable\n  |\n3 |     let mut b = a.clone();\n  |                  ++++++++\n\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "fail-immutable": [
+   {
+    "show": "$ cargo run --bin fail",
+    "out": "error[E0596]: cannot borrow `names` as mutable, as it is not declared as mutable\n --> src/bin/fail.rs:3:5\n  |\n3 |     names.push(\"ana\");\n  |     ^^^^^ cannot borrow as mutable\n  |\nhelp: consider changing this to be mutable\n  |\n2 |     let mut names = Vec::new();\n  |         +++\n\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "fail-result": [
+   {
+    "show": "$ cargo run --bin fail",
+    "out": "error[E0308]: mismatched types\n --> src/bin/fail.rs:2:5\n  |\n1 | fn port(text: &str) -> u16 {\n  |                        --- expected `u16` because of return type\n2 |     text.parse()\n  |     ^^^^^^^^^^^^ expected `u16`, found `Result<_, _>`\n  |\n  = note: expected type `u16`\n             found enum `Result<_, _>`\nhelp: consider using `Result::expect` to unwrap the `Result<_, _>` value, panicking if the value is a `Result::Err`\n  |\n2 |     text.parse().expect(\"REASON\")\n  |                 +++++++++++++++++\n\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "fail-longest": [
+   {
+    "show": "$ cargo run --bin fail",
+    "out": "error[E0106]: missing lifetime specifier\n --> src/bin/fail.rs:1:33\n  |\n1 | fn longest(a: &str, b: &str) -> &str {\n  |               ----     ----     ^ expected named lifetime parameter\n  |\n  = help: this function's return type contains a borrowed value, but the signature does not say whether it is borrowed from `a` or `b`\nhelp: consider introducing a named lifetime parameter\n  |\n1 | fn longest<'a>(a: &'a str, b: &'a str) -> &'a str {\n  |           ++++     ++          ++          ++\n\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "fail-equals": [
+   {
+    "show": "$ cargo run --bin fail",
+    "out": "error[E0369]: binary operation `==` cannot be applied to type `Point`\n --> src/bin/fail.rs:9:22\n  |\n9 |     println!(\"{}\", a == b);\n  |                    - ^^ - Point\n  |                    |\n  |                    Point\n  |\nnote: an implementation of `PartialEq` might be missing for `Point`\n --> src/bin/fail.rs:1:1\n  |\n1 | struct Point {\n  | ^^^^^^^^^^^^ must implement `PartialEq`\nhelp: consider annotating `Point` with `#[derive(PartialEq)]`\n  |\n1 + #[derive(PartialEq)]\n2 | struct Point {\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "fail-spawn": [
+   {
+    "show": "$ cargo run --bin fail",
+    "out": "error[E0382]: borrow of moved value: `results`\n  --> src/bin/fail.rs:16:26\n   |\n 4 |     let mut results = Vec::new();\n   |         ----------- move occurs because `results` has type `Vec<i32>`, which does not implement the `Copy` trait\n 5 |     let mut handles = Vec::new();\n 6 |     for i in 0..4 {\n   |     ------------- inside of this loop\n 7 |         handles.push(thread::spawn(move || {\n   |                                    ------- value moved into closure here, in previous iteration of loop\n 8 |             for _ in 0..100_000 {\n   |             ------------------- inside of this loop\n...\n16 |     println!(\"{} items\", results.len());\n   |                          ^^^^^^^ value borrowed here after move\n   |\nhelp: consider cloning the value before moving it into the closure\n   |\n 7 ~         let value = results.clone();\n 8 ~         handles.push(thread::spawn(move || {\n 9 |             for _ in 0..100_000 {\n10 ~                 value.push(i * 10);\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "java-inherit": [
+   {
+    "show": "$ javac Inherit.java && java Inherit",
+    "out": "admin user ana\nana\n",
+    "exit": 0
+   }
+  ],
+  "java-nulls": [
+   {
+    "show": "$ javac Nulls.java && java Nulls",
+    "out": "ana: 31\nException in thread \"main\" java.lang.NullPointerException: Cannot invoke \"java.lang.Integer.intValue()\" because the return value of \"java.util.Map.get(Object)\" is null\n\tat Nulls.main(Nulls.java:10)\n",
+    "exit": 1,
+    "error": true
+   }
+  ],
+  "java-alias": [
+   {
+    "show": "$ javac Alias.java && java Alias",
+    "out": "[x, y]\ntrue\n",
+    "exit": 0
+   }
+  ],
+  "java-final": [
+   {
+    "show": "$ javac Final.java && java Final",
+    "out": "[ana, bo]\n",
+    "exit": 0
+   }
+  ],
+  "java-parse": [
+   {
+    "show": "$ javac Parse.java && java Parse",
+    "out": "8080\nException in thread \"main\" java.lang.NumberFormatException: For input string: \"eighty\"\n\tat java.base/java.lang.NumberFormatException.forInputString(NumberFormatException.java:67)\n\tat java.base/java.lang.Integer.parseInt(Integer.java:565)\n\tat java.base/java.lang.Integer.parseInt(Integer.java:662)\n\tat Parse.port(Parse.java:3)\n\tat Parse.main(Parse.java:8)\n",
+    "exit": 1,
+    "error": true
+   }
+  ],
+  "java-longest": [
+   {
+    "show": "$ javac Longest.java && java Longest",
+    "out": "a longer string\n",
+    "exit": 0
+   }
+  ],
+  "java-cleanup": [
+   {
+    "show": "$ javac Cleanup.java && java Cleanup",
+    "out": "open a\nopen b\nworking\nclose b\nclose a\nopen c\ndone\n",
+    "exit": 0
+   }
+  ],
+  "java-erasure": [
+   {
+    "show": "$ javac Erasure.java && java Erasure",
+    "out": "true\njava.util.ArrayList\nfalse\n",
+    "exit": 0
+   }
+  ],
+  "java-records": [
+   {
+    "show": "$ javac Records.java && java Records",
+    "out": "false\ntrue\nPoint[x=1, y=2]\n",
+    "exit": 0
+   }
+  ],
+  "java-racy": [
+   {
+    "show": "$ javac Racy.java && java Racy",
+    "out": "103148 items (expected 400000)\n",
+    "exit": 0,
+    "varies": true
+   }
+  ],
+  "java-idioms": [
+   {
+    "show": "$ javac Idioms.java && java Idioms",
+    "out": "1: 1\n2: 1\n3: big\n4: high\n5: 2\n6: 0\n7: 1\n8: [4, 16]\n9: anabo\n10: ana, bo\n11: 5 chars\n12: -1\n13: true\n14: circle, radius 2.5\n14: not a circle\n15: hi\n16: 2 3\n17: 5\n17 pool: ForkJoinPool.commonPool-worker-1\n18: 1\n19: 3\n20: x=7\n",
+    "exit": 0
+   }
+  ],
+  "tools-rust": [
+   {
+    "show": "$ cargo new demo",
+    "out": "    Creating binary (application) `demo` package\nnote: see more `Cargo.toml` keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo build",
+    "out": "",
+    "exit": 0,
+    "varies": true
+   },
+   {
+    "show": "$ cargo test",
+    "out": "running 2 tests\ntest tests::joins_words ... ok\ntest tests::ignores_extra_spaces ... ok\n\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n   Doc-tests slugtools\n\nrunning 1 test\ntest src/lib.rs - slug (line 3) ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\nall doctests ran in 0.12s; merged doctests compilation took 0.12s\n",
+    "exit": 0,
+    "varies": true
+   },
+   {
+    "show": "$ cargo fmt --check",
+    "out": "",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo clippy",
+    "out": "",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo doc --no-deps",
+    "out": " Documenting slugtools v0.1.0 (/home/you/habits)\n\n   Generated target/doc/slugtools/index.html\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo run",
+    "out": "hello-rust-world\n",
+    "exit": 0
+   }
+  ],
+  "tools-java": [
+   {
+    "show": "$ javac -Xlint:all Slug.java",
+    "out": "",
+    "exit": 0
+   },
+   {
+    "show": "$ java Slug",
+    "out": "hello-java-world\n",
+    "exit": 0
+   },
+   {
+    "show": "$ java Slug.java",
+    "out": "hello-java-world\n",
+    "exit": 0
+   },
+   {
+    "show": "$ javadoc -quiet -d docs Slug.java",
+    "out": "",
+    "exit": 0
+   },
+   {
+    "show": "$ command -v jshell",
+    "out": "/opt/jdk/bin/jshell\n",
+    "exit": 0
+   },
+   {
+    "show": "$ jdb -version",
+    "out": "This is jdb version 25.0 (Java SE version 25.0.5)\n",
+    "exit": 0
+   }
+  ],
+  "tools-absent": [
+   {
+    "show": "$ for t in mvn gradle gdb lldb rust-gdb; do command -v $t || echo \"$t: not found\"; done",
+    "out": "mvn: not found\ngradle: not found\ngdb: not found\nlldb: not found\n/opt/cargo/bin/rust-gdb\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo --list | grep -ci repl    # how many cargo commands mention a REPL",
+    "out": "0\n",
+    "exit": 0
+   }
+  ],
+  "try-moved": [
+   {
+    "show": "$ cargo run --bin one    # with: let mut b = a.clone();",
+    "out": "[\"x\"]\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo run --bin two    # with: let mut a = vec![...]; let b = &mut a;",
+    "out": "[\"x\", \"y\"]\n",
+    "exit": 0
+   }
+  ],
+  "try-option": [
+   {
+    "show": "$ cargo run --bin fixed    # with: .get(\"ana\").copied().unwrap_or(0), and a lookup of \"bo\"",
+    "out": "ana: 31\nbo: 0\n",
+    "exit": 0
+   }
+  ],
+  "try-racy-java": [
+   {
+    "show": "$ for i in 1 2 3; do java Racy; done",
+    "out": "122298 items (expected 400000)\n105329 items (expected 400000)\n103826 items (expected 400000)\n",
+    "exit": 0,
+    "varies": true
+   }
+  ],
+  "try-racy-rust": [
+   {
+    "show": "$ for i in 1 2 3; do cargo run --bin shared; done",
+    "out": "400000 items (expected 400000)\n400000 items (expected 400000)\n400000 items (expected 400000)\n",
+    "exit": 0
+   }
+  ]
+ }
+}

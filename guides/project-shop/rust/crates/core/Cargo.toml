@@ -1,0 +1,10 @@
+[package]
+name = "shop-core"
+description = "The shop's domain types and the Catalog trait"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true

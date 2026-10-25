@@ -1,0 +1,319 @@
+<p class="lr-layer">The toolkit</p>
+
+Outputs come from Linux on 64-bit ARM (8 cores), Rust 1.99.1, debug build. Thread timing is not repeatable, so each Rust program here prints the same on every run: it joins its threads before printing, or uses a `Barrier` (threads wait at it until all have arrived) to force an order. Only the gotcha's racy programs vary, and say so.
+
+## What Rust refuses
+
+A **data race** is two accesses to the same memory with nothing ordering them, at least one a write and at least one not atomic (the wording of the [`atomic` docs](https://doc.rust-lang.org/std/sync/atomic/index.html#memory-model-for-atomic-accesses)). In the gotcha near the top, `move` hands the list to the first thread (E0382). An `Arc` shares a value but, through `Deref`, hands out only `&`:
+
+<Snippet file="arc-read-only.fail.rs" />
+
+A `Mutex` holds the value, so there is no way to reach it without asking:
+
+<Snippet file="no-access.fail.rs" />
+
+The `help:` is the recipe: `lock().unwrap()`. `Arc<Mutex<T>>` means many owners (`Arc`), one user at a time (`Mutex`). In safe Rust a data race does not compile; [deadlocks and logic races](#what-rust-does-not-prevent) do.
+
+## `Arc<T>`: owners across threads
+
+An `Rc` updates its count with no protection, so the compiler refuses to send one to a thread ([Smart pointers](/learn/smart-pointers/#across-threads-arct) shows the error). `Arc` is the same idea with an atomic count.
+
+<Snippet file="arc-count.rs" />
+
+`Arc::clone` copies a pointer and adds one to the count; the `Vec` is not copied (`ptr_eq` asks whether two `Arc`s share one allocation). `Arc<RefCell<_>>` is refused: `Send` means a value may move to another thread, `Sync` means a `&T` may be shared between threads, and `RefCell` is not `Sync` ([Send and Sync](/learn/send-sync/#arcrefcellt-fails-arcmutext-works) shows the error). The fix is `Mutex`, the thread-safe cousin of `RefCell`.
+
+## `Mutex<T>`: the data lives inside the lock
+
+`lock()` waits until no one else holds the lock, then returns a **guard**. The guard derefs to the data, and when it is dropped the lock opens ([Common traits](/learn/common-traits/) covers `Drop`). `lock` returns a `Result` because of poisoning, next section. It takes `&self`, so a shared `&Mutex` can still reach the data mutably: a `Mutex` is the thread-safe `RefCell` ([Smart pointers](/learn/smart-pointers/#cell-and-refcell-change-it-through-a-shared-reference)). Each `+= 1` below is a read, an add and a write, and the lock makes those three steps one:
+
+<Snippet file="counter.rs" />
+
+`try_lock` returns `Err` at once instead of waiting, so the next programs use it to ask whether the lock is free:
+
+<Snippet file="guard.rs" />
+
+A temporary guard dies at the end of its statement; a named guard lives to the end of its block, or until `drop`. The surprise is a temporary in the head of a `match`, `if let` or `while let`, which lives through the whole body. An `if` condition releases it, and edition 2024 (this page's) drops an `if let` guard before the `else`:
+
+<Snippet file="temporaries.rs" />
+
+Locking again in such a body, from the same thread, is a bug: the [`lock` docs](https://doc.rust-lang.org/std/sync/struct.Mutex.html#method.lock) call the behaviour unspecified and say it might panic or deadlock. Bind the value first, as `let n = ...;` does. A `Mutex` is not reentrant because its guard gives `&mut`, and a second guard on one thread would be a second `&mut` to the same data; the unstable `ReentrantLock` (`check-unstable-sync.fail.rs`) hands out only `&` for [that reason](https://doc.rust-lang.org/std/sync/struct.ReentrantLockGuard.html).
+
+## When a thread panics: poisoning
+
+If a thread panics while it holds a guard, the data may be half updated. The `Mutex` records that, and the next `lock()` returns `Err`. The error still contains the guard:
+
+<Snippet file="poison.rs" />
+
+The docs call the data "likely tainted". `into_inner` on the error is the way back in, and `clear_poison` (Rust 1.77) marks the repair done. Most code simply unwraps, as the docs note, which turns one panic into a panic in every thread that touches the lock:
+
+<Snippet file="poison-unwrap.rs" />
+
+That is a design choice. [The translating section](#translating-from-what-you-know) runs the same failure in Go, Java, Kotlin, C#, Python, C++ and C, where the lock simply opens and the next thread sees the half-done state. A non-poisoning `Mutex` is also unstable in Rust 1.99.1; the `parking_lot` crate's `Mutex` does not poison.
+
+## `RwLock<T>`: many readers or one writer
+
+`read()` gives a shared guard, any number at once. `write()` gives an exclusive one, and only a panicking writer poisons the lock. Two reader threads below meet at a barrier, so each must hold its guard while the other arrives; if readers excluded each other this would never finish:
+
+<Snippet file="rwlock.rs" />
+
+If a writer is waiting, may new readers go ahead? The docs leave the policy to the operating system and promise none. An `RwLock<T>` is shared across threads only when `T` is `Sync` too, where a `Mutex<T>` needs just `Send` (`check-rwlock-sync.fail.rs`). Start with a `Mutex`, and switch when many threads really do read at once.
+
+## Atomics: one value, no lock
+
+An atomic type changes a single integer, flag or pointer in one indivisible step; it exists for `bool`, the integers and raw pointers, not for a struct. `fetch_add` returns the old value. `compare_exchange(current, new, ..)` writes only if the value is still `current`, and says what it found otherwise. `compare_exchange_weak` may fail even when the values match, so it goes in a retry loop; `try_update` is that loop written for you (`fetch_update` is its older, now deprecated name). A `static` needs no `Arc`.
+
+<Snippet file="atomic.rs" />
+
+The extra arguments are orderings ([Going deeper](#orderings-and-what-they-promise)); use `SeqCst` when unsure. Atomics make each operation indivisible, not a sequence of them: this load-then-store loses an update every run, because the barrier makes both threads read first:
+
+<Snippet file="atomic-lost.rs" />
+
+## `Condvar`: wait until something is true
+
+A condition variable puts a thread to sleep until another thread says something changed. It pairs with a `Mutex` holding the state. `wait_while` releases the lock while asleep, takes it back on waking, and re-checks the condition, because a wake-up can be spurious (with no `notify` behind it; the [docs](https://doc.rust-lang.org/std/sync/struct.Condvar.html) say so). The closure says when to keep sleeping: the call "blocks the current thread until the provided condition becomes false". The second half notifies before anyone waits, and the flag makes that safe.
+
+<Snippet file="condvar.rs" />
+
+## What Rust does not prevent
+
+The type system rules out data races, and says nothing about these two problems.
+
+**Deadlock.** Each thread below holds one lock and wants the other's. `try_lock` shows what `lock` would have done, which is wait forever, so the program can run and report it:
+
+<Snippet file="deadlock.rs" />
+
+Nothing in a type records lock order. The cures are one agreed order (the second exercise), one lock at a time, or one lock for both.
+
+**Logic races.** [Send and Sync](/learn/send-sync/#what-they-do-not-prevent) runs one: every access is locked, and the balance still goes negative, because the check and the change lock separately. The cure is one guard across both. Two threads each try to take 60 from 100, and exactly one succeeds in either order:
+
+<Snippet file="one-guard.rs" />
+
+## Holding a guard too long
+
+While a guard lives, every other thread that wants the lock waits. Do the slow work first and lock only to store the result:
+
+<Snippet file="slow-part.rs" />
+
+In `async` code a function can pause at an `.await` with its guard alive. A future holding a `MutexGuard` across an `.await` is not `Send`, so a runtime's `spawn` refuses it ([Async basics](/learn/async-basics/) shows the error). A lock taken in a temporary, or in a block that ends before the `.await`, is accepted (`check-guard-dropped.rs`); a named guard that is used and then passed to `drop` is still refused on 1.99.1 (`check-guard-drop.fail.rs`). To hold a lock across an `.await` on purpose, [Tokio](/build/tokio/) has `tokio::sync::Mutex`.
+
+## Which tool, and how big a lock
+
+| You need | Reach for | Shown above |
+|---|---|---|
+| read-only data in many threads | `Arc<T>` | `arc-count.rs` |
+| one value that many threads change | `Arc<Mutex<T>>` | `counter.rs` |
+| many readers, occasional writer | `Arc<RwLock<T>>` | `rwlock.rs` |
+| a counter, flag or id | `AtomicUsize`, `AtomicBool` | `atomic.rs`, `release-acquire.rs` |
+| sleep until a condition holds | `Mutex` plus `Condvar` | `condvar.rs` |
+| a value built once, first use wins | `OnceLock`, `LazyLock` | `check-once.rs` |
+
+If threads produce values that one place consumes, use a [channel](/learn/channels/): a queue that moves each value from a sender to a receiver, so one thread owns it at any moment and no lock is needed. If many threads read and update one table, share it. Neither is the better one in general; the question is whether the data should move or stay put. The `entry` call does a map's compound update inside the one lock, as Java's `merge` does:
+
+<Snippet file="tally.rs" />
+
+`std` has no concurrent map: the options are a `Mutex<HashMap>`, a map split into shards, or a crate (`dashmap` for a map, see [Maps](/learn/maps/); `crossbeam-queue` for queues). How much one lock covers is a separate choice. One lock around everything is the simplest and has no lock-order problem, but shuts out every other thread. A lock per item lets threads on different items run at once, though a view of several items needs several locks, in an agreed order. Shards sit in between: threads on different shards run together, and your code picks the shard (`check-granularity.rs` asserts these three).
+
+## Translating from what you know
+
+<ForLang only="go">
+A `sync.Mutex` is a field beside the data it guards. `go run -race` (used in the gotcha) reports races that happen while the program runs: Go's [documentation](https://go.dev/doc/articles/race_detector) says it "only finds races that happen at runtime", where the Rust compiler rejects the program whatever the schedule. With a mutex, or an `atomic.Int64`, Go prints the full 8000:
+
+<Snippet file="counter.go" />
+
+The `sync/atomic` [docs](https://pkg.go.dev/sync/atomic) say operations "behave as though executed in some sequentially consistent order": that is `Ordering::SeqCst`, which Rust makes you write on every call. A Go `Mutex` is not reentrant either: `TryLock` by the holder fails, as in `guard.rs`.
+
+<Snippet file="relock.go" />
+
+An unrecovered panic in any goroutine ends the whole program (the child process here exits with code 2), so no half-done state is left for the next goroutine:
+
+<Snippet file="panic-kills.go" />
+
+Only a `recover` keeps the program alive; then the deferred `Unlock` runs and `main` sees the half-updated slice. Rust threads die alone, so that question comes up by default:
+
+<Snippet file="poison.go" />
+
+| In Go | In Rust |
+|---|---|
+| `var mu sync.Mutex` beside the data | `Mutex<T>` holding the data |
+| `mu.Lock(); defer mu.Unlock()` | `let guard = m.lock().unwrap();`, released at scope end |
+| `sync.RWMutex`, `sync.Cond`, `atomic.Int64` | `RwLock`, `Condvar`, `AtomicI64` |
+| `sync.Map` | no `std` equivalent: `Mutex<HashMap>` with `entry()` (`tally.rs`), or the `dashmap` crate ([Maps](/learn/maps/)) |
+| `sync.Once` | `OnceLock`, `LazyLock` (`check-once.rs`) |
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+Your lock is a separate object, or the monitor every object carries. All three make a correct counter, an atomic one, and a concurrent map update:
+</ForLang>
+
+<ForLang only="java">
+<Snippet file="counter.java" />
+</ForLang>
+
+<ForLang only="kotlin">
+<Snippet file="counter.kt" />
+</ForLang>
+
+<ForLang only="csharp">
+<Snippet file="counter.cs" />
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+Two differences. These locks are **reentrant**: the same thread can take one again. A Rust `Mutex` is not (`guard.rs`). And when an exception leaves the block, the lock opens and the next thread sees the half-done state, with no flag. In Rust that is poisoning. Each program below adds 4 to a list and then fails:
+</ForLang>
+
+<ForLang only="java">
+<Snippet file="relock.java" />
+
+<Snippet file="poison.java" />
+</ForLang>
+
+<ForLang only="kotlin">
+<Snippet file="relock.kt" />
+
+<Snippet file="poison.kt" />
+</ForLang>
+
+<ForLang only="csharp">
+<Snippet file="relock.cs" />
+
+<Snippet file="poison.cs" />
+</ForLang>
+
+<ForLang only="java kotlin csharp">
+Your atomics are the `SeqCst` row. `AtomicInteger` has the memory effects of a `volatile` access ([docs](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/atomic/AtomicInteger.html)), the Java [memory model](https://docs.oracle.com/javase/specs/jls/se25/html/jls-17.html#jls-17.4.4) puts all synchronization actions in one total order, and .NET's runtime notes call `Interlocked` methods [full fences](https://github.com/dotnet/runtime/blob/main/docs/design/specs/Memory-model.md). Rust lets you ask for less. [Going deeper](#orderings-and-what-they-promise) covers the other guarantee you rely on: unlock, then lock.
+
+| In Java / Kotlin / C# | In Rust |
+|---|---|
+| `synchronized`, `lock` | `let guard = m.lock().unwrap();` ... |
+| `ReentrantLock`, `tryLock()` | `Mutex` (the guard unlocks on drop), `try_lock` |
+| `AtomicInteger`, `Interlocked.Increment` | `AtomicUsize::fetch_add(.., SeqCst)` |
+| `updateAndGet` | `try_update`, which retries its closure |
+| `ConcurrentHashMap`, `ConcurrentDictionary` | none in `std`: `Mutex<HashMap>` with `entry()` doing `merge`'s job (`tally.rs`), or the `dashmap` crate ([Maps](/learn/maps/)) |
+| `Lazy<T>`, the holder-class idiom | `LazyLock`, `OnceLock` (`check-once.rs`) |
+| `wait`/`notify`, `Condition` | `Condvar` |
+| `ReadWriteLock`, `ReaderWriterLockSlim` | `RwLock` |
+</ForLang>
+
+<ForLang only="python">
+CPython 3.13's global interpreter lock (GIL) lets one thread run bytecode at a time, which keeps the interpreter's own objects consistent. It does not make your read-modify-write one step: the [Python FAQ](https://docs.python.org/3/faq/library.html#what-kinds-of-global-value-mutation-are-thread-safe) lists `L.append(x)` as atomic and `i = i + 1` as not. On CPython 3.13.5, eight threads adding 1,000,000 times each lost updates only in the form with a Python-level function call between the read and the write; the other forms were exact every time. That is an implementation detail, not a guarantee. The program prints the same every run ([Send and Sync](/learn/send-sync/) shows the lost totals); the page ran no free-threaded Python:
+
+<Snippet file="forms.py" />
+
+A Rust `Mutex` is a `Lock`, not an `RLock`. An exception leaves a `with lock:` block, so nothing is poisoned:
+
+<Snippet file="relock.py" />
+
+<Snippet file="poison.py" />
+
+| In Python | In Rust |
+|---|---|
+| `lock = threading.Lock()` and `with lock:` | `Mutex<T>` and a guard |
+| `threading.RLock` | none in `std`; the `parking_lot` crate has a `ReentrantMutex` |
+| `Condition.wait_for(pred)` | `Condvar::wait_while`, whose closure is inverted: it says when to keep sleeping |
+| `asyncio.Lock` | `tokio::sync::Mutex`, in async code |
+</ForLang>
+
+<ForLang only="typescript">
+Workers share memory only through a `SharedArrayBuffer`, which `Atomics` operates on. Its operations are sequentially consistent (the [spec](https://tc39.es/ecma262/#sec-atomics.load) gives `Atomics.load` the `seq-cst` order), which is `Ordering::SeqCst` in Rust:
+
+<Snippet file="counter.ts" />
+
+| In TypeScript | In Rust |
+|---|---|
+| `new SharedArrayBuffer(4)` with `Atomics.add` | an `Arc<AtomicI32>` or a static atomic |
+| `postMessage` of a copy | a [channel](/learn/channels/) |
+| `Atomics.wait`, `Atomics.notify` (sleep while one cell holds a value) | a `Condvar` with a `Mutex<bool>`, or a channel |
+</ForLang>
+
+<ForLang only="c">
+`pthread_mutex_t` is a variable beside the data, and forgetting `pthread_mutex_lock` compiles (the gotcha ran that under ThreadSanitizer). With the lock around every access:
+
+<Snippet file="counter.c" />
+
+C has an opt-in counterpart to poisoning, the robust mutex (`PTHREAD_MUTEX_ROBUST`). When its owner ends without unlocking, the next lock returns `EOWNERDEAD`; the caller repairs the data and calls `pthread_mutex_consistent`:
+
+<Snippet file="poison.c" />
+
+| In C | In Rust |
+|---|---|
+| `pthread_mutex_t` beside the data | `Mutex<T>` holding the data |
+| `pthread_mutex_lock` ... `unlock` on every path | one `lock()`, released when the guard drops |
+| `PTHREAD_MUTEX_ROBUST`, `EOWNERDEAD` | poisoning, and `PoisonError::into_inner` to repair |
+| `pthread_cond_wait` | `Condvar::wait` or `wait_while` |
+</ForLang>
+
+<ForLang only="cpp">
+`std::mutex` is a variable beside the data, and `lock_guard` is the guard (the gotcha ran the unlocked version under ThreadSanitizer). Clang's [thread-safety analysis](https://clang.llvm.org/docs/ThreadSafetyAnalysis.html) checks `GUARDED_BY` annotations as an opt-in; in Rust the type does it. `hits++` on a `std::atomic<long>` means `seq_cst`; Rust has no default ([Going deeper](#orderings-and-what-they-promise)).
+
+<Snippet file="counter.cpp" />
+
+An exception unwinds the block, the `lock_guard` destructor opens the lock, and the next thread sees the half-done state with no flag. Rust marks that state: poisoning.
+
+<Snippet file="poison.cpp" />
+
+`std::mutex` is not recursive either, and `std::recursive_mutex` has no `std` counterpart. C++17's `std::scoped_lock` takes several mutexes with a deadlock-avoidance algorithm, so these threads finish despite opposite orders. The 1.99.1 docs list nothing like it in `std::sync`, which is why the second exercise orders its locks by hand:
+
+<Snippet file="scoped-lock.cpp" />
+
+| In C++ | In Rust |
+|---|---|
+| `std::mutex` and `std::lock_guard` | `Mutex<T>` and `MutexGuard` |
+| `std::atomic<T>`, `fetch_add` | `AtomicUsize::fetch_add(.., SeqCst)`: integers, `bool` and pointers only |
+| `cv.wait(lock, pred)` | `Condvar::wait_while`, whose closure is inverted: it says when to keep sleeping |
+| `std::scoped_lock(a, b)` | lock in an agreed order |
+</ForLang>
+
+<p class="lr-layer">Going deeper</p>
+
+## Orderings, and what they promise
+
+An ordering says what else becomes visible, not whether the operation is atomic: `fetch_add` is indivisible with any of them. By the [docs](https://doc.rust-lang.org/std/sync/atomic/enum.Ordering.html), `Relaxed` means "no ordering constraints, only atomic operations", and a pair of `SeqCst` operations also synchronizes other memory, in one total order. A flag announcing "the other data is ready" needs `Release` on the store and `Acquire` on the load:
+
+<Snippet file="release-acquire.rs" />
+
+Rust follows the C++20 model [without `consume`](https://doc.rust-lang.org/std/sync/atomic/index.html#memory-model-for-atomic-accesses). There is no default ordering: `hits.fetch_add(1)` is E0061 (`check-atomic-default.fail.rs`). `compare_exchange` takes one ordering for success and one for failure, and a `Release` failure ordering is a deny-by-default lint, because a failed exchange writes nothing (`check-atomic-failure.fail.rs`). When unsure, use `SeqCst`.
+
+A `Mutex` is used the same way: what one thread wrote before unlocking is visible to the next thread that locks, as after leaving `synchronized` (Java's [rule](https://docs.oracle.com/javase/specs/jls/se25/html/jls-17.html#jls-17.4.4)). The `Mutex` docs do not use the words "happens-before"; the [Nomicon](https://doc.rust-lang.org/nomicon/atomics.html) calls `Acquire` and `Release` "perfectly suited for acquiring and releasing locks".
+
+## What an `Arc<Mutex<Vec>>` is made of
+
+<Memory
+  title={'let shared = Arc::new(Mutex::new(vec![1, 2, 3]));   first and second are Arc::clone(&shared)'}
+  stack={[
+    { name: 'shared', type: 'Arc<Mutex<Vec<i32>>>', cells: ['ptr'], to: 'one' },
+    { name: 'first', type: 'Arc<Mutex<Vec<i32>>>', cells: ['ptr'], to: 'one' },
+    { name: 'second', type: 'Arc<Mutex<Vec<i32>>>', cells: ['ptr'], to: 'one' },
+  ]}
+  heap={[
+    { id: 'one', label: 'one allocation', cells: ['strong 3', 'weak_count() 0', 'lock and poison flag', 'Vec: ptr, len 3, cap 3'], links: [{ cell: 3, to: 'buf' }] },
+    { id: 'buf', label: '3 x i32', cells: ['1', '2', '3'] },
+  ]}
+  caption="Three owners, one lock, one Vec. The counts and sizes are those layout.rs printed: an Arc is 8 bytes, and the Mutex adds 8 bytes to the 24-byte Vec. What the 8 bytes hold, and the order of the cells, are not specified."
+/>
+
+<Snippet file="layout.rs" />
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Each exercise has checks in `main`: replace the `todo!()` calls and run until it prints `all checks passed`. The starters compile and stop at the first `todo!()`. Where a wrong answer could hang, the check fails with a message instead.
+
+<Exercise name="cache" title="Compute outside the lock">
+`get_or_compute` caches slow results in a `Mutex<HashMap>`. The slow call runs with the lock released, and if another thread stored the key meanwhile, that value wins. It is not single-flight: two threads that miss together may both compute. Then write `warm`: an `Arc` around the table, a clone moved into each thread, a join for all. The checks fail a held guard, an overwrite, no caching, and copying the map.
+</Exercise>
+
+<Exercise name="bank" title="Lock in order, move money atomically">
+`transfer` needs two account locks, and opposite transfers deadlock if each takes `from` first. Lock the lower index first, handle `from == to` and an empty account, and call the provided `lock` so the checks can read your order. Hold both locks until both balances change: a reader sums every account while four threads transfer, and the total must be 3000 every time.
+</Exercise>
+
+<Exercise name="update" title="A retry loop without a lock">
+Write `update`, your own `try_update`, on a `Slot` with only `load`, `store` and `compare_exchange`. A check plays a rival thread that changes the slot while your closure runs, which fails a load-then-store and a single `compare_exchange`. Then write `claim_all`: one slot shared with `Arc`, and per-thread counts that add up to the limit exactly.
+</Exercise>
+
+## Read more
+
+- [The Rust Book, chapter 16.3: Shared-State Concurrency](https://doc.rust-lang.org/book/ch16-03-shared-state.html), and [Rust by Example: Arc](https://doc.rust-lang.org/rust-by-example/std/arc.html).
+- The standard library: [`Mutex`](https://doc.rust-lang.org/std/sync/struct.Mutex.html), [`RwLock`](https://doc.rust-lang.org/std/sync/struct.RwLock.html), [`Arc`](https://doc.rust-lang.org/std/sync/struct.Arc.html), [`Condvar`](https://doc.rust-lang.org/std/sync/struct.Condvar.html), [`OnceLock`](https://doc.rust-lang.org/std/sync/struct.OnceLock.html), [`atomic`](https://doc.rust-lang.org/std/sync/atomic/index.html) and [`Ordering`](https://doc.rust-lang.org/std/sync/atomic/enum.Ordering.html), and the [`std::sync` overview](https://doc.rust-lang.org/std/sync/index.html).
+- The Rustonomicon on [data races](https://doc.rust-lang.org/nomicon/races.html) (what safe Rust guarantees) and [atomics](https://doc.rust-lang.org/nomicon/atomics.html) (what the orderings guarantee).
+- Errors: [E0382](https://doc.rust-lang.org/error_codes/E0382.html), [E0596](https://doc.rust-lang.org/error_codes/E0596.html), [E0599](https://doc.rust-lang.org/error_codes/E0599.html), [E0061](https://doc.rust-lang.org/error_codes/E0061.html), or [this site's index](/errors/).

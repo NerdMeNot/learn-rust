@@ -1,0 +1,177 @@
+# A gRPC service with tonic
+#
+# The Rust server runs in the background; the client calls it once with a name and once
+# without, so the page shows both a reply and a gRPC error status. The Go sessions use
+# the same .proto file (guides/grpc/go/proto/greeter.proto is a link to the Rust one).
+#
+# Every session that starts a server leaves it to the runner, which stops it when the
+# session ends. The order is part of the proof: `interop` comes right after `status-code`
+# (whose server answers NotFound), so a leftover server would show in its output; the Go
+# server in `go` would fail to listen if the Rust one were still alive; and the last
+# session (no-server) needs port 50051 to be free to fail the way the page says.
+name: greeter
+sessions:
+  protoc:
+    dir: rust
+    steps:
+      - cmd: protoc --version
+  server-and-client:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin server
+        background: true
+        ready: listening on
+        timeout: 900
+      - cmd: cargo run --bin client
+        timeout: 600
+  generated:
+    dir: rust
+    steps:
+      - cmd: cargo build
+        timeout: 900
+      - cmd: ls "$CARGO_TARGET_DIR"/debug/build/greeter-*/out/
+        show: "$ ls target/debug/build/greeter-*/out/"
+      - cmd: grep -B1 -A5 "pub trait Greeter" "$CARGO_TARGET_DIR"/debug/build/greeter-*/out/greeter.rs
+        show: "$ grep -B1 -A5 \"pub trait Greeter\" target/debug/build/greeter-*/out/greeter.rs"
+      - cmd: grep -A3 "pub async fn say_hello" "$CARGO_TARGET_DIR"/debug/build/greeter-*/out/greeter.rs | head -4
+        show: "$ grep -A3 \"pub async fn say_hello\" target/debug/build/greeter-*/out/greeter.rs"
+      - cmd: grep -A2 "pub async fn connect" "$CARGO_TARGET_DIR"/debug/build/greeter-*/out/greeter.rs | head -3
+        show: "$ grep -A2 \"pub async fn connect\" target/debug/build/greeter-*/out/greeter.rs"
+  no-async-trait:
+    dir: rust
+    overlay:
+      src/bin/server.rs: snippet-no-async-trait/server.rs
+    steps:
+      - cmd: cargo build --bin server
+        expect: fail
+        timeout: 900
+  no-protoc:
+    dir: rust
+    steps:
+      - cmd: mv /usr/bin/protoc /usr/bin/protoc.off
+        show: "$ # pretend protoc is not installed (the session puts it back afterwards)"
+      - cmd: touch proto/greeter.proto
+        show: "$ touch proto/greeter.proto"
+      - cmd: cargo build
+        expect: fail
+        timeout: 900
+      - cmd: mv /usr/bin/protoc.off /usr/bin/protoc && protoc --version
+        show: "$ # put protoc back, then check\n$ protoc --version"
+  client-not-mut:
+    dir: rust
+    overlay:
+      src/bin/client.rs: gotcha/client.rs
+    steps:
+      - cmd: cargo build
+        expect: fail
+        timeout: 900
+  status-code:
+    dir: rust
+    steps:
+      - cmd: sed -i 's/invalid_argument/not_found/' src/bin/server.rs
+      - cmd: cargo run --bin server
+        background: true
+        ready: listening on
+        timeout: 900
+      - cmd: cargo run --bin client
+        timeout: 600
+  interop:
+    dir: rust
+    overlay:
+      go/go.mod: go/go.mod
+      go/client/main.go: go/client/main.go
+      go/proto/greeter.proto: rust/proto/greeter.proto
+    steps:
+      - cmd: cargo run --bin server
+        background: true
+        ready: listening on
+        timeout: 900
+      - cmd: out=$(go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.12 2>&1) || { echo "$out"; exit 1; }
+        cwd: go
+        show: "$ go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.12"
+        timeout: 600
+      - cmd: out=$(go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.2 2>&1) || { echo "$out"; exit 1; }
+        cwd: go
+        show: "$ go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.2"
+        timeout: 600
+      - cmd: >-
+          PATH="$PATH:$(go env GOPATH)/bin" protoc
+          --go_out=. --go_opt=module=greeter --go_opt=Mproto/greeter.proto=greeter/pb
+          --go-grpc_out=. --go-grpc_opt=module=greeter --go-grpc_opt=Mproto/greeter.proto=greeter/pb
+          proto/greeter.proto
+        cwd: go
+      - cmd: out=$(go mod tidy 2>&1) || { echo "$out"; exit 1; }
+        cwd: go
+        show: "$ go mod tidy"
+        timeout: 600
+      - cmd: out=$(go build -o bin/ ./client 2>&1) || { echo "$out"; exit 1; }
+        cwd: go
+        show: "$ go build -o bin/ ./client"
+        timeout: 600
+      - cmd: ./bin/client
+        cwd: go
+        show: "$ ./bin/client   # the Go client, calling the Rust server"
+        timeout: 120
+  go:
+    dir: go
+    steps:
+      - cmd: out=$(go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.12 2>&1) || { echo "$out"; exit 1; }
+        show: "$ go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.12"
+        timeout: 600
+      - cmd: out=$(go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.2 2>&1) || { echo "$out"; exit 1; }
+        show: "$ go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.6.2"
+        timeout: 600
+      - cmd: >-
+          PATH="$PATH:$(go env GOPATH)/bin" protoc
+          --go_out=. --go_opt=module=greeter --go_opt=Mproto/greeter.proto=greeter/pb
+          --go-grpc_out=. --go-grpc_opt=module=greeter --go-grpc_opt=Mproto/greeter.proto=greeter/pb
+          proto/greeter.proto
+      - cmd: out=$(go mod tidy 2>&1) || { echo "$out"; exit 1; }
+        show: "$ go mod tidy"
+        timeout: 600
+      - cmd: out=$(go build -o bin/ ./server ./client 2>&1) || { echo "$out"; exit 1; }
+        show: "$ go build -o bin/ ./server ./client"
+        timeout: 600
+      - cmd: ./bin/server
+        background: true
+        ready: listening on
+        timeout: 120
+      - cmd: ./bin/client
+        timeout: 120
+  no-server:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin client
+        expect: fail
+        timeout: 600
+gotcha:
+  kind: compile
+  title: A client that isn't `mut`
+  verdict: rust-rule
+  looks_fine: >-
+    A client feels like a read-only handle you make calls through, so declaring it
+    mutable seems odd.
+  rust_sees: >-
+    The generated `say_hello` takes `&mut self` (you can read the signature in the
+    `generated` session above). Calling a `&mut self` method needs a `mut` variable.
+  why: >-
+    It is the rule from [Mutable borrows](/learn/mutable-borrows/): a `&mut` borrow needs
+    a variable declared `mut`. tonic's [`Channel` docs](https://docs.rs/tonic/0.14.6/tonic/transport/struct.Channel.html)
+    explain the same requirement one level down, on the `Channel` that the generated client wraps:
+    sending a request "requires a `&mut self` and thus can only send one request in flight", which
+    they call "intentional" and required by the `Service` contract of the tower library. Need
+    several tasks to make calls at once? The same docs say cloning a `Channel` is "cheap and
+    encouraged", because the connection runs in a background task that the clones talk to. The
+    docs say that about a `Channel`; this page does not run a program that clones the generated
+    client.
+  code: { file: gotcha/client.rs, name: src/bin/client.rs }
+  session: client-not-mut
+  fixed: { file: rust/src/bin/client.rs, name: src/bin/client.rs, session: server-and-client }
+  langs:
+    go:
+      status: runs
+      says: >-
+        Go runs this. The client is an ordinary variable, `client := pb.NewGreeterClient(conn)`,
+        and the same two calls print the same two lines (run here, against a Go server).
+      file: go/client/main.go
+      session: go

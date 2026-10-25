@@ -1,0 +1,168 @@
+---
+title: "Finding and using crates"
+description: "A Rust library is called a **crate**. This page covers the whole journey: finding one, checking it's any good, adding it to your project, and using it in your code, including what that use line at the top really does."
+---
+
+import { Files, GuideGotcha, Remember, Session } from '../../../components/guide'
+
+A Rust library is called a **crate**. This page covers the whole journey: finding one, checking it's any good, adding it to your project, and using it in your code, including what that `use` line at the top really does.
+
+<Remember>`cargo add` puts a crate in `Cargo.toml`. `use` gives you short names for what's inside it. You never need `mod` for a crate.</Remember>
+
+## Where crates live
+
+| Site | What it's for |
+| --- | --- |
+| [crates.io](https://crates.io) | The Rust community's package registry, and the one `cargo add` installs from unless you configure another. |
+| [docs.rs](https://docs.rs) | Documentation for the crates on crates.io, built automatically when a version is published. |
+| [lib.rs](https://lib.rs) | Another site for browsing crates. blessed.rs describes it as a semi-curated directory. |
+| [blessed.rs](https://blessed.rs) | An unofficial, hand-curated guide to the ecosystem: for common jobs, which crates to look at. Start here when you don't know what to search for. |
+
+Also see [The crates everyone uses](/build/crates-map/), which maps common jobs to the usual crate and to what you'd use in other languages.
+
+## Finding one
+
+Say you want to count letters the way a person would, where a waving hand with a skin tone counts as one. In Unicode terms, those are *graphemes*. You can search from the terminal:
+
+<Session guide="using-crates" run="search" />
+
+In this run, `unicode-segmentation`, the crate this page uses for the job, isn't in the top five, and the list changes as crates are published. The registry's ranking tells you which crates match your words, not which one to trust. A look at blessed.rs, lib.rs or a web search is a better start when you don't know the name.
+
+## Is it any good?
+
+Before you add a crate, take thirty seconds on its crates.io page:
+
+- **Downloads**, especially recent ones. A crate many people use has had more eyes on its bugs, though a download count is not a quality score.
+- **Last release.** Months is fine. Years can be fine for small, finished crates, but check the issues.
+- **Documentation** on docs.rs, with examples.
+- **Dependents**: how many other crates use it.
+- **Version number.** Many well-known crates stay below 1.0 for years (`rand` was at 0.10 when this page was written). That's common in Rust, and it only means the authors haven't promised a stable API yet.
+
+## Adding it
+
+<Session guide="using-crates" run="manage" only={[0]} />
+
+Cargo wrote the dependency into `Cargo.toml` for you:
+
+<Files guide="using-crates" dir="rust" files={["Cargo.toml"]} />
+
+`"1.13.3"` means "1.13.3 or any newer 1.x" (Cargo calls this a caret requirement; see [Specifying dependencies](https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html)). Crates are expected to follow semantic versioning (a convention where only a new major version may break your code), so those updates shouldn't break it. The exact version you got is recorded in `Cargo.lock`.
+
+## Using it in your code
+
+<Files guide="using-crates" dir="rust" files={["src/main.rs"]} run="run" />
+
+That first line is the confusing one, because `UnicodeSegmentation` never appears again. Here it is piece by piece:
+
+| Piece | What it is |
+| --- | --- |
+| `use` | "Let me refer to this by a short name." It doesn't load or install anything. |
+| `unicode_segmentation` | The crate's name, with `-` turned into `_`. Every normal dependency in your `Cargo.toml` is available by name in every file. No `mod` line needed. |
+| `::` | "Inside of", like `.` in a Java or Python import path. |
+| `UnicodeSegmentation` | A **trait** inside the crate: a set of methods it adds to existing types. This one adds `.graphemes()` to every string. |
+
+So the line doesn't give you a function to call. It switches on a method. In Rust, a trait's methods only work where the trait is in scope, which usually means imported with `use` in that file (or module). That's why you never write `UnicodeSegmentation` again: you just call `word.graphemes(true)`, and it works because the trait is in scope.
+
+Leave the line out, and the method simply doesn't exist:
+
+<Files guide="using-crates" dir="snippet-4" files={["src/main.rs"]} />
+<Session guide="using-crates" run="no-use" />
+
+For a standard library trait the compiler suggests the `use` line. It did not above, because nothing in the program mentioned the crate yet. Once any file in the crate does, it can:
+
+<Files guide="using-crates" dir="snippet-7" files={["src/main.rs"]} />
+<Session guide="using-crates" run="suggest" />
+
+Otherwise, look at the crate's docs (next section).
+
+You can also skip the `use` line and call the method through its full path. It's wordier, but it shows exactly where the method comes from:
+
+<Files guide="using-crates" dir="snippet-6" files={["src/main.rs"]} run="full-path" />
+
+You'll also see `use some_crate::SomeTrait as _;`. That imports the trait's methods without taking up the name, which is handy when two traits have the same name.
+
+### If you've seen this before
+
+C# works the same way: LINQ's `.Where()` and `.Select()` are extension methods, and only exist where `System.Linq` is imported (new projects import it for you). So do Kotlin extension functions from a library, which you import by name. Go, Java and Python don't have this: there, a method belongs to its type and is always there.
+
+## How do I know what to import?
+
+- **The crate's front page on docs.rs.** Almost every crate opens with an example, and the `use` lines at the top of it are what you need.
+- **The "Traits" section on docs.rs.** If a crate adds methods to types you already have, they come from a trait listed there.
+- **Your editor.** rust-analyzer has a setting, [`completion.autoimport.enable`](https://rust-analyzer.github.io/book/configuration.html) (on by default), for "completions that automatically add imports when completed". Your editor has to support it.
+- **The `prelude` module.** Some big crates offer `use some_crate::prelude::*;`, which imports all their common traits at once.
+
+## Features, updates and removing
+
+Many crates keep optional parts behind **features**, so you only compile what you use. `cargo add` lists them, `+` for on and `-` for off:
+
+<Session guide="using-crates" run="manage" only={[1]} />
+
+The features you turned on are written into `Cargo.toml`:
+
+<Session guide="using-crates" run="manage" only={[2]} />
+
+See what your project depends on, and take a crate out again:
+
+<Session guide="using-crates" run="manage" only={[3]} />
+
+<Session guide="using-crates" run="manage" only={[4]} />
+
+`cargo tree --invert <crate>` turns the tree around and shows who depends on a crate (try it below).
+
+- `cargo update` moves every crate to the newest version your `Cargo.toml` allows, and updates `Cargo.lock`. Add `--dry-run` to see what it would change.
+- `cargo doc --open` builds the docs for the versions in your `Cargo.lock`, from the sources Cargo has already downloaded, and opens them in a browser.
+
+## The lock file
+
+`Cargo.toml` says which versions are acceptable. `Cargo.lock` records the exact versions Cargo picked, plus a checksum for each from the registry:
+
+<Files guide="using-crates" dir="rust" files={["Cargo.lock"]} />
+
+Cargo changes that file when `Cargo.toml` asks for something it doesn't cover, when you run `cargo update` or `cargo remove`, or when the package's own version changes. For a program like this one, commit `Cargo.lock`, so everyone (and your CI, the server that builds every change) builds with the same versions. The `--locked` flag makes that strict. Here `Cargo.toml` was edited by hand to add `itoa`, but `Cargo.lock` wasn't updated:
+
+<Session guide="using-crates" run="locked" />
+
+A CI job can pass `--locked` so that a build which would change the lock file fails instead.
+
+## Security checks and bigger projects
+
+`cargo audit` checks your `Cargo.lock` against the RustSec database of reported vulnerabilities. It is a separate tool (`cargo install cargo-audit`). I did not run it for this page, so there is no session for it.
+
+When a project grows to several packages, a **workspace** lets them share one `Cargo.lock` and one `target/` folder, so they resolve versions together. [Modules and Visibility](/learn/modules/#packages-and-crates) explains packages and crates, and [Several programs](/start/several-programs/) builds a workspace step by step.
+
+## The same thing in your language
+
+| Language | Manifest | Lock file | Add a package | Registry |
+| --- | --- | --- | --- | --- |
+| Rust | `Cargo.toml` | `Cargo.lock` | `cargo add serde` | crates.io |
+| Go | `go.mod` | `go.mod` records the versions; `go.sum` holds checksums | `go get example.com/pkg` | Go module proxy (by default) |
+| Python | `pyproject.toml` | depends on the tool (`uv.lock`, `poetry.lock`) | `uv add requests` | PyPI |
+| TypeScript | `package.json` | `package-lock.json` (npm), `bun.lock` | `npm install zod` | npm |
+| Java | `pom.xml` or `build.gradle` | none by default | edit the build file | Maven Central |
+| Kotlin | `build.gradle.kts` | none by default | edit the build file | Maven Central |
+| C# | `.csproj` | `packages.lock.json`, opt-in | `dotnet add package Serilog` | NuGet |
+| C | `CMakeLists.txt` plus a package manager such as vcpkg or Conan | per tool | `vcpkg add port zlib` | no single standard |
+| C++ | `CMakeLists.txt` plus vcpkg or Conan | per tool | `vcpkg add port fmt` | no single standard |
+
+## Try it yourself
+
+Both commands below are run for you, and the outputs shown are real. (The `--locked` experiment in the lock file section is a third.)
+
+1. **Ask who needs a crate.** Run `cargo tree --invert unicode-segmentation`. Look for your own package indented below the crate, as the only thing that depends on it.
+
+   <Session guide="using-crates" run="tree" only={[0]} />
+
+2. **See whether anything is newer.** Run `cargo update --dry-run`. In this run nothing was listed, only a warning that the lock file was not written. If a newer compatible release has appeared since, it appears as a line.
+
+   <Session guide="using-crates" run="tree" only={[1]} />
+
+<GuideGotcha guide="using-crates" />
+
+## Read more
+
+- The Cargo Book: [Features](https://doc.rust-lang.org/cargo/reference/features.html), [Cargo.toml vs Cargo.lock](https://doc.rust-lang.org/cargo/guide/cargo-toml-vs-cargo-lock.html) (also covers libraries), and the [`cargo tree`](https://doc.rust-lang.org/cargo/commands/cargo-tree.html) and [`cargo add`](https://doc.rust-lang.org/cargo/commands/cargo-add.html) commands.
+- The Rust Book: [Bringing paths into scope with `use`](https://doc.rust-lang.org/book/ch07-04-bringing-paths-into-scope-with-the-use-keyword.html) and [Cargo workspaces](https://doc.rust-lang.org/book/ch14-03-cargo-workspaces.html).
+- [`UnicodeSegmentation`](https://docs.rs/unicode-segmentation/1.13.3/unicode_segmentation/trait.UnicodeSegmentation.html) on docs.rs, and [`cargo-audit`](https://github.com/rustsec/rustsec/tree/main/cargo-audit).
+
+<p class="lr-fine">Paths in Cargo's output are shown as /home/you.</p>

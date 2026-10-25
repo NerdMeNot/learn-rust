@@ -1,0 +1,306 @@
+<p class="lr-layer">The toolkit</p>
+
+Most of these idioms are not language features: each is ordinary structs, enums, traits and `Drop`, arranged in a shape that Rust code tends to share, usually to move a rule out of your head and into the compiler. The rest (`let ... else`, `matches!`, `impl Trait`) are small features that shorten them. This page names the shapes and says what each costs. Outputs come from Linux on 64-bit ARM with Rust 1.99.1, a debug build.
+
+If you know the design-pattern names, start here. "Close" is the word: each Rust form does the job, not the whole class diagram.
+
+| Pattern | In Rust | Where |
+|---|---|---|
+| Builder | a builder type, or `Default` with `..` | [Building a value](#building-a-value-default-update-syntax-and-the-builder) |
+| Strategy | a closure or trait: `impl Trait` when the caller picks, `Box<dyn Fn>` or `Box<dyn Trait>` when chosen at run time | [Traits at the edges](#traits-at-the-edges) |
+| State | an enum with `match`, or typestate | [Illegal states](#make-illegal-states-unrepresentable), [Typestate](#typestate-the-state-is-in-the-type) |
+| Adapter, wrapper | a newtype that implements the trait you need | [Newtype](#newtype-a-type-for-each-meaning) |
+| Static factory method | an associated function: `new`, `parse`, `try_from` | [Parse, don't validate](#parse-dont-validate) |
+| Resource guard (try-with-resources, `using`, `with`) | a `Drop` type | [Guards](#guards-cleanup-tied-to-a-scope) |
+| Singleton, global instance | a `static` `OnceLock` or `LazyLock` ([Shared state](/learn/shared-state/)), or a value you pass in | |
+
+Observer, Visitor and Decorator have no row: they are written with traits, closures and enums, as in the Strategy row.
+
+## Newtype: a type for each meaning
+
+A newtype is a struct with one field ([Structs](/learn/structs/#tuple-structs-and-unit-structs) shows the compiler refusing a mix-up of two). Wrapping adds no data, and it lets you implement a trait on a type you do not own:
+
+<Snippet file="newtype.rs" />
+
+The sizes match their fields. `Names` is the second use: [the orphan rule](/learn/traits/#why-the-orphan-rule-exists) lets you implement a trait only if you own the trait or the type, so `impl Display for Vec<String>` is refused ([the Book](https://doc.rust-lang.org/book/ch20-02-advanced-traits.html#implementing-external-traits-with-the-newtype-pattern) uses a wrapper). The wrapper starts with none of the inner type's methods or operators. A private field turns a newtype from a label into a guarantee, as the next section shows.
+
+## Parse, don't validate
+
+A function that returns `bool` leaves every later function to trust that someone called it. A function that returns a `Port` hands out proof: the check happens once, where text becomes a value, and `listen` takes a `Port` and checks nothing. The phrase is from [an essay by Alexis King](https://lexi-lambda.github.io/blog/2019/11/05/parse-don-t-validate/):
+
+<Snippet file="parse-dont-validate.rs" />
+
+Two things make it work. The field is private to the module, so code outside it cannot write `Port(0)`:
+
+<Snippet file="port-private.fail.rs" />
+
+And the constructor returns a `Result`, so a caller has to deal with the bad input. `impl TryFrom<u32> for Port` is the standard name for "convert, and it may fail" (the first exercise writes one), `FromStr` is what `str::parse` calls, and `From` is for conversions that cannot fail ([Common traits](/learn/common-traits/#converting-between-types)). Code inside the `port` module can still build a bad `Port`, because privacy is per module ([Modules](/learn/modules/)): the module is the boundary you have to trust.
+
+## Make illegal states unrepresentable
+
+Three fields that must agree, and nothing making them agree:
+
+<Snippet file="states-flags.rs" />
+
+`contradiction` is done and failed at once, and `describe` quietly picks "finished". An enum has one variant per state, and each carries only the data that state has ([Enums](/learn/enums/)):
+
+<Snippet file="states-enum.rs" />
+
+There is no spelling for "done and failed". When you add a state, a `match` that forgets it and has no `_` arm stops compiling (E0004, shown in [Match](/learn/match/)), so the compiler lists the places to update. Java's `sealed` types and Kotlin's `when` check this too ([Enums](/learn/enums/) compares them).
+
+## Typestate: the state is in the type
+
+An enum is right when the next state depends on data you learn while running. When the order of calls is known in advance, you can put the state in the type, so a call in the wrong state does not compile. `Closed` and `Open` are unit structs, types with no fields. Rust rejects a type parameter that no field uses (E0392, compile-checked), so `PhantomData<State>` is the field that mentions `State` and holds no data. `connect` takes `self` by value, so the closed connection is gone and an open one comes back; every transition rebuilds the struct:
+
+<Snippet file="typestate.rs" />
+
+All three sizes match: the state costs no space in this program. Misuse is an error about a method that does not exist yet:
+
+<Snippet file="typestate-misuse.fail.rs" />
+
+And because `connect` consumed the closed connection, using it again is a moved-value error:
+
+<Snippet file="typestate-reuse.fail.rs" />
+
+The price is more code, and a state read from a file or a socket needs an enum around the typed versions. [The Rust Book builds the same design](https://doc.rust-lang.org/book/ch18-03-oo-design-patterns.html#encoding-states-and-behavior-as-types) as an alternative to the object-oriented State pattern; [Cliff Biffle's essay](https://cliffle.com/blog/rust-typestate/) is a longer tour.
+
+## Building a value: `Default`, update syntax and the builder
+
+Rust has no default or named arguments ([What Rust lacks](/learn/what-rust-lacks/#no-default-or-named-arguments-no-function-overloading)). For a struct with a few public fields, `Default` and the update syntax `..` are enough:
+
+<Snippet file="default-update.rs" />
+
+`..` takes the fields you do not name: a `Copy` field is copied and a `String` is moved, which is the [gotcha](#gotcha) above and the rule [Structs](/learn/structs/) shows. When only `Copy` fields are taken, the original stays whole (compile-checked). When fields need checking together, or the list is long, use a builder ([Methods](/learn/methods/#chaining-and-builders) shows both shapes of setter). What this page adds is the end of the chain: one `build` that checks the whole value and returns a `Result`.
+
+<Snippet file="builder.rs" />
+
+The [Rust Design Patterns](https://rust-unofficial.github.io/patterns/patterns/creational/builder.html) book says the builder is common in Rust "because Rust lacks overloading and default values for function parameters". For two or three fields, `..Default::default()` is shorter.
+
+## Guards: cleanup tied to a scope
+
+A guard is a value whose `drop` undoes something. `drop` runs when the value leaves its scope, so the cleanup happens on `return` and on `?` as well as at the end (the `MutexGuard` in [Shared state](/learn/shared-state/) is one, and [Smart pointers](/learn/smart-pointers/) has the pointers that free on drop). You will rarely write your own: a `File` or a `MutexGuard` is usually the guard:
+
+<Snippet file="guard.rs" />
+
+The second `parse` returned early with `?`, and its `leave` still printed. A guard cannot be forgotten, where try-with-resources, `using` and `with` run only if the caller writes them. The exercise below also checks a panic that unwinds (the stack is cleaned up as the panic travels). [Common traits](/learn/common-traits/#drop-the-trait-behind-scope-exit) compares `Drop` with `defer`, try-with-resources, `using`, `with` and C++ destructors.
+
+## Flat code
+
+`Option` and `Result` methods, `?`, `let ... else`, `matches!` and iterator chains keep code flat; each is taught with its type: [Option](/learn/option/), [Errors](/learn/errors/), [If/else](/learn/if-else/) for `let ... else`, [Match](/learn/match/#matches) and [Iterators](/learn/iterators/). A rule of thumb: `?` when failure should leave the function, a combinator when a value is only being transformed, `match` when the branches do different things. The `else` block of `let ... else` must not fall through: it ends in `return`, `break`, `continue` or `panic!`.
+
+## Traits at the edges
+
+`impl Trait` in an argument is shorthand for a generic parameter, so the caller picks the type at compile time. With a closure it is the Strategy pattern without a class per strategy ([Closures](/learn/closures/)). To choose the strategy at run time, store it as a `Box<dyn Fn(i32) -> bool>`, or a `Box<dyn Trait>` ([Traits](/learn/traits/)), as `rule` does:
+
+<Snippet file="strategy.rs" />
+
+An extension trait adds methods to a type you do not own, by implementing your own trait for it. The methods exist only where the trait is imported:
+
+<Snippet file="extension.rs" />
+
+<Snippet file="extension-scope.fail.rs" />
+
+A sealed trait is public, but outsiders cannot implement it, because it has a supertrait in a private module that they cannot name. The [API Guidelines](https://rust-lang.github.io/api-guidelines/future-proofing.html#sealed-traits-protect-against-downstream-implementations-c-sealed) say it lets you add methods without breaking users. Here only the `shapes` module can implement `Shape`; a library would put the private module at its root. An `impl` from outside fails, and the error says why:
+
+<Snippet file="sealed.fail.rs" />
+
+`Cow<str>` holds either a borrowed or an owned string, so a function can return its input untouched when nothing changed and build a new `String` only when it must ([Strings](/learn/strings/) lists it).
+
+## Habits that look like idioms
+
+Rust Design Patterns has [a chapter of anti-patterns](https://rust-unofficial.github.io/patterns/anti_patterns/index.html). These six look like help; each pair below is a real before and after.
+
+### `.clone()` to quiet the borrow checker
+
+The error says `team.bonus()` borrows all of `team` while `team.scores` is borrowed for the loop:
+
+<Snippet file="clone-trigger.fail.rs" />
+
+Cloning the list makes the error go away and the program wrong, because the bonus lands on a copy that is then thrown away:
+
+<Snippet file="clone-lost.rs" />
+
+The book says the same: "Any changes between the two are not synchronized" ([Clone to satisfy the borrow checker](https://rust-unofficial.github.io/patterns/anti_patterns/borrow_clone.html)). The fix is to read the one number first ([Working with the borrow checker](/learn/borrow-checker/)):
+
+<Snippet file="clone-fixed.rs" />
+
+A clone is sometimes right, but it is a decision about two owners, not a way to end an error.
+
+### `unwrap` in a library
+
+A library that unwraps decides for every caller that bad input is fatal, and the message points into the library:
+
+<Snippet file="unwrap-lib.panic.rs" />
+
+Return the `Result`, and the caller decides ([Errors](/learn/errors/#unwrap-and-expect) says when `expect` is right):
+
+<Snippet file="unwrap-fixed.rs" />
+
+### `Rc<RefCell<_>>` for everything
+
+It compiles, and the borrow rules become run-time panics:
+
+<Snippet file="rc-everywhere.panic.rs" />
+
+If you come from a garbage-collected language, this is what shared mutable references everywhere look like in Rust. Pass `&mut` down and let the compiler check the same rule. A loop that passes a plain `&mut Vec` to a function while iterating it is E0502 (compile-checked), and building the new notes first fixes it. `Rc<RefCell<_>>` is for the cases [Smart pointers](/learn/smart-pointers/#rcrefcellt-shared-and-changeable) lists:
+
+<Snippet file="rc-fixed.rs" />
+
+### Text where an enum belongs
+
+Any string compiles, and a typo falls into the default arm:
+
+<Snippet file="stringly.rs" />
+
+Parse the text into an enum once, at the edge. The typo becomes an error you can show, and inside the program a typo like `Mode::Wrtie` does not compile (E0599, compile-checked):
+
+<Snippet file="typed.rs" />
+
+### Generics nobody uses
+
+A parameter nobody varies buys a longer signature, and an error when an argument does not say what it is:
+
+<Snippet file="over-generic.fail.rs" />
+
+With one caller, a concrete type is clearer, and `&[u32]` already takes a `Vec`, an array and an empty slice:
+
+<Snippet file="concrete.rs" />
+
+The API Guidelines ask for generics where they let callers pass more, such as [`I: IntoIterator<Item = i64>`](https://rust-lang.github.io/api-guidelines/flexibility.html#functions-minimize-assumptions-about-parameters-by-using-generics-c-generic). The anti-pattern is generality with no second caller ([Generics](/learn/generics/)).
+
+### `Box<dyn Error>` in a library's API
+
+The signature says only "some error", so a caller that wants to react to one failure must guess its concrete type:
+
+<Snippet file="box-dyn-lib.rs" />
+
+An error enum lists every failure in the signature, and the caller matches:
+
+<Snippet file="error-enum.rs" />
+
+`Box<dyn Error>` is a fine choice in a `main` or a small program ([Errors](/learn/errors/#boxdyn-error-the-catch-all)); [Application errors](/build/app-errors/) shows the libraries that write the enum for you.
+
+## Translating from what you know
+
+The layer 1 program is the parse-don't-validate idea with an inherent `Port::parse`, in all nine languages. The blocks below cover newtypes, defaults and builders. Enums with data are compared in [Enums](/learn/enums/), `Option` methods in [Option](/learn/option/), and cleanup in [Common traits](/learn/common-traits/#drop-the-trait-behind-scope-exit).
+
+<ForLang only="go">
+Go reaches the same ends with different tools:
+
+<Snippet file="idioms.go" />
+
+| In Go | In Rust |
+|---|---|
+| `type UserID int` | `struct UserId(u32)`. Go also refuses to mix two defined types (`cannot use order (variable of int type OrderID) as UserID value in argument to loadUser`), but `UserID(7)+1` compiles, where a newtype has no `+` until you add it. [Structs](/learn/structs/) has the untyped-constant case |
+| `NewRequest(url, WithRetries(0))`, functional options | a builder, or `..Default::default()` |
+| the zero value of every type | `Default`, which a type opts into |
+| `ParsePort(s) (Port, error)` (the layer 1 program) | `Port::parse(s) -> Result<Port, _>` |
+
+Every Go type has a [zero value](https://go.dev/ref/spec#The_zero_value) (`var p Port` gave `0` above), so a `Port` that cannot be invalid is a convention. Functional options are Rob Pike's idea, written up in Dave Cheney's [functional options](https://dave.cheney.net/2014/10/17/functional-options-for-friendly-apis) post; in Rust a builder with one final `build` does the same job.
+</ForLang>
+
+<ForLang only="java">
+Java has the same gap in named and default arguments, so your `Builder` carries over nearly one to one; Rust's `build` returns a `Result` where Java's throws `IllegalStateException`, and each setter takes `self` by value. Java also refuses the mix-up of two record types (`incompatible types: OrderId cannot be converted to UserId`).
+
+<Snippet file="idioms.java" />
+
+Strategy is already an interface or a lambda in Java, and a Rust trait or closure is the same thing (see the table at the top for the run-time case). State has no base class to subclass per state, so it is an enum or a typestate.
+</ForLang>
+
+<ForLang only="kotlin csharp">
+| Rust idiom | Kotlin | C# |
+|---|---|---|
+| newtype | `@JvmInline value class` | `readonly record struct` |
+| defaults and builder | default and named arguments, `copy` | `init` properties, `with` |
+| `Port::parse(s)` | a companion function | a static method |
+
+Both refuse the mix-up of two newtypes (Kotlin: `argument type mismatch: actual type is 'OrderId', but 'UserId' was expected`; C#: `CS1503: Argument 1: cannot convert from 'OrderId' to 'UserId'`). Kotlin and C# have defaults and `with` or `copy` expressions that cover much of what a builder and `..Default::default()` do:
+
+<Snippet file="idioms.kt" />
+
+<Snippet file="idioms.cs" />
+
+Rust has no named or default arguments, which is why the builder is more common there than in Kotlin. Strategy is a closure or a trait, and State an enum or a typestate.
+</ForLang>
+
+<ForLang only="python typescript">
+| Rust idiom | Python | TypeScript |
+|---|---|---|
+| newtype | `typing.NewType` | a branded type |
+| parse, don't validate | a class that checks in `__init__` or `__post_init__` (the frozen dataclass below) | a class with a private constructor (the layer 1 program) |
+| defaults | keyword defaults, `replace` | spread: `{...defaults, port}` |
+
+Enums with data are your discriminated union, with the `match` checked for exhaustiveness. `NewType` and a brand both vanish when the program runs: Python let the wrong id through and printed `user #7` (a checker such as mypy would flag it; not run), while TypeScript's compiler refuses it (`Argument of type 'OrderId' is not assignable to parameter of type 'UserId'`). Python's checking class raises, so nothing makes the caller handle the failure; a Rust `Result` does.
+
+<Snippet file="idioms.py" />
+
+<Snippet file="idioms.ts" />
+
+TypeScript's `private` is erased too: `new (Port as any)(0)` built a `Port` holding `0` (compile-checked). A Rust newtype is no bigger than its field, as `size_of` showed, so nothing marks it at run time either. What differs is the build: safe code has no cast from a number to a `Port`, and with a private field your functions are the only way to get one. An extension trait is like monkey-patching a method onto `str`, visible only where you import the trait.
+</ForLang>
+
+<ForLang only="c cpp">
+| Rust idiom | C | C++ |
+|---|---|---|
+| newtype | a `struct` with one field; `typedef` is only a second name | a distinct struct; `explicit` also stops a bare `7` becoming one |
+| defaults | designated initializers, the rest zero | member initializers, `{.port = 9000}` (C++20) |
+| `Result` | an error code and an out parameter (layer 1 program) | a static factory (layer 1) that can return `std::optional`; `std::expected` is C++23 and does not compile in this C++20 runner |
+
+C accepts the swapped call, and nothing in the build said so:
+
+<Snippet file="idioms.c" />
+
+C++ refuses it, because two distinct structs have no conversion between them (`could not convert 'order' from 'OrderId' to 'UserId'`). The field is public here, so it is a label and not a guarantee:
+
+<Snippet file="idioms.cpp" />
+
+A C++ constructor has no return value, so it throws; the layer 1 program uses a private constructor and a static factory, the same shape as Rust, and the factory can return `std::optional`. Nothing makes the caller look at it, where the value inside a Rust `Result` is reached only by matching it or passing it on with `?`. C has no way to hide a struct's fields except an incomplete type in the header.
+</ForLang>
+
+<p class="lr-layer">Going deeper</p>
+
+## An idiom proves one thing
+
+Each idiom that guards something (newtype, parse, enums, typestate, sealed) moves one rule into the compiler, and that rule is all it checks. A `Port` can be valid and the wrong port. A typestate guards the order of calls and not whether the server is up. A sealed trait stops outside implementations, not wrong ones inside the crate. Reach for an idiom when the rule is easy to break and costly to find later, and leave the rest to tests ([Testing](/build/testing/)).
+
+## What an idiom costs
+
+| Idiom | What you pay | Skip it when |
+|---|---|---|
+| Newtype | forwarding impls for what you need, no operators until added | the value lives in one function |
+| Parse, don't validate | a constructor and an error type | the check is one line, used once |
+| Typestate | one type per state; run-time states need an enum | two states and one method |
+| Builder | a mirror type and setters to keep in sync with the struct | two or three fields: use `..Default::default()` |
+| Guard | a type and a `Drop` impl; `drop` cannot return an error | a plain `close()` call is enough |
+| Extension trait | the trait must be imported at every use | a free function reads as well |
+| Sealed trait | nobody downstream can add an implementation | you want plugins |
+
+## Where the guidelines are
+
+The [Rust API Guidelines checklist](https://rust-lang.github.io/api-guidelines/checklist.html) names these for reviews: `C-NEWTYPE`, `C-BUILDER`, `C-CTOR` (constructors are static, inherent methods), `C-VALIDATE`, `C-SEALED` and `C-STRUCT-PRIVATE`. Where to put these types, what to mark `pub(crate)`, and how to split a library from a binary is in [Project structure](/further/project-structure/).
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Replace each `todo!()` and run until it prints `all checks passed`. The starters compile and fail when run.
+
+<Exercise name="celsius" title="A temperature the type keeps valid">
+Write `TryFrom<f64>` for `Celsius`, as `TryFrom<u32>` for `Port` does above: NaN and both infinities are `NotFinite`, anything below -273.15 is `BelowAbsoluteZero`, and -273.15 itself is allowed. The field stays private. A check that only tests `degrees < -273.15` compiles and fails, because NaN is not less than anything.
+</Exercise>
+
+<Exercise name="request" title="A builder that checks at the end">
+Finish `RequestBuilder`: defaults, chained setters where the last call wins, and one `build` that returns `MissingUrl`, `EmptyUrl` (blank after trimming) or `UnknownMethod` (with the method as given). The known methods are GET, POST, PUT and DELETE in any case, and the built request holds the method in upper case. A setter does not judge: a bad method replaced before `build` is fine, so checking inside the setters fails.
+</Exercise>
+
+<Exercise name="guard" title="A guard that closes on each way out">
+`run` opens two handles, then finishes, fails with `Err` or panics. Write the `Drop` impl so both handles close in reverse order on all three paths, including a panic that unwinds (the stack is cleaned up as the panic travels). Closing by hand before each `return` fails the panic check.
+</Exercise>
+
+## Read more
+
+- [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/) and [Rust Design Patterns](https://rust-unofficial.github.io/patterns/) (idioms, patterns, anti-patterns).
+- The Rust Book: [Implementing an Object-Oriented Design Pattern](https://doc.rust-lang.org/book/ch18-03-oo-design-patterns.html) (State, then typestate) and [Advanced Traits](https://doc.rust-lang.org/book/ch20-02-advanced-traits.html) (newtype).
+- Essays: [Parse, don't validate](https://lexi-lambda.github.io/blog/2019/11/05/parse-don-t-validate/) and [The Typestate Pattern in Rust](https://cliffle.com/blog/rust-typestate/).
+- The standard library: [`Default`](https://doc.rust-lang.org/std/default/trait.Default.html), [`TryFrom`](https://doc.rust-lang.org/std/convert/trait.TryFrom.html), [`Drop`](https://doc.rust-lang.org/std/ops/trait.Drop.html), [`PhantomData`](https://doc.rust-lang.org/std/marker/struct.PhantomData.html), [`Cow`](https://doc.rust-lang.org/std/borrow/enum.Cow.html).
+- On this site: [Working with the borrow checker](/learn/borrow-checker/), [Common traits](/learn/common-traits/), [Project structure](/further/project-structure/), or the [errors index](/errors/).

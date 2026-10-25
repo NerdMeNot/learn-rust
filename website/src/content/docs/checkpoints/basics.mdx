@@ -1,0 +1,125 @@
+---
+title: "Checkpoint: Basics"
+description: "Seven short programs from the Basics lessons: arithmetic, loops, match, variables, indexing and overflow. Predict the output or the error code, then compare with a real run."
+---
+
+import { Files, Remember, Session } from '../../../components/guide'
+
+Seven short programs, one question each, taken from the eight Basics lessons (Hello, World through Tuples) and the Syntax lessons before them. Decide first: does it compile, and what does it print? If it does not compile, which error code?
+
+<Remember>Predict first, then look. When your guess and the run disagree, the lesson linked under the answer says why.</Remember>
+
+Each program is a file in a Cargo project (`src/bin/q1.rs` and so on) and runs with `cargo run --bin q1`. The answers are real runs in the page's image (Rust 1.99.1, edition 2024, a debug build).
+
+### 1. What does it print?
+
+<Files guide="checkpoint-basics" dir="rust" files={["src/bin/q1.rs"]} />
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-basics" run="q1" />
+
+Integer `/` cuts toward zero, so `-7 / 2` is -3, and `%` takes the sign of the left side. `rem_euclid` gives a result of zero or more. `7 / 2 * 2` goes left to right: 3, then 6. And 0.1 + 0.2 is not exactly 0.3 as a float, so the comparison is `false`. See [Division and remainder](/learn/types/#division-and-remainder) and [Floats](/learn/types/#floats-nan-infinity-and-comparing).
+
+</details>
+
+### 2. What does it print?
+
+<Files guide="checkpoint-basics" dir="rust" files={["src/bin/q2.rs"]} />
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-basics" run="q2" />
+
+`continue 'outer` skips the rest of the inner loop and starts the next `i`: that is what happens at (1,3), (2,3) and (3,3), each a multiple of 3, so `found` reaches 3 and none of them is printed. `i..=4` includes 4. At (4,4) the product is 16, but `i + j` is 8, so `break 'outer` ends both loops. See [Labels](/learn/loops/#labels) and [Ranges](/learn/loops/#ranges).
+
+</details>
+
+### 3. Does it compile? What does it print?
+
+<Files guide="checkpoint-basics" dir="rust" files={["src/bin/q3.rs"]} />
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-basics" run="q3" />
+
+It compiles, with two warnings, and every number takes the arm. A name in a pattern is a new variable, not a comparison with the `target` above it, so `target =>` matches anything and binds it. The warnings are the clue: both `target` variables are unused. To compare, use a `const`, or a guard such as `n if n == target`. See [A name in a pattern binds, it does not compare](/learn/match/#a-name-in-a-pattern-binds-it-does-not-compare).
+
+</details>
+
+### 4. Which error code?
+
+<Files guide="checkpoint-basics" dir="rust" files={["src/bin/q4.rs"]} />
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-basics" run="q4" />
+
+`let label;` is allowed, but the compiler follows every path, and the one where `n > 0` is false never sets `label`. The note on the `if` is the hint: add an `else`, or give `label` a value when you declare it. See [Declared now, set later](/learn/variables/#declared-now-set-later).
+
+</details>
+
+### 5. Which error code?
+
+<Files guide="checkpoint-basics" dir="rust" files={["src/bin/q5.rs"]} />
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-basics" run="q5" />
+
+A `u8` holds 0 to 255, and the arms stop at 99. The message names the values left over, so you do not have to work them out. See [Every case must be covered](/learn/match/#every-case-must-be-covered).
+
+</details>
+
+### 6. Which error code?
+
+<Files guide="checkpoint-basics" dir="rust" files={["src/bin/q6.rs"]} />
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-basics" run="q6" />
+
+It is E0277, not the E0308 that a mismatch of two number types gives. Indexing is a trait question: an array indexes like a slice, by `usize` or by ranges of `usize`, and `i32` is neither. Declare `i` as a `usize`, or convert it. See [Indexes are `usize`](/learn/types/#indexes-are-usize).
+
+</details>
+
+### 7. Fix it
+
+This compiles. What happens when you run it, and what is one change that fixes it?
+
+<Files guide="checkpoint-basics" dir="rust" files={["src/bin/q7.rs"]} />
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="checkpoint-basics" run="q7" />
+
+The first call printed 6. In the second, `n - 1` is `0 - 1` on a `usize`, and a debug build (what `cargo run` makes) stops with a panic. In a release build the lesson says the check is off and the subtraction wraps; this page's runner builds only debug, so that is not run here. One fix, the one this course uses, is to write `0..n`, which never subtracts, and an empty range adds up to 0. (Others exist, such as `n.saturating_sub(1)` or checking `n == 0` first.) The number in brackets after `thread 'main'` is a thread id and can differ on your machine:
+
+<Files guide="checkpoint-basics" dir="fixes" files={["q7.rs"]} run="q7-fixed" />
+
+See [Overflow](/learn/types/#overflow-a-panic-in-debug-a-wrap-in-release) and [Counting down with `usize`](/learn/loops/#counting-down-with-usize).
+
+</details>
+
+## How to score yourself
+
+Count a question as right when you gave the correct output, or the correct error code and the reason. Questions 1 and 2 are about reading code the way the compiler does: left to right, one operator at a time, one loop at a time. If you got them wrong, redo them on paper, writing the value of each variable after every line.
+
+Questions 3 to 6 are about what the compiler refuses or warns about, and the answers show that warnings are part of the output, and a warning counts as part of "does it compile?": the program in question 3 runs, but the compiler had already told you something was wrong. Question 7 is the one program that compiles and then stops, here in a debug build.
+
+## If you missed one
+
+- Question 1: [Numbers and types](/learn/types/)
+- Questions 2 and 7: [Loops](/learn/loops/)
+- Questions 3 and 5: [Match](/learn/match/)
+- Question 4: [Variables](/learn/variables/)
+- Question 6: [Numbers and types](/learn/types/)
+
+Next is [Checkpoint: Ownership](/checkpoints/ownership/).

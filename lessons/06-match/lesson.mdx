@@ -1,0 +1,364 @@
+<p class="lr-layer">The toolkit</p>
+
+`match` compares one value with a list of **arms**, each written `pattern => result` ([the shape](/learn/rust-at-a-glance/#the-program-token-by-token)), from the top. A **pattern** is a shape a value can have, and the first pattern that fits runs its arm. Three things set it apart from a classic C-style `switch`: it produces a value, it must cover every possible value (the compiler calls that **exhaustive**), and a pattern can take a value apart (a tuple, a list, a range) as well as compare it. This page is about what patterns can do. Outputs come from Linux on 64-bit ARM with Rust 1.99.1.
+
+## `match` is an expression
+
+The arm that fits gives the whole `match` its value, so it can sit on the right of a `let` or be the tail of a function ([Statements and expressions](/learn/statements-expressions/)). `_` fits anything, so it goes last: the first arm that fits wins.
+
+<Snippet file="value.rs" />
+
+An arm that needs several steps uses a block, whose tail expression (its last line, with no `;`) is the arm's value. The comma after a block arm is optional.
+
+<Snippet file="block-arms.rs" />
+
+## Every case must be covered
+
+Leave out a case and the program does not build:
+
+<Snippet file="missing-int.fail.rs" />
+
+E0004 ([all error codes](/errors/)). The message lists the values you forgot, as ranges, and the `help:` shows an arm to add. It works on any type. A tuple of two `bool`s has four cases, and the compiler finds the one that is missing:
+
+<Snippet file="missing-tuple.fail.rs" />
+
+You choose what happens for every value, even the ones you believe cannot occur. A wildcard `_` is the answer when you do not care. Naming the cases is often better ([`_` or every case?](#_-or-every-case) below).
+
+## The patterns
+
+| Pattern | Fits | Example |
+|---|---|---|
+| `5`, `'a'`, `"go"`, `true` | that exact value | `5 => …` |
+| `1..=5` | 1 to 5, both ends included; also for `char` | `'a'..='z' => …` |
+| `1..5` | 1 to 4: the end is left out | `0..10 => …` |
+| `10..` and `..=0` | 10 or more; 0 or less | `100.. => …` |
+| `1 \| 2` | either | `'y' \| 'Y' => …` |
+| `_` | anything, and the value is ignored | `_ => …` |
+| `n` | anything; a **new variable** `n` holds the value | `n => n * 2` |
+| `n @ 1..=5` | a value in the range, and `n` holds it | `n @ 1..=9 => …` |
+| `(0, _)`, `((a, _), b)` | a tuple, piece by piece, nested as deep as you like | `(0, y) => …` |
+| `[]`, `[first, .., last]`, `[head, rest @ ..]` | a list, by its shape | `[a, b] => …` |
+| `Some(n)`, `Point { x: 0, .. }` | an enum variant or a struct, by its shape | `Some(0) => …` |
+| `&x` | a reference; `x` is the value behind it | `&5 => …` |
+| `pattern if test` | the pattern, and the extra test (a **guard**) is true | `n if n < 0 => …` |
+
+The next sections show each family. Every Rust cell in these tables is run.
+
+## Numbers, characters and text
+
+Ranges and `|` work on integers and on `char`. The first fitting arm wins, which is why `'a'` is a vowel here and not just a letter:
+
+<Snippet file="chars.rs" />
+
+A string literal is a pattern too, and `|` lists alternatives. A `String` is not a `&str`, so matching one against literals needs `as_str()` first ([Strings](/learn/strings/) covers the two types):
+
+<Snippet file="strs.rs" />
+
+Without `as_str()` the compiler says so:
+
+<Snippet file="string-match.fail.rs" />
+
+## Names, `@` and guards
+
+A bare name fits anything and **binds**: it makes a new variable for that arm. That is how the last arm below gets the number of minutes. `@` binds a name and tests a pattern in one go: `m @ 1..=59` fits only 1 to 59, and `m` is the value.
+
+<Snippet file="binding.rs" />
+
+A **guard** is `if` and a condition after the pattern. The arm is used only when the pattern fits and the condition is true. The condition can be any `bool` expression and can use variables from outside the `match`. Arms are still tried from the top:
+
+<Snippet file="guards.rs" />
+
+## A name in a pattern binds, it does not compare
+
+Patterns can compare with literals, not with variables. A name in a pattern is a new variable (unless it names a constant, below), and it shadows any outer variable of the same name. This program meant "is `n` equal to `limit`?" and compiles, with warnings:
+
+<Snippet file="shadow-trap.rs" />
+
+Every `n` takes the first arm, and the `_` arm can never run. The compiler that checks coverage also counts the values an arm can still receive, and warns when that is none, so a specific arm belongs before a wide one. The first line below, `#![deny(unreachable_patterns)]`, is an [attribute](/learn/macros-attributes-naming/#attributes-) that turns the warning into an error, and the message even names the shadowed variable:
+
+<Snippet file="shadow-trap.fail.rs" />
+
+There are two fixes. A `const` is compared, because it is a fixed value known when the program is built. For a value that is only known when the program runs, use a guard:
+
+<Snippet file="const-pattern.rs" />
+
+## Several values at once: tuples
+
+To decide on two or three conditions together, put them in a tuple and match the tuple. The compiler checks that every combination is covered, which a chain of `if`/`else` cannot do. Patterns nest: this one takes a pair of points apart, using a guard where a pattern cannot compare two variables.
+
+<Snippet file="tuples.rs" />
+
+<Snippet file="nested.rs" />
+
+## Lists: slice patterns
+
+A pattern can describe a list by its shape: how many items, and which ones you name. `..` stands for any number of items you do not name, and `rest @ ..` names them. These patterns work on arrays and on **slices** (`&[i32]` is a borrowed view of a list; [Vectors](/learn/vectors/) and [Borrowing](/learn/borrowing/) cover them). The compiler checks the lengths: `[]`, one item, two, and "first and last" together cover every list.
+
+<Snippet file="slices.rs" />
+
+Literals can sit inside a slice pattern, so `["add", a, b]` is a command with two arguments. `[head, rest @ ..]` is the shape of recursion over a list:
+
+<Snippet file="slice-rest.rs" />
+
+A `Vec` is not a slice, so a slice pattern does not fit it directly. The `help:` shows the fix: match on a slice of it, `v[..]` or `v.as_slice()`.
+
+<Snippet file="vec-slice.fail.rs" />
+
+## Structs, enums, references
+
+The same patterns take apart a struct (`Point { x: 0, .. }`, where `..` skips the other fields) and an enum, such as `Option`'s `Some(n)` ([Structs](/learn/structs/), [Enums](/learn/enums/), [Option](/learn/option/)). A `&` in a pattern looks through a reference, and what a pattern does to a value it takes (copy, move or borrow) is part of [Ownership](/learn/ownership/) and [Borrowing](/learn/borrowing/). Every rule above still applies.
+
+## Arms must agree, or not return
+
+Every arm gives the `match` its value, so the arms need the same type:
+
+<Snippet file="arms-type.fail.rs" />
+
+An arm that leaves with `continue`, `break`, `return` or `panic!` has the type `!` ([never](/learn/statements-expressions/#when-nothing-comes-back-the-never-type)) and fits next to any other. This is how a loop skips input it cannot use. (`parse` returns a `Result`, a success or an error; [Errors](/learn/errors/).)
+
+<Snippet file="never-arms.rs" />
+
+## `matches!`
+
+When you only want a `bool`, `matches!(value, pattern)` is a `match` with `true` for the pattern and `false` for the rest. It takes guards. (The `!` marks a [macro](/learn/macros-attributes-naming/#the--a-macro-call).)
+
+<Snippet file="matches.rs" />
+
+## `match`, `if let` or `if`?
+
+| You want | Use |
+|---|---|
+| one yes/no question | `if` ([If / else](/learn/if-else/)) |
+| to act on one shape and ignore the rest | `if let`, or `let ... else` to stop otherwise (same lesson) |
+| a decision for several shapes, with a check that none is forgotten | `match` |
+| only a `bool` | `matches!` |
+
+A pattern is not only for `match`: it also follows `let` (`let (a, b) = pair;`), sits in a function's parameters, and follows `for` ([Loops](/learn/loops/)).
+
+## Your language, in Rust
+
+<ForLang only="go" title="What you write today">
+
+| In Go | In Rust |
+|---|---|
+| `switch n { case 1, 2: … default: … }` | `match n { 1 \| 2 => …, _ => … }` |
+| `switch { case n < 0: … case n == 0: … }`, a tagless switch | `match n { ..0 => …, 0 => …, _ => … }` when the conditions are ranges of one number; otherwise an `if`/`else if` chain ([If / else](/learn/if-else/)) |
+| `fallthrough` | no equivalent. Give two cases one arm with `\|`, or call a function from both. |
+| `default:` anywhere in the `switch` | `_` last, because the first arm that fits wins |
+| `switch v := x.(type) { case int: … }` | `match` on an enum, one arm per variant. The variants are a closed list, which is what lets the compiler check them ([Enums](/learn/enums/)) |
+
+Go's `fallthrough` runs the next case's body without testing its condition, and a `default` can be written first and is still used last:
+
+<Snippet file="fallthrough.go" />
+
+<Snippet file="default-first.go" />
+
+A `_` written first in Rust fits everything, so the arms after it never run (rustc warns, as in the `limit` example above).
+
+</ForLang>
+
+<ForLang only="java kotlin csharp" title="What you write today">
+
+| Java | Kotlin | C# | In Rust |
+|---|---|---|---|
+| `case 1, 2 ->` | `1, 2 ->` | `1 or 2 =>` | `1 \| 2 =>` |
+| `case Integer i when i >= 1 && i <= 5 ->` (on an `Object`) | `in 1..5 ->` | `>= 1 and <= 5 =>` | `1..=5 =>` |
+| `case Integer i when i > 100 ->` | `n > 100 ->` (in a `when` with no subject) | `> 100 =>` | `101.. =>`, or `n if n > 100 =>` |
+| `case Circle c ->` | `is Circle ->` | `Circle c =>` | `Shape::Circle(c) =>` ([Enums](/learn/enums/)) |
+| `default ->` | `else ->` | `_ =>` | `_ =>` |
+
+Prefer the range `101..` to the guard: the compiler counts a range towards coverage and does not count a guard (see Going deeper). Kotlin's `1..5` includes 5, like Rust's `1..=5`. In Rust `1..5` stops before 5. Your `if (x instanceof Circle c)` (Java), `if (x is Circle)` (Kotlin) or `if (x is Circle c)` (C#) is `if let Shape::Circle(c) = x` ([If / else](/learn/if-else/)).
+
+How the check differs: Java refuses a `switch` expression over an `int` without `default` (the gotcha above). Kotlin refuses a `when` expression without `else` (below), but does not check a `when` statement over an `Int` (the gotcha). C# gives a warning (CS8509) and throws at run time (below). Rust refuses to build. Over a sealed type, Java and Kotlin already check coverage (snippets below); the `int` and `String` cases are where Rust goes further.
+
+A name in a `case` label is where the three differ from Rust. In Java and C# the label must be a constant, so the `limit` mistake from the trap above is an error, not a silent change of meaning:
+
+<Snippet file="limit.fail.java" />
+
+<Snippet file="limit.fail.cs" />
+
+</ForLang>
+
+<ForLang only="java">
+
+Java also has record patterns: `case Rect(int w, int h) when w == h ->` takes a record apart, and a `switch` over a sealed type needs no `default`. Rust's struct and enum patterns are the same idea, and also work on tuples, slices and ranges.
+
+<Snippet file="guard.java" />
+
+A missing case in a sealed `switch` is a compile error, as in Rust:
+
+<Snippet file="sealed-missing.fail.java" />
+
+</ForLang>
+
+<ForLang only="kotlin">
+
+A `when` branch tests the whole subject (`== 6`, `in 1..5`, `is String`), or, with no subject, any condition. It does not take the subject apart: `Pair(0, 0) ->` compares the whole pair, and to use one half you destructure it first, as `val (x, y) = p`. Rust does both in one pattern, `(0, y)`, and the pattern can fail, in `if let`.
+
+<Snippet file="when.kt" />
+
+<Snippet file="when-pair.kt" />
+
+A `when` that gives a value must cover every case. Over a sealed type, naming every case is enough; over an `Int` it must end in `else`:
+
+<Snippet file="sealed.kt" />
+
+<Snippet file="sealed-missing.fail.kt" />
+
+<Snippet file="when-expr.fail.kt" />
+
+Kotlin's `when` branch is an expression, so `limit ->` compares with the variable, the opposite of Rust's trap above:
+
+<Snippet file="limit.kt" />
+
+</ForLang>
+
+<ForLang only="csharp">
+
+C# has relational, `or`, `and`, `not`, positional, type and list patterns, so a Rust `match` often translates one arm to one arm. Rust has `|` but no `and` or `not` (use a guard), and no type test: the enum you match already says which variant you hold.
+
+<Snippet file="switch-expr.cs" />
+
+The difference is the check on a missing case. The gotcha's program with `day = 99` builds with the CS8509 warning and then throws:
+
+<Snippet file="day99.crash.cs" />
+
+</ForLang>
+
+<ForLang only="python typescript" title="What you write today">
+
+| In Python or TypeScript | In Rust |
+|---|---|
+| `case 1 \| 2 \| 3:` (Python), stacked `case 1: case 2: case 3:` (TypeScript) | `1 \| 2 \| 3 =>` |
+| `case (1 \| 2) as k:` (Python) | `k @ (1 \| 2) =>` |
+| `case n if 1 <= n <= 5:` (Python) | `1..=5 =>` |
+| `case [first, *rest]:` (Python; fits a list or a tuple) | `[first, rest @ ..] =>` (an array or slice only) |
+| `case (0, 0):` (Python) | `(0, 0) =>` |
+| `case Point(x=0):` (Python) | `Point { x: 0, .. } =>` ([Structs](/learn/structs/)) |
+| `case {"mode": m}:` (Python) | no pattern for a map. Look the key up: `if let Some(m) = map.get("mode")` ([Maps](/learn/maps/)) |
+| `case _:` (Python), `default:` (TypeScript) | `_ =>` |
+| `switch (true) { case n < 10: … }` (TypeScript) | `n if n < 10 =>`, or an `if` chain ([If / else](/learn/if-else/)) |
+| `switch (s.kind) { case "circle": … s.r … }` (TypeScript narrows `s`) | `Shape::Circle { r } =>`: the arm names the fields ([Enums](/learn/enums/)) |
+
+</ForLang>
+
+<ForLang only="python">
+
+Python 3.10's `match` is the closest relative, with `|`, `_`, `as`, sequence, class and dict patterns and guards, and a bare name captures a value as in Rust, so the trap above is a rule you know. It is a statement, so it gives no value, and Python itself does not check that the cases are complete (only an optional type checker can): the gotcha's program with `day = 99` sets no `kind`, and `print(kind)` raises a `NameError`. A capture that makes the cases after it unreachable is a `SyntaxError`, where Rust only warns:
+
+<Snippet file="match.py" />
+
+<Snippet file="day99.fail.py" />
+
+<Snippet file="capture.fail.py" />
+
+</ForLang>
+
+<ForLang only="typescript">
+
+After `case "circle":` TypeScript narrows the union, so `s.r` is allowed. In Rust the arm itself binds the fields:
+
+<Snippet file="narrow.ts" />
+
+Under `--strict`, TypeScript refuses a function that can fall off the end without returning a `string` (the gotcha above); it does not say which case is missing. The `never` trick adds that: in `default`, assign the value to a `never`, and the compiler reports every member of the union that is left. `tsc` does not do it by itself, so you have to remember to write it. In Rust the check is part of `match`:
+
+<Snippet file="never.fail.ts" />
+
+A `switch` falls through unless you `break`. The compiler option [`noFallthroughCasesInSwitch`](https://www.typescriptlang.org/tsconfig/#noFallthroughCasesInSwitch) reports it as error TS7029, but it is off by default. In Rust an arm never runs into the next, and there is no setting:
+
+<Snippet file="fallthrough.ts" />
+
+</ForLang>
+
+<ForLang only="c cpp" title="What you write today">
+
+| In C or C++ | In Rust |
+|---|---|
+| `case 1: case 2: …; break;` | `1 \| 2 => …` |
+| `default:` | `_ =>` |
+| a forgotten `break` | nothing to forget: an arm never runs into the next |
+| `case 'a': case 'b': … case 'z':` | `'a'..='z' =>` |
+| `if (strcmp(s, "go") == 0) … else if …` | `match s { "go" => …, … }` |
+| `switch` over an `enum` with a case missing | E0004, an error ([`_` or every case?](#_-or-every-case)) |
+
+A forgotten `break` runs into the next case. GCC's `-Wextra` warns about it, and still builds the program:
+
+<Snippet file="fallthrough.c" />
+
+With `-Wall`, GCC also warns when a `switch` over an `enum` leaves a value out, and still builds the program, which then takes the no-action path. On an `int` it says nothing (the gotcha above):
+
+<Snippet file="enum-switch.c" />
+
+<Snippet file="enum-switch.cpp" />
+
+A `switch` in C cannot take a string, and a C++ `switch` cannot take a `std::string`, so text needs a chain of comparisons:
+
+<Snippet file="string-case.fail.c" />
+
+<Snippet file="string-case.fail.cpp" />
+
+</ForLang>
+
+<p class="lr-layer">Going deeper</p>
+
+## How exhaustiveness is checked
+
+The compiler reasons about the values a type can have, not about the text of your arms. Ranges are added up, so this `match` on a `u8` has no `_` and builds, because the four ranges cover 0 to 255 exactly. A constant such as `u8::MAX` can be the end of a range:
+
+<Snippet file="exhaust-u8.rs" />
+
+A guard is the exception, because the compiler does not run your condition. A guarded arm does not count towards coverage, even when the guards together cover every value:
+
+<Snippet file="guards-dont-count.fail.rs" />
+
+The error says it: "match arms with guards don't count towards exhaustivity". End with an unguarded arm.
+
+## `_` or every case?
+
+Both are legal; they differ when the type changes. Take a small enum (a type with a fixed list of named values; [Enums](/learn/enums/) defines them) of traffic lights. The `match` below was written when it had `Red` and `Green`, and `Yellow` was added later. Naming the cases turns the new variant into a compile error at every `match` that needs a decision:
+
+<Snippet file="new-variant.fail.rs" />
+
+With a `_` arm the same change builds, and yellow quietly takes the `_` arm's answer:
+
+<Snippet file="new-variant-wild.rs" />
+
+Use `_` when "everything else" is the real rule (a default, an unknown command). Name the cases when each variant deserves its own thought.
+
+<ForLang only="java kotlin">
+
+This is why you leave out `default` or `else` on a sealed type: a new subtype then turns each `switch` or `when` without one into a compile error, like the missing-case errors above. In Rust, naming the cases of an enum does the same.
+
+</ForLang>
+
+<ForLang only="c cpp">
+
+This is the C habit of leaving `default:` off an `enum` `switch`, so that `-Wswitch` flags a new enumerator. In Rust that warning is an error.
+
+</ForLang>
+
+<p class="lr-layer">Practice</p>
+
+## Try it
+
+Open each exercise in the Playground, replace the `todo!()`, and run it until it prints `all checks passed`.
+
+<Exercise name="door" title="A door, two switches">
+Match the tuple `(open, locked)` and give each of the four combinations its own arm, with no `_`. The starter has a `_` arm: delete it first, read the E0004 the compiler gives, and write the arm it names.
+</Exercise>
+
+<Exercise name="palindrome" title="Palindrome by slice pattern">
+Is a list the same backwards? Use the pattern `[first, middle @ .., last]` to compare the two ends, then ask the same about `middle`. The checks include the empty list, one item, and a list whose ends match but whose middle does not.
+</Exercise>
+
+<Exercise name="budget" title="Guards and @">
+Describe how much of a limit is spent. A pattern cannot compare with the variable `limit`, so the over-the-limit and at-the-limit arms are guards; a small amount uses `n @ 1..=9`. Order matters: the checks include 5 spent against a limit of 3, and 0 against a limit of 0.
+</Exercise>
+
+## Read more
+
+- [The Rust Book, chapter 6.2: The `match` Control Flow Construct](https://doc.rust-lang.org/book/ch06-02-match.html), and [chapter 19: Patterns and Matching](https://doc.rust-lang.org/book/ch19-00-patterns.html), especially [Pattern Syntax](https://doc.rust-lang.org/book/ch19-03-pattern-syntax.html) (every form on this page) and [Refutability](https://doc.rust-lang.org/book/ch19-02-refutability.html).
+- [Rust by Example: match](https://doc.rust-lang.org/rust-by-example/flow_control/match.html), with [guards](https://doc.rust-lang.org/rust-by-example/flow_control/match/guard.html), [binding](https://doc.rust-lang.org/rust-by-example/flow_control/match/binding.html) and [destructuring](https://doc.rust-lang.org/rust-by-example/flow_control/match/destructuring.html).
+- [The Rust Reference: Patterns](https://doc.rust-lang.org/reference/patterns.html) and [match expressions](https://doc.rust-lang.org/reference/expressions/match-expr.html): the exact rules, including how guards and `|` interact.
+- [`matches!`](https://doc.rust-lang.org/std/macro.matches.html) in the standard library docs.
+- [Reading compiler errors](/errors/): E0004, E0308 and E0529 from this page, with what each means.

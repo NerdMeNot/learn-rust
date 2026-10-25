@@ -1,0 +1,263 @@
+{
+ "id": "rust-at-a-glance",
+ "title": "Rust at a glance",
+ "part": "syntax",
+ "intro": "Rust code is built from a small set of symbols that repeat on every page: `fn`, `let`, `&`, `::`, `?`, `!`. This page names each one, so you can read the shape of a file before you know what every piece does.",
+ "coming_from": {
+  "go": "`func` is `fn`, and `:=` is `let mut`: a plain `let` makes a variable that cannot change. Types still follow the name, but with a colon (`a: i32`), the return type goes after `->`, and you write the semicolons that Go adds for you. The last line of a block, without a `;`, is the block's value.",
+  "kotlin": "`fun` is `fn`, `val` is `let` and `var` is `let mut`. `name: Type` is the same, but the return type goes after `->`, not `:`. A Rust function whose body is one last expression, written without `;`, is like your `= a + b` form, with braces.",
+  "python": "Blocks use `{ }` and lines end in `;`; indentation is only for people. Comments start with `//`, not `#`, and `'a'` in single quotes is one character, so text uses double quotes. A variable needs `let`, and `let mut` to change. `println!(\"{name}\")` reads like an f-string.",
+  "typescript": "Types follow names with a colon, as in TypeScript, but `function` is `fn` and the return type goes after `->`. Rust's plain `let` is like your `const`, and `let mut` is your `let`.",
+  "java": "There is no class around `main` and no `public static`: functions stand alone. The type follows the name (`a: i32`), and a variable cannot change unless you write `let mut`; plain `let` is like `final var`. The last expression of a block, written without `;`, is its value, so by habit `return` is kept for leaving early (a final `return x;` still compiles).",
+  "csharp": "Functions stand alone, as with top-level statements. The type follows the name (`a: i32`), and `var` becomes `let mut` (plain `let` when it never changes). Inside `println!`, `{name}` works without a `$` for a plain variable name. A block's last expression, written without `;`, is its value.",
+  "c": "The type follows the name (`a: i32`, return type after `->`), plain `let` is like `const`, and there is no header to include. The `!` in `println!` marks a macro call, not a function. A block's last expression, written without `;`, is its value.",
+  "cpp": "Only the result type matches your trailing return type (`auto add(int a, int b) -> int`): Rust writes parameter types after the names, `a: i32`. `let` is like `const auto`, `let mut` like plain `auto`, and `.` works through a reference, so there is no `->` for members."
+ },
+ "notes": [
+  "A name followed by `!` is a macro call, such as `println!` and `format!`. It looks like a function call, and the `!` is there so you can tell.",
+  "A type follows its name after a colon: `name: &str`, `a: i32`. The return type follows an arrow: `-> String`.",
+  "A line ending in `;` is a statement. The last line of a block without a `;` is the value of the block, which is how `greet` returns its text with no `return`.",
+  "`1..=4` counts 1, 2, 3, 4, and `1..4` stops before 4."
+ ],
+ "gotcha": {
+  "title": "Changing a variable without mut",
+  "verdict": "rust-rule",
+  "looks_fine": "In Go, Java, C#, C and C++ a variable like `total` can be changed later, and so can any Python name. Adding to it in a loop is the most ordinary thing a program does.",
+  "rust_sees": "Plain `let` means the name keeps its value. `total += n` changes it, so the compiler stops at that line and asks for `mut`.",
+  "why": "This is a default, not a safety proof. When you read `let total` anywhere in Rust code, you know it keeps its value for the rest of the block. Only the `let mut` variables need watching.",
+  "langs": {
+   "go": {
+    "status": "runs",
+    "says": "Go prints `total: 10`. A variable made with `:=` can always be changed later; Rust's twin of `:=` is `let mut`.",
+    "code": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\ttotal := 0\n\tfor n := 1; n <= 4; n++ {\n\t\ttotal += n\n\t}\n\tfmt.Printf(\"total: %d\\n\", total)\n}\n",
+    "out": "total: 10\n"
+   },
+   "kotlin": {
+    "status": "refuses",
+    "says": "Kotlin refuses this program too: a `val` cannot be reassigned. With `var` it prints `total: 10`. Rust's `let` is `val`, and `let mut` is `var`.",
+    "code": "fun main() {\n    val total = 0\n    for (n in 1..4) {\n        total += n\n    }\n    println(\"total: $total\")\n}\n",
+    "error": "Main.kt:4:9: error: 'val' cannot be reassigned.\n        total += n\n        ^^^^^"
+   },
+   "python": {
+    "status": "runs",
+    "says": "Python prints `total: 10`. Every name can be rebound, so there is no `mut` to forget.",
+    "code": "total = 0\nfor n in range(1, 5):\n    total += n\nprint(f\"total: {total}\")\n",
+    "out": "total: 10\n"
+   },
+   "typescript": {
+    "status": "refuses",
+    "says": "TypeScript refuses this too: a `const` cannot be assigned to. With `let` it prints `total: 10`. Rust's `let` is like `const`, and `let mut` is like `let`.",
+    "code": "const total = 0;\nfor (let n = 1; n <= 4; n++) {\n  total += n;\n}\nconsole.log(`total: ${total}`);\n",
+    "error": "main.ts(3,3): error TS2588: Cannot assign to 'total' because it is a constant."
+   },
+   "java": {
+    "status": "runs",
+    "says": "Java prints `total: 10`. A local can change unless you write `final`.",
+    "code": "public class Main {\n    public static void main(String[] args) {\n        int total = 0;\n        for (int n = 1; n <= 4; n++) {\n            total += n;\n        }\n        System.out.println(\"total: \" + total);\n    }\n}\n",
+    "out": "total: 10\n"
+   },
+   "csharp": {
+    "status": "runs",
+    "says": "C# prints `total: 10`. A `var` local can always be changed later.",
+    "code": "var total = 0;\nfor (var n = 1; n <= 4; n++)\n{\n    total += n;\n}\nConsole.WriteLine($\"total: {total}\");\n",
+    "out": "total: 10\n"
+   },
+   "c": {
+    "status": "runs",
+    "says": "C prints `total: 10`. Variables can change unless you write `const`.",
+    "code": "#include <stdio.h>\n\nint main(void) {\n    int total = 0;\n    for (int n = 1; n <= 4; n++) {\n        total += n;\n    }\n    printf(\"total: %d\\n\", total);\n    return 0;\n}\n",
+    "out": "total: 10\n"
+   },
+   "cpp": {
+    "status": "runs",
+    "says": "C++ prints `total: 10`. Variables can change unless you write `const`.",
+    "code": "#include <iostream>\n\nint main() {\n    int total = 0;\n    for (int n = 1; n <= 4; n++) {\n        total += n;\n    }\n    std::cout << \"total: \" << total << \"\\n\";\n}\n",
+    "out": "total: 10\n"
+   }
+  },
+  "code": "fn main() {\n    let total = 0;\n    for n in 1..=4 {\n        total += n;\n    }\n    println!(\"total: {total}\");\n}\n",
+  "error": "error[E0384]: cannot assign twice to immutable variable `total`\n --> src/main.rs:4:9\n  |\n2 |     let total = 0;\n  |         ----- first assignment to `total`\n3 |     for n in 1..=4 {\n4 |         total += n;\n  |         ^^^^^^^^^^ cannot assign twice to immutable variable\n  |\nhelp: consider making this binding mutable\n  |\n2 |     let mut total = 0;\n  |         +++\n",
+  "error_code": "E0384",
+  "fixed": {
+   "code": "fn main() {\n    let mut total = 0;\n    for n in 1..=4 {\n        total += n;\n    }\n    println!(\"total: {total}\");\n}\n",
+   "out": "total: 10\n"
+  }
+ },
+ "order": 1,
+ "program": {
+  "rust": {
+   "code": "// Greet someone, then add up 1 to 4.\nfn greet(name: &str) -> String {\n    format!(\"Hello, {name}!\")\n}\n\nfn add(a: i32, b: i32) -> i32 {\n    a + b\n}\n\nfn main() {\n    println!(\"{}\", greet(\"Ferris\"));\n    let mut total = 0;\n    for n in 1..=4 {\n        total = add(total, n);\n    }\n    println!(\"total: {total}\");\n}\n",
+   "out": "Hello, Ferris!\ntotal: 10\n"
+  },
+  "go": {
+   "code": "package main\n\nimport \"fmt\"\n\n// Greet someone, then add up 1 to 4.\nfunc greet(name string) string {\n\treturn fmt.Sprintf(\"Hello, %s!\", name)\n}\n\nfunc add(a, b int) int {\n\treturn a + b\n}\n\nfunc main() {\n\tfmt.Println(greet(\"Ferris\"))\n\ttotal := 0\n\tfor n := 1; n <= 4; n++ {\n\t\ttotal = add(total, n)\n\t}\n\tfmt.Printf(\"total: %d\\n\", total)\n}\n",
+   "out": "Hello, Ferris!\ntotal: 10\n"
+  },
+  "kotlin": {
+   "code": "// Greet someone, then add up 1 to 4.\nfun greet(name: String): String = \"Hello, $name!\"\n\nfun add(a: Int, b: Int): Int = a + b\n\nfun main() {\n    println(greet(\"Ferris\"))\n    var total = 0\n    for (n in 1..4) {\n        total = add(total, n)\n    }\n    println(\"total: $total\")\n}\n",
+   "out": "Hello, Ferris!\ntotal: 10\n"
+  },
+  "python": {
+   "code": "# Greet someone, then add up 1 to 4.\ndef greet(name: str) -> str:\n    return f\"Hello, {name}!\"\n\n\ndef add(a: int, b: int) -> int:\n    return a + b\n\n\nprint(greet(\"Ferris\"))\ntotal = 0\nfor n in range(1, 5):\n    total = add(total, n)\nprint(f\"total: {total}\")\n",
+   "out": "Hello, Ferris!\ntotal: 10\n"
+  },
+  "typescript": {
+   "code": "// Greet someone, then add up 1 to 4.\nfunction greet(name: string): string {\n  return `Hello, ${name}!`;\n}\n\nfunction add(a: number, b: number): number {\n  return a + b;\n}\n\nconsole.log(greet(\"Ferris\"));\nlet total = 0;\nfor (let n = 1; n <= 4; n++) {\n  total = add(total, n);\n}\nconsole.log(`total: ${total}`);\n",
+   "out": "Hello, Ferris!\ntotal: 10\n"
+  },
+  "java": {
+   "code": "public class Main {\n    // Greet someone, then add up 1 to 4.\n    static String greet(String name) {\n        return \"Hello, \" + name + \"!\";\n    }\n\n    static int add(int a, int b) {\n        return a + b;\n    }\n\n    public static void main(String[] args) {\n        System.out.println(greet(\"Ferris\"));\n        int total = 0;\n        for (int n = 1; n <= 4; n++) {\n            total = add(total, n);\n        }\n        System.out.println(\"total: \" + total);\n    }\n}\n",
+   "out": "Hello, Ferris!\ntotal: 10\n"
+  },
+  "csharp": {
+   "code": "// Greet someone, then add up 1 to 4.\nstatic string Greet(string name) => $\"Hello, {name}!\";\n\nstatic int Add(int a, int b) => a + b;\n\nConsole.WriteLine(Greet(\"Ferris\"));\nvar total = 0;\nfor (var n = 1; n <= 4; n++)\n{\n    total = Add(total, n);\n}\nConsole.WriteLine($\"total: {total}\");\n",
+   "out": "Hello, Ferris!\ntotal: 10\n"
+  },
+  "c": {
+   "code": "#include <stdio.h>\n\n// Greet someone, then add up 1 to 4.\nvoid greet(const char *name) {\n    printf(\"Hello, %s!\\n\", name);\n}\n\nint add(int a, int b) {\n    return a + b;\n}\n\nint main(void) {\n    greet(\"Ferris\");\n    int total = 0;\n    for (int n = 1; n <= 4; n++) {\n        total = add(total, n);\n    }\n    printf(\"total: %d\\n\", total);\n    return 0;\n}\n",
+   "out": "Hello, Ferris!\ntotal: 10\n"
+  },
+  "cpp": {
+   "code": "#include <iostream>\n#include <string>\n\n// Greet someone, then add up 1 to 4.\nstd::string greet(const std::string& name) {\n    return \"Hello, \" + name + \"!\";\n}\n\nint add(int a, int b) {\n    return a + b;\n}\n\nint main() {\n    std::cout << greet(\"Ferris\") << \"\\n\";\n    int total = 0;\n    for (int n = 1; n <= 4; n++) {\n        total = add(total, n);\n    }\n    std::cout << \"total: \" << total << \"\\n\";\n}\n",
+   "out": "Hello, Ferris!\ntotal: 10\n"
+  }
+ },
+ "faq": [],
+ "snippets": {
+  "check-rows.rs": {
+   "code": "// Backs the Rust column of the \"you write -> in Rust\" tables in lesson.mdx. Never shown.\nconst X: i32 = 5;\n\nfn add(a: i32, b: i32) -> i32 {\n    a + b\n}\n\nfn parse(s: &str) -> Result<i32, std::num::ParseIntError> {\n    s.parse::<i32>()\n}\n\nfn double_parsed(s: &str) -> Result<i32, std::num::ParseIntError> {\n    let n = parse(s)?;\n    Ok(n * 2)\n}\n\nfn main() {\n    // a changeable and a fixed variable\n    let mut x = 5;\n    x = x + 1;\n    let y = 5;\n    assert_eq!((x, y, X), (6, 5, 5));\n\n    // a function with types\n    assert_eq!(add(2, 3), 5);\n\n    // a counted loop: 0..3 gives 0, 1, 2\n    let mut seen = Vec::new();\n    for i in 0..3 {\n        seen.push(i);\n    }\n    assert_eq!(seen, [0, 1, 2]);\n\n    // a loop over items\n    let words = vec![\"a\", \"b\"];\n    let mut joined = String::new();\n    for w in &words {\n        joined.push_str(w);\n    }\n    assert_eq!(joined, \"ab\");\n\n    // a branch on a value\n    let n = 1;\n    let s = match n {\n        1 => \"one\",\n        _ => \"many\",\n    };\n    assert_eq!(s, \"one\");\n\n    // a lambda\n    let inc = |x| x + 1;\n    assert_eq!(inc(1), 2);\n\n    // printing with values inside\n    let name = \"Ana\";\n    let age = 30;\n    assert_eq!(format!(\"{name} is {age}\"), \"Ana is 30\");\n\n    // passing an error up\n    assert_eq!(double_parsed(\"21\"), Ok(42));\n    assert!(double_parsed(\"x\").is_err());\n    let fn_parse = |s: &str| -> Result<i32, std::num::ParseIntError> {\n        let n = s.parse::<i32>()?;\n        Ok(n)\n    };\n    assert_eq!(fn_parse(\"7\"), Ok(7));\n    println!(\"all rows hold\");\n}\n",
+   "out": "all rows hold\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-symbols.rs": {
+   "code": "//! The crate-level doc comment: `//!` describes the file it is in.\n#![allow(dead_code)]\n\nmod shapes {\n    /// A doc comment: `///` describes the item below it.\n    pub struct Square {\n        pub side: u32,\n    }\n\n    impl Square {\n        pub fn area(&self) -> u32 {\n            self.side * self.side\n        }\n    }\n}\n\nuse shapes::Square;\nuse std::cmp::max as bigger;\n\ntrait Describe {\n    fn describe(&self) -> String;\n}\n\nimpl Describe for Square {\n    fn describe(&self) -> String {\n        format!(\"square, side {}\", self.side)\n    }\n}\n\nfn show_generic<T>(item: &T) -> String\nwhere\n    T: Describe,\n{\n    item.describe()\n}\n\nfn show_dyn(item: &dyn Describe) -> String {\n    item.describe()\n}\n\nfn first_word<'a>(text: &'a str) -> &'a str {\n    text.split(' ').next().unwrap_or(\"\")\n}\n\nfn stop() -> ! {\n    std::process::exit(1)\n}\n\nfn main() {\n    let sq = Square { side: 4 };\n    let big = sq.area() as f64 * 1.5;\n    println!(\"area: {}, scaled: {big}\", sq.area());\n    println!(\"generic: {}\", show_generic(&sq));\n    println!(\"dyn: {}\", show_dyn(&sq));\n    println!(\"as renames in use: {}\", bigger(3, 9));\n    println!(\"first_word: {}\", first_word(\"hello there\"));\n    let label = match sq.side {\n        n @ 1..=9 => format!(\"small ({n})\"),\n        _ => String::from(\"big\"),\n    };\n    println!(\"@ binds the matched value: {label}\");\n    let sides: [u32; 3] = [4, 5, 6];\n    println!(\"[] makes, types and indexes an array: {}\", sides[1]);\n    let nothing = ();\n    println!(\"() is a value too: {nothing:?}\");\n}\n",
+   "out": "area: 16, scaled: 24\ngeneric: square, side 4\ndyn: square, side 4\nas renames in use: 9\nfirst_word: hello\n@ binds the matched value: small (4)\n[] makes, types and indexes an array: 5\n() is a value too: ()\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-tour.rs": {
+   "code": "// Backs the claims in the token tables of lesson.mdx. Never shown.\nfn bucket(n: u32) -> &'static str {\n    match n {\n        0 => \"zero\",\n        1..=3 => \"one to three\",\n        _ => \"more\",\n    }\n}\n\nfn exclusive(n: u32) -> &'static str {\n    match n {\n        0..3 => \"below three\",\n        _ => \"three or more\",\n    }\n}\n\nfn keep(n: u32) -> u32 {\n    match n {\n        0 => 100,\n        other => other,\n    }\n}\n\nfn first_number(text: &str) -> Result<i32, std::num::ParseIntError> {\n    let n = text.trim().parse::<i32>()?;\n    Ok(n)\n}\n\nfn parse_or_zero(text: &str) -> i32 {\n    match text.parse::<i32>() {\n        Ok(n) => n,\n        Err(_) => 0,\n    }\n}\n\nstruct Pair {\n    words: usize,\n    longest: String,\n}\n\nfn main() {\n    // 1..=3 includes 3; 0..3 does not\n    assert_eq!(bucket(3), \"one to three\");\n    assert_eq!(bucket(4), \"more\");\n    assert_eq!(exclusive(2), \"below three\");\n    assert_eq!(exclusive(3), \"three or more\");\n    // a bare name in an arm matches anything and holds the value\n    assert_eq!(keep(0), 100);\n    assert_eq!(keep(7), 7);\n    // a tail expression is the value; a trailing `;` makes it ()\n    let value = {\n        let a = 2;\n        a + 1\n    };\n    #[allow(unused_must_use)]\n    let unit = {\n        let a = 2;\n        a + 1;\n    };\n    assert_eq!(value, 3);\n    assert_eq!(unit, ());\n    // field shorthand\n    let words = 4;\n    let longest = String::from(\"quick\");\n    let short = Pair { words, longest };\n    let long = Pair {\n        words: words,\n        longest: String::from(\"quick\"),\n    };\n    assert_eq!(short.words, long.words);\n    assert_eq!(short.longest, long.longest);\n    // ? returns the error early and unwraps the success\n    assert_eq!(first_number(\" 42 \"), Ok(42));\n    assert!(first_number(\"x\").is_err());\n    assert_eq!(parse_or_zero(\"x\"), 0);\n    // a closure is called like a function, and can be stored in a variable\n    let double = |n: i32| n * 2;\n    assert_eq!(double(4), 8);\n    // :? is Debug, {} is Display\n    assert_eq!(format!(\"{:?}\", \"hi\"), \"\\\"hi\\\"\");\n    assert_eq!(format!(\"{}\", \"hi\"), \"hi\");\n    // `.` reads a field through a reference too (no `->`)\n    let pair = Pair {\n        words: 1,\n        longest: String::from(\"x\"),\n    };\n    let by_ref = &pair;\n    assert_eq!(by_ref.words, 1);\n    assert_eq!(by_ref.longest.len(), 1);\n    // `+=` changes a `mut` variable\n    let mut total = 1;\n    total += 1;\n    assert_eq!(total, 2);\n    println!(\"all token claims hold\");\n}\n",
+   "out": "all token claims hold\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "lookalikes.rs": {
+   "code": "#[derive(Debug)]\nstruct Point {\n    x: i32,\n    y: i32,\n}\n\nfn main() {\n    let n = 6;\n    let r = &n;\n    println!(\"& as a reference: {r}\");\n    println!(\"* as dereference: {}, as multiply: {}\", *r, *r * 2);\n    let mut count = 1;\n    let r_mut = &mut count;\n    *r_mut += 1;\n    println!(\"&mut then * changes the original: {count}\");\n    println!(\"& as bit-and: {}\", 0b110 & 0b011);\n\n    let or_bits = |a: u8, b: u8| a | b;\n    println!(\"| in a closure, as bit-or: {}\", or_bits(0b100, 0b001));\n    match n {\n        1 | 2 => println!(\"| in a pattern: one or two\"),\n        _ => println!(\"| in a pattern: neither\"),\n    }\n\n    let p = Point { x: 1, y: 2 };\n    let q = Point { x: 9, ..p };\n    let [first, ..] = [10, 20, 30];\n    println!(\".. as a range: {:?}\", 0..3);\n    println!(\".. in a struct: x={}, y={}\", q.x, q.y);\n    println!(\".. in a pattern: {first}\");\n\n    let big = 1_000_000;\n    let letters: Vec<_> = \"abc\".chars().collect();\n    println!(\"_ in a number: {big}, as a type to fill in: {letters:?}\");\n\n    let done = false;\n    println!(\"! as not: {}, but also in println!\", !done);\n    println!(\"'a' is a char: {}\", 'a');\n    'outer: for i in 0..3 {\n        for j in 0..3 {\n            if i + j == 3 {\n                println!(\"' as a loop label: left both loops at {i},{j}\");\n                break 'outer;\n            }\n        }\n    }\n    println!(\"< as less-than: {}\", 1 < 2);\n    println!(\"::<> picks a type: {:?}\", \"5\".parse::<i32>());\n}\n",
+   "out": "& as a reference: 6\n* as dereference: 6, as multiply: 12\n&mut then * changes the original: 2\n& as bit-and: 2\n| in a closure, as bit-or: 5\n| in a pattern: neither\n.. as a range: 0..3\n.. in a struct: x=9, y=2\n.. in a pattern: 10\n_ in a number: 1000000, as a type to fill in: ['a', 'b', 'c']\n! as not: true, but also in println!\n'a' is a char: a\n' as a loop label: left both loops at 1,2\n< as less-than: true\n::<> picks a type: Ok(5)\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "no-bang.fail.rs": {
+   "code": "fn main() {\n    println(\"hello\");\n}\n",
+   "error": "error[E0423]: cannot find function `println` in this scope\n --> src/main.rs:2:5\n  |\n2 |     println(\"hello\");\n  |     ^^^^^^^ not found in this scope\n  |\n  = note: a macro named `println` exists in another namespace\nhelp: use `!` to invoke the macro\n  |\n2 |     println!(\"hello\");\n  |            +\n",
+   "lang": "rust"
+  },
+  "no-braces.fail.rs": {
+   "code": "fn main() {\n    let n = 3;\n    if n > 1 println!(\"big\");\n}\n",
+   "error": "error: expected `{`, found `println`\n --> src/main.rs:3:14\n  |\n3 |     if n > 1 println!(\"big\");\n  |              ^^^^^^^ expected `{`\n  |\nnote: the `if` expression is missing a block after this condition\n --> src/main.rs:3:8\n  |\n3 |     if n > 1 println!(\"big\");\n  |        ^^^^^\nhelp: you might have meant to write this as part of a block\n  |\n3 |     if n > 1 { println!(\"big\") };\n  |              +                 +",
+   "lang": "rust"
+  },
+  "path-vs-dot.rs": {
+   "code": "fn main() {\n    let s = String::from(\"hello\");\n    println!(\"s.len(): {}\", s.len());\n    println!(\"String::len(&s): {}\", String::len(&s));\n    println!(\"i32::MAX: {}\", i32::MAX);\n    println!(\"std::cmp::max(3, 9): {}\", std::cmp::max(3, 9));\n}\n",
+   "out": "s.len(): 5\nString::len(&s): 5\ni32::MAX: 2147483647\nstd::cmp::max(3, 9): 9\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "private.fail.rs": {
+   "code": "mod shapes {\n    pub struct Square {\n        side: u32,\n    }\n\n    impl Square {\n        pub fn new(side: u32) -> Square {\n            Square { side }\n        }\n    }\n}\n\nfn main() {\n    let sq = shapes::Square::new(4);\n    println!(\"{}\", sq.side);\n}\n",
+   "error": "error[E0616]: field `side` of struct `Square` is private\n  --> src/main.rs:15:23\n   |\n15 |     println!(\"{}\", sq.side);\n   |                       ^^^^ private field\n",
+   "lang": "rust"
+  },
+  "question-mark-main.fail.rs": {
+   "code": "fn main() {\n    let n: i32 = \"5\".parse()?;\n    println!(\"{n}\");\n}\n",
+   "error": "error[E0277]: the `?` operator can only be used in a function that returns `Result` or `Option` (or another type that implements `FromResidual`)\n --> src/main.rs:2:29\n  |\n1 | fn main() {\n  | --------- this function should return `Result` or `Option` to accept `?`\n2 |     let n: i32 = \"5\".parse()?;\n  |                             ^ cannot use the `?` operator in a function that returns `()`\n  |\nhelp: consider adding return type\n  |\n1 ~ fn main() -> Result<(), Box<dyn std::error::Error>> {\n2 |     let n: i32 = \"5\".parse()?;\n3 |     println!(\"{n}\");\n4 +     Ok(())",
+   "lang": "rust"
+  },
+  "tour.rs": {
+   "code": "// (1) Count the words in some text and report on them.\n// (2)\n#[derive(Debug)]\n// (3)\nstruct Report {\n    words: usize,\n    longest: String,\n}\n\n// (4)\nfn analyze(text: &str) -> Result<Report, String> {\n    // (5)\n    let mut longest = String::new();\n    let mut words = 0;\n    // (6)\n    for word in text.split_whitespace() {\n        words += 1;\n        // (7)\n        if word.len() > longest.len() {\n            longest = word.to_string();\n        }\n    }\n    if words == 0 {\n        // (8)\n        return Err(String::from(\"no words\"));\n    }\n    // (9)\n    Ok(Report { words, longest })\n}\n\n// (10)\nfn main() -> Result<(), String> {\n    // (11)\n    let report = analyze(\"the quick brown fox\")?;\n    // (12)\n    println!(\"{report:?}\");\n    // (13)\n    let shout = |s: &str| s.to_uppercase();\n    // (14)\n    match report.words {\n        0 => println!(\"empty\"),\n        1..=3 => println!(\"short\"),\n        n => println!(\"{n} words\"),\n    }\n    println!(\"longest: {}\", shout(&report.longest));\n    Ok(())\n}\n",
+   "out": "Report { words: 4, longest: \"quick\" }\n4 words\nlongest: QUICK\n",
+   "lang": "rust",
+   "exit": 0
+  },
+  "check-c.c": {
+   "code": "#include <assert.h>\n#include <stdio.h>\n#include <stdlib.h>\n\nint add(int a, int b) { return a + b; }\nint inc(int x) { return x + 1; }\n\nint parse(const char *s, int *out) {\n    char *end;\n    long v = strtol(s, &end, 10);\n    if (*s == '\\0' || *end != '\\0') return -1;\n    *out = (int)v;\n    return 0;\n}\n\nint double_parsed(const char *s, int *out) {\n    int n;\n    if (parse(s, &n) != 0) return -1;\n    *out = n * 2;\n    return 0;\n}\n\nint main(void) {\n    int x = 5;\n    x = 6;\n    const int y = 5;\n    assert(x == 6 && y == 5);\n    assert(add(2, 3) == 5);\n\n    int count = 0;\n    for (int i = 0; i < 3; i++) {\n        count += i;\n    }\n    assert(count == 3);\n\n    const char *words[] = {\"a\", \"b\"};\n    int total = 0;\n    for (size_t i = 0; i < 2; i++) {\n        total += (int)words[i][0];\n    }\n    assert(total == 'a' + 'b');\n\n    int n = 1;\n    const char *s;\n    switch (n) {\n    case 1:\n        s = \"one\";\n        break;\n    default:\n        s = \"many\";\n    }\n    assert(s[0] == 'o');\n\n    int (*f)(int) = inc;\n    assert(f(1) == 2);\n\n    const char *name = \"Ana\";\n    int age = 30;\n    printf(\"%s is %d\\n\", name, age);\n\n    int out;\n    assert(double_parsed(\"21\", &out) == 0 && out == 42);\n    assert(double_parsed(\"x\", &out) == -1);\n    puts(\"all c cells compile and hold\");\n    return 0;\n}\n",
+   "out": "Ana is 30\nall c cells compile and hold\n",
+   "lang": "c",
+   "exit": 0
+  },
+  "check-cpp.cpp": {
+   "code": "#include <cassert>\n#include <iostream>\n#include <string>\n#include <vector>\n\nint add(int a, int b) { return a + b; }\n\nint main() {\n    int x = 5;\n    x = 6;\n    const int y = 5;\n    assert(x == 6 && y == 5);\n    assert(add(2, 3) == 5);\n\n    int count = 0;\n    for (int i = 0; i < 3; i++) {\n        count += i;\n    }\n    assert(count == 3);\n\n    std::vector<std::string> words{\"a\", \"b\"};\n    std::string joined;\n    for (const auto& w : words) {\n        joined += w;\n    }\n    assert(joined == \"ab\");\n\n    int n = 1;\n    std::string s;\n    switch (n) {\n    case 1:\n        s = \"one\";\n        break;\n    default:\n        s = \"many\";\n    }\n    assert(s == \"one\");\n\n    auto inc = [](int v) { return v + 1; };\n    assert(inc(1) == 2);\n\n    std::string name = \"Ana\";\n    int age = 30;\n    std::cout << name << \" is \" << age << \"\\n\";\n\n    bool threw = false;\n    try {\n        std::stoi(\"x\");\n    } catch (const std::invalid_argument&) {\n        threw = true;\n    }\n    assert(threw);\n    std::cout << \"all c++ cells compile and hold\\n\";\n}\n",
+   "out": "Ana is 30\nall c++ cells compile and hold\n",
+   "lang": "cpp",
+   "exit": 0
+  },
+  "check-cs.cs": {
+   "code": "static void Must(bool ok, string what)\n{\n    if (!ok) throw new Exception(what);\n}\n\nstatic int Add(int a, int b) => a + b;\n\nvar x = 5;\nx = 6;\nconst int y = 5;\nMust(x == 6 && y == 5, \"variables\");\nMust(Add(2, 3) == 5, \"method\");\n\nvar count = 0;\nfor (int i = 0; i < 3; i++)\n{\n    count += i;\n}\nMust(count == 3, \"for\");\n\nvar words = new List<string> { \"a\", \"b\" };\nvar joined = \"\";\nforeach (var w in words)\n{\n    joined += w;\n}\nMust(joined == \"ab\", \"foreach\");\n\nvar n = 1;\nvar s = n switch { 1 => \"one\", _ => \"many\" };\nMust(s == \"one\", \"switch expression\");\n\nFunc<int, int> inc = v => v + 1;\nMust(inc(1) == 2, \"lambda\");\n\nvar name = \"Ana\";\nvar age = 30;\nConsole.WriteLine($\"{name} is {age}\");\n\nvar threw = false;\ntry\n{\n    int.Parse(\"x\");\n}\ncatch (FormatException)\n{\n    threw = true;\n}\nMust(threw, \"Parse throws\");\nConsole.WriteLine(\"all c# cells compile and hold\");\n",
+   "out": "Ana is 30\nall c# cells compile and hold\n",
+   "lang": "csharp",
+   "exit": 0
+  },
+  "check-go.go": {
+   "code": "package main\n\nimport (\n\t\"fmt\"\n\t\"strconv\"\n)\n\nfunc must(ok bool, what string) {\n\tif !ok {\n\t\tpanic(what)\n\t}\n}\n\nfunc add(a, b int) int { return a + b }\n\nfunc double(s string) (int, error) {\n\tn, err := strconv.Atoi(s)\n\tif err != nil {\n\t\treturn 0, err\n\t}\n\treturn n * 2, nil\n}\n\ntype Point struct{ X int }\n\nfunc main() {\n\tx := 5\n\tx = 6\n\tconst y = 5\n\tmust(x == 6 && y == 5, \"variables\")\n\tmust(add(2, 3) == 5, \"func\")\n\n\tcount := 0\n\tfor i := 0; i < 3; i++ {\n\t\tcount += i\n\t}\n\tmust(count == 3, \"counted loop\")\n\n\twords := []string{\"a\", \"b\"}\n\tjoined := \"\"\n\tfor _, w := range words {\n\t\tjoined += w\n\t}\n\tmust(joined == \"ab\", \"range\")\n\n\tn := 1\n\tvar s string\n\tswitch n {\n\tcase 1:\n\t\ts = \"one\"\n\tdefault:\n\t\ts = \"many\"\n\t}\n\tmust(s == \"one\", \"switch\")\n\n\tinc := func(x int) int { return x + 1 }\n\tmust(inc(1) == 2, \"func literal\")\n\n\tname, age := \"Ana\", 30\n\tfmt.Printf(\"%s is %d\\n\", name, age)\n\n\tv, err := double(\"21\")\n\tmust(v == 42 && err == nil, \"double\")\n\t_, err = double(\"x\")\n\tmust(err != nil, \"double error\")\n\tfmt.Println(\"all go cells compile and hold\")\n}\n",
+   "out": "Ana is 30\nall go cells compile and hold\n",
+   "lang": "go",
+   "exit": 0
+  },
+  "check-java.java": {
+   "code": "import java.util.List;\nimport java.util.function.IntUnaryOperator;\n\npublic class Main {\n    static void must(boolean ok, String what) {\n        if (!ok) throw new AssertionError(what);\n    }\n\n    static int add(int a, int b) {\n        return a + b;\n    }\n\n    public static void main(String[] args) {\n        int x = 5;\n        x = 6;\n        final int y = 5;\n        must(x == 6 && y == 5, \"variables\");\n        must(add(2, 3) == 5, \"method\");\n\n        int count = 0;\n        for (int i = 0; i < 3; i++) {\n            count += i;\n        }\n        must(count == 3, \"counted loop\");\n\n        List<String> words = List.of(\"a\", \"b\");\n        String joined = \"\";\n        for (String w : words) {\n            joined += w;\n        }\n        must(joined.equals(\"ab\"), \"for each\");\n\n        int n = 1;\n        String s = switch (n) {\n            case 1 -> \"one\";\n            default -> \"many\";\n        };\n        must(s.equals(\"one\"), \"switch expression\");\n\n        IntUnaryOperator inc = v -> v + 1;\n        must(inc.applyAsInt(1) == 2, \"lambda\");\n\n        String name = \"Ana\";\n        int age = 30;\n        System.out.printf(\"%s is %d%n\", name, age);\n\n        boolean threw = false;\n        try {\n            int parsed = Integer.parseInt(\"x\");\n            must(parsed == 0, \"unreachable\");\n        } catch (NumberFormatException e) {\n            threw = true;\n        }\n        must(threw, \"parseInt throws\");\n        System.out.println(\"all java cells compile and hold\");\n    }\n}\n",
+   "out": "Ana is 30\nall java cells compile and hold\n",
+   "lang": "java",
+   "exit": 0
+  },
+  "check-kt.kt": {
+   "code": "fun must(ok: Boolean, what: String) {\n    if (!ok) throw AssertionError(what)\n}\n\nfun add(a: Int, b: Int): Int = a + b\n\nfun main() {\n    var x = 5\n    x = 6\n    val y = 5\n    must(x == 6 && y == 5, \"variables\")\n    must(add(2, 3) == 5, \"fun\")\n\n    val seen = mutableListOf<Int>()\n    for (i in 0 until 3) seen.add(i)\n    must(seen == listOf(0, 1, 2), \"until\")\n    val inclusive = mutableListOf<Int>()\n    for (i in 0..3) inclusive.add(i)\n    must(inclusive == listOf(0, 1, 2, 3), \"0..3 includes 3\")\n\n    val words = listOf(\"a\", \"b\")\n    var joined = \"\"\n    for (w in words) joined += w\n    must(joined == \"ab\", \"for in\")\n\n    val n = 1\n    val s = when (n) {\n        1 -> \"one\"\n        else -> \"many\"\n    }\n    must(s == \"one\", \"when\")\n\n    val inc = { v: Int -> v + 1 }\n    must(inc(1) == 2, \"lambda\")\n\n    val name = \"Ana\"\n    val age = 30\n    println(\"$name is $age\")\n\n    var threw = false\n    try {\n        \"x\".toInt()\n    } catch (e: NumberFormatException) {\n        threw = true\n    }\n    must(threw, \"toInt throws\")\n    println(\"all kotlin cells compile and hold\")\n}\n",
+   "out": "Ana is 30\nall kotlin cells compile and hold\n",
+   "lang": "kotlin",
+   "exit": 0
+  },
+  "check-py.py": {
+   "code": "from typing import Final\n\n\ndef must(ok, what):\n    if not ok:\n        raise AssertionError(what)\n\n\ndef add(a: int, b: int) -> int:\n    return a + b\n\n\nx = 5\nx = 6\nY: Final = 5\nmust(x == 6 and Y == 5, \"variables\")\nmust(add(2, 3) == 5, \"def\")\n\nseen = []\nfor i in range(3):\n    seen.append(i)\nmust(seen == [0, 1, 2], \"range\")\n\njoined = \"\"\nfor w in [\"a\", \"b\"]:\n    joined += w\nmust(joined == \"ab\", \"for in\")\n\nn = 1\nmatch n:\n    case 1:\n        s = \"one\"\n    case _:\n        s = \"many\"\nmust(s == \"one\", \"match\")\n\ninc = lambda x: x + 1\nmust(inc(1) == 2, \"lambda\")\n\nname = \"Ana\"\nage = 30\nprint(f\"{name} is {age}\")\n\ntry:\n    int(\"x\")\n    raise AssertionError(\"int did not raise\")\nexcept ValueError:\n    pass\nprint(\"all python cells run and hold\")\n",
+   "out": "Ana is 30\nall python cells run and hold\n",
+   "lang": "python",
+   "exit": 0
+  },
+  "check-ts.ts": {
+   "code": "function must(ok: boolean, what: string): void {\n  if (!ok) throw new Error(what);\n}\n\nfunction add(a: number, b: number): number {\n  return a + b;\n}\n\nfunction parse(s: string): number {\n  const n = Number(s);\n  if (Number.isNaN(n)) throw new Error(\"not a number\");\n  return n;\n}\n\nlet x = 5;\nx = 6;\nconst y = 5;\nmust(x === 6 && y === 5, \"variables\");\nmust(add(2, 3) === 5, \"function\");\n\nlet count = 0;\nfor (let i = 0; i < 3; i++) {\n  count += i;\n}\nmust(count === 3, \"for\");\n\nlet joined = \"\";\nfor (const w of [\"a\", \"b\"]) {\n  joined += w;\n}\nmust(joined === \"ab\", \"for of\");\n\nconst n: number = 1;\nlet s: string;\nswitch (n) {\n  case 1:\n    s = \"one\";\n    break;\n  default:\n    s = \"many\";\n}\nmust(s === \"one\", \"switch\");\n\nconst inc = (v: number) => v + 1;\nmust(inc(1) === 2, \"arrow\");\n\nconst name = \"Ana\";\nconst age = 30;\nconsole.log(`${name} is ${age}`);\n\nlet threw = false;\ntry {\n  parse(\"x\");\n} catch {\n  threw = true;\n}\nmust(threw, \"throw leaves the function\");\nconsole.log(\"all typescript cells compile and hold\");\n",
+   "out": "Ana is 30\nall typescript cells compile and hold\n",
+   "lang": "typescript",
+   "exit": 0
+  }
+ },
+ "exercises": {
+  "age-group": {
+   "starter": "// \"baby\" for 0, \"child (n)\" for 1 to 12, \"teen (n)\" for 13 to 19, \"adult (n)\" for 20 and up.\nfn age_group(age: u32) -> String {\n    todo!(\"match age; \\\"baby\\\" needs String::from; `n @ 1..=12 =>` keeps the value as n\")\n}\n\nfn main() {\n    assert_eq!(age_group(0), \"baby\");\n    assert_eq!(age_group(1), \"child (1)\");\n    assert_eq!(age_group(12), \"child (12)\");\n    assert_eq!(age_group(13), \"teen (13)\"); // the edge between two ranges\n    assert_eq!(age_group(19), \"teen (19)\");\n    assert_eq!(age_group(20), \"adult (20)\");\n    assert_eq!(age_group(99), \"adult (99)\");\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "// \"baby\" for 0, \"child (n)\" for 1 to 12, \"teen (n)\" for 13 to 19, \"adult (n)\" for 20 and up.\nfn age_group(age: u32) -> String {\n    match age {\n        0 => String::from(\"baby\"),\n        n @ 1..=12 => format!(\"child ({n})\"),\n        n @ 13..=19 => format!(\"teen ({n})\"),\n        n => format!(\"adult ({n})\"),\n    }\n}\n\nfn main() {\n    assert_eq!(age_group(0), \"baby\");\n    assert_eq!(age_group(1), \"child (1)\");\n    assert_eq!(age_group(12), \"child (12)\");\n    assert_eq!(age_group(13), \"teen (13)\"); // the edge between two ranges\n    assert_eq!(age_group(19), \"teen (19)\");\n    assert_eq!(age_group(20), \"adult (20)\");\n    assert_eq!(age_group(99), \"adult (99)\");\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "count-evens": {
+   "starter": "// Count how many numbers in the slice are even. Zero is even.\nfn count_evens(nums: &[i32]) -> usize {\n    todo!(\"`let mut count = 0;`, then `for n in nums` and `n % 2 == 0`\")\n}\n\nfn main() {\n    assert_eq!(count_evens(&[1, 2, 3, 4]), 2);\n    assert_eq!(count_evens(&[]), 0); // an empty slice\n    assert_eq!(count_evens(&[0]), 1); // zero is even\n    assert_eq!(count_evens(&[-3, -2, -1]), 1); // negative numbers\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "// Count how many numbers in the slice are even. Zero is even.\nfn count_evens(nums: &[i32]) -> usize {\n    let mut count = 0;\n    for n in nums {\n        if n % 2 == 0 {\n            count += 1;\n        }\n    }\n    count\n}\n\nfn main() {\n    assert_eq!(count_evens(&[1, 2, 3, 4]), 2);\n    assert_eq!(count_evens(&[]), 0); // an empty slice\n    assert_eq!(count_evens(&[0]), 1); // zero is even\n    assert_eq!(count_evens(&[-3, -2, -1]), 1); // negative numbers\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "sum-to": {
+   "starter": "// Return 1 + 2 + ... + n, counting n itself. For n = 0 the answer is 0.\nfn sum_to(n: u32) -> u32 {\n    todo!(\"start with `let mut total = 0;`, then `for i in 1..=n` and `total += i`\")\n}\n\nfn main() {\n    assert_eq!(sum_to(4), 10);\n    assert_eq!(sum_to(1), 1); // `1..n` would stop one short and give 0\n    assert_eq!(sum_to(0), 0); // `1..=0` has nothing in it\n    assert_eq!(sum_to(100), 5050);\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "// Return 1 + 2 + ... + n, counting n itself. For n = 0 the answer is 0.\nfn sum_to(n: u32) -> u32 {\n    let mut total = 0;\n    for i in 1..=n {\n        total += i;\n    }\n    total\n}\n\nfn main() {\n    assert_eq!(sum_to(4), 10);\n    assert_eq!(sum_to(1), 1); // `1..n` would stop one short and give 0\n    assert_eq!(sum_to(0), 0); // `1..=0` has nothing in it\n    assert_eq!(sum_to(100), 5050);\n    println!(\"all checks passed\");\n}\n",
+    "out": "all checks passed\n"
+   }
+  },
+  "tour-values": {
+   "starter": "// Read this program without running it. Then replace each `todo!()` below with what\n// the call gives, written as you would write it in code. An `Err` here holds a `String`,\n// so a bare text needs `.to_string()`: `Err(\"oops\".to_string())`.\n\nfn label(n: i32) -> String {\n    match n {\n        0 => String::from(\"zero\"),\n        1..=9 => format!(\"small {n}\"),\n        big @ 10..=99 => format!(\"big {big}\"),\n        _ => String::from(\"huge\"),\n    }\n}\n\nfn halve(n: i32) -> Result<i32, String> {\n    if n % 2 != 0 {\n        return Err(format!(\"{n} is odd\"));\n    }\n    Ok(n / 2)\n}\n\nfn quarter(n: i32) -> Result<i32, String> {\n    let half = halve(n)?;\n    halve(half)\n}\n\n// What each call gives:\n\n/// Hint: which arm does 9 fall in, and what text does that arm build?\nfn label_of_9() -> &'static str {\n    todo!(\"which arm does 9 fall in, and what text does that arm build?\")\n}\n\n/// Hint: `big @ 10..=99` names the number it matched\nfn label_of_10() -> &'static str {\n    todo!(\"`big @ 10..=99` names the number it matched\")\n}\n\n/// Hint: is 100 inside `10..=99`? `..=` includes the end, and nothing past it\nfn label_of_100() -> &'static str {\n    todo!(\"is 100 inside `10..=99`? `..=` includes the end, and nothing past it\")\n}\n\n/// Hint: both calls to `halve` succeed: 12, then 6, then 3\nfn quarter_of_12() -> Result<i32, String> {\n    todo!(\"both calls to `halve` succeed: 12, then 6, then 3\")\n}\n\n/// Hint: the first `halve` works; which number does the second one reject?\nfn quarter_of_6() -> Result<i32, String> {\n    todo!(\"the first `halve` works; which number does the second one reject?\")\n}\n\n/// Hint: what does `?` do when `halve(n)` is an `Err`?\nfn quarter_of_7() -> Result<i32, String> {\n    todo!(\"what does `?` do when `halve(n)` is an `Err`?\")\n}\n\nfn check<T: PartialEq + std::fmt::Debug>(call: &str, said: T, truth: T) {\n    assert!(said == truth, \"misread `{call}`: you said {said:?}\");\n    println!(\"ok: {call} = {said:?}\");\n}\n\nfn main() {\n    check(\"label(9)\", label_of_9(), label(9).as_str());\n    check(\"label(10)\", label_of_10(), label(10).as_str());\n    check(\"label(100)\", label_of_100(), label(100).as_str());\n    check(\"quarter(12)\", quarter_of_12(), quarter(12));\n    check(\"quarter(6)\", quarter_of_6(), quarter(6));\n    check(\"quarter(7)\", quarter_of_7(), quarter(7));\n    println!(\"all checks passed\");\n}\n",
+   "solution": {
+    "code": "// Read this program without running it. Then replace each `todo!()` below with what\n// the call gives, written as you would write it in code. An `Err` here holds a `String`,\n// so a bare text needs `.to_string()`: `Err(\"oops\".to_string())`.\n\nfn label(n: i32) -> String {\n    match n {\n        0 => String::from(\"zero\"),\n        1..=9 => format!(\"small {n}\"),\n        big @ 10..=99 => format!(\"big {big}\"),\n        _ => String::from(\"huge\"),\n    }\n}\n\nfn halve(n: i32) -> Result<i32, String> {\n    if n % 2 != 0 {\n        return Err(format!(\"{n} is odd\"));\n    }\n    Ok(n / 2)\n}\n\nfn quarter(n: i32) -> Result<i32, String> {\n    let half = halve(n)?;\n    halve(half)\n}\n\n// What each call gives:\n\n/// Hint: which arm does 9 fall in, and what text does that arm build?\nfn label_of_9() -> &'static str {\n    \"small 9\"\n}\n\n/// Hint: `big @ 10..=99` names the number it matched\nfn label_of_10() -> &'static str {\n    \"big 10\"\n}\n\n/// Hint: is 100 inside `10..=99`? `..=` includes the end, and nothing past it\nfn label_of_100() -> &'static str {\n    \"huge\"\n}\n\n/// Hint: both calls to `halve` succeed: 12, then 6, then 3\nfn quarter_of_12() -> Result<i32, String> {\n    Ok(3)\n}\n\n/// Hint: the first `halve` works; which number does the second one reject?\nfn quarter_of_6() -> Result<i32, String> {\n    Err(\"3 is odd\".to_string())\n}\n\n/// Hint: what does `?` do when `halve(n)` is an `Err`?\nfn quarter_of_7() -> Result<i32, String> {\n    Err(\"7 is odd\".to_string())\n}\n\nfn check<T: PartialEq + std::fmt::Debug>(call: &str, said: T, truth: T) {\n    assert!(said == truth, \"misread `{call}`: you said {said:?}\");\n    println!(\"ok: {call} = {said:?}\");\n}\n\nfn main() {\n    check(\"label(9)\", label_of_9(), label(9).as_str());\n    check(\"label(10)\", label_of_10(), label(10).as_str());\n    check(\"label(100)\", label_of_100(), label(100).as_str());\n    check(\"quarter(12)\", quarter_of_12(), quarter(12));\n    check(\"quarter(6)\", quarter_of_6(), quarter(6));\n    check(\"quarter(7)\", quarter_of_7(), quarter(7));\n    println!(\"all checks passed\");\n}\n",
+    "out": "ok: label(9) = \"small 9\"\nok: label(10) = \"big 10\"\nok: label(100) = \"huge\"\nok: quarter(12) = Ok(3)\nok: quarter(6) = Err(\"3 is odd\")\nok: quarter(7) = Err(\"7 is odd\")\nall checks passed\n"
+   }
+  }
+ },
+ "mdx": true
+}
