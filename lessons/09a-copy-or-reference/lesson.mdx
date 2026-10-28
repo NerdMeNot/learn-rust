@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 Every language has moments where you cannot tell whether a loop gave you the item or a copy of it, or whether a function changed your data. This page gives you tests that find the answer in your own language, then shows where Rust writes it down. Outputs come from the site's runner (Linux, ARM64; Go 1.27.3, Java 25, Python 3.13, Rust 1.99.1).
 
@@ -267,7 +267,7 @@ Numbers, `bool`, `char`, shared references `&T`, and tuples, arrays and `Option`
 
 Rust still has the same three ideas. The sigil or the type shows which, and the compiler refuses the surprising ones.
 
-<p class="lr-layer">Going deeper</p>
+<p class="lr-layer" id="layer-deeper">Going deeper</p>
 
 ## A copied header still points at the data
 
@@ -313,7 +313,7 @@ A **shallow** copy shares what is inside; your language's block above showed one
 
 `Rc::clone` copied an arrow and added an owner, which is the "shared" case of the table at the top.
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 ## Predict, then run
 

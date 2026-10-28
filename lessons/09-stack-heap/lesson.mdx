@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 Later lessons say "this lives on the stack" or "this frees the heap memory". This lesson explains those words once. It also answers the question that comes before them: when you write `let b = a`, what does a Rust variable hold?
 
@@ -186,7 +186,7 @@ Two more kinds of value hold an address instead of the data.
 
 A reference does not own what it points at, which is why handing a function a `&String` is cheap. The rules for when a reference may exist are the [borrowing lesson](/learn/borrowing/).
 
-<p class="lr-layer">Going deeper</p>
+<p class="lr-layer" id="layer-deeper">Going deeper</p>
 
 ## Stack overflow, for real
 
@@ -241,7 +241,7 @@ The text of a literal like `"hello"` is, in the words of the Rust Book, ["hardco
 
 Literals are fast because the text is fixed at compile time. You can't change one because `&str` gives read-only access to bytes that belong to the program. `String::from("hello")` copies them onto the heap, and the `String` owns the copy.
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 ## Try it
 

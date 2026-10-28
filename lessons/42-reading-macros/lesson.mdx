@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 [Macros, attributes and naming](/learn/macros-attributes-naming/) taught you to call macros such as `println!` and `vec!`. This page is for reading the others: a `macro_rules!` block in a dependency, the `#[derive(...)]` above a struct, the `#[tokio::main]` above `main`. The aim is to open one, say what it accepts and what it becomes, and know when a function would do. Outputs: Linux on 64-bit ARM, Rust 1.99.1, a debug build.
 
@@ -115,7 +115,7 @@ A call fits no rule, or the code the rule wrote does not compile.
 
 This one fit a rule and failed later: an ordinary type error, `E0308`, pointing at your argument and at the line inside the macro that received it. To see what the macro wrote, expand it as above.
 
-<p class="lr-layer">Going deeper</p>
+<p class="lr-layer" id="layer-deeper">Going deeper</p>
 
 ## Why `hashmap!` uses `=>`
 
@@ -317,7 +317,7 @@ The preprocessor is still there, with the problems [the earlier lesson](/learn/m
 
 </ForLang>
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 ## Try it
 

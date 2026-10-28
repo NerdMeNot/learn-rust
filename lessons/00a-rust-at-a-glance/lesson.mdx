@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 This page is a map, not a lesson. Each symbol gets a name, a one-sentence meaning, and a link to the lesson that teaches it properly. You will not understand every meaning yet, and you do not need to. Coming from another language? There is a phrasebook for [C and C++](/for/c-cpp/), [C#](/for/csharp/), [Go](/for/go/), [Java](/for/java/), [Kotlin](/for/kotlin/), [Python](/for/python/) and [TypeScript](/for/typescript/). The aim is to read the shape of a Rust file: what is a function, what is a type, what is a call, what is a block. Outputs on this page come from Linux on 64-bit ARM with Rust 1.99.1.
 
@@ -193,7 +193,7 @@ The last pair has a rule of its own. In a type, `Vec<i32>` is fine. In an expres
 
 <Snippet file="lookalikes.rs" />
 
-<p class="lr-layer">Going deeper</p>
+<p class="lr-layer" id="layer-deeper">Going deeper</p>
 
 ## Paths and dots
 
@@ -223,7 +223,7 @@ The Rust Reference says that "by default, everything is private" ([Visibility an
 
 E0277. `?` needs somewhere to send the failure, so the function's return type must be one that can hold it: a `Result` for a `Result`, an `Option` for an `Option`. The `help:` shows a return type to add. The tour program's `main` returns `Result<(), String>`, which works because its errors are already `String`s.
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 The first exercise trains reading, not writing: it shows a short program and asks what six calls give.
 

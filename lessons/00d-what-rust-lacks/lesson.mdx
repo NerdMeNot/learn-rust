@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 This page lists habits that fail in Rust, with the real compiler message and what to write instead. A message with no error code means the parser did not know the syntax; a code such as E0308 means the syntax was fine and the types were not. Outputs come from Linux on 64-bit ARM with Rust 1.99.1.
 
@@ -492,14 +492,14 @@ For a counter that several threads may change, use an atomic: a number whose cha
 
 <Snippet file="global.rs" />
 
-<p class="lr-layer">Going deeper</p>
+<p class="lr-layer" id="layer-deeper">Going deeper</p>
 
 ## Where this costs you
 
 - Numeric code that mixes widths, such as sizes (`usize`) and counters (`i32`), has more `as` and `from` calls.
 - Without inheritance, shared behaviour comes from a trait, or a type holds the other as a field.
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 ## Try it
 

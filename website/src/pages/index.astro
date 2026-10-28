@@ -2,6 +2,10 @@
 // The landing page: a plain Astro route, outside Starlight's docs shell.
 // It reads the same theme choice Starlight stores (`starlight-theme`) and the same
 // "coming from" choice the lessons use (`lr:from`), so the two halves agree.
+//
+// Order of the page: what this is and who it is for (with the language choice), the path in
+// order, every lesson, what else there is, then the short "is it worth it" and "how to read a
+// gotcha" explanations. The long case for and against lives on /start/why-rust/.
 import '../styles/fonts.css'
 import '../styles/theme.css'
 import '../styles/lesson.css'
@@ -11,21 +15,19 @@ import RustError from '../components/lesson/RustError.astro'
 import CodePanel from '../components/lesson/CodePanel.astro'
 import ThemeToggle from '../components/ThemeToggle.astro'
 import GitHubLink from '../components/GitHubLink.astro'
-import { LANG, OTHERS, PARTS, VERDICT } from '../lib/langs'
+import { LANG, OTHERS, PARTS, PHRASEBOOK, VERDICT } from '../lib/langs'
+import { START } from '../lib/path'
 import index from '../data/lessons.json'
 import versions from '../data/versions.json'
-import vectors from '../data/lessons/vectors.json'
 import ownership from '../data/lessons/ownership.json'
 
 import { getCollection } from 'astro:content'
 
-const learn = index.filter(l => l.part !== 'std' && l.part !== 'further')
 const std = index.filter(l => l.part === 'std')
 const further = index.filter(l => l.part === 'further')
 const docs = await getCollection('docs')
 const ORDER: Record<string, string[]> = {
-  start: ['why-rust', 'how-rust-thinks', 'first-project', 'using-crates', 'files-and-modules', 'several-programs'],
-  build: ['crates-map', 'serde', 'tokio', 'axum', 'grpc', 'sqlx', 'clap', 'app-errors', 'tracing', 'testing', 'datafusion'],
+  build: ['crates-map', 'serde', 'tokio', 'rayon', 'rayon-tokio', 'axum', 'grpc', 'sqlx', 'clap', 'app-errors', 'tracing', 'testing', 'datafusion'],
   further: ['project-structure', 'testing-more', 'performance'],
   for: ['go', 'java', 'kotlin', 'csharp', 'python', 'typescript', 'c-cpp'],
   interop: ['python', 'node', 'c-cpp', 'wasm'],
@@ -33,29 +35,34 @@ const ORDER: Record<string, string[]> = {
   cheatsheets: ['syntax'],
   checkpoints: ['syntax', 'basics', 'ownership', 'data', 'collections', 'abstractions', 'smart-pointers', 'concurrency', 'std'],
 }
-const pages = (track: string) => ORDER[track].map(id => docs.find(d => d.id === `${track}/${id}`)).filter(Boolean).map(d => ({ title: d!.data.title, href: `/${d!.id}/` }))
-const tour = docs.find(d => d.id === 'std/tour')
-const tracks = [
-  { name: 'Start here', count: `${ORDER.start.length} pages`, blurb: 'Why Rust is worth it (and what it costs), the mindset, your first project, using libraries, splitting code into files, and running several programs.', items: pages('start') },
-  { name: 'Learn Rust', count: `${learn.length} lessons`, blurb: 'The language itself, from variables to ownership, the borrow checker, traits and threads.', items: learn.map(l => ({ title: l.title, href: `/learn/${l.id}/` })) },
-  { name: 'Standard library', count: `${std.length + 1} pages`, blurb: 'What comes in the box and how to use it: files, collections, text, processes, formatting, and how to read the docs.', items: [...(tour ? [{ title: tour.data.title, href: '/std/tour/' }] : []), ...std.map(l => ({ title: l.title, href: `/learn/${l.id}/` }))] },
-  { name: 'Build with Rust', count: `${ORDER.build.length} pages`, blurb: 'The crates everyone uses: JSON, async, HTTP services, gRPC, databases, CLIs, errors, logging, testing and data.', items: pages('build') },
-  { name: 'Going further', count: `${further.length + pages('further').length} pages`, blurb: 'Reading macros, what unsafe is for, idioms and design patterns, project structure, deeper testing, and measuring performance.', items: [...further.map(l => ({ title: l.title, href: `/learn/${l.id}/` })), ...pages('further')] },
-  { name: 'Rust for your language', count: `${pages('for').length} pages`, blurb: 'One page per background: the habits to unlearn, an idiom table, the toolchain map and a reading path.', items: pages('for') },
-  { name: 'Use Rust from…', count: `${pages('interop').length} pages`, blurb: 'Write the fast or risky part in Rust and call it from Python, Node, C and C++, or WebAssembly.', items: pages('interop') },
-  { name: 'Projects', count: `${pages('projects').length} pages`, blurb: 'Complete, tested programs built step by step: a CLI, a library, a web API, a concurrent indexer and a multi-crate workspace.', items: pages('projects') },
-  { name: 'Cheat sheets', count: `${pages('cheatsheets').length} page`, blurb: 'One printable page of Rust syntax: symbols, the habits that trip people up, and how to read a signature.', items: pages('cheatsheets') },
-  { name: 'Checkpoints', count: `${pages('checkpoints').length} pages`, blurb: 'Predict the output or the compiler error, then run it. One page per part of the course.', items: pages('checkpoints') },
-].filter(t => t.items.length > 0)
-const anat = vectors.gotcha!
-const teaser = ownership.gotcha!
-// Each background has one phrasebook; C and C++ share one.
-const BOOK: Record<string, { slug: string; title: string }> = {
-  go: { slug: 'go', title: 'Go' }, kotlin: { slug: 'kotlin', title: 'Kotlin' }, python: { slug: 'python', title: 'Python' },
-  typescript: { slug: 'typescript', title: 'TypeScript' }, java: { slug: 'java', title: 'Java' }, csharp: { slug: 'csharp', title: 'C#' },
-  c: { slug: 'c-cpp', title: 'C and C++' }, cpp: { slug: 'c-cpp', title: 'C and C++' },
+const doc = (id: string) => docs.find(d => d.id === id)
+const link = (id: string) => ({ title: doc(id)!.data.title, href: `/${id}/` })
+const pages = (track: string) => ORDER[track].map(id => doc(`${track}/${id}`)).filter(Boolean).map(d => ({ title: d!.data.title, href: `/${d!.id}/` }))
+
+// The path: the three pages the sidebar opens with, then lesson 1.
+const firstLesson = index[0]
+const path = [
+  ...START.map(s => ({ title: link(s.href.replace(/^\/|\/$/g, '')).title, href: s.href, note: s.note })),
+  { title: `Lesson 1: ${firstLesson.title}`, href: `/learn/${firstLesson.id}/`, note: 'Then the lessons in order, each with a gotcha. The sidebar ticks off what you have read.' },
+]
+
+// Pages that belong to a part of the lesson index but are not lessons, in the sidebar's places.
+const extras: Record<string, { first?: { title: string; href: string }[]; last?: { title: string; href: string }[] }> = {
+  data: { last: [link('start/word-frequency')] },
+  std: { first: [link('std/tour')] },
+  further: { last: pages('further') },
 }
-const firstLesson = learn[0].id
+
+// What there is besides the lessons. (The lessons themselves are the index above.)
+const tracks = [
+  { name: 'Build with Rust', blurb: 'The crates everyone uses: JSON, async, HTTP services, gRPC, databases, CLIs, errors, logging, testing and data.', items: pages('build') },
+  { name: 'Projects', blurb: 'Complete, tested programs built step by step: a CLI, a library, a web API, a concurrent indexer and a multi-crate workspace.', items: pages('projects') },
+  { name: 'Rust for your language', blurb: 'One page per background: the habits to unlearn, an idiom table, the toolchain map and a reading path.', items: pages('for') },
+  { name: 'Use Rust from…', blurb: 'Write the fast or risky part in Rust and call it from Python, Node, C and C++, or WebAssembly.', items: pages('interop') },
+  { name: 'Checkpoints', blurb: 'Predict the output or the compiler error, then run it. One page per part of the course.', items: pages('checkpoints') },
+  { name: 'Cheat sheets', blurb: 'One printable page of Rust syntax: symbols, the habits that trip people up, and how to read a signature.', items: pages('cheatsheets') },
+].filter(t => t.items.length > 0)
+const teaser = ownership.gotcha!
 const SITE = 'https://learningrust.nerdmenot.in'
 const DESC = 'Learn Rust if you already program in Go, Kotlin, Python, TypeScript, Java, C#, C or C++. Each lesson puts a Rust program beside the same one in your language, then shows the real compiler error for the habit that trips you.'
 const jsonld = {
@@ -66,10 +73,6 @@ const jsonld = {
       provider: { '@type': 'Organization', name: 'NerdMeNot', url: 'https://github.com/NerdMeNot' }, isAccessibleForFree: true, license: 'https://opensource.org/license/mit' },
   ],
 }
-const totals = [
-  [learn.length + std.length + further.length, 'lessons'],
-  [7, 'phrasebooks'], [5, 'projects'], [9, 'checkpoints'], [OTHERS.length, 'languages compared'],
-]
 const v = versions as Record<string, string>
 const ver = (s: string, re: RegExp) => s?.match(re)?.[0] ?? '?'
 const toolchains = [
@@ -88,11 +91,11 @@ const boot =
   `var f=localStorage.getItem('lr:from');document.documentElement.dataset.from=${JSON.stringify(OTHERS)}.indexOf(f)>=0?f:'go';` +
   `document.documentElement.dataset.picked=localStorage.getItem('lr:picked')||''}` +
   `catch(e){document.documentElement.dataset.theme='dark';document.documentElement.dataset.from='go'}`
+// Which pill looks chosen, and which note shows, before any script runs (no flash).
 const pickCss = OTHERS.map(k => [
-  `:root[data-picked="1"][data-from="${k}"] .choose[data-pick="${k}"]{border-color:var(--c);box-shadow:inset 0 0 0 1px var(--c)}`,
-  `:root[data-picked="1"][data-from="${k}"] .choose[data-pick="${k}"]::after{opacity:1;transform:none}`,
-  `:root[data-picked="1"][data-from="${k}"] .path[data-for="${k}"]{display:grid}`,
-].join('\n')).join('\n') + '\n:root[data-picked="1"] .path-empty{display:none}'
+  `:root[data-picked="1"][data-from="${k}"] .pill[data-pick="${k}"]{border-color:var(--c);box-shadow:inset 0 0 0 1px var(--c);background:var(--lr-soft)}`,
+  `:root[data-picked="1"][data-from="${k}"] .from-picked[data-for="${k}"]{display:block}`,
+].join('\n')).join('\n') + '\n:root[data-picked="1"] .from-empty{display:none}'
 ---
 <!doctype html>
 <html lang="en">
@@ -128,8 +131,8 @@ const pickCss = OTHERS.map(k => [
     <header class="topbar">
       <a class="brand" href="/" aria-label="Learn Rust, home"><img src="/icon.svg" alt="" width="30" height="30" /><span class="wordmark">Learn <b>Rust</b></span></a>
       <nav aria-label="Site">
-        <a href="/start/how-rust-thinks/">Start here</a>
-        <a href={`/learn/${learn[0].id}/`}>Lessons</a>
+        <a href={START[0].href}>Start here</a>
+        <a href="#lessons">Lessons</a>
       </nav>
       <GitHubLink />
       <ThemeToggle group="lr-theme-home" />
@@ -140,16 +143,25 @@ const pickCss = OTHERS.map(k => [
         <div class="hero">
           <p class="eyebrow">Rust for people who already know another language</p>
           <h1>Learn Rust <span>(even with all your past baggage)</span></h1>
-          <p>Your code compiles in Go, Java, Python or C++. Rust says no, and it is usually right. Find out what it can see that you can't, and what to write instead.</p>
-          <p>Every lesson sets a Rust program beside the same program in your language, then ends with a <strong>gotcha</strong>: code that looks fine, the real compiler error, and the fix.</p>
-          <ul class="totals" aria-label="What is on the site">
-            {totals.map(([n, label]) => <li><b>{n}</b> {label}</li>)}
-          </ul>
-          <div class="cta-row">
-            <a class="cta" href="#choose-h">Pick your language</a>
-            <a class="cta ghost" href="/start/how-rust-thinks/">Or start here</a>
+          <p>Your code works in Go, Java, Python or C++. Rust says no, and it is usually right. Every lesson sets a Rust program beside the same one in your language, then shows a <strong>gotcha</strong>: code that looks fine, the real compiler error, and the fix.</p>
+          <div class="from" role="group" aria-labelledby="from-h">
+            <h2 id="from-h">Which language do you know best?</h2>
+            <div class="pills">
+              {OTHERS.map(k => (
+                <button class="pill" type="button" data-pick={k} style={`--c:${LANG[k].color}`} title={LANG[k].tagline} aria-pressed="false">{LANG[k].name}</button>
+              ))}
+            </div>
+            <div class="from-note" aria-live="polite">
+              <p class="from-empty fine">Every comparison on the site starts with it. Saved in this browser only; nothing is sent anywhere.</p>
+              {OTHERS.map(k => (
+                <p class="from-picked" data-for={k}>Comparisons now start with <b>{LANG[k].name}</b>. <a href={`/for/${PHRASEBOOK[k].slug}/`}>Read Rust for {PHRASEBOOK[k].title} developers →</a></p>
+              ))}
+            </div>
           </div>
-          <p class="fine">Every program, output and error on this site comes from a real run: {toolchains.join(', ')}.</p>
+          <div class="cta-row">
+            <a class="cta" href={START[0].href}>Start the course</a>
+            <a class="cta ghost" href="#lessons">Browse all {index.length} lessons</a>
+          </div>
         </div>
         <aside class="teaser" aria-labelledby="teaser-h">
           <p class="eyebrow">Try it: this looks fine</p>
@@ -158,116 +170,80 @@ const pickCss = OTHERS.map(k => [
           <details class="reveal">
             <summary>Can you see why? Open the compiler's answer</summary>
             <RustError text={teaser.error} code={teaser.error_code} />
-            <p class="fine">In Go, <code>b := a</code> shares one array and both names keep working. <a href="/learn/ownership/">Ownership and Moves</a> shows what Rust does instead.</p>
+            <p class="fine">In Go, <code>b := a</code> shares one array and both names keep working. <a href="/learn/ownership/">Ownership and Moves</a> shows what Rust does instead. <a href="/errors/">Reading compiler errors</a> explains how to read the message.</p>
           </details>
         </aside>
       </section>
 
-      <section class="chooser" aria-labelledby="choose-h">
-        <h2 id="choose-h">Where are you coming from?</h2>
-        <p class="prose">Pick the language you know best. Every comparison on the site shows it first, and your starting path appears right below. Nothing is sent anywhere: the choice is saved in this browser.</p>
-        <div class="chooser-grid">
-          {OTHERS.map(k => (
-            <button class="choose" type="button" data-pick={k} style={`--c:${LANG[k].color}`} aria-pressed="false">
-              <b>{LANG[k].name}</b><span>{LANG[k].tagline}</span>
-            </button>
+      <section class="start" aria-labelledby="start-h">
+        <h2 id="start-h">Where to start, in order</h2>
+        <ol class="path-steps">
+          {path.map((s, i) => (
+            <li>
+              <span class="n" aria-hidden="true">{i + 1}</span>
+              <a href={s.href}>{s.title}</a>
+              <p>{s.note}</p>
+            </li>
           ))}
-        </div>
-        <div class="path-empty" aria-hidden="true">
-          <span>↑</span> Pick a language and your path shows up here.
-        </div>
-        <div class="path-wrap" aria-live="polite">
-          {OTHERS.map(k => (
-            <div class="path" data-for={k} style={`--c:${LANG[k].color}`}>
-              <p class="eyebrow">Your path · {LANG[k].name}</p>
-              <h3>Rust for {BOOK[k].title} developers</h3>
-              <p>Starts from what you know ({LANG[k].tagline}), then shows each habit that meets a compiler error, with the fix.</p>
-              <div class="cta-row">
-                <a class="cta" href={`/for/${BOOK[k].slug}/`}>Read the {BOOK[k].title} phrasebook</a>
-                <a class="cta ghost" href={`/learn/${firstLesson}/`}>Start lesson 1</a>
-                <a class="cta ghost" href="/cheatsheets/syntax/">Syntax cheat sheet</a>
+        </ol>
+      </section>
+
+      <section class="index" id="lessons" aria-labelledby="idx-h">
+        <h2 id="idx-h">Every lesson</h2>
+        <p class="prose">{index.length} lessons, in the order the sidebar shows them. The coloured dot says what kind of gotcha a lesson ends on (<a href="#gotcha-kinds">what the dots mean</a>). Read the Rust program, then the same program in your language; at the gotcha, guess what is wrong before you open the error.</p>
+        {[...PARTS].map(p => {
+          const list = index.filter(l => l.part === p.id)
+          const ex = extras[p.id] ?? {}
+          return (
+            <div class="index-part">
+              <h3>{p.label}</h3>
+              <div class="index-list">
+                {(ex.first ?? []).map(x => <a class="extra" href={x.href}><span class="num" aria-hidden="true">▸</span><span class="t">{x.title}</span><span /></a>)}
+                {list.map(l => (
+                  <a href={`/learn/${l.id}/`}>
+                    <span class="num">{l.order}</span><span class="t">{l.title}</span>
+                    {l.verdict ? <span class="dot" style={`--vc:var(--lr-v-${l.verdict})`} title={`Gotcha: ${VERDICT[l.verdict as keyof typeof VERDICT].short}`} /> : <span />}
+                  </a>
+                ))}
+                {(ex.last ?? []).map(x => <a class="extra" href={x.href}><span class="num" aria-hidden="true">▸</span><span class="t">{x.title}</span><span /></a>)}
               </div>
-              <p class="fine">Saved on this device. Change it any time from the top of a lesson.</p>
+            </div>
+          )
+        })}
+        <p class="fine">A ▸ marks a guide or project that sits among the lessons.</p>
+      </section>
+
+      <section class="tracks-wrap" aria-labelledby="more-h">
+        <h2 id="more-h">Beyond the lessons</h2>
+        <div class="tracks">
+          {tracks.map(t => (
+            <div class="track-card">
+              <span class="eyebrow">{t.items.length} {t.items.length === 1 ? 'page' : 'pages'}</span>
+              <h3><a href={t.items[0].href}>{t.name}</a></h3>
+              <p>{t.blurb}</p>
+              <ul>
+                {t.items.slice(0, 5).map(x => <li><a href={x.href}>{x.title}</a></li>)}
+                {t.items.length > 5 && <li class="more"><a href={t.items[0].href}>and {t.items.length - 5} more</a></li>}
+              </ul>
             </div>
           ))}
         </div>
       </section>
 
       <section class="why" aria-labelledby="why-h">
-        <h2 id="why-h">Rust is harder. It is still hard to ignore.</h2>
-        <p class="prose">Expect a few months before Rust feels normal. These are the reasons teams pay that price. Every figure comes from the source linked beside it, and <a href="/start/why-rust/">the full case</a> also lists when to skip Rust.</p>
+        <h2 id="why-h">Is it worth the effort?</h2>
         <div class="why-grid">
           <article class="idea-card">
-            <h3>It rules out a class of bug that keeps hurting C and C++</h3>
-            <p>Microsoft put memory-safety issues at about 70% of the vulnerabilities it assigns a CVE each year (<a href="https://www.microsoft.com/en-us/msrc/blog/2019/07/a-proactive-approach-to-more-secure-code">MSRC, 2019</a>), and Chrome at about 70% of its high-severity bugs (<a href="https://www.chromium.org/Home/chromium-security/memory-safety/">Chromium</a>). In safe Rust the compiler rules that class out, with no garbage collector.</p>
+            <h3>Rust is harder. It is still hard to ignore.</h3>
+            <p>Memory-safety bugs are about 70% of the vulnerabilities Microsoft assigns a CVE each year (<a href="https://www.microsoft.com/en-us/msrc/blog/2019/07/a-proactive-approach-to-more-secure-code">MSRC, 2019</a>) and of Chrome's high-severity bugs (<a href="https://www.chromium.org/Home/chromium-security/memory-safety/">Chromium</a>). In safe Rust the compiler rules that class out, with no garbage collector. The price: in a <a href="https://opensource.googleblog.com/2023/06/rust-fact-vs-fiction-5-insights-from-googles-rust-journey-2022.html">Google survey</a>, a third of respondents were as productive in Rust as in their other languages within two months, and over half within four. The rest took longer.</p>
+            <p><a href="/start/why-rust/">Read the sourced case for and against →</a></p>
           </article>
           <article class="idea-card">
-            <h3>It has been tried at scale, in public</h3>
-            <p>Android's memory-safety share of vulnerabilities fell from 76% in 2019 to 24% in 2024, thanks to memory-safe languages in general, Rust among them (<a href="https://security.googleblog.com/2024/09/eliminating-memory-safety-vulnerabilities-Android.html">Google, 2024</a>). Linux has had Rust support since 6.1, and Cloudflare's Rust proxy uses "about 70% less CPU and 67% less memory" than the system it replaced (<a href="https://blog.cloudflare.com/how-we-built-pingora-the-proxy-that-connects-cloudflare-to-the-internet/">Cloudflare, 2022</a>).</p>
-          </article>
-          <article class="idea-card">
-            <h3>You probably already depend on it</h3>
-            <p>uv and Ruff if you write Python. Turbopack, Rolldown, Biome and Deno if you write JavaScript. ripgrep, which has powered search in VS Code since 2017. Tools people wanted much faster were rewritten in Rust while their users kept writing Python or TypeScript.</p>
-          </article>
-          <article class="idea-card">
-            <h3>Governments are asking for plans</h3>
-            <p>In December 2023, CISA, NSA, FBI and their counterparts in Australia, Canada, the UK and New Zealand asked software makers to plan how to get memory-safety bugs out of their products (<a href="https://www.cisa.gov/news-events/alerts/2023/12/06/cisa-releases-joint-guide-software-manufacturers-case-memory-safe-roadmaps">CISA</a>). It is guidance, not a ban.</p>
+            <h3>Using an AI assistant to write it?</h3>
+            <p>Pasting the compiler's complaints back until it builds gets you a program that compiles. It stops being enough where the compiler asks who should own the data, where code is valid but wrong, inside <code>unsafe</code>, and when the quickest way to silence an error is the wrong one.</p>
+            <p><a href="/start/why-rust/#when-an-assistant-writes-your-rust">Where an assistant stops being enough →</a></p>
           </article>
         </div>
-        <div class="why-cost">
-          <h3>And the price, stated plainly</h3>
-          <ul>
-            <li>In a <a href="https://opensource.googleblog.com/2023/06/rust-fact-vs-fiction-5-insights-from-googles-rust-journey-2022.html">Google survey</a>, a third of respondents said they were as productive in Rust as in their other languages within two months, and over half within four. The rest took longer.</li>
-            <li>Slow compilation tops the productivity problems in the <a href="https://blog.rust-lang.org/2026/03/02/2025-State-Of-Rust-Survey-results">2025 State of Rust survey</a>.</li>
-            <li>It is the wrong tool for some jobs: quick scripts, and ports where another language fits the existing code better.</li>
-          </ul>
-          <p><a class="cta ghost" href="/start/why-rust/">Read the sourced case for and against →</a></p>
-        </div>
-      </section>
-
-      <section class="vibe" aria-labelledby="vibe-h">
-        <h2 id="vibe-h">Vibe-coding Rust works, right up until it doesn't</h2>
-        <p class="prose">Ask an assistant for Rust, paste the compiler's complaints back, repeat until it builds. That gets a program that compiles. These are the places where it stops being enough, and the hours that fix it are the ones on this site.</p>
-        <div class="why-grid">
-          <article class="idea-card">
-            <h3>The compiler asks questions only you can answer</h3>
-            <p>Rust rejects code whose ownership it can't follow, and the way out depends on what the code is for. The error shown <a href="#anat-h">further down</a> offers two fixes: borrow the value, or clone it. Choosing between them takes knowing who should own the data. <a href="/errors/">Reading compiler errors</a> is the place to start.</p>
-          </article>
-          <article class="idea-card">
-            <h3>Compiling is not the same as correct</h3>
-            <p>Safe Rust rules out memory bugs, not wrong logic. In November 2025 a Cloudflare proxy called <code>unwrap()</code> on an error it hadn't handled, panicked, and took much of their network down (<a href="https://blog.cloudflare.com/18-november-2025-outage/">Cloudflare</a>). The compiler let it through because it was valid. Rust makes you decide what happens on an error, and only you can make that decision a good one.</p>
-          </article>
-          <article class="idea-card">
-            <h3>Some code the compiler can't vouch for</h3>
-            <p>Inside an <code>unsafe</code> block, the promises move from the compiler to whoever wrote the block. The first security bug in the Linux kernel's Rust code was a data race inside an <code>unsafe</code> block (<a href="https://www.cve.org/CVERecord?id=CVE-2025-68260">CVE-2025-68260</a>). If you can't read a <code>// SAFETY:</code> comment and judge it, you can't review it. <a href="/learn/unsafe/"><code>unsafe</code>, honestly</a> covers how.</p>
-          </article>
-          <article class="idea-card">
-            <h3>The quickest way to silence an error is often the wrong one</h3>
-            <p><code>.clone()</code> to quiet the borrow checker, <code>unwrap</code> in a library, <code>Rc&lt;RefCell&lt;_&gt;&gt;</code> for everything: all three compile, and the <a href="/learn/idioms/#habits-that-look-like-idioms">Idioms lesson</a> shows what each costs. <a href="/learn/borrow-checker/">Working with the Borrow Checker</a> shows the fixes that change the design instead.</p>
-          </article>
-        </div>
-        <div class="why-cost">
-          <h3>An assistant doesn't change who reviews the code</h3>
-          <p>Use one if you like. You still read what comes back, run it, and answer for it. Learning Rust is an investment, and the numbers are public: in a Google survey, a third of respondents were as productive as in their other languages within two months, and over half within four (<a href="https://opensource.googleblog.com/2023/06/rust-fact-vs-fiction-5-insights-from-googles-rust-journey-2022.html">Google, 2023</a>). The rest took longer.</p>
-          <p class="cta-row">
-            <a class="cta" href="/learn/rust-at-a-glance/">Start with the syntax</a>
-            <a class="cta ghost" href="/errors/">Learn to read the errors</a>
-          </p>
-        </div>
-      </section>
-
-      <section class="tracks" aria-label="Tracks">
-        {tracks.map(t => (
-          <div class="track-card">
-            <span class="eyebrow">{t.count}</span>
-            <h3><a href={t.items[0].href}>{t.name}</a></h3>
-            <p>{t.blurb}</p>
-            <ul>
-              {t.items.slice(0, 6).map(x => <li><a href={x.href}>{x.title}</a></li>)}
-              {t.items.length > 6 && <li class="more"><a href={t.items[0].href}>and {t.items.length - 6} more</a></li>}
-            </ul>
-          </div>
-        ))}
       </section>
 
       <section class="idea" aria-labelledby="idea-h">
@@ -316,9 +292,9 @@ const pickCss = OTHERS.map(k => [
         </div>
       </section>
 
-      <section class="legend" aria-labelledby="legend-h">
+      <section class="legend" id="gotcha-kinds" aria-labelledby="legend-h">
         <h2 id="legend-h">Four kinds of gotcha</h2>
-        <p class="prose">Every gotcha carries one of these labels, so you know whether you are learning a safety rule or just a different habit.</p>
+        <p class="prose">Every gotcha carries one of these labels, so you know whether you are learning a safety rule or just a different habit. To read the compiler's message itself, see <a href="/errors/">Reading compiler errors</a>.</p>
         <div class="legend-grid">
           {Object.entries(VERDICT).map(([k, x]) => (
             <div class="legend-item" style={`--vc:var(--lr-v-${k});--vb:var(--lr-v-${k}-bg)`}>
@@ -328,50 +304,10 @@ const pickCss = OTHERS.map(k => [
           ))}
         </div>
       </section>
-
-      <section aria-labelledby="anat-h" class="stack">
-        <h2 id="anat-h">How to read a compiler error</h2>
-        <p class="prose">Rust's errors look long, but they follow a fixed layout. This is the real error from the gotcha in lesson {vectors.order}, {vectors.title}.</p>
-        <div class="anatomy">
-          <RustError text={anat.error} code={anat.error_code} />
-          <ol>
-            <li>The <span class="k" style="color:var(--lr-term-err)">error[{anat.error_code}]</span> line names the rule that was broken. Look up the code with <code>rustc --explain {anat.error_code}</code>.</li>
-            <li><span class="k" style="color:var(--lr-term-dim)">--&gt;</span> gives the file, line and column.</li>
-            <li>The <span class="k" style="color:var(--lr-term-hint)">-</span> marks are the other parts of the story: here, where the borrow started and where it is used later.</li>
-            <li>The <span class="k" style="color:var(--lr-term-mark)">^</span> marks where the compiler gave up. Read the marked lines in order, top to bottom.</li>
-            <li><span class="k" style="color:var(--lr-term-hint)">help:</span> is a suggestion. It is often right. When it suggests <code>.clone()</code>, check first, because there is usually a fix that copies nothing.</li>
-          </ol>
-        </div>
-      </section>
-
-      <section class="index" aria-labelledby="idx-h">
-        <h2 id="idx-h">Every lesson</h2>
-        <ol class="steps">
-          <li>Read the Rust program, then the same program in your language below it.</li>
-          <li>At the gotcha, look at the Rust code and guess what's wrong before you read the error.</li>
-          <li>Copy the fixed version into your editor, then break it again on purpose.</li>
-        </ol>
-        {[...PARTS].map(p => {
-          const list = index.filter(l => l.part === p.id)
-          return (
-            <div class="index-part">
-              <h3>{p.label}</h3>
-              <div class="index-list">
-                {list.map(l => (
-                  <a href={`/learn/${l.id}/`}>
-                    <span class="num">{l.order}</span><span class="t">{l.title}</span>
-                    {l.verdict ? <span class="dot" style={`--vc:var(--lr-v-${l.verdict})`} title={`Gotcha: ${VERDICT[l.verdict as keyof typeof VERDICT].short}`} /> : <span />}
-                  </a>
-                ))}
-              </div>
-            </div>
-          )
-        })}
-        <p class="fine">{learn.length} lessons, {std.length} standard library pages and {further.length} more in Going further.</p>
-      </section>
     </main>
 
     <footer class="site-foot">
+      <p>Every program, output and error on this site comes from a real run: {toolchains.join(', ')}.</p>
       <p>Learn Rust is an independent project. It is not affiliated with the Rust Project or the Rust Foundation. The Rust name and logo are trademarks of the Rust Foundation; the claw mark here is ours.</p>
       <p>Code and text under the <a href="https://github.com/NerdMeNot/learn-rust/blob/main/LICENSE">MIT licence</a> · <a href="https://github.com/NerdMeNot/learn-rust">Source on GitHub</a></p>
     </footer>
@@ -384,19 +320,13 @@ const pickCss = OTHERS.map(k => [
       document.addEventListener('click', e => {
         const b = (e.target as Element).closest<HTMLElement>('[data-pick]')
         if (!b) return
-        const first = root.dataset.picked !== '1'
         root.dataset.from = b.dataset.pick
         root.dataset.picked = '1'
         try { localStorage.setItem('lr:from', b.dataset.pick!); localStorage.setItem('lr:picked', '1') } catch {}
         sync()
-        // Show what the click did: fade the path in, and bring it into view if it is below the fold.
+        // Show what the click did: the note under the pills fades in.
         root.classList.add('lr-switching')
         setTimeout(() => root.classList.remove('lr-switching'), 500)
-        const path = document.querySelector<HTMLElement>(`.path[data-for="${b.dataset.pick}"]`)
-        if (path && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
-          const r = path.getBoundingClientRect()
-          if (first || r.bottom > innerHeight) path.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-        }
       })
     </script>
   </body>

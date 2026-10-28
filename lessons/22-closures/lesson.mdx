@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 Outputs come from Linux on 64-bit ARM, Rust 1.99.1, edition 2024.
 
@@ -322,7 +322,7 @@ Rust refuses the same function (E0373, the `make_adder` error above).
 
 </ForLang>
 
-<p class="lr-layer">Going deeper</p>
+<p class="lr-layer" id="layer-deeper">Going deeper</p>
 
 ## A closure is a struct
 
@@ -366,7 +366,7 @@ An `impl Fn` or `F: Fn` parameter is filled in with the closure's own type, so t
 
 Reach for `dyn` when you store closures of different types together or choose one at run time; otherwise prefer `impl Fn`. No timings are claimed here: measure your own case.
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 <Exercise name="compose" title="Closures that return closures">
 Write `make_adder`, `make_counter` and `compose`. Each returns a closure that outlives the function, so each needs `move`: forgetting it is the error you are meant to meet. The checks interleave two counters (a `static` total fails) and compose in both orders.

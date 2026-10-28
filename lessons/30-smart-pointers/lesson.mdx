@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 Outputs on this page come from Linux on 64-bit ARM with Rust 1.99.1, built in debug mode.
 
@@ -366,7 +366,7 @@ Cycles leak with `shared_ptr` as with `Rc`, and `weak_ptr` is the fix, as `Weak`
 | `unique_ptr<FILE, decltype(&fclose)>`, a custom deleter | a type with `Drop` ([Common traits](/learn/common-traits/)) |
 </ForLang>
 
-<p class="lr-layer">Going deeper</p>
+<p class="lr-layer" id="layer-deeper">Going deeper</p>
 
 ## `Rc<str>`: a shared string
 
@@ -376,7 +376,7 @@ A pointer to a `str`, a slice or a `dyn Trait` is two words ([Trait objects](/le
 
 `Rc<str>` is a shared string with no spare capacity. It suits text many owners read and nobody changes; cloning it copies no bytes. An `Rc<String>` points at a `String`, which points at its text; an `Rc<str>` holds the text itself.
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 ## Try it
 

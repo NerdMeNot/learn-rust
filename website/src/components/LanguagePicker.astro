@@ -4,7 +4,7 @@
 //
 // This file also holds the site's one small script: tab clicks (which change the
 // language everywhere, as in the first version), the picker, and Copy buttons.
-import { LANG, OTHERS } from '../lib/langs'
+import { LANG, OTHERS, PHRASEBOOK } from '../lib/langs'
 ---
 <div class="lr-picker">
   <button class="lr-from-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="lr-from-menu">
@@ -19,11 +19,14 @@ import { LANG, OTHERS } from '../lib/langs'
         <button class="lr-lang-btn" type="button" data-pick={k} style={`--c:${LANG[k].color}`}>{LANG[k].name}</button>
       ))}
     </div>
+    <p class="lr-from-book">
+      {OTHERS.map(k => <a data-for={k} href={`/for/${PHRASEBOOK[k].slug}/`}>Read Rust for {PHRASEBOOK[k].title} developers →</a>)}
+    </p>
   </div>
 </div>
 
 <script>
-  import { OTHERS } from '../lib/langs'
+  import { LANG, OTHERS } from '../lib/langs'
 
   const root = document.documentElement
   const menu = document.getElementById('lr-from-menu')!
@@ -41,6 +44,7 @@ import { LANG, OTHERS } from '../lib/langs'
     }
     root.dataset.from = lang
     try { localStorage.setItem('lr:from', lang) } catch {}
+    dismissNote()
     if (anchor && before !== undefined) window.scrollBy(0, anchor.getBoundingClientRect().top - before)
   }
   const open = (yes: boolean) => { menu.hidden = !yes; btn.setAttribute('aria-expanded', String(yes)) }
@@ -52,6 +56,7 @@ import { LANG, OTHERS } from '../lib/langs'
     if (pick) {
       setFrom(pick.dataset.pick!)
       try { localStorage.setItem('lr:picked', '1') } catch {}
+      dismissNote()
       return open(false)
     }
     if (!t.closest('#lr-from-menu')) open(false)
@@ -95,11 +100,27 @@ import { LANG, OTHERS } from '../lib/langs'
     history.pushState(null, '', a.hash)
   })
 
-  // First visit: the comparisons default to Go, which is wrong for most readers. Open
-  // the picker once so they see it can be changed. Any choice, or closing it, counts.
-  const seen = (() => { try { return localStorage.getItem('lr:picked') || localStorage.getItem('lr:seen') } catch { return '1' } })()
-  if (!seen && document.querySelector('.lr-others, .lr-forlang')) {
-    open(true)
+  // First visit: the comparisons default to Go, which is wrong for most readers. A line above
+  // the first comparison says so and offers the picker; it does not open the picker over the
+  // page. Any choice, "Change it" or the close button counts as seen.
+  let note: HTMLElement | null = null
+  function dismissNote() {
+    note?.remove()
+    note = null
     try { localStorage.setItem('lr:seen', '1') } catch {}
+  }
+  const seen = (() => { try { return localStorage.getItem('lr:picked') || localStorage.getItem('lr:seen') } catch { return '1' } })()
+  const first = document.querySelector('.lr-others, .lr-forlang')
+  if (!seen && first) {
+    const where = first.closest('.lr-compare') ?? first
+    note = document.createElement('p')
+    note.className = 'lr-first-note not-content'
+    note.innerHTML = `<span>The comparisons show <b></b> first. Know another language better?</span>` +
+      `<button type="button" class="lr-first-change">Change it</button>` +
+      `<button type="button" class="lr-first-x" aria-label="Dismiss this note">×</button>`
+    note.querySelector('b')!.textContent = LANG[root.dataset.from as keyof typeof LANG]?.name ?? 'Go'
+    note.querySelector('.lr-first-change')!.addEventListener('click', e => { e.stopPropagation(); dismissNote(); open(true) })
+    note.querySelector('.lr-first-x')!.addEventListener('click', dismissNote)
+    where.before(note)
   }
 </script>

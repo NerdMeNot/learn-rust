@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 Outputs come from Linux on 64-bit ARM, Rust 1.99.1, debug build. Every program on this page that makes files puts them under `std::env::temp_dir()` and deletes them. The runner gives a program an empty standard input. A few programs read `/proc` or use a Unix-only API; they say so.
 
@@ -104,7 +104,7 @@ On 1.99.1 every `println!` made its own write call even to a file. The docs prom
 
 <Snippet file="stdin.rs" />
 
-<p class="lr-layer">Going deeper</p>
+<p class="lr-layer" id="layer-deeper">Going deeper</p>
 
 ## What a `BufWriter` buys, counted
 
@@ -264,7 +264,7 @@ The destructor closes the file, as `Drop` does (descriptor counts match `drop-cl
 | `std::filesystem::path`, `rename` | `Path`, `PathBuf`, `fs::rename` |
 </ForLang>
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 ## Try it
 

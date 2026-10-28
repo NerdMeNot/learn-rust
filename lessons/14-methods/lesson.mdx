@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 A [struct](/learn/structs/) holds data. A **method** is a function that belongs to a type, so you can write `acct.deposit(5)` instead of `deposit(&mut acct, 5)`. This lesson covers writing methods, what the first parameter means, and what Rust uses in place of constructors, overloading and inheritance. Outputs come from Linux on 64-bit ARM.
 
@@ -268,7 +268,7 @@ What is new is the mode. In your language every method is in effect `&mut self`:
 C++ defaults to changeable and writes `const` to opt out; Rust defaults to unchangeable. A `&self` method can't change anything through `self` (the exceptions are types that change through a shared reference, [Smart pointers](/learn/smart-pointers/#cell-and-refcell-change-it-through-a-shared-reference)).
 </ForLang>
 
-<p class="lr-layer">Going deeper</p>
+<p class="lr-layer" id="layer-deeper">Going deeper</p>
 
 ## What `self` is in memory
 
@@ -374,7 +374,7 @@ TypeScript has optional parameters, overload signatures and the options-object i
 C++ has member-initializer lists, delegating and copy/move constructors, `explicit` and default arguments. Rust has none of them: `new` sets all the fields in one struct literal, a move hands the value over ([Ownership](/learn/ownership/)), and a copy is a `.clone()` call you write.
 </ForLang>
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 ## Try it
 

@@ -20,7 +20,7 @@ p { margin: 0; }
 .brand .wordmark b { font-weight: 600; color: var(--sl-color-accent); }
 .topbar nav { margin-left: auto; display: flex; gap: 18px; font-weight: 700; font-size: 15px; }
 @media (max-width: 30rem) { .topbar nav a:first-child { display: none; } .topbar { gap: 10px; } .brand .wordmark { font-size: 20px; } }
-.topbar nav a { text-decoration: none; color: var(--lr-muted); }
+.topbar nav a { text-decoration: none; color: var(--lr-muted); white-space: nowrap; }
 .topbar nav a:hover { color: var(--lr-ink); }
 
 .home { max-width: 1120px; margin: 0 auto; padding: 48px 16px 96px; display: grid; gap: 56px; }
@@ -56,21 +56,7 @@ p { margin: 0; }
 .reveal > :not(summary) { margin-top: 10px; }
 .reveal[open] > :not(summary) { animation: lr-fade-in 260ms ease-out both; }
 
-.chooser { display: grid; gap: 12px; }
-.chooser-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
-.choose { display: grid; gap: 4px; align-content: start; text-align: left; background: var(--lr-surface); border: 1px solid var(--lr-line); border-radius: 12px; padding: 14px 16px; cursor: pointer; color: var(--lr-ink); font: inherit; }
-.choose b { font: 700 16px var(--lr-display); display: inline-flex; gap: 8px; align-items: center; }
-.choose b::before { content: ''; width: 11px; height: 11px; border-radius: 3px; background: var(--c); }
-.choose span { font-size: 13.5px; color: var(--lr-muted); }
-.choose { position: relative; transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease; }
-.choose:hover { border-color: var(--lr-muted); transform: translateY(-1px); }
-.choose::after { content: 'Selected'; position: absolute; top: 10px; right: 12px; font: 700 11px var(--lr-display); letter-spacing: 0.04em; text-transform: uppercase; color: var(--c); opacity: 0; transform: translateY(2px); transition: opacity 200ms ease, transform 200ms ease; }
 
-.path-empty { color: var(--lr-muted); font-size: 15px; border: 1.5px dashed var(--lr-line); border-radius: 12px; padding: 14px 18px; }
-.path-empty span { color: var(--sl-color-accent); font-weight: 800; margin-right: 6px; }
-.path { display: none; gap: 10px; align-content: start; border: 1px solid var(--c); border-radius: 14px; padding: 20px 22px; background: var(--lr-surface); box-shadow: inset 4px 0 0 var(--c); }
-.path > p:not(.eyebrow):not(.fine) { color: var(--sl-color-gray-2); max-width: 64ch; }
-:root.lr-switching .path { animation: lr-fade-in 280ms ease-out both; }
 
 .site-foot { max-width: 1120px; margin: 0 auto; padding: 24px 16px 48px; display: grid; gap: 6px; color: var(--lr-muted); font-size: 13px; border-top: 1px solid var(--lr-line); }
 
@@ -94,10 +80,6 @@ p { margin: 0; }
 .badge { justify-self: start; display: inline-flex; align-items: center; gap: 7px; font: 700 13px/1.3 var(--lr-body); padding: 4px 10px 4px 8px; border-radius: 999px; color: var(--vc); background: var(--vb); }
 .badge::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--vc); }
 
-.anatomy { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 20px; align-items: start; }
-@media (max-width: 900px) { .anatomy { grid-template-columns: minmax(0, 1fr); } }
-.anatomy ol { margin: 0; padding-left: 22px; display: grid; gap: 10px; }
-.k { font: 600 0.9em var(--lr-mono); padding: 0 0.3em; border-radius: 3px; background: var(--lr-term-bg); }
 
 .index { display: grid; gap: 26px; }
 .steps { margin: 0; padding-left: 22px; display: grid; gap: 6px; max-width: 70ch; color: var(--lr-muted); }
@@ -126,13 +108,41 @@ p { margin: 0; }
 .why-cost ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; color: var(--sl-color-gray-2); }
 .why-cost .cta { margin-top: 4px; }
 
-.vibe { display: grid; gap: 16px; }
-.vibe .why-cost p { color: var(--sl-color-gray-2); max-width: 78ch; }
 
 /* A grid track that sizes to its content grows with a wide <pre> (a compiler error, a code panel)
    and pushes the box past the page. Every grid on this page gets one shrinkable column, and its
    children may shrink, so wide content scrolls inside its own box instead. */
-.hero, .teaser, .reveal, .chooser, .path, .why, .why-cost, .vibe, .stack, .track-card, .idea-card, .idea-foot, .legend, .index, .index-part, .site-foot { grid-template-columns: minmax(0, 1fr); }
-.hero-grid > *, .hero > *, .teaser > *, .reveal > *, .chooser > *, .path > *, .why > *, .why-cost > *, .vibe > *, .stack > *, .track-card > *, .idea-card > *, .idea-foot > *, .why-grid > *, .tracks > *, .idea > *, .real > *, .legend-grid > *, .anatomy > *, .chooser-grid > * { min-width: 0; }
+.hero, .from, .teaser, .reveal, .why, .why-cost, .start, .stack, .tracks-wrap, .track-card, .idea-card, .idea-foot, .legend, .index, .index-part, .site-foot { grid-template-columns: minmax(0, 1fr); }
+.hero-grid > *, .hero > *, .from > *, .teaser > *, .reveal > *, .why > *, .why-cost > *, .start > *, .stack > *, .tracks-wrap > *, .track-card > *, .idea-card > *, .idea-foot > *, .why-grid > *, .tracks > *, .idea > *, .real > *, .legend-grid > *, .path-steps > * { min-width: 0; }
 .reveal, .teaser { overflow: hidden; }
 .reveal .lr-term, .teaser .lr-panel { max-width: 100%; }
+
+/* The language choice sits in the hero: a row of pills, and one line that says what it did. */
+.from { display: grid; gap: 10px; padding: 14px 0 2px; }
+.from h2 { font-size: 17px; font-weight: 700; }
+.pills { display: flex; flex-wrap: wrap; gap: 8px; }
+.pill { display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: 999px; background: var(--lr-surface); border: 1px solid var(--lr-line); color: var(--lr-ink); font: 700 15px var(--lr-display); cursor: pointer; transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease; }
+.pill::before { content: ''; width: 10px; height: 10px; border-radius: 3px; background: var(--c); }
+.pill:hover { border-color: var(--lr-muted); }
+.pill[aria-pressed='true'] { border-color: var(--c); box-shadow: inset 0 0 0 1px var(--c); background: var(--lr-soft); }
+.from-note { min-height: 3em; }
+.from-picked { display: none; color: var(--sl-color-gray-2); font-size: 16px; }
+.from-picked b { color: var(--lr-ink); }
+.from-picked a { font-weight: 700; }
+:root.lr-switching .from-picked { animation: lr-fade-in 280ms ease-out both; }
+
+/* Where to start: four steps, in order. */
+.start { display: grid; gap: 14px; }
+.path-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; counter-reset: step; }
+@media (max-width: 900px) { .path-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .path-steps { grid-template-columns: minmax(0, 1fr); } }
+.path-steps li { position: relative; display: grid; gap: 6px; align-content: start; background: var(--lr-surface); border: 1px solid var(--lr-line); border-radius: 12px; padding: 16px 18px 16px 58px; }
+.path-steps .n { position: absolute; left: 16px; top: 16px; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; background: var(--sl-color-accent); color: var(--sl-color-black); font: 800 15px var(--lr-display); }
+.path-steps a { font: 700 17px/1.25 var(--lr-display); color: var(--lr-ink); text-decoration: none; }
+.path-steps a::after { content: ''; position: absolute; inset: 0; border-radius: 12px; }
+.path-steps li:hover { border-color: var(--lr-muted); }
+.path-steps p { color: var(--lr-muted); font-size: 14.5px; }
+.index-list a.extra .t { font-weight: 600; font-style: italic; }
+.index-list a.extra .num { color: var(--sl-color-accent); font-size: 16px; line-height: 1; }
+.tracks-wrap { display: grid; gap: 14px; }
+.site-foot p:first-child { font-size: 12.5px; }

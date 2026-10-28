@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 Rust has no `null`, `nil` or `undefined`. A value that might be missing gets its own type, `Option<T>`, and the compiler makes you handle the missing case before you can use the value. Outputs on this page come from Linux on 64-bit ARM with Rust 1.99.1; where a fact depends on the platform, the text says so.
 
@@ -252,7 +252,7 @@ The same parse as each. `.ok()` turns a `Result` into an `Option` and drops the 
 
 The [next lesson](/learn/errors/) covers `Result`, and `?` on it.
 
-<p class="lr-layer">Going deeper</p>
+<p class="lr-layer" id="layer-deeper">Going deeper</p>
 
 ## `Option<&T>` takes no extra space
 
@@ -354,7 +354,7 @@ C has no standard way to say "no result", so each function picks its own sentine
 `optional<int*>` is twice a plain pointer because it stores a flag beside it. Rust's `Option<&T>` is the pointer.
 </ForLang>
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 ## Try it
 

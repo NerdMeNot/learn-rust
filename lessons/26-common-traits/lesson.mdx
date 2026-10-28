@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 Outputs on this page come from Linux on 64-bit ARM with Rust 1.99.1.
 
@@ -275,7 +275,7 @@ An operator is a method call on a trait: `a + b` is `Add::add(a, b)`. Implement 
 
 The arithmetic and bit operators take their operands **by value**, so `a + b` moves non-`Copy` operands. `Vec2` is `Copy`, which is why `a` still works above. `==`, `<` and `a[i]` borrow, and `+=` takes `&mut self`.
 
-<p class="lr-layer">Going deeper</p>
+<p class="lr-layer" id="layer-deeper">Going deeper</p>
 
 ## The rules between traits
 
@@ -365,7 +365,7 @@ C++ destructors are Rust's `Drop`, and locals go in the same reverse order. For 
 
 </ForLang>
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 ## Try it
 

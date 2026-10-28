@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 ## A value whose type you have forgotten
 
@@ -200,7 +200,7 @@ Rust has neither. Dropping a `Box<dyn Shape>` runs the real type's `drop` (the d
 | `virtual ~Shape() = default;` | nothing to write (see above) |
 </ForLang>
 
-<p class="lr-layer">Going deeper</p>
+<p class="lr-layer" id="layer-deeper">Going deeper</p>
 
 ## What a `dyn` pointer is made of
 
@@ -290,7 +290,7 @@ Needing a downcast often means the types are a closed list, where an enum with `
 
 Trait objects ask for more typing than the languages above: `Box::new` at each insertion, `clone_box` for copies, no fields in a trait. In return a `Square` stays 4 bytes whether or not a `dyn` ever points at it, as in Go and unlike a C++ class with `virtual` methods.
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 ## Try it
 

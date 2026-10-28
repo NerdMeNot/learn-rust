@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 A **pattern** is a shape a value can have, with names where you want to keep a part. Matching a value against it either fails or gives each name its part, and taking a value apart this way is called **destructuring**. [Match](/learn/match/) is where you met patterns (literals, ranges, guards, slices) and this page does not repeat it. It covers the other places a pattern can stand, what a pattern does to ownership, and the small rules (`_` against `_name`, `&`) that trip people up. Outputs come from Linux on 64-bit ARM with Rust 1.99.1.
 
@@ -261,7 +261,7 @@ A structured binding goes by position, never tests anything, and does not nest:
 
 </ForLang>
 
-<p class="lr-layer">Going deeper</p>
+<p class="lr-layer" id="layer-deeper">Going deeper</p>
 
 ## What a binding does in memory
 
@@ -295,7 +295,7 @@ A pattern by value and a pattern through a reference build different things. The
 
 When a value that nothing holds is dropped, and why `let _ = lock.lock()` is refused, are in [Ownership](/learn/ownership/#scopes-drop-order-and-let-_). Some pattern rules depend on the edition set in `Cargo.toml`: a let chain (`if let Some(n) = v && n > 5`) needs edition 2024 ([If / else](/learn/if-else/#let-chains) runs it under both), and the [Edition Guide](https://doc.rust-lang.org/edition-guide/rust-2024/match-ergonomics.html) lists where edition 2024 reserves `ref`, `mut` and `&` under a default binding mode.
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 ## Try it
 

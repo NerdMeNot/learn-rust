@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 Outputs come from Linux on 64-bit ARM with Rust 1.99.1, debug build. Other languages ran in the same image: Go 1.27, Java 25, Kotlin 2.4, .NET 10, Python 3.13, Node 24, GCC 14.
 
@@ -262,7 +262,7 @@ Use `to_digit(radix)`, where the radix is the base (10, 16, up to 36), to read a
 
 `collect::<String>()` turns an iterator of `char`s, `&str`s or `String`s into one `String`. `write!` into a `String` needs `use std::fmt::Write` and returns a `Result`. Writing into the `String` does not fail; the `Result` is `Err` only when a `Display` impl you format returns an error, as the last line shows ([Formatting](/learn/formatting/) goes further).
 
-<p class="lr-layer">Going deeper</p>
+<p class="lr-layer" id="layer-deeper">Going deeper</p>
 
 ## Case is more than A to Z
 
@@ -320,7 +320,7 @@ The 1.99.1 `str` and `char` docs list no stable method for the jobs on the left 
 
 [Finding and using crates](/start/using-crates/) shows how to add one. `regex` is maintained by the Rust project's regex team ([team page](https://github.com/rust-lang/team/blob/main/teams/regex.toml)) but is a separate crate. Its [docs](https://docs.rs/regex/latest/regex/) say the syntax lacks look-around and backreferences, in exchange for a worst-case search time proportional to pattern size times text size. [`Regex::new`](https://docs.rs/regex/latest/regex/struct.Regex.html#method.new) returns a `Result`, since the pattern can be invalid, and compiling is not cached, so build a regex once. Not run here: the lessons' runner has no crates.
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 ## Try it
 

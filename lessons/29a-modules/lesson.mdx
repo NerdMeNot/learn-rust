@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 Outputs on this page come from Linux on 64-bit ARM with Rust 1.99.1, edition 2024 (the language version a project's `Cargo.toml` selects). This page is the reference: [Splitting code into files](/start/files-and-modules/) is the step-by-step guide, and [Reading signatures](/learn/reading-signatures/#paths-use-pub-and-mod) shows the path forms and `pub`.
 
@@ -108,7 +108,7 @@ The convention is a `tests` module at the bottom of the file, compiled only when
 
 `#[cfg(test)]` says "compile this only for tests" ([attributes](/learn/macros-attributes-naming/)). Files in the `tests/` folder are separate crates, so they see only what is `pub` (E0603 above). Broken test code does not stop a normal `cargo build` (the last runs).
 
-<p class="lr-layer">Going deeper</p>
+<p class="lr-layer" id="layer-deeper">Going deeper</p>
 
 ## Privacy follows the module, not the type
 
@@ -273,7 +273,7 @@ C++ has `static` too. An unnamed namespace does the same job (case 1), and C++20
 
 </ForLang>
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 <Exercise name="ladder" title="Climb the visibility ladder">
 Write `store::report::line`, which formats `"tea: 3 EUR"` for 250 cents in region `"fr"`. It needs `util::round`, private to `util`, and `currency`, private to `store`. One needs a wider visibility and the other needs none. `main` imports `round` from two places, so it compiles only if `util::round` is no wider than it must be.

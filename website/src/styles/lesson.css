@@ -156,6 +156,13 @@
 .lr-from-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.4rem; }
 .lr-lang-btn { display: flex; align-items: center; gap: 0.5rem; font: 600 0.875rem var(--lr-display); color: var(--lr-ink); background: none; border: 1px solid var(--lr-line); border-radius: 8px; padding: 0.5rem 0.6rem; cursor: pointer; text-align: left; }
 .lr-lang-btn:hover { background: var(--lr-soft); }
+.lr-from-book a { font-weight: 700; color: var(--sl-color-accent); font-size: 0.85rem; }
+/* The one-time line above the first comparison (see LanguagePicker.astro). */
+.lr-first-note { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.75rem; margin: 1.25rem 0 0; padding: 0.55rem 0.8rem; border-left: 3px solid var(--sl-color-accent); border-radius: 6px; background: var(--lr-soft); font-size: 0.9rem; color: var(--lr-muted); }
+.lr-first-note b { color: var(--lr-ink); }
+.lr-first-note button { font: 700 0.85rem var(--lr-display); color: var(--lr-ink); background: none; border: 1px solid var(--lr-line); border-radius: 999px; padding: 0.15rem 0.7rem; cursor: pointer; }
+.lr-first-note button:hover { border-color: var(--lr-muted); }
+.lr-first-note .lr-first-x { margin-inline-start: auto; border: 0; font-size: 1.1rem; line-height: 1; padding: 0.1rem 0.45rem; color: var(--lr-muted); }
 @media (max-width: 50rem) { .lr-from-lbl { display: none; } }
 @media (max-width: 40rem) {
   .lr-picker { position: static; }
@@ -264,3 +271,21 @@
   .lr-panel-head { flex-wrap: wrap; row-gap: 0.25rem; padding-block: 0.4rem; }
   .lr-panel-head .lr-file { max-width: 100%; }
 }
+
+/* The pointer to a part's checkpoint, after the last lesson of the part. */
+.lr-checkpoint { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.3rem 0.6rem; margin: 3rem 0 0; padding: 0.9rem 1.1rem; border: 1px solid var(--lr-line); border-left: 3px solid var(--sl-color-accent); border-radius: 8px; background: var(--lr-soft); color: var(--lr-muted); }
+.lr-checkpoint b { color: var(--lr-ink); }
+.lr-checkpoint a { font-weight: 700; color: var(--sl-color-accent); }
+
+/* The strip of layers under a lesson's intro: where each stretch starts, and how long it runs. */
+.lr-strip { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1.25rem 0 0; }
+.lr-strip a { display: grid; gap: 0.1rem; flex: 1 1 8.5rem; padding: 0.55rem 0.8rem; border: 1px solid var(--lr-line); border-radius: 8px; background: var(--lr-surface); text-decoration: none; color: var(--lr-muted); font-size: 0.8rem; }
+.lr-strip a:hover { border-color: var(--lr-muted); }
+.lr-strip b { font: 700 0.92rem var(--lr-display); color: var(--lr-ink); }
+.lr-readtime { margin: -0.25rem 0 0.75rem; font-size: 0.85rem; color: var(--lr-muted); }
+.lr-errcard[hidden] { display: none; }
+.lr-errfilter { display: grid; gap: 0.35rem; margin: 1rem 0 0; max-width: 28rem; }
+.lr-errfilter label { font: 700 0.9rem var(--lr-display); color: var(--lr-ink); }
+.lr-errfilter input { font: 500 1rem var(--lr-body); padding: 0.5rem 0.8rem; border: 1px solid var(--lr-line); border-radius: 8px; background: var(--lr-surface); color: var(--lr-ink); }
+.lr-errfilter input:focus-visible { outline: 2px solid var(--sl-color-accent); outline-offset: 1px; }
+.lr-errcount { margin: 0; min-height: 1.3em; font-size: 0.85rem; color: var(--lr-muted); }

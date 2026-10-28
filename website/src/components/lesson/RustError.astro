@@ -31,7 +31,7 @@ const html = text.split('\n').map(colour).join('\n')
   <div class="lr-term-head">
     <span>{title ?? cmd}</span>
     {code && (
-      <a href={`https://doc.rust-lang.org/error_codes/${code}.html`} target="_blank" rel="noopener">What is {code}?</a>
+      <a href={`/errors/#${code}`}>What is {code}?</a>
     )}
   </div>
   <pre set:html={html} />

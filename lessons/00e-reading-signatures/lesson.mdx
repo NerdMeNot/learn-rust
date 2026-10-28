@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 A function's **signature** is everything before the body's `{` (in a declaration, up to the `;`). The standard library's docs show signatures first, and compiler errors often point at them. Read the name, the parameters, the result, and the bounds last. This page maps your language's signatures to Rust, decodes five of them, then covers `use`, `pub` and `::`. Outputs come from Linux on 64-bit ARM with Rust 1.99.1, and each std signature is copied from the 1.99.1 docs.
 
@@ -314,7 +314,7 @@ And a private function reached from outside is E0603:
 
 <Snippet file="private-fn.fail.rs" />
 
-<p class="lr-layer">Going deeper</p>
+<p class="lr-layer" id="layer-deeper">Going deeper</p>
 
 ## The bound is checked where you write it
 
@@ -364,7 +364,7 @@ A garbage-collected language never writes this: the collector keeps whatever a r
 
 </ForLang>
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 The first asks you to read rather than write.
 

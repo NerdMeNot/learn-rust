@@ -136,11 +136,24 @@ These come from Rust's own surveys and from teams that have used it at scale.
 - **"Rust is the greenest language."** A widely shared [2017 study](https://greenlab.di.uminho.pt/wp-content/uploads/2017/10/sleFinal.pdf) ranked languages by energy use, with C first and Rust close behind. A [2025 study](https://arxiv.org/abs/2410.05460) found that once you account for language implementations versus languages, the benchmark code, the number of active cores and memory activity, "the choice of programming language implementation has no significant impact on energy consumption beyond execution time." Faster programs use less energy, and the study found little else on top of that.
 - **"If it compiles, it works."** Rust rules out whole categories of bugs, not all of them. See the Cloudflare outage above.
 
+## When an assistant writes your Rust
+
+Ask an assistant for Rust, paste the compiler's complaints back, repeat until it builds. That gets a program that compiles. These are the places where it stops being enough, and the hours that fix it are the ones on this site.
+
+- **The compiler asks questions only you can answer.** Rust rejects code whose ownership it can't follow, and the way out depends on what the code is for. An ownership error often offers two fixes: borrow the value, or clone it. Choosing between them takes knowing who should own the data. [Reading compiler errors](/errors/) is the place to start.
+- **Compiling is not the same as correct.** Safe Rust rules out memory bugs, not wrong logic. The Cloudflare outage above is the example: `unwrap()` on an error nobody had handled was valid code, so the compiler let it through. Rust makes you decide what happens on an error, and only you can make that decision a good one.
+- **Some code the compiler can't vouch for.** Inside an `unsafe` block, the promises move from the compiler to whoever wrote the block. The first security bug in the Linux kernel's Rust code was a data race inside an `unsafe` block ([CVE-2025-68260](https://www.cve.org/CVERecord?id=CVE-2025-68260)). If you can't read a `// SAFETY:` comment and judge it, you can't review it. [`unsafe`, honestly](/learn/unsafe/) covers how.
+- **The quickest way to silence an error is often the wrong one.** `.clone()` to quiet the borrow checker, `unwrap` in a library, `Rc<RefCell<_>>` for everything: all three compile, and the [Idioms lesson](/learn/idioms/#habits-that-look-like-idioms) shows what each costs. [Working with the Borrow Checker](/learn/borrow-checker/) shows the fixes that change the design instead.
+
+An assistant doesn't change who reviews the code. Use one if you like. You still read what comes back, run it, and answer for it. Learning Rust is an investment, and [what it costs](#what-it-costs) is public.
+
 ## Where to go from here
 
-- [How Rust wants you to think](/start/how-rust-thinks/): the mindset behind the rules, before any syntax.
-- [Your first project with Cargo](/start/first-project/): install Rust and run something.
-- Or go straight to [Hello World](/learn/hello-world/). Every lesson shows Rust next to the language you picked at the top of the page.
+The course reads in this order:
+
+1. [How Rust wants you to think](/start/how-rust-thinks/): the mindset behind the rules, before any syntax.
+2. [Your first project with Cargo](/start/first-project/): install Rust and run something.
+3. [Lesson 1, Rust at a glance](/learn/rust-at-a-glance/), then the rest of the lessons. Every lesson shows Rust next to the language you chose with the "Coming from" button at the top of the page.
 
 ## Read more
 

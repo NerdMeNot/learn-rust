@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 [Borrowing](/learn/borrowing/) lent a value out to be read, with `&`. This lesson lends it out to be changed, with `&mut`. One rule governs it, and it explains many of the first errors you will meet. Outputs come from Linux on 64-bit ARM; where a fact depends on the platform or build mode, the text says so.
 
@@ -213,7 +213,7 @@ This is the gotcha at the top of the page. Usually you don't need two references
 | two `std::span`s over halves of an array | `let (a, b) = v.split_at_mut(mid);` |
 </ForLang>
 
-<p class="lr-layer">Going deeper</p>
+<p class="lr-layer" id="layer-deeper">Going deeper</p>
 
 ## Why one writer or many readers?
 
@@ -369,7 +369,7 @@ C++ also has [`std::shared_mutex`](https://en.cppreference.com/w/cpp/thread/shar
 
 The rule has a price: it refuses safe programs, like two `&mut` to elements 0 and 2, which never overlap. You work round it as above. Some designs don't fit at all, such as two objects that both hold a mutable pointer to a third. For those, some types change data through a shared `&`. `Cell` only copies values in and out, so it can't clash; `RefCell` and `Mutex` check the rule while the program runs ([`RefCell` in Smart pointers](/learn/smart-pointers/#cell-and-refcell-change-it-through-a-shared-reference), [`Mutex` in Shared state](/learn/shared-state/)).
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 ## Try it
 

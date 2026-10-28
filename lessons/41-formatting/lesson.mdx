@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 [Macros, attributes and naming](/learn/macros-attributes-naming/#format-strings) owns the format-string syntax: `{}`, `{:?}`, `{0}`, `{name}`, width, precision and `{{`. This page covers what is behind it: which trait each letter calls, how to write those traits for your own types, and where the text goes. Outputs come from Linux on 64-bit ARM with Rust 1.99.1, a debug build.
 
@@ -235,7 +235,7 @@ The capacity 15 of `std::format("n = {}", 42)` is the size of libstdc++'s small-
 <Snippet file="width-locale.cpp" />
 </ForLang>
 
-<p class="lr-layer">Going deeper</p>
+<p class="lr-layer" id="layer-deeper">Going deeper</p>
 
 ## What the macro hands to your code
 
@@ -259,7 +259,7 @@ The std docs for [`Debug`](https://doc.rust-lang.org/std/fmt/trait.Debug.html) s
 
 Some languages change formatting by the machine's language settings: C's `printf` follows `setlocale` ([man page](https://man7.org/linux/man-pages/man3/setlocale.3.html)), C# follows [`CultureInfo.CurrentCulture`](https://learn.microsoft.com/en-us/dotnet/api/system.globalization.cultureinfo.currentculture), and Java's `String.format` uses a `Locale`. The C and C# behaviour is from their docs, not run (this image has no German locale or culture data), so there a `1.5` may print as `1,5`. Rust's formatting does not. The [docs](https://doc.rust-lang.org/std/fmt/index.html#localization) say the format functions "do not have any concept of locale and will produce the same results on all systems regardless of user configuration". There is no thousands separator and no way to choose a decimal comma. People use crates for that, [`num-format`](https://crates.io/crates/num-format) for grouping and [ICU4X](https://crates.io/crates/icu) for full locale data; this page has not run either.
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 ## Try it
 

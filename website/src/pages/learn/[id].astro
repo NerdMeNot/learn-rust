@@ -7,6 +7,7 @@
 // when the lesson has one; its <Snippet>/<Exercise> components read the same data.
 import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro'
 import { Aside } from '@astrojs/starlight/components'
+import { getCollection } from 'astro:content'
 import CodePanel from '../../components/lesson/CodePanel.astro'
 import Compare from '../../components/lesson/Compare.astro'
 import Gotcha from '../../components/lesson/Gotcha.astro'
@@ -17,6 +18,7 @@ import Memory from '../../components/lesson/Memory.astro'
 import ForLang from '../../components/lesson/ForLang.astro'
 import { LANG, OTHERS, PARTS } from '../../lib/langs'
 import { inline, plain } from '../../lib/md'
+import { approx, minutes } from '../../lib/readingTime'
 import index from '../../data/lessons.json'
 
 export function getStaticPaths() {
@@ -28,10 +30,15 @@ const pages = import.meta.glob<any>('../../../../lessons/*/lesson.mdx', { eager:
 const l = files[`../../data/lessons/${Astro.params.id}.json`].default
 const meta = index.find(x => x.id === l.id)!
 const mdx = pages[`../../../../lessons/${meta.dir}/lesson.mdx`]
+const raws = import.meta.glob<string>('../../../../lessons/*/lesson.mdx', { query: '?raw', import: 'default', eager: true })
+const raw = raws[`../../../../lessons/${meta.dir}/lesson.mdx`] ?? ''
 Astro.locals.lessonId = l.id
 
 const part = PARTS.find(p => p.id === l.part)!
 const inPart = index.filter(x => x.part === l.part)
+
+// The last lesson of a part points at that part's checkpoint, if there is one.
+const checkpoint = inPart.at(-1)?.id === l.id ? (await getCollection('docs', e => e.id === `checkpoints/${l.part}`))[0] : undefined
 
 const headings = [
   { depth: 2, slug: 'whats-different', text: "What's different" },
@@ -39,11 +46,28 @@ const headings = [
   ...(l.gotcha ? [{ depth: 2, slug: 'gotcha', text: `Gotcha: ${plain(l.gotcha.title)}` }] : []),
   ...(mdx ? mdx.getHeadings().filter((h: { depth: number }) => h.depth <= 3) : []),
 ]
+// Reading time per layer. The first layer is the data the page is built from; the others are
+// the stretches of lesson.mdx between its layer markers. Practice is counted in exercises.
+const lines = (c?: string) => (c ? c.split('\n').length : 0)
+const firstText = [l.intro, ...l.notes, ...(l.faq ?? []).flatMap((f: any) => [f.q, f.a]), l.gotcha?.rust_sees, l.gotcha?.why, l.gotcha?.looks_fine].filter(Boolean).join('\n\n')
+const firstCode = lines(l.program.rust.code) + lines(l.gotcha?.code) + lines(l.gotcha?.fixed?.code)
+const parts = raw.split(/<p class="lr-layer"/).slice(1)
+const layerMin = (id: string) => minutes(parts.find(p => p.includes(`id="${id}"`)) ?? '')
+const exercises = (raw.match(/<Exercise\b/g) ?? []).length
+const strip = mdx ? [
+  { href: '#layer-compare', name: 'Quick comparison', sub: 'Rust beside your language', min: minutes(firstText, firstCode) },
+  l.gotcha && { href: '#gotcha', name: 'Gotcha', sub: 'the habit Rust refuses', min: 0 },
+  { href: '#layer-toolkit', name: 'Toolkit', sub: 'how it works', min: layerMin('layer-toolkit') },
+  parts.some(p => p.includes('id="layer-deeper"')) && { href: '#layer-deeper', name: 'Going deeper', sub: 'edge cases and why', min: layerMin('layer-deeper') },
+  exercises > 0 && { href: '#layer-practice', name: 'Practice', sub: `${exercises} ${exercises === 1 ? 'exercise' : 'exercises'}`, min: 0 },
+].filter(Boolean) as { href: string; name: string; sub: string; min: number }[] : []
+// The gotcha is part of the first layer's text, so it has no time of its own.
+const total = strip.reduce((n, x) => n + x.min, 0)
 const where = l.part === 'std' ? `Standard library · ${inPart.findIndex(x => x.id === l.id) + 1} of ${inPart.length}` : `${part.label} · Lesson ${l.order}`
 ---
 <StarlightPage frontmatter={{ title: l.title, description: plain(l.intro), tableOfContents: mdx ? { minHeadingLevel: 2, maxHeadingLevel: 2 } : false }} headings={headings}>
   <div class:list={['lr-lesson', mdx && 'lr-lesson-long']}>
-  <p class="lr-where">{where}</p>
+  <p class="lr-where">{where}{total > 0 && ` · about ${approx(total)}`}</p>
   <p class="lr-intro" set:html={inline(l.intro)} />
   {OTHERS.filter(k => l.coming_from?.[k]).map(k => (
     <p class="lr-bridge not-content" data-for={k} style={`--c:${LANG[k].color}`}>
@@ -52,7 +76,15 @@ const where = l.part === 'std' ? `Standard library · ${inPart.findIndex(x => x.
     </p>
   ))}
 
-  {mdx && <p class="lr-layer">The quick comparison</p>}
+  {strip.length > 0 && (
+    <nav class="lr-strip not-content" aria-label="In this lesson">
+      {strip.map(x => (
+        <a href={x.href}><b>{x.name}</b><span>{x.min > 0 ? `${approx(x.min)} · ${x.sub}` : x.sub}</span></a>
+      ))}
+    </nav>
+  )}
+
+  {mdx && <p class="lr-layer" id="layer-compare">The quick comparison</p>}
   <div class="lr-compare">
     <CodePanel lang="rust" code={l.program.rust.code} out={l.program.rust.out} varies={l.program.rust.varies} playground />
     <Compare sides={Object.fromEntries(OTHERS.map(k => [k, l.program[k]]))} />
@@ -70,6 +102,13 @@ const where = l.part === 'std' ? `Standard library · ${inPart.findIndex(x => x.
     <div class="lr-lesson-body">
       <mdx.default components={{ Snippet, Exercise, Memory, Aside, ForLang }} />
     </div>
+  )}
+
+  {checkpoint && (
+    <aside class="lr-checkpoint not-content">
+      <b>End of {part.label}.</b> Test yourself: predict the output or the compiler error, then run it.
+      <a href={`/${checkpoint.id}/`}>{checkpoint.data.title} →</a>
+    </aside>
   )}
   </div>
 </StarlightPage>

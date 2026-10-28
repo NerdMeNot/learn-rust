@@ -1,0 +1,12 @@
+---
+// Starlight's page title, plus "About 15 min read" for the long guide pages. Lesson pages
+// have no body here (they are built from data) and show their own time; very short pages
+// show none.
+import Default from '@astrojs/starlight/components/PageTitle.astro'
+import { approx, minutes } from '../lib/readingTime'
+
+const body = Astro.locals.starlightRoute.entry.body
+const m = body ? minutes(body) : 0
+---
+<Default {...Astro.props}><slot /></Default>
+{m >= 3 && <p class="lr-readtime">About {approx(m)} read</p>}

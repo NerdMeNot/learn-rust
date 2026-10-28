@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 `match` compares one value with a list of **arms**, each written `pattern => result` ([the shape](/learn/rust-at-a-glance/#the-program-token-by-token)), from the top. A **pattern** is a shape a value can have, and the first pattern that fits runs its arm. Three things set it apart from a classic C-style `switch`: it produces a value, it must cover every possible value (the compiler calls that **exhaustive**), and a pattern can take a value apart (a tuple, a list, a range) as well as compare it. This page is about what patterns can do. Outputs come from Linux on 64-bit ARM with Rust 1.99.1.
 
@@ -299,7 +299,7 @@ A `switch` in C cannot take a string, and a C++ `switch` cannot take a `std::str
 
 </ForLang>
 
-<p class="lr-layer">Going deeper</p>
+<p class="lr-layer" id="layer-deeper">Going deeper</p>
 
 ## How exhaustiveness is checked
 
@@ -337,7 +337,7 @@ This is the C habit of leaving `default:` off an `enum` `switch`, so that `-Wswi
 
 </ForLang>
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 ## Try it
 

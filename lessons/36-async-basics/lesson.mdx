@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 Outputs come from Linux on 64-bit ARM, Rust 1.99.1, debug mode. The programs use no crates, so you see what a runtime hides. After this page you can read `async fn`, `.await`, `Send` errors and `Pin` in library code, but not yet a typical Tokio handler: [Async with Tokio](/build/tokio/) comes next, and the last section lists what is missing.
 
@@ -191,7 +191,7 @@ A Rust future is the work itself and runs nothing until polled. A C++ coroutine'
 | `coroutine_handle::resume()` (returns nothing) | `Future::poll` (answers `Ready` or `Pending`) |
 </ForLang>
 
-<p class="lr-layer">Going deeper</p>
+<p class="lr-layer" id="layer-deeper">Going deeper</p>
 
 ## What the compiler builds, and why `Pin` exists
 
@@ -263,7 +263,7 @@ Async does not split one task's computation across threads, and long CPU work st
 
 The [Tokio guide](/build/tokio/) covers `#[tokio::main]`, `spawn`, `join!`, `timeout`, `select!` (with [what it drops](/build/tokio/#select-drops-the-losers)), `JoinHandle` errors, `spawn_blocking`, and a [lock held across an `.await`](/build/tokio/#a-lock-held-across-an-await). It does not cover the rest of this list. `?` works in an `async fn` that returns a `Result` ([Errors](/learn/errors/); `check-question-mark.rs`). Async closures (`async |n| ...`) compile on stable 1.99.1 (`check-async-closure.rs`). Streams (async iterators) have no stable `std` trait (`check-stream-unstable.fail.rs`), so you meet them in crates. An `async fn` in a trait works, but the trait is not dyn compatible (`check-dyn-async.fail.rs`).
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 ## Try it
 

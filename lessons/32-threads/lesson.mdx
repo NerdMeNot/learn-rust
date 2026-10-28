@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 Outputs come from Linux on 64-bit ARM with Rust 1.99.1, debug mode. The operating system schedules threads, so every program here joins its threads before it prints, and prints the same lines each run unless the text says otherwise.
 
@@ -104,7 +104,7 @@ The [thread docs](https://doc.rust-lang.org/std/thread/index.html) say that when
 
 The channel only tells `main` the child is running. If the work matters, `join` it.
 
-<p class="lr-layer">Going deeper</p>
+<p class="lr-layer" id="layer-deeper">Going deeper</p>
 
 ## Can I start 100,000 threads?
 
@@ -346,7 +346,7 @@ An exception that leaves the thread's function calls `std::terminate` too, where
 | a lambda with `[&]` | refused for `spawn`; `move`, or `thread::scope` |
 </ForLang>
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 ## Try it
 

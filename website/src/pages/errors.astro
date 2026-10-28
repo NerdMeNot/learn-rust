@@ -79,6 +79,11 @@ const anat = lessons['../data/lessons/vectors.json'].default.gotcha
 
   <h2 id="index">Every error code on this site ({codes.length})</h2>
   <p>Each entry shows a real message from a real run on this site, a plain explanation, and every page where you can see it happen.</p>
+  <div class="lr-errfilter not-content">
+    <label for="errq">Find an error</label>
+    <input id="errq" type="search" placeholder="E0382, borrow, moved value…" autocomplete="off" spellcheck="false" />
+    <p id="errcount" class="lr-errcount" aria-live="polite"></p>
+  </div>
   <div class="lr-errlist not-content">
     {codes.map(code => {
       const list = hits.get(code)!
@@ -100,3 +105,27 @@ const anat = lessons['../data/lessons/vectors.json'].default.gotcha
     })}
   </div>
 </StarlightPage>
+
+<script>
+  // Narrows the cards to those whose text holds every word typed: a code (E0382), a word from
+  // the message ("moved"), or both. The cards are all in the page, so this needs no data.
+  const input = document.getElementById('errq') as HTMLInputElement | null
+  const count = document.getElementById('errcount')!
+  const cards = [...document.querySelectorAll<HTMLElement>('.lr-errcard')]
+  const text = cards.map(c => (c.textContent ?? '').toLowerCase())
+  const apply = () => {
+    const terms = input!.value.toLowerCase().split(/\s+/).filter(Boolean)
+    let shown = 0
+    cards.forEach((c, i) => {
+      const ok = terms.every(t => text[i].includes(t))
+      c.hidden = !ok
+      if (ok) shown++
+    })
+    count.textContent = !terms.length ? '' : shown ? `${shown} of ${cards.length} match` : 'Nothing here matches. Try the code (E0382) or a word from the message.'
+  }
+  if (input) {
+    input.addEventListener('input', apply)
+    const q = new URLSearchParams(location.search).get('q')
+    if (q) { input.value = q; apply() }
+  }
+</script>

@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 ## A reference is a read-only address
 
@@ -191,7 +191,7 @@ Rust's answer is the rule you just met: while a `&` exists, nothing may change t
 E0502 is the next lesson's error: `push` needs to change `a` while `p` still reads it. Go gets its safety from the garbage collector, escape analysis and convention. Rust has no collector and checks the aliasing rule at compile time, on every path in safe code. Go's own tools are weaker: `go vet` is heuristic (its documentation says so), and `go run -race` only reports races that happen during that run. The same rule keeps two threads from changing data at once ([Shared state](/learn/shared-state/)). The price in Rust is that some fine code is rejected and you restructure it.
 </ForLang>
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 ## Try it
 
@@ -209,7 +209,7 @@ Count how many items of a `&[i32]` equal a `&i32`. Both are references, so `x` i
 Two functions that read a `Player` through `&Player`: `best` returns the highest score (0 when there are none), and `report` builds a `String` like `ana: best 95 in 3 games`, calling `best` along the way. Calling `best(player)` from inside `report` does not use `player` up. Why not? `player` is a `&Player`, and [any number of readers](#many-readers-no-writers) are allowed.
 </Exercise>
 
-<p class="lr-layer">Going deeper (optional)</p>
+<p class="lr-layer" id="layer-deeper">Going deeper (optional)</p>
 
 Nothing here is needed for the exercises.
 

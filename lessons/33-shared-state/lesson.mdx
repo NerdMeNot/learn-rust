@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 Outputs come from Linux on 64-bit ARM (8 cores), Rust 1.99.1, debug build. Thread timing is not repeatable, so each Rust program here prints the same on every run: it joins its threads before printing, or uses a `Barrier` (threads wait at it until all have arrived) to force an order. Only the gotcha's racy programs vary, and say so.
 
@@ -263,7 +263,7 @@ An exception unwinds the block, the `lock_guard` destructor opens the lock, and 
 | `std::scoped_lock(a, b)` | lock in an agreed order |
 </ForLang>
 
-<p class="lr-layer">Going deeper</p>
+<p class="lr-layer" id="layer-deeper">Going deeper</p>
 
 ## Orderings, and what they promise
 
@@ -293,7 +293,7 @@ A `Mutex` is used the same way: what one thread wrote before unlocking is visibl
 
 <Snippet file="layout.rs" />
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 ## Try it
 

@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 Rust's number types have fixed sizes (`usize` follows the target), and a number changes type only when you write the conversion. This page covers the types, what happens at their edges (overflow, `NaN`, negative remainders), and how to convert on purpose. [Declarations and types](/learn/declarations-types/) shows how literals, `as` and the turbofish are spelled; this page covers what they do. Outputs come from Linux on 64-bit ARM with Rust 1.99.1; the text says where a fact depends on the platform.
 
@@ -261,7 +261,7 @@ Two C and C++ conversions bite in integer code: arithmetic on small types, and c
 
 </ForLang>
 
-<p class="lr-layer">Going deeper</p>
+<p class="lr-layer" id="layer-deeper">Going deeper</p>
 
 ## Two's complement in one example
 
@@ -279,7 +279,7 @@ Going from `i32` to `i64` loses nothing, so why does Rust ask for `i64::from`? B
 
 E0308. The help suggests converting `limit` with `try_into().unwrap()`, which panics only if `limit` does not fit in an `i32`. Which side to convert, and what happens on failure, is your decision. Every place a number changes type is searchable, and each is `From` (cannot lose), `TryFrom` (tells you) or `as` (you chose to cut). The cost is real: code that mixes `usize` counts with `i32` values has more conversions than in a language that converts for you.
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 ## Try it
 

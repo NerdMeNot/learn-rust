@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 ## Two string types, and which one to use
 
@@ -231,7 +231,7 @@ Slicing with `&text[a..b]` uses byte positions. If a position lands inside a mul
 
 When the positions come from somewhere you don't control, use `text.get(a..b)`, which returns `None` instead of panicking. Positions you got from `find` or `char_indices` are always safe to slice at.
 
-<p class="lr-layer">Going deeper</p>
+<p class="lr-layer" id="layer-deeper">Going deeper</p>
 
 ## What a `String` is in memory
 
@@ -308,7 +308,7 @@ You won't need these on day one, but you'll see them in signatures:
 - `&[u8]` and `b"bytes"`: raw bytes, when the data isn't text.
 - `Box<str>` and `Arc<str>`: text that won't change again, stored more compactly or shared between threads.
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 ## Try it
 

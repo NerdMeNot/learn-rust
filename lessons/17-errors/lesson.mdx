@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 ## Two kinds of failure
 
@@ -389,7 +389,7 @@ C++23 adds [`std::expected<T, E>`](https://en.cppreference.com/w/cpp/utility/exp
 
 </ForLang>
 
-<p class="lr-layer">Going deeper</p>
+<p class="lr-layer" id="layer-deeper">Going deeper</p>
 
 ## What `?` really does
 
@@ -433,7 +433,7 @@ An error often has a cause: "could not load limits.txt", because "bad value for 
 
 Testing only the top-level error finds nothing, because `downcast_ref` and `matches!` look at one layer. The loop over `source()` finds the `ParseIntError`. It is the same shape as Go's `errors.Unwrap`, Java's `getCause`, C#'s `InnerException` and Python's `__cause__`. The std docs say a cause should be reached through `source()` or shown in `Display`, but not both.
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 ## Try it
 

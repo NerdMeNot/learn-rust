@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 Most of these idioms are not language features: each is ordinary structs, enums, traits and `Drop`, arranged in a shape that Rust code tends to share, usually to move a rule out of your head and into the compiler. The rest (`let ... else`, `matches!`, `impl Trait`) are small features that shorten them. This page names the shapes and says what each costs. Outputs come from Linux on 64-bit ARM with Rust 1.99.1, a debug build.
 
@@ -257,7 +257,7 @@ C++ refuses it, because two distinct structs have no conversion between them (`c
 A C++ constructor has no return value, so it throws; the layer 1 program uses a private constructor and a static factory, the same shape as Rust, and the factory can return `std::optional`. Nothing makes the caller look at it, where the value inside a Rust `Result` is reached only by matching it or passing it on with `?`. C has no way to hide a struct's fields except an incomplete type in the header.
 </ForLang>
 
-<p class="lr-layer">Going deeper</p>
+<p class="lr-layer" id="layer-deeper">Going deeper</p>
 
 ## An idiom proves one thing
 
@@ -279,7 +279,7 @@ Each idiom that guards something (newtype, parse, enums, typestate, sealed) move
 
 The [Rust API Guidelines checklist](https://rust-lang.github.io/api-guidelines/checklist.html) names these for reviews: `C-NEWTYPE`, `C-BUILDER`, `C-CTOR` (constructors are static, inherent methods), `C-VALIDATE`, `C-SEALED` and `C-STRUCT-PRIVATE`. Where to put these types, what to mark `pub(crate)`, and how to split a library from a binary is in [Project structure](/further/project-structure/).
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 ## Try it
 

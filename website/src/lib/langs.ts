@@ -78,3 +78,10 @@ export const PARTS = [
   { id: 'std', label: 'Standard library' },
   { id: 'further', label: 'Going further' },
 ] as const
+
+/** The "Rust for X developers" page for each language. C and C++ share one. */
+export const PHRASEBOOK: Record<(typeof OTHERS)[number], { slug: string; title: string }> = {
+  go: { slug: 'go', title: 'Go' }, kotlin: { slug: 'kotlin', title: 'Kotlin' }, python: { slug: 'python', title: 'Python' },
+  typescript: { slug: 'typescript', title: 'TypeScript' }, java: { slug: 'java', title: 'Java' }, csharp: { slug: 'csharp', title: 'C#' },
+  c: { slug: 'c-cpp', title: 'C and C++' }, cpp: { slug: 'c-cpp', title: 'C and C++' },
+}

@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 This page covers what sits between typing `cargo run` and seeing a line: the commands, the project folder, and `main`. Format strings are in [Macros, attributes, naming](/learn/macros-attributes-naming/#format-strings); arguments and environment variables are in [Arguments, Environment, Time and Processes](/learn/env-time-process/). Outputs come from Linux on 64-bit ARM with Rust and Cargo 1.99.1. Phrasebooks: [C and C++](/for/c-cpp/), [C#](/for/csharp/), [Go](/for/go/), [Java](/for/java/), [Kotlin](/for/kotlin/), [Python](/for/python/), [TypeScript](/for/typescript/). The programs that run `cargo` build a throwaway project in a temporary folder and trim the build times and that folder's name; read their output, not their code.
 
@@ -181,7 +181,7 @@ Cargo has two **profiles**. `cargo build` and `cargo run` use `dev`, which does 
 
 `debug_assertions` is on in `dev` and off in `release`, and `debug_assert!` uses it. [Numbers and Types](/learn/types/) describes a setting that changes what a program does (integer overflow is a panic in `dev` and wraps in `release`); the [Cargo book](https://doc.rust-lang.org/cargo/reference/profiles.html) lists them all. Use `dev` while you write, and `release` for the build you measure or ship.
 
-<p class="lr-layer">Going deeper</p>
+<p class="lr-layer" id="layer-deeper">Going deeper</p>
 
 ## `print!` and the buffer
 
@@ -231,7 +231,7 @@ C's `stdout` is line-buffered on a terminal and fully buffered on a pipe, so a w
 
 The [Edition Guide](https://doc.rust-lang.org/edition-guide/editions/index.html) lists what each edition changed.
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 ## Try it
 

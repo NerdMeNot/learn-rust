@@ -35,6 +35,7 @@ export default defineConfig({
       customCss: ['./src/styles/fonts.css', './src/styles/theme.css', './src/styles/lesson.css', './src/styles/motion.css', './src/styles/print.css'],
       components: {
         Head: './src/components/Head.astro',
+        PageTitle: './src/components/PageTitle.astro',
         ThemeSelect: './src/components/ThemeSelect.astro',
         Header: './src/components/Header.astro',
         Footer: './src/components/Footer.astro',
@@ -67,6 +68,7 @@ export default defineConfig({
       sidebar: [
         {
           label: 'Start here',
+          collapsed: true,
           items: [
             { slug: 'start/why-rust' }, { slug: 'start/how-rust-thinks' }, { slug: 'start/first-project' },
             { slug: 'start/using-crates' }, { slug: 'start/files-and-modules' }, { slug: 'start/several-programs' },
@@ -78,17 +80,21 @@ export default defineConfig({
           label: 'Learn Rust',
           items: PARTS.map(([id, label]) => ({
             label,
+            // Only the part you are in is open; Starlight opens a collapsed group that holds the current page.
+            collapsed: true,
             // The guided program closes the Data part: it uses what those lessons teach.
             items: [...lessonLinks(id), ...(id === 'data' ? [{ label: 'Project: a word counter', link: '/start/word-frequency/' }] : [])],
           })).filter(g => g.items.length > 0),
         },
-        { label: 'Standard library', items: [{ slug: 'std/tour' }, ...lessonLinks('std')] },
+        { label: 'Standard library', collapsed: true, items: [{ slug: 'std/tour' }, ...lessonLinks('std')] },
         {
           label: 'Build with Rust',
+          collapsed: true,
           items: ['crates-map', 'serde', 'tokio', 'rayon', 'rayon-tokio', 'axum', 'grpc', 'sqlx', 'clap', 'app-errors', 'tracing', 'testing', 'datafusion'].map(s => ({ slug: `build/${s}` })),
         },
         {
           label: 'Going further',
+          collapsed: true,
           items: [...lessonLinks('further'), ...docPages('further', ['project-structure', 'testing-more', 'performance'])],
         },
         { label: 'Projects', collapsed: true, items: docPages('projects', ['todo', 'money', 'notes-api', 'indexer', 'shop']) },

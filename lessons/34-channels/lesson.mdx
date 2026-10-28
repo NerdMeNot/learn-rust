@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 Outputs on this page come from Linux on 64-bit ARM (the VM had 8 cores) with Rust 1.99.1, built in debug mode. Every program here prints the same thing on every run: it joins its threads, then sorts or counts before it prints. The Rust tables are asserted by programs the site runs. Threads here are OS threads, not goroutines or virtual threads, and `recv` blocks one. [Threads](/learn/threads/) introduced `spawn` and `join`; [Shared state](/learn/shared-state/) covers `Arc` and `Mutex`.
 
@@ -272,7 +272,7 @@ A pipe is also bounded. On this Linux it holds 65536 bytes; a non-blocking write
 <Snippet file="pipe-limits.c" />
 </ForLang>
 
-<p class="lr-layer">Going deeper</p>
+<p class="lr-layer" id="layer-deeper">Going deeper</p>
 
 ## What each end can do
 
@@ -297,7 +297,7 @@ Hang-up travels backwards the same way. Here `main` takes three results and drop
 
 - **A `close` call**, a sender count or a queue length: `rx.len()`, `tx.close()` and `tx.sender_count()` do not compile. A channel closes when you drop its ends. `is_disconnected` exists but is unstable on 1.99.1 (E0658).
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 ## Try it
 

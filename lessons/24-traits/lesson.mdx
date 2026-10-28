@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 A **trait** names a set of methods. A type that has those methods, and says so, can be used wherever the trait is asked for. It is what Rust uses where other languages use interfaces, abstract base classes or protocols. Outputs come from Linux on 64-bit ARM, Rust 1.99.1.
 
@@ -317,7 +317,7 @@ Implementing a Rust trait adds no field to the value: the empty `Dog` stays at 0
 <Snippet file="layout.rs" />
 </ForLang>
 
-<p class="lr-layer">Going deeper</p>
+<p class="lr-layer" id="layer-deeper">Going deeper</p>
 
 ## Static and dynamic dispatch in one program
 
@@ -353,7 +353,7 @@ Both answer "this value is one of several kinds"; they differ in who can add a k
 
 When you know every kind (the commands of a protocol), an enum lets the compiler check each place that handles them. When other code should add kinds (plugins, a library that calls your code), use a trait. Neither is better in general.
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 ## Try it
 

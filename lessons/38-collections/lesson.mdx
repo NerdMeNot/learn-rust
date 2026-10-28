@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 `std::collections` holds the containers beyond `Vec`: `HashMap` and `HashSet`, `BTreeMap` and `BTreeSet`, `VecDeque`, `BinaryHeap` and `LinkedList`. The module docs open with advice worth hearing first: "you should probably just use Vec or HashMap", because the others "have specific use cases where they are the optimal choice". This page is about those use cases. [Vectors](/learn/vectors/) and [Maps](/learn/maps/) already cover the two basics, `entry`, `retain`, `with_capacity` and a first look at `BTreeMap` and sets. Outputs come from Linux on 64-bit ARM with Rust 1.99.1.
 
@@ -243,7 +243,7 @@ Both heaps pop the largest first. `std::set_intersection` works on sorted ranges
 
 </ForLang>
 
-<p class="lr-layer">Going deeper</p>
+<p class="lr-layer" id="layer-deeper">Going deeper</p>
 
 ## How `VecDeque` keeps both ends cheap
 
@@ -270,7 +270,7 @@ A `BTreeMap` or `BTreeSet` decides that two keys are the same with `cmp` alone: 
 
 `insert` refused `ana` without calling `==` once, and `collect` kept both spellings, because `==` said they differ. A `HashMap` has the same rule: equal keys must hash equally, which `derive` guarantees and a hand-written pair can break. A key whose ordering changes while it is in the map is, say the docs, "a logic error" with unspecified results, "encapsulated to the BTreeMap" and not undefined behaviour. The map owns its keys, so ordinary code has no second handle to change one; the docs name the ways in: interior mutability (`Cell`, `RefCell`: [Smart pointers](/learn/smart-pointers/)), global state, I/O or `unsafe`.
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 ## Try it
 

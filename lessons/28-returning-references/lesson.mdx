@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 ## The problem: a reference to something that is gone
 
@@ -114,7 +114,7 @@ Read `'a` here as "the result comes from one of the inputs, so use it only while
 
 In the method row the result is tied to `self`, even when other references are passed in. Methods are a very common source of borrowed results (`fn name(&self) -> &str`), and this rule keeps most of those signatures free of lifetime marks.
 
-<p class="lr-layer">Going deeper</p>
+<p class="lr-layer" id="layer-deeper">Going deeper</p>
 
 ## The signature is the contract
 
@@ -267,7 +267,7 @@ The same shape in Rust is a compile error, E0716, because the borrow checker see
 The `'a` in the Rust signature is what tells the compiler, and the caller, that the result is only valid while both inputs are. The getter `const T& get() const` is `fn get(&self) -> &T`, the method row of the elision table: the result is tied to `self`. The gotcha above shows the other case, returning a reference to a local.
 </ForLang>
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 ## Try it
 

@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 ## What an iterator is
 
@@ -354,7 +354,7 @@ The standard library has no `group_by` or `counts` on iterators. The usual patte
 [`itertools`](https://docs.rs/itertools/latest/itertools/trait.Itertools.html) adds methods to every iterator: `counts`, `into_group_map`, `sorted`, `unique`, `join`, `tuple_windows` and more. [Finding and using crates](/start/using-crates/) shows how to add one.
 </Aside>
 
-<p class="lr-layer">Going deeper</p>
+<p class="lr-layer" id="layer-deeper">Going deeper</p>
 
 ## The `Iterator` trait, and writing your own
 
@@ -424,7 +424,7 @@ A function that takes `impl IntoIterator<Item = T>` accepts a `Vec`, array, rang
 - **Collecting just to iterate again.** Keep it one chain; collect to keep, sort or reuse results.
 - **`count()` when you know the length.** `count` walks every item; a `Vec` and any `ExactSizeIterator` have `len()`.
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 ## Try it
 

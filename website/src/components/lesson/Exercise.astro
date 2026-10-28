@@ -19,9 +19,8 @@ if (!ex) throw new Error(`lesson "${l.id}" has no exercises/${name}.rs`)
   <p class="lr-ex-actions">
     <a class="lr-btn" href={playground(ex.starter)} target="_blank" rel="noopener">Open in the Rust Playground ↗</a>
     <span>
-      Run it first: it stops at <code>todo!()</code> with <em>not yet implemented</em> and a hint, and the
-      compiler warns that the parameter is unused. Both are expected. Replace the <code>todo!()</code> with
-      your code and run it again until it prints <code>all checks passed</code>.
+      Run it first: it stops at <code>todo!()</code> and warns about an unused parameter, as expected.
+      Replace the <code>todo!()</code> and run it again until it prints <code>all checks passed</code>.
     </span>
   </p>
   <details class="lr-ex-solution">

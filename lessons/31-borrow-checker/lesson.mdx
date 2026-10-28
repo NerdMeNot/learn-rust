@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 ## From error to fix
 
@@ -291,7 +291,7 @@ When the design really is "many owners of one changing value", `Rc<RefCell<T>>` 
 | two parts must see the same changes | `Rc<RefCell<T>>` (`Arc` and a lock across threads: [Shared state](/learn/shared-state/)) |
 | it keeps coming back as one big `&mut self` | restructure ([below](#when-the-error-does-not-go-away-redesign)) |
 
-<p class="lr-layer">Going deeper</p>
+<p class="lr-layer" id="layer-deeper">Going deeper</p>
 
 ## When the error does not go away: redesign
 
@@ -306,7 +306,7 @@ The signs are at the top. [Ownership](/learn/ownership/#when-ownership-feels-lik
 
 [`unsafe`](/learn/unsafe/) does not switch the checker off: it lets you do what the compiler cannot check, and a mistake there is yours. The checker also rejects some programs that would run fine, such as the conditional return in [Lifetimes](/learn/lifetimes/#where-a-borrow-really-ends); the fix is a shape it accepts, not a trick.
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 ## Try it
 

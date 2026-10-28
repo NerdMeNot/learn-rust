@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 A **map** stores values under keys, so you can find a value by its key instead of by position. Rust's everyday map is `HashMap<K, V>`: `K` is the type of the keys and `V` the type of the values. It lives in `std::collections`, so you import it with `use std::collections::HashMap;`. A hash map turns each key into a number (its **hash**) and uses that number to decide where to store the pair, so a lookup does not have to scan every pair. Outputs on this page come from Linux on 64-bit ARM with Rust 1.99.1.
 
@@ -422,7 +422,7 @@ An `unordered_map` keeps each element where it is, so a reference survives growt
 
 </ForLang>
 
-<p class="lr-layer">Going deeper</p>
+<p class="lr-layer" id="layer-deeper">Going deeper</p>
 
 ## What `insert` does to a key
 
@@ -453,7 +453,7 @@ One stored pair is 32 bytes on this machine, but sizes are not promises.
 
 Different seeds give different hashes, so the pairs land in different places and loop in a different order. The docs say the default algorithm is currently SipHash 1-3 "though this is subject to change", and that other hashers beat it for small keys such as integers but "will typically not protect against attacks such as HashDoS". You can swap the hasher in when you have measured a need, with [`HashMap::with_hasher`](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.with_hasher) and the [`BuildHasher`](https://doc.rust-lang.org/std/hash/trait.BuildHasher.html) trait. Most programs never do.
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 ## Try it
 

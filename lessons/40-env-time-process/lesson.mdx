@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 Outputs come from Linux on 64-bit ARM with Rust 1.99.1, in debug mode. A program here starts with no arguments and an environment of its own, so several start a copy of themselves with `Command` (it starts another program, and `.output()` runs it and captures what it printed; [Running other programs](#running-other-programs) teaches it). `env::current_exe()` is the path of the running program, and an argument tells the copy what to do. The tools they run (`echo`, `sort`, `sleep`, `sh`, `pwd`) are common on Linux and macOS; Windows has different ones. A `Duration` is an amount of time (see Time).
 
@@ -112,7 +112,7 @@ A program name is a file name, so `"echo hello"` is not found. On Unix, argument
 
 The `wait-timeout` crate does this for you. Go, Python, Java and Node build a deadline in; their sections run it.
 
-<p class="lr-layer">Going deeper</p>
+<p class="lr-layer" id="layer-deeper">Going deeper</p>
 
 ## Strings that are not `String`
 
@@ -300,7 +300,7 @@ A `chrono::duration` is signed, and two `system_clock` times subtract without fa
 | `fork` and `exec*` (POSIX) | `spawn`; `CommandExt::exec` |
 </ForLang>
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 ## Try it
 

@@ -1,4 +1,4 @@
-<p class="lr-layer">The toolkit</p>
+<p class="lr-layer" id="layer-toolkit">The toolkit</p>
 
 Outputs come from Linux on 64-bit ARM with Rust 1.99.1, debug build. Only the Python lost-update totals change from run to run, and the text says so.
 
@@ -239,7 +239,7 @@ The report names both accesses and the line. It sees only the executions you ran
 | `pthread_mutex_t` or `std::mutex` beside the data | `Mutex<T>` around the data |
 </ForLang>
 
-<p class="lr-layer">Going deeper</p>
+<p class="lr-layer" id="layer-deeper">Going deeper</p>
 
 ## Making the promise yourself
 
@@ -263,7 +263,7 @@ What works today is a field that is not `Send`. `PhantomData<T>` stores no data;
 
 The Nomicon [is exact](https://doc.rust-lang.org/nomicon/races.html): safe Rust has no data races, and does not prevent "general race conditions". It also calls deadlock "safe" ([Shared state](/learn/shared-state/#what-rust-does-not-prevent) runs both). That page's check-then-act example uses an `Arc<Mutex<i32>>`, which the table shows is `Send` and `Sync`. Every access is locked, the types raise no objection, and two threads still lose an update, because the check and the change are separate steps. The cure is a design: one guard around both. The marker traits answer "may these threads touch this value", never "is the sequence of touches right".
 
-<p class="lr-layer">Practice</p>
+<p class="lr-layer" id="layer-practice">Practice</p>
 
 ## Try it
 
