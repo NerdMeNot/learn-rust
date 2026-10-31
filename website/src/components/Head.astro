@@ -6,6 +6,7 @@
 // pages still read correctly without JavaScript (Go is the default).
 import Default from '@astrojs/starlight/components/Head.astro'
 import { OTHERS, VERDICT } from '../lib/langs'
+import Analytics from './Analytics.astro'
 
 const verdicts = Object.keys(VERDICT)
 const css = OTHERS.map(k => [
@@ -39,4 +40,5 @@ window.addEventListener('scroll',check,{passive:true});setTimeout(check,1500)})}
 <script is:inline set:html={boot} />
 <script is:inline set:html={progress} />
 <Default />
+<Analytics />
 <style is:inline set:html={css} />

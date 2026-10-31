@@ -1,0 +1,14 @@
+---
+// Google Analytics (GA4). Only in the production build, so local dev and previews
+// aren't counted. Included from Head.astro (Starlight pages) and index.astro (home).
+const ID = 'G-0F92F85QG9'
+const init =
+  `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}` +
+  `gtag('js',new Date());gtag('config',${JSON.stringify(ID)});`
+---
+{import.meta.env.PROD && (
+  <>
+    <script is:inline async src={`https://www.googletagmanager.com/gtag/js?id=${ID}`}></script>
+    <script is:inline set:html={init} />
+  </>
+)}

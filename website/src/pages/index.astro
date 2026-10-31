@@ -6,6 +6,7 @@
 // Order of the page: what this is and who it is for (with the language choice), the path in
 // order, every lesson, what else there is, then the short "is it worth it" and "how to read a
 // gotcha" explanations. The long case for and against lives on /start/why-rust/.
+import Analytics from '../components/Analytics.astro'
 import '../styles/fonts.css'
 import '../styles/theme.css'
 import '../styles/lesson.css'
@@ -126,6 +127,7 @@ const pickCss = OTHERS.map(k => [
     <link rel="preload" as="font" type="font/woff2" href="/fonts/fredoka-normal-600.woff2" crossorigin />
     <script is:inline set:html={boot} />
     <style is:inline set:html={pickCss} />
+    <Analytics />
   </head>
   <body>
     <header class="topbar">
