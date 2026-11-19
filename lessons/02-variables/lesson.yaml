@@ -1,6 +1,9 @@
 # Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
 title: "Variables"
 part: "basics"
+# Reading an int that was never set is undefined: it prints whatever was in memory, so
+# the value changes between machines.
+output_varies: [maybe-unset.c, maybe-unset.cpp]
 intro: >-
   Variables are declared with `let`. They cannot change unless you add `mut`.
 coming_from:

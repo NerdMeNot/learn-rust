@@ -42,8 +42,9 @@ export function quiet(out: string) {
     // Temp folders named at random: /tmp/.tmpZJyTDF/
     .replace(/\/tmp\/\.tmp\w+/g, '/tmp/.tmp')
     .split('\n')
-    // pip's "a new release is available" notice depends on the day, not on the program.
-    .filter(l => !/^\[notice\] /.test(l))
+    // Upgrade notices depend on the day, not on the program: pip's "[notice] A new release of
+    // pip is available", wasm-pack's "There's a newer version of wasm-pack available".
+    .filter(l => !/^\[notice\] /.test(l) && !/There's a newer version of [\w-]+ available/.test(l))
     // Parallel tests, threads and hash maps print in an order that changes between runs.
     .sort()
     .join('\n')
@@ -60,7 +61,9 @@ export function settle(committed: unknown, fresh: unknown): unknown {
   if (!fresh || typeof fresh !== 'object' || !committed || typeof committed !== 'object') return fresh
   const c = committed as Record<string, unknown>
   const f = fresh as Record<string, unknown>
-  const varies = f.varies === true
+  // Once a run has been seen to vary, it varies: a later pair of runs that happened to agree
+  // (two hash maps that came out in the same order) does not make it stable.
+  const varies = f.varies === true || c.varies === true
   const out: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(f)) {
     const old = c[k]
@@ -70,5 +73,6 @@ export function settle(committed: unknown, fresh: unknown): unknown {
     else if (k === 'exit' && varies && typeof v === 'number' && typeof old === 'number' && (v === 0) === (old === 0)) out[k] = old
     else out[k] = settle(old, v)
   }
+  if (varies) out.varies = true
   return out
 }

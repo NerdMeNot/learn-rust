@@ -11,8 +11,10 @@ sessions:
       - cmd: |-
           cd /tmp && for c in serde serde_json tokio axum reqwest tonic prost sqlx diesel sea-orm clap anyhow thiserror tracing proptest insta chrono jiff regex uuid rayon datafusion polars tantivy; do echo "$c: $(cargo info $c 2>/dev/null | awk 'NR>1 && /^version:/{exit} NR>1' | tr '\n' ' ')"; done
         show: "$ cargo info <crate>    # once per crate; the description sits between the name and the version"
+      # Reads crates.io as it is today: the versions and results move as crates are published.
       - cmd: cd /tmp && cargo info uuid
         show: "$ cargo info uuid"
+        varies: true
   run:
     dir: rust
     steps:

@@ -31,7 +31,8 @@
    {
     "show": "$ cargo search grapheme --limit 5",
     "out": "grapheme = \"1.3.0\"                   # Abstractions for working with extended Unicode grapheme clusters\ngrapheme-utils = \"0.1.2\"             # Handy utils for working with utf-8 [unicode] Extended Grapheme Clusters\nfast-grapheme-segmenter = \"0.1.1\"    # Fast, lightweight, forward-only Unicode extended grapheme cluster segmentation (UAX #29)\ngrapheme-cluster-utils = \"0.1.1\"     # Unicode-safe String manipulation utilities by extended grapheme cluster (UAX #29).\ngrapheme_macro = \"4.0.1\"             # Macros for the `grapheme` crate\n... and 489 crates more (use --limit N to see more)\nnote: to learn more about a package, run `cargo info <name>`\n",
-    "exit": 0
+    "exit": 0,
+    "varies": true
    }
   ],
   "manage": [
@@ -43,7 +44,8 @@
    {
     "show": "$ cargo add serde --features derive",
     "out": "    Updating crates.io index\n      Adding serde v1.0.229 to dependencies\n             Features:\n             + derive\n             + serde_derive\n             + std\n             - alloc\n             - rc\n             - unstable\n    Updating crates.io index\n     Locking 7 packages to highest Rust 1.99.1 compatible versions\n      Adding proc-macro2 v1.0.107\n      Adding quote v1.0.47\n      Adding serde v1.0.229\n      Adding serde_core v1.0.229\n      Adding serde_derive v1.0.229\n      Adding syn v3.0.9\n      Adding unicode-ident v1.0.27\n",
-    "exit": 0
+    "exit": 0,
+    "varies": true
    },
    {
     "show": "$ cat Cargo.toml",
@@ -88,7 +90,8 @@
    {
     "show": "$ grep -A 3 'name = \"itoa\"' Cargo.lock",
     "out": "name = \"itoa\"\nversion = \"1.0.18\"\nsource = \"registry+https://github.com/rust-lang/crates.io-index\"\nchecksum = \"8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682\"\n",
-    "exit": 0
+    "exit": 0,
+    "varies": true
    },
    {
     "show": "$ cargo build --locked",

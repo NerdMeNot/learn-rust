@@ -30,7 +30,8 @@
    {
     "show": "$ cargo info uuid",
     "out": "uuid #guid #unique #uuid\nA library to generate and parse UUIDs.\nversion: 1.29.0\nlicense: Apache-2.0 OR MIT\nrust-version: 1.89.0\ndocumentation: https://docs.rs/uuid\nrepository: https://github.com/uuid-rs/uuid\ncrates.io: https://crates.io/crates/uuid/1.29.0\nfeatures:\n +default               = [std]\n  std                   = [wasm-bindgen?/std, js-sys?/std]\n  arbitrary             = [dep:arbitrary]\n  atomic                = [dep:atomic]\n  borsh                 = [dep:borsh, dep:borsh-derive]\n  bytemuck              = [dep:bytemuck]\n  fast-rng              = [rng, dep:rand]\n  js                    = [dep:wasm-bindgen, dep:js-sys]\n  macro-diagnostics     = []\n  md5                   = [dep:md-5]\n  rng                   = [dep:getrandom]\n  rng-getrandom         = [rng, dep:getrandom, uuid-rng-internal-lib, uuid-rng-internal-lib/getrandom]\n  rng-rand              = [rng, dep:rand, uuid-rng-internal-lib, uuid-rng-internal-lib/rand]\n  serde                 = [dep:serde_core]\n  sha1                  = [dep:sha1_smol]\n  slog                  = [dep:slog]\n  uuid-rng-internal-lib = [dep:uuid-rng-internal-lib]\n  v1                    = [atomic]\n  v3                    = [md5]\n  v4                    = [rng]\n  v5                    = [sha1]\n  v6                    = [atomic]\n  v7                    = [rng]\n  v8                    = []\n  zerocopy              = [dep:zerocopy]\n",
-    "exit": 0
+    "exit": 0,
+    "varies": true
    }
   ],
   "run": [

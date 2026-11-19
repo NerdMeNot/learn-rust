@@ -4,7 +4,9 @@ sessions:
   search:
     dir: rust
     steps:
+      # Reads crates.io as it is today: the versions and results move as crates are published.
       - cmd: cargo search grapheme --limit 5
+        varies: true
   # Adding, inspecting and removing crates changes the project, so these run in order
   # in one session. It starts from the project before any `cargo add`: start/ holds
   # its Cargo.toml and Cargo.lock as `cargo new graphemes` and a first build leave them.
@@ -17,8 +19,10 @@ sessions:
     steps:
       - cmd: cargo add unicode-segmentation
         raw: true
+      # Reads crates.io as it is today: the versions and results move as crates are published.
       - cmd: cargo add serde --features derive
         raw: true
+        varies: true
       - cmd: cat Cargo.toml
       # not raw: on its first run it also prints a "Downloaded ..." line
       - cmd: cargo tree --depth 1
@@ -41,7 +45,9 @@ sessions:
       - cmd: cargo build --locked
         expect: fail
       - cmd: cargo build
+      # A plain build locks the newest itoa on crates.io that day.
       - cmd: grep -A 3 'name = "itoa"' Cargo.lock
+        varies: true
       - cmd: cargo build --locked
   run:
     dir: rust

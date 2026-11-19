@@ -2,6 +2,10 @@
  "id": "variables",
  "title": "Variables",
  "part": "basics",
+ "output_varies": [
+  "maybe-unset.c",
+  "maybe-unset.cpp"
+ ],
  "intro": "Variables are declared with `let`. They cannot change unless you add `mut`.",
  "coming_from": {
   "go": "`let` is your `:=`, but the variable can't change unless you write `let mut`. Writing `let count = ...` again in the same scope is allowed and makes a new variable, where Go's `:=` would complain that nothing is new.",
@@ -296,12 +300,14 @@
   "maybe-unset.c": {
    "code": "#include <stdio.h>\n\nint main(int argc, char **argv) {\n    (void)argv;\n    int label;\n    if (argc > 5) {\n        label = 1;\n    }\n    printf(\"label: %d\\n\", label); // the branch did not run: label was never set\n    return 0;\n}\n",
    "out": "label: 2\n",
+   "varies": true,
    "lang": "c",
    "exit": 0
   },
   "maybe-unset.cpp": {
    "code": "#include <cstdio>\n\nint main(int argc, char **argv) {\n    (void)argv;\n    int label;\n    if (argc > 5) {\n        label = 1;\n    }\n    printf(\"label: %d\\n\", label); // the branch did not run: label was never set\n    return 0;\n}\n",
    "out": "label: 2\n",
+   "varies": true,
    "lang": "cpp",
    "exit": 0
   },

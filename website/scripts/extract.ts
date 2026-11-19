@@ -424,6 +424,9 @@ for (const l of doLessons ? lessons : []) {
     else ran(j, 'check')
     if (j.lang === 'rust' && r.compiled && /^warning/m.test(r.compile_out) && !wantsFail) notes.push(`${j.key}: compiles with warnings`)
     snippets[f] = { ...display(j), lang: j.lang, mode: j.mode, exit: r.exit }
+    // Output that differs between machines but not between two runs on one machine (a read of
+    // an uninitialised variable) can't be caught by running twice: lesson.yaml names it.
+    if (l.doc.output_varies?.includes(f)) (snippets[f] as any).varies = true
   }
 
   const exercises: Record<string, unknown> = {}
