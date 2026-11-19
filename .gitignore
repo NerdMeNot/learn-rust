@@ -35,6 +35,8 @@ venv/
 .vscode/
 *.swp
 *.log
+# ...except sample logs a guide's program reads: they are input, and part of its cache key.
+!guides/**/logs/*.log
 
 # Extract reports are for reading, not committing.
 website/src/data/extract-report*.txt

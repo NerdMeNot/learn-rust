@@ -1,0 +1,4 @@
+2026-11-03T10:00:00Z INFO job 41 started
+2026-11-03T10:00:03Z INFO job 41 done ms=230
+2026-11-03T10:00:04Z WARN job 42 retry 1 of 3
+2026-11-03T10:00:09Z ERROR job 42 gave up after 3 tries

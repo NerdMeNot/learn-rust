@@ -1,0 +1,4 @@
+2026-11-03T10:00:01Z INFO GET / status=200 ms=5
+2026-11-03T10:00:02Z INFO GET /static/app.js status=200 ms=2
+
+2026-11-03T10:00:04Z WARN GET /login status=401 ms=7
