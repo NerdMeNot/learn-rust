@@ -2,6 +2,8 @@
 // A compiler error, coloured the way a terminal shows it: the error line red, help and
 // note cyan, `^` carets red, `-` labels cyan, suggested insertions green.
 // Ported from the first version's colouring, now done at build time.
+import { errorPage } from '../../lib/errorIndex'
+
 interface Props { text: string; cmd?: string; code?: string; title?: string }
 const { text, cmd = '$ cargo build', code, title } = Astro.props
 
@@ -31,7 +33,7 @@ const html = text.split('\n').map(colour).join('\n')
   <div class="lr-term-head">
     <span>{title ?? cmd}</span>
     {code && (
-      <a href={`/errors/#${code}`}>What is {code}?</a>
+      <a href={errorPage(code) ?? `/errors/#${code}`}>What is {code}?</a>
     )}
   </div>
   <pre set:html={html} />

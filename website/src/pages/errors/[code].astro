@@ -1,0 +1,120 @@
+---
+// One page per compiler error code (/errors/e0382/): what it means, a real program that
+// gets it and the real message, the habit from the reader's language that leads there (when
+// a gotcha shows it), the fix, other programs on the site that get it, and every page where
+// it appears. Everything but the hand-written note (src/lib/error-notes.ts) comes from the
+// extract data, so it is always the compiler's own words.
+//
+// A code gets a page when its note has a `name` and the site has a program that fails with
+// it as the first error.
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro'
+import CodePanel from '../../components/lesson/CodePanel.astro'
+import Gotcha from '../../components/lesson/Gotcha.astro'
+import RustError from '../../components/lesson/RustError.astro'
+import { ERROR_NOTES } from '../../lib/error-notes'
+import { errorIndex, type Example, type PlainExample } from '../../lib/errorIndex'
+import { block, inline, plain } from '../../lib/md'
+
+export async function getStaticPaths() {
+  const index = await errorIndex()
+  const named = Object.keys(ERROR_NOTES).filter(c => ERROR_NOTES[c].name)
+  const bare = named.filter(c => !index.get(c)?.examples.length)
+  if (bare.length) throw new Error(`error-notes.ts names ${bare.join(', ')}, but no program on the site fails with it first: remove the name (no page) or add an example`)
+  return named.map(code => ({ params: { code: code.toLowerCase() }, props: { code } }))
+}
+
+const { code } = Astro.props as { code: string }
+const note = ERROR_NOTES[code]
+const entry = (await errorIndex()).get(code)!
+const [main, ...rest] = entry.examples
+const errorOf = (e: Example) => (e.kind === 'gotcha' ? e.g.error : e.error)
+// Other programs: at most one per page, and only ones whose error reads differently from
+// those already shown, so the list shows different situations rather than one lesson's variants.
+const page = (e: Example) => e.href.split('#')[0]
+const others: Example[] = []
+for (const e of rest) {
+  if (others.length === 3) break
+  const shown = [main, ...others]
+  if (shown.some(x => page(x) === page(e) || errorOf(x) === errorOf(e))) continue
+  others.push(e)
+}
+const codeOf = (e: Example) => (e.kind === 'gotcha' ? e.g.code : (e as PlainExample).code)
+
+const SITE = 'https://learningrust.nerdmenot.in'
+const title = `${code}: ${note.name}`
+const long = `Rust error ${code} (${note.name}) explained: what it means, a real program that triggers it, and how to fix it.`
+const description = long.length <= 160 ? long : `Rust error ${code} explained: what it means, a real program that triggers it, and how to fix it.`
+const breadcrumbs = {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'Learn Rust', item: `${SITE}/` },
+    { '@type': 'ListItem', position: 2, name: 'Reading compiler errors', item: `${SITE}/errors/` },
+    { '@type': 'ListItem', position: 3, name: title, item: `${SITE}/errors/${code.toLowerCase()}/` },
+  ],
+}
+const headings = [
+  { depth: 2, slug: 'what-the-compiler-says', text: 'What the compiler says' },
+  ...(main.kind === 'gotcha' ? [{ depth: 2, slug: 'gotcha', text: `Gotcha: ${plain(main.g.title)}` }] : []),
+  ...(note.why ? [{ depth: 2, slug: 'why', text: 'Why Rust has this rule' }] : []),
+  { depth: 2, slug: 'how-to-fix-it', text: 'How to fix it' },
+  ...(others.length ? [{ depth: 2, slug: 'more-examples', text: `Other programs that get ${code}` }] : []),
+  { depth: 2, slug: 'where', text: 'Where it appears on this site' },
+]
+---
+<StarlightPage frontmatter={{ title, description, tableOfContents: { minHeadingLevel: 2, maxHeadingLevel: 2 } }} headings={headings}>
+  <script type="application/ld+json" set:html={JSON.stringify(breadcrumbs)} />
+  <p class="lr-where"><a href="/errors/">Reading compiler errors</a> · {code}</p>
+  <p class="lr-intro" set:html={inline(note.means)} />
+
+  <h2 id="what-the-compiler-says">What the compiler says</h2>
+  {main.kind === 'gotcha' ? (
+    <p>This is the real output of <code>cargo build</code> for the program in the gotcha below, from <a href={main.href}>{main.label}</a>. The gotcha puts it beside the same code in your language.</p>
+  ) : (
+    <>
+      <p>A program from <a href={main.href}>{main.label}</a>, and the real output of <code>cargo build</code>.</p>
+      <CodePanel lang="rust" code={codeOf(main)} status={{ cls: 'bad', chip: "✗ won't compile" }} />
+    </>
+  )}
+  <RustError text={errorOf(main)} />
+  <p>Run <code>rustc --explain {code}</code> for the compiler's own longer explanation, or read the <a href={`https://doc.rust-lang.org/error_codes/${code}.html`} target="_blank" rel="noopener">official page for {code} ↗</a>.</p>
+
+  {main.kind === 'gotcha' && <Gotcha g={main.g} />}
+
+  {note.why && (
+    <>
+      <h2 id="why">Why Rust has this rule</h2>
+      <Fragment set:html={block(note.why)} />
+    </>
+  )}
+
+  <h2 id="how-to-fix-it">How to fix it</h2>
+  <p set:html={inline(note.usually)} />
+  {note.fixes?.length && (
+    <>
+      <p>The usual ways out:</p>
+      <ul>{note.fixes.map(f => <li set:html={inline(f)} />)}</ul>
+    </>
+  )}
+  {main.kind === 'gotcha' && <p>The fixed program, with its real output, is at the end of the gotcha above.</p>}
+
+  {others.length > 0 && (
+    <>
+      <h2 id="more-examples">Other programs that get {code}</h2>
+      <p>The same rule, met in other situations. Each one is from a page on this site, with the compiler's real output.</p>
+      {others.map(e => (
+        <div class="lr-sub-block">
+          <p>From <a href={e.href}>{e.label}</a>:</p>
+          <CodePanel lang="rust" code={codeOf(e)} status={{ cls: 'bad', chip: "✗ won't compile" }} />
+          <RustError text={errorOf(e)} />
+        </div>
+      ))}
+    </>
+  )}
+
+  <h2 id="where">Where it appears on this site</h2>
+  <ul>
+    {entry.hits.map(h => <li><a href={h.href}>{h.label}</a>: <code>{h.message}</code></li>)}
+  </ul>
+  <p><a href="/errors/">Every error code on this site</a>, and how to read an error.</p>
+</StarlightPage>

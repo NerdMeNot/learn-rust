@@ -1,49 +1,18 @@
 ---
 // "Reading compiler errors": how an error is laid out, then an index of every error code
-// the site shows. The message and the list of pages are generated from the extract data,
+// the site shows, each linking to its own page (/errors/<code>/) when it has one. The
+// message and the list of pages are generated from the extract data (src/lib/errorIndex.ts),
 // so a new gotcha appears here by itself. Only the plain-language notes are hand-written
 // (src/lib/error-notes.ts).
 import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro'
-import { getCollection } from 'astro:content'
 import RustError from '../components/lesson/RustError.astro'
 import { ERROR_NOTES } from '../lib/error-notes'
+import { errorIndex, errorPage } from '../lib/errorIndex'
 import { inline } from '../lib/md'
 
-// All extract data, as written by `bun run extract`.
 const lessons = import.meta.glob<{ default: any }>('../data/lessons/*.json', { eager: true })
-const guides = import.meta.glob<{ default: any }>('../data/guides/*.json', { eager: true })
-const docs = await getCollection('docs')
-
-type Hit = { href: string; label: string; message: string }
-const hits = new Map<string, Hit[]>()
-function scan(text: string | undefined, href: string, label: string) {
-  for (const m of (text ?? '').matchAll(/^error\[(E\d{4})\]: (.*)$/gm)) {
-    const list = hits.get(m[1]) ?? []
-    // One entry per page, whichever part of the page shows it.
-    if (!list.some(h => h.href.split('#')[0] === href.split('#')[0])) list.push({ href, label, message: m[2] })
-    hits.set(m[1], list)
-  }
-}
-for (const [path, mod] of Object.entries(lessons)) {
-  const l = mod.default
-  const href = `/learn/${l.id}/`
-  scan(l.gotcha?.error, `${href}#gotcha`, l.title)
-  for (const s of Object.values<any>(l.snippets ?? {})) scan(s.error, href, l.title)
-  for (const q of l.faq ?? []) scan(q.bad?.error, href, l.title)
-}
-const guideRoute = (id: string) => {
-  const hit = docs.find(d => d.id.endsWith(`/${id}`) || d.id === id) ?? docs.find(d => d.id === 'std/tour' && id === 'std-tour')
-  return hit ? `/${hit.id}/` : undefined
-}
-for (const [path, mod] of Object.entries(guides)) {
-  if (path.endsWith('.runs.json')) continue
-  const g = mod.default
-  const href = guideRoute(g.id)
-  if (!href) continue
-  const title = docs.find(d => `/${d.id}/` === href)?.data.title ?? g.id
-  for (const steps of Object.values<any[]>(g.sessions ?? {})) for (const s of steps) scan(s.out, href, title)
-  scan(g.gotcha?.error, href, title)
-}
+const index = await errorIndex()
+const hits = new Map([...index].map(([c, e]) => [c, e.hits]))
 const codes = [...hits.keys()].sort()
 const headings = [
   { depth: 2, slug: 'how-an-error-is-laid-out', text: 'How an error is laid out' },
@@ -90,7 +59,7 @@ const anat = lessons['../data/lessons/vectors.json'].default.gotcha
       const note = ERROR_NOTES[code]
       return (
         <section class="lr-errcard" id={code}>
-          <h3><a href={`#${code}`}>{code}</a> <span>{list[0].message}</span></h3>
+          <h3><a href={errorPage(code) ?? `#${code}`}>{code}</a> <span>{list[0].message}</span></h3>
           {note ? (
             <>
               <p><strong>What it means.</strong> <Fragment set:html={inline(note.means)} /></p>
@@ -99,7 +68,7 @@ const anat = lessons['../data/lessons/vectors.json'].default.gotcha
           ) : (
             <p><em>This code has no plain-language note yet: add one to <code>website/src/lib/error-notes.ts</code>.</em></p>
           )}
-          <p class="lr-errlinks"><strong>See it:</strong> {list.map((h, i) => (<>{i > 0 && ', '}<a href={h.href}>{h.label}</a></>))} · <a href={`https://doc.rust-lang.org/error_codes/${code}.html`} target="_blank" rel="noopener">Official explanation ↗</a></p>
+          <p class="lr-errlinks"><strong>See it:</strong> {list.map((h, i) => (<>{i > 0 && ', '}<a href={h.href}>{h.label}</a></>))} {errorPage(code) && <> · <a href={errorPage(code)}>More on {code}: examples and fixes</a></>} · <a href={`https://doc.rust-lang.org/error_codes/${code}.html`} target="_blank" rel="noopener">Official explanation ↗</a></p>
         </section>
       )
     })}
