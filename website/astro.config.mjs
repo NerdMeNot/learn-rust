@@ -123,11 +123,16 @@ export default defineConfig({
           items: ['crates-map', 'serde', 'tokio', 'rayon', 'rayon-tokio', 'axum', 'grpc', 'sqlx', 'clap', 'app-errors', 'tracing', 'testing', 'datafusion'].map(s => ({ slug: `build/${s}` })),
         },
         {
+          label: 'Rust with an assistant',
+          collapsed: true,
+          items: docPages('assistant', ['review', 'guardrails', 'briefing', 'learning']),
+        },
+        {
           label: 'Going further',
           collapsed: true,
           items: [...lessonLinks('further'), ...docPages('further', ['project-structure', 'testing-more', 'performance'])],
         },
-        { label: 'Projects', collapsed: true, items: docPages('projects', ['todo', 'money', 'notes-api', 'indexer', 'shop']) },
+        { label: 'Projects', collapsed: true, items: docPages('projects', ['todo', 'money', 'notes-api', 'indexer', 'shop', 'assistant-review']) },
         { label: 'Cheat sheets', collapsed: true, items: docPages('cheatsheets', ['syntax']) },
         { label: 'Rust for your language', collapsed: true, items: docPages('for', ['go', 'java', 'kotlin', 'csharp', 'python', 'typescript', 'c-cpp']) },
         { label: 'Use Rust from…', collapsed: true, items: docPages('interop', ['python', 'node', 'c-cpp', 'wasm']) },

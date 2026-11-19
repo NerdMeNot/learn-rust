@@ -1,0 +1,9 @@
+[package]
+name = "fastsum"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+
+[lints.rust]
+unsafe_code = "forbid"

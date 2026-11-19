@@ -1,0 +1,226 @@
+---
+title: "Project: reviewing an assistant-style first draft"
+description: "Review a plausible first draft of an async Rust program step by step: Clippy lints, a real error type, fewer clones, no shared lock, and tests."
+---
+
+import { Files, Remember, Session, Tree } from '../../../components/guide'
+
+This page takes one small async program and reviews it in five steps. The program, `logstat`, reads several log files at once with Tokio and reports how many lines each level has, and the slowest request. Step 0 is a first draft of the kind an assistant might hand back: it compiles, it runs, and on the sample logs it prints the right answer. We wrote it ourselves, to show typical shapes in one place; it is not the output of any particular tool. Every program, warning and test result below is a real run in the image (Rust 1.99.1, Linux ARM64).
+
+The checklist this page follows is [Reviewing Rust an assistant wrote](/assistant/review/), and the lints come from [Guardrails](/assistant/guardrails/). The ideas behind each fix have their own pages: [Errors in real apps](/build/app-errors/), [Working with the Borrow Checker](/learn/borrow-checker/), the [Tokio guide](/build/tokio/) and [Testing](/build/testing/).
+
+<Remember>A program that compiles and prints the right answer once has passed two checks out of many. Lints catch a set of habits by name. The rest, such as logic that is wrong on input you did not try, and a design that shares what it could hand over, you find by reading, and you pin down with a test.</Remember>
+
+The first `cargo` command downloads `tokio` and `thiserror` from crates.io, so it needs network. Each step's folder has its own committed `Cargo.lock`, which pins tokio 1.54.1 and thiserror 2.0.21.
+
+<Tree guide="project-assistant-review" dir="rust" name="logstat" title="The finished project (step 5)" notes={{"src/lib.rs":"the error type, the parser, summarize, unit tests","src/main.rs":"the command line","tests/summarize.rs":"tests on real files in a temp directory","logs":"three small sample logs","Cargo.lock":"created by Cargo, committed"}} />
+
+Each step is a complete project folder in `guides/project-assistant-review/`: `step0-draft`, `step1-lints`, `step2-errors`, `step3-ownership`, `step4-async`, and `rust` for step 5.
+
+## The input
+
+Each line is a timestamp, a level, and a message. Some lines carry a duration as `ms=`. One file has a blank line, as real logs sometimes do.
+
+<Files guide="project-assistant-review" dir="step0-draft" files={["logs/api.log", "logs/web.log", "logs/worker.log"]} title="logs" />
+
+Counting by hand: 2 `ERROR` lines, 3 `WARN`, 7 `INFO`, and the slowest duration is 1840 ms.
+
+## Step 0: the draft
+
+<Files guide="project-assistant-review" dir="step0-draft" files={["src/main.rs", "Cargo.toml"]} run="draft-run" />
+
+The answer is right. Read the code before trusting it, though, because it has several of the habits on the [review checklist](/assistant/review/). Here are two runs on input that is not the happy path.
+
+A file that does not exist:
+
+<Session guide="project-assistant-review" run="draft-missing" />
+
+The task that reads `logs/missing.log` panics at the `unwrap()` on line 42. A panic in a spawned task does not end the program: the [`JoinHandle` docs](https://docs.rs/tokio/1.54.1/tokio/task/struct.JoinHandle.html) say that if the task panics, awaiting the handle gives "a JoinError that contains the panic". The draft awaits it with `let _ = handle.await;`, which throws that error away. So the program goes on, prints `files 4` (it counts arguments, not files read), and exits with code 0. A script that checks the exit code would think all four files were counted.
+
+A line whose duration is not a number:
+
+<Session guide="project-assistant-review" run="draft-bad" />
+
+This time the first panic is the `parse().unwrap()` on line 28, inside `count_line`, which runs while the task holds the mutex. A `std::sync::Mutex` whose holder panics is *poisoned*: from then on `lock()` returns an error, and every `lock().unwrap()` on it panics too. Here two other tasks hit it on line 44, then `main` on line 53, and the program exits with 101. Which tasks reach the lock after the poisoning depends on thread scheduling, so the number of `PoisonError` lines can change from run to run.
+
+## Step 1: turn on the guardrails
+
+First, what Clippy finds with its default lints, on the same draft. The command keeps one line per lint, with how many times it fired:
+
+<Session guide="project-assistant-review" run="draft-clippy" />
+
+One warning: `ptr_arg`, for the `&String` parameter. It is in Clippy's default set; the rest of what the draft does is legal and, for Clippy's defaults, unremarkable. The `[lints]` table in `Cargo.toml` changes that. This is the table from [Guardrails](/assistant/guardrails/), plus two lines for this program ([the `[lints]` section](https://doc.rust-lang.org/cargo/reference/manifest.html#the-lints-section) in the Cargo book):
+
+<Files guide="project-assistant-review" dir="step1-lints" files={["Cargo.toml"]} />
+
+The lints are set to `warn` so they don't stop you while you work. CI runs Clippy with `-D warnings`, which turns every warning into an error, so nothing merges with one left. The code is the draft, unchanged:
+
+<Session guide="project-assistant-review" run="lints" />
+
+Nine findings, in a form you can act on:
+
+| Lint | Where | What it means here |
+|---|---|---|
+| `unwrap_used` (5) | lines 23 (twice), 42, 44, 53 | each one is a panic waiting for input that is not perfect |
+| `let_underscore_must_use` | line 50 | the `Result` from the task, panic included, is thrown away |
+| `cast_possible_truncation` | line 29 | `ms as u32` cuts off a value above `u32::MAX` without a word |
+| `clone_on_ref_ptr` | line 40 | `stats.clone()` copies a pointer, not the data; `Arc::clone(&stats)` says so |
+| `ptr_arg` | line 10 | `&String` where `&str` will do |
+
+`unwrap_used`, `let_underscore_must_use` and `clone_on_ref_ptr` are in Clippy's `restriction` group, and `cast_possible_truncation` is in `pedantic`; none of them is on unless you ask for it ([Clippy's lint list for 1.99](https://clippy.rust-lang.org/rust-1.99.0/index.html), checked in November 2026). The default-only run above shows the same thing from the other side: without the table, the draft got one warning.
+
+`await_holding_lock` is not in the table because it is on by default: it is in the `suspicious` group, and the lint list describes it as checking "for calls to `await` while holding a non-async-aware `MutexGuard`". The draft does not trigger it. Step 4 shows why, and what the compiler does instead.
+
+### What the lints did not find
+
+Lints match shapes of code. They do not know what the program is for. Reading the draft with the checklist next to it finds these, and no lint above names any of them:
+
+1. **The level check is a search.** `line.contains("ERROR")` is true for a `WARN` line whose message mentions an error, and `ERROR` is checked first. The sample logs have no such line, so the happy path hides it.
+2. **The duration check is a search too.** `line.find("ms=")` also finds the `ms=` at the end of `items=`. Same story: the sample logs don't have one.
+3. **A blocking read inside async code.** `std::fs::read_to_string` blocks the thread it runs on. Inside a Tokio task, that thread is one of the runtime's own. The [Tokio docs](https://docs.rs/tokio/1.54.1/tokio/index.html#cpu-bound-tasks-and-blocking-code) explain that tasks are swapped "only at `.await` points", so code that runs a long time without one "will prevent other tasks from running". Clippy does not know which functions block.
+4. **A shared lock where none is needed.** Every task locks the same `Arc<Mutex<Stats>>` once per line. Each file's counts could be added up in its own task and handed back when it finishes, with no lock at all.
+5. **Clones and allocations to fit a type.** `paths.clone()` copies the whole list so `paths.len()` still works later. `line.to_string()` makes a new `String` for every line, only to pass it as `&String`. `level.to_string()` allocates a map key per line, for what is really three counters. Clippy flagged the `&String`, not the allocations made to fit it.
+6. **`features = ["full"]`.** The [tokio docs](https://docs.rs/tokio/1.54.1/tokio/index.html#feature-flags) say `full` "enables all features listed below except `test-util` and unstable features". This program needs three.
+7. **`files 4`** counts the arguments, not the files that were read.
+8. **No tests**, so none of the above is checked by anything.
+
+Steps 2 to 4 fix one concern each. The draft has no tests, so until step 5 the check on each step is the same set of runs: the happy path, a missing file, and a bad line. Items 1 and 2 are left alone on purpose until step 5, where a test is written first and seen to fail on them.
+
+## Step 2: errors
+
+The draft has two ways to fail, and both panic. This step gives them names. A library function returns a `Result` with its own error type, and `main` decides what the user sees. That needs a library, so the code moves to `src/lib.rs` and `main.rs` becomes the command line, the split described in [Project structure](/further/project-structure/#a-library-and-programs-in-one-package). The error type uses `thiserror` ([Errors in real apps](/build/app-errors/)), added in `Cargo.toml` as `thiserror = "2.0.21"`:
+
+<Files guide="project-assistant-review" dir="step2-errors" files={["src/lib.rs", "src/main.rs"]} run="errors-run" />
+
+What changed, and why:
+
+- **`LogError` has one variant per way to fail.** `Read` keeps the `io::Error` as its `#[source]`, so the message can say which file and the cause stays available. `BadDuration` says which file, which line and what text it found. `Task` holds a `JoinError`, so a task that panics is now an error the caller sees, not something lost.
+- **`handle.await??`** replaces `let _ = handle.await;`. The first `?` is the `JoinError` (did the task finish?), the second is the task's own `Result` (did reading and counting work?).
+- **`main` prints the error and its causes**, then returns `ExitCode::FAILURE`, so the missing file gives exit code 1 and a message, not a panic and exit code 0. The loop over `source()` is what prints the `caused by:` line.
+- **`slowest_ms` is a `u64`.** The parse gives a `u64`, and there was no reason to narrow it, so the cast is gone rather than replaced.
+- **`unwrap_or("")`** on the text after `ms=`: a line that ends in `ms=` is a bad duration with empty text, not a panic.
+
+The happy path prints the same numbers as the draft. Clippy, with one line per remaining lint:
+
+<Session guide="project-assistant-review" run="errors-count" />
+
+The two `unwrap_used` are both `stats.lock().unwrap()`. The parse error no longer panics, so it can no longer poison the mutex; step 4 removes the mutex, and the unwraps with it. The two `ptr_arg` are `count_line(line: &String)` and the new `summarize(paths: &Vec<String>)`, which step 3 fixes.
+
+## Step 3: ownership
+
+This step removes the copies the draft made to keep the borrow checker quiet, and the ones that were never needed. The test for each is: who needs to own this value, and for how long?
+
+<Files guide="project-assistant-review" dir="step3-ownership" files={["src/lib.rs", "src/main.rs"]} run="ownership-run" />
+
+- **`summarize` takes `Vec<String>` by value.** Each task must own its path, because `tokio::spawn` needs a future that does not borrow from the caller (`'static`). The draft got there by cloning the whole list. Moving the list in and handing each `String` to its task gives every task its path with no copy. `main` counts the paths before it gives them away.
+- **`count_line` takes `&str`.** A `&str` can point into the file's contents, so `line.to_string()` goes away with the `&String`. That is `ptr_arg`'s suggestion; the allocation it removes is the part Clippy did not point at.
+- **`Stats` is three counters and a maximum.** The `HashMap<String, usize>` needed a `String` key per line. Plain fields need nothing, and since every field is a number the struct can derive `Copy`, so `*stats.lock().unwrap()` copies it out with no `.clone()`.
+- **`Arc::clone(&stats)`**, as `clone_on_ref_ptr` asked. It does the same thing as `stats.clone()`, and reads as what it is: one more pointer to the same mutex.
+- **The errors take the path by move.** `return Err(LogError::Read { path, source })` can move `path` because nothing uses it after a `return`. The `map_err` closures in step 2 had to clone it, since a closure that moved it would leave nothing for the code after it.
+
+[Working with the Borrow Checker](/learn/borrow-checker/) has more fixes of this kind, and the [Idioms lesson](/learn/idioms/#habits-that-look-like-idioms) has a section on `.clone()` used as a habit.
+
+<Session guide="project-assistant-review" run="ownership-count" />
+
+Two left, both on the lock.
+
+## Step 4: async
+
+Two problems are left from the reading list: the blocking read, and the shared lock.
+
+The obvious fix for the read is `tokio::fs::read_to_string(&path).await`. In step 3's code that puts an `.await` inside the task, while the task holds the `std::sync::Mutex` guard, if the lock is taken first. Here is that version:
+
+<Files guide="project-assistant-review" dir="snippet-lock" files={["src/lib.rs"]} />
+
+<Session guide="project-assistant-review" run="lock-across-await" />
+
+`tokio::spawn` refuses it. Its [docs](https://docs.rs/tokio/1.54.1/tokio/task/fn.spawn.html) say "the task supplied to `spawn` must implement `Send`", and a `std::sync::MutexGuard` is not `Send`, so a future that keeps one across an `.await` is not either. This is why the draft never triggered `await_holding_lock`. The lint matters for futures the compiler does not check for `Send`, such as one that is awaited directly instead of spawned. The [Tokio guide](/build/tokio/#a-lock-held-across-an-await) has a program that compiles that way and hangs on a single-threaded runtime.
+
+The fix here is not a different lock. The tasks don't need to share anything:
+
+<Files guide="project-assistant-review" dir="step4-async" files={["src/lib.rs", "Cargo.toml"]} run="async-run" />
+
+- **`count_file` owns its `Stats`.** It reads one file, counts it into a local value and returns it. The task's return value is the hand-over, so there is no `Arc`, no `Mutex`, and no `lock().unwrap()`.
+- **`summarize` adds up the results** with `Stats::add`, in the order of `paths`. The tasks run concurrently; awaiting the handles in order only decides which error is reported when several files fail. It is the first one in argument order, every run.
+- **`tokio::fs::read_to_string`.** The [`tokio::fs` docs](https://docs.rs/tokio/1.54.1/tokio/fs/index.html) say it uses ordinary blocking file operations behind the scenes, run on Tokio's blocking thread pool with `spawn_blocking`, so the runtime's own threads stay free. ([Async Basics](/learn/async-basics/#many-tasks-on-one-thread-and-blocking) shows what blocking one of them does.)
+- **Three tokio features** instead of `full`: `rt-multi-thread` and `macros` for `#[tokio::main]`, and `fs`.
+
+The same three runs give the same results as step 2. And Clippy, with `-D warnings` as CI would run it, prints nothing and exits with 0:
+
+<Session guide="project-assistant-review" run="async-clippy" />
+
+That is where "paste the warnings back until it is clean" would stop. The two logic bugs from the reading list are still in `count_line`, word for word as in the draft.
+
+## Step 5: tests
+
+Write the tests for those two bugs first, against step 4's code, and watch them fail. A test that has never failed has not shown it can catch anything.
+
+<Files guide="project-assistant-review" dir="snippet-edge" files={["edge_cases.rs"]} />
+
+<Session guide="project-assistant-review" run="edge-red" />
+
+Both fail, with the numbers that show the bug. The `WARN` line that mentions an error was counted as `error: 1`. And the slowest request is 40, from `items=40`, not 12. The draft's `count_line` gives the same answers: step 4 only changed how it takes its argument and where the counts go, not how it reads a line.
+
+The fix reads the line as fields, which is what the format is:
+
+<Files guide="project-assistant-review" dir="rust" files={["src/lib.rs"]} />
+
+The level is the second field, so `fields.nth(1)` is compared with `"ERROR"`, `"WARN"` and `"INFO"` exactly. The duration is the field that *starts* with `ms=`: `strip_prefix` returns the rest only if the field begins with it, and `find_map` stops at the first field where it does. The two edge-case tests are now in the `tests` module with three more: a normal line of each level, blank and unknown lines, and a bad duration. They call `count_line` directly, so they need no files and no runtime.
+
+The integration test runs `summarize` the way `main` does, on real files ([Testing](/build/testing/) covers the `tests/` folder). Each test makes its own directory under the system's temp folder, named with the process id so two runs don't share one, and a `Drop` removes it when the test ends, the pattern from [Files and I/O](/learn/files-io/#temporary-files-that-clean-up). The tests return a `Result` and use `?` instead of `unwrap()`, so they follow the same lint table as the program:
+
+<Files guide="project-assistant-review" dir="rust" files={["tests/summarize.rs"]} />
+
+All eight tests, with `--test-threads=1` so the lines print in a fixed order:
+
+<Session guide="project-assistant-review" run="test" />
+
+The two `running 0 tests` blocks are the binary, which has no tests, and the doc tests, of which there are none. Clippy is still clean, the happy path still prints what the draft printed, and the two bad inputs give the errors from step 2:
+
+<Session guide="project-assistant-review" run="final-clippy" />
+
+## Before and after
+
+| | Step 0, the draft | Step 5 |
+|---|---|---|
+| Missing file | a panic message, `files 4`, exit code 0 | `error: cannot read logs/missing.log` and its cause, exit code 1 |
+| Bad duration | a panic, then more from the poisoned lock, exit code 101 | `error: logs/bad.log, line 1: duration "fast" is ...`, exit code 1 |
+| A task that panics | thrown away by `let _ =` | a `LogError::Task` the caller sees |
+| `WARN ... said ERROR` | counted as an error | counted as a warning (test) |
+| `items=40 ms=12` | slowest is 40 | slowest is 12 (test) |
+| Reading files | `std::fs` on the runtime's threads | `tokio::fs`, on the blocking pool |
+| Sharing | `Arc<Mutex<Stats>>`, locked once per line | none: each task returns its own `Stats` |
+| Copies | the path list, every line, every level name | none on the happy path |
+| `ms` | `u64` cast to `u32` | `u64` throughout |
+| tokio features | `full` | `rt-multi-thread`, `macros`, `fs` |
+| Clippy with the table and `-D warnings` | 9 errors | clean |
+| Tests | none | 5 unit tests, 3 on real files |
+
+Lints found nine things in the draft, by name, in seconds. Reading found eight more, and two of them were wrong answers that the happy path hid. Neither found everything, and they found different things.
+
+## What we would still check by hand
+
+The program is better, not finished. These are the questions a reviewer would still ask, and none of them has a lint or a test on this page:
+
+- **Is the format really `<time> <LEVEL> ...`?** The parser now trusts it exactly. A log that writes `[ERROR]` or `error` is skipped without a word, as unknown lines are. Whether that should be an error, a count of "other", or a warning is a decision about the logs you have, not about Rust.
+- **How big are the files?** `read_to_string` holds a whole file in memory. For logs of gigabytes, read line by line with a buffered reader instead.
+- **How many files?** There is one task per argument and no limit. A shell glob over a big directory could open thousands of files at once. The [indexer project](/projects/indexer/) bounds this with a semaphore.
+- **What happens after the first error?** `summarize` returns as soon as one handle gives an error. The other tasks are not cancelled: the `JoinHandle` docs say a dropped handle's task "continues running in the background and its return value is lost". Here the program exits right after, so it does no harm, but in a long-running service it would.
+- **No arguments** prints all zeros and exits with 0. A usage message would be kinder.
+- **Do the numbers mean what the report says?** "slowest" is the largest `ms=` on a counted line. Whether a line without a level should count towards it is a product question.
+
+## What to try next
+
+1. **Make unknown levels visible.** Add an `other` counter, and a test with a `DEBUG` line. Then decide whether `main` should print it.
+2. **Read line by line.** Replace `read_to_string` with `tokio::io::BufReader` and `lines()`, and keep the tests passing. The `Stats` and `count_line` don't change.
+3. **Bound the work.** Put a `Semaphore` in `summarize`, as in the [indexer project](/projects/indexer/), and test that at most N files are open at once.
+4. **Report every bad file.** Collect all the errors instead of returning the first, and print them all. Decide what the exit code should be when some files were fine.
+
+## Read more
+
+- On this site: [Reviewing Rust an assistant wrote](/assistant/review/), [Guardrails](/assistant/guardrails/), [Errors in real apps](/build/app-errors/), the [Tokio guide](/build/tokio/), [Testing](/build/testing/) and [More testing](/further/testing-more/).
+- [Clippy's lint list for Rust 1.99](https://clippy.rust-lang.org/rust-1.99.0/index.html), with each lint's group and default level.
+- [The `[lints]` section](https://doc.rust-lang.org/cargo/reference/manifest.html#the-lints-section) of the Cargo book.
+- [`tokio::task::spawn`](https://docs.rs/tokio/1.54.1/tokio/task/fn.spawn.html), [`JoinHandle`](https://docs.rs/tokio/1.54.1/tokio/task/struct.JoinHandle.html) and [`tokio::fs`](https://docs.rs/tokio/1.54.1/tokio/fs/index.html).
+
+<p class="lr-fine">The project is the guide <code>project-assistant-review</code>: tokio 1.54.1 and thiserror 2.0.21, as pinned in each step's <code>Cargo.lock</code>.</p>

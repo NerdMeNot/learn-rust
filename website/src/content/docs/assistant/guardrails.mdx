@@ -1,0 +1,241 @@
+---
+title: "Guardrails: the lints and checks that catch an assistant's habits"
+description: "Rust guardrails set once per project: Clippy lints in Cargo.toml, cargo fmt, rust-version, tests and CI, and checking the crates an assistant suggests."
+---
+
+import { Files, Remember, Session } from '../../../components/guide'
+
+[Reviewing Rust an assistant wrote](/assistant/review/) is a checklist for a person reading a diff. This page is the other half: settings you write once in a project so that tools catch the common mistakes on every change, whoever or whatever wrote the code. Most of them cost a few lines in `Cargo.toml` and one CI file. None of them is about assistants as such. An `unwrap()` in a library is the same problem whether a person typed it late at night or a tool suggested it. A diff that arrives quickly and reads well is simply easier to wave through, and a check that runs every time does not get tired.
+
+The code on this page was written for this site to show each pattern. It is a typical shape, not the output of any particular tool. Every warning, error and test result below comes from a real run with Rust 1.99.1 on Linux (ARM64):
+
+<Session guide="assistant-guardrails" run="versions" />
+
+<Remember>Put lint levels in `Cargo.toml` under `[lints]`, so every `cargo clippy` uses them. In CI, run `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test`, and let a failure block the merge.</Remember>
+
+## Lint levels in `Cargo.toml`
+
+Clippy is Rust's linter, installed with the toolchain. Its lints come in groups. Most groups are on by default as warnings. The **restriction** group is off by default, because its lints forbid things that are fine in some code and wrong in other code; you pick the ones that fit your project. Clippy's [README](https://github.com/rust-lang/rust-clippy) describes them as "lints which prevent the use of language and library features" and says the group "should, emphatically, not be enabled as a whole": its lints "may lint against perfectly reasonable code" (checked in November 2026). Each one is a decision to make for your project.
+
+A `[lints]` table in `Cargo.toml` sets lint levels for the package, and the Cargo Book says Cargo applies them "to the current package and not to dependencies" ([`[lints]`](https://doc.rust-lang.org/cargo/reference/manifest.html#the-lints-section)). The levels are `forbid`, `deny`, `warn` and `allow`. Lints that belong to rustc go under `[lints.rust]`, Clippy's under `[lints.clippy]`. In a workspace the same table lives in the root file as `[workspace.lints]`, and each member opts in; [Project structure](/further/project-structure/#lints-formatting-and-the-minimum-rust-version) shows that set-up, so this page uses a single package.
+
+The project is a small stock-keeping library, `stock`. Its `Cargo.toml` and `clippy.toml`:
+
+<Files guide="assistant-guardrails" dir="rust" files={["Cargo.toml", "clippy.toml"]} />
+
+The lints, with the group and default level each one has in this toolchain. Rather than trust my memory, I read both from Clippy: `clippy-driver -W help` prints every lint with its default level, and every group with the lints it contains. It spells names with hyphens; in `Cargo.toml` and in attributes they use underscores. The last step asks rustc the same question about its own lint, `unsafe_code`.
+
+<Session guide="assistant-guardrails" run="groups" />
+
+What each one is for:
+
+- **`unsafe_code = "forbid"`** (a rustc lint, allowed by default). Most application crates need no `unsafe` at all. With `forbid`, an `unsafe` block anywhere in the crate is an error, and no attribute inside the crate can switch it back (shown below).
+- **`unwrap_used`, `expect_used`.** An `unwrap()` turns a `None` or an `Err` into a panic. That is fine in a test or a quick script and usually wrong in a library or a server. The lint makes every one visible, so each is either replaced or written down as deliberate. [Errors](/learn/errors/) shows the alternatives.
+- **`todo`, `unimplemented`.** `todo!()` compiles and panics when called. A first draft that leaves one behind builds and passes every test that does not reach it.
+- **`dbg_macro`.** `dbg!` prints to stderr. It is a debugging aid, and Clippy's help says to remove it "before committing".
+- **`clone_on_ref_ptr`.** `x.clone()` on an `Arc` or `Rc` copies a pointer and bumps a count; on a `Vec` it copies the data. The two read the same. `Arc::clone(&x)` says which one you meant.
+- **`allow_attributes_without_reason`.** Makes every `#[allow(...)]` carry a `reason = "..."`. An exception without a reason is an exception nobody can review later.
+- **`await_holding_lock`** is already a warning by default (group `suspicious`). It is on the list so that it is not lost among other warnings: a `std::sync::Mutex` guard held across an `.await`. The compiler accepts that in the code below; it refuses only when the future has to be `Send`, as with a runtime's `spawn`. [Shared state](/learn/shared-state/#holding-a-guard-too-long) explains why it hurts.
+- **`undocumented_unsafe_blocks`** is for crates that do need `unsafe`: it asks for a `// SAFETY:` comment on each block. It has its own section below, because it cannot be combined with `forbid`.
+
+`clippy.toml` holds settings for individual lints. `allow-unwrap-in-tests` and `allow-expect-in-tests` tell `unwrap_used` and `expect_used` to ignore test functions and `#[cfg(test)]` code ([Clippy configuration](https://doc.rust-lang.org/clippy/lint_configuration.html)). In a test, a panic is how a test fails, so `unwrap()` there is fine.
+
+### A first draft with the lints on
+
+Here is a version of the library with several habits in it. It compiles, and nothing in it is a type error:
+
+<Files guide="assistant-guardrails" dir="bad" files={["src/lib.rs"]} />
+
+`cargo clippy` with the lints from `Cargo.toml`:
+
+<Session guide="assistant-guardrails" run="bad" />
+
+Eight warnings, one for each habit plus a second `unwrap()`. Two details in this output are worth knowing:
+
+- Each warning ends with `requested on the command line with -W clippy::...`. Cargo turns the `[lints]` table into command-line flags for rustc and Clippy, so there is nothing else to configure. `await_holding_lock` instead says `on by default`.
+- The command exited 0. Warnings do not fail a build. An assistant that runs `cargo clippy` and sees a successful exit, or a person who skims past yellow text, moves on.
+
+That is why CI runs Clippy with `-D warnings`, which turns every warning into an error. `--all-targets` includes tests, examples and benchmarks as well as the library:
+
+<Session guide="assistant-guardrails" run="bad-ci" />
+
+Now each one fails the command, and the note says how: `-D clippy::unwrap-used implied by -D warnings`.
+
+The other way to make a lint fail is to set it to `"deny"` in `Cargo.toml`. That fails every local `cargo clippy` too, which is stricter than most people want while they are still writing. Keeping the levels at `warn` and adding `-D warnings` in CI means warnings while you work and a hard stop before merge.
+
+### The fixed crate
+
+The fixed library returns a `Result` with its own error type instead of panicking, subtracts with `checked_sub` (the draft's `self.counts[name] - n` overflows when `n` is too large, which the Reference says panics "when compiled in debug mode" ([overflow](https://doc.rust-lang.org/reference/expressions/operator-expr.html#overflow)); `self.counts[name]` also panics on an unknown name), writes `Arc::clone(stock)`, implements `restock`, and drops the lock before the `.await`:
+
+<Files guide="assistant-guardrails" dir="rust" files={["src/lib.rs"]} />
+
+<Session guide="assistant-guardrails" run="good" />
+
+No output and exit 0: nothing to report, with tests included.
+
+### Exceptions you mean: `#[expect]` with a reason
+
+`starter()` still calls `unwrap()`, on purpose: it parses a constant that a test also parses, so it cannot fail at run time unless the test fails first. The attribute above it records the decision:
+
+```rust
+#[expect(
+    clippy::unwrap_used,
+    reason = "STARTER is a constant, and a test parses it"
+)]
+```
+
+`#[allow(lint)]` silences a lint. `#[expect(lint)]` silences it too, but it also checks that the lint really fires there. The Rust Reference says that if the lint is not emitted, "the `unfulfilled_lint_expectations` lint will be emitted at the attribute" ([diagnostic attributes](https://doc.rust-lang.org/reference/attributes/diagnostics.html)). So when the code changes and the exception is no longer needed, the attribute says so. Here I replace `.unwrap()` with `.unwrap_or_default()` and run Clippy again:
+
+<Session guide="assistant-guardrails" run="expect-unfulfilled" />
+
+The warning points at the attribute and repeats the reason. A stale `#[allow]` would have stayed silent. With `-D warnings`, as in CI, the same warning fails the command (the second step), so out-of-date exceptions get removed.
+
+The `clippy.toml` settings matter in the same way. Delete the file and the three test functions' `unwrap()` and `unwrap_err()` calls are reported as well:
+
+<Session guide="assistant-guardrails" run="no-clippy-toml" />
+
+### `forbid`, and crates that need `unsafe`
+
+`forbid` differs from `deny` in one way: code inside the crate cannot lower it. A function that tries to opt out with `#[allow(unsafe_code)]` is refused (error E0453), and the `unsafe` block is still reported:
+
+<Session guide="assistant-guardrails" run="unsafe-allow" />
+
+So a crate with `unsafe_code = "forbid"` cannot contain `unsafe`, whatever an attribute says. That is the point for crates that should have none. For a crate that needs some, leave `unsafe_code` alone and turn on `undocumented_unsafe_blocks` instead. This one has two copies of the same loop, one without a `// SAFETY:` comment:
+
+<Files guide="assistant-guardrails" dir="snippet-unsafe" files={["Cargo.toml", "src/lib.rs"]} run="unsafe" />
+
+Only the block without the comment is reported. The lint checks that a comment is there. Whether the comment is true is still a person's job: [`unsafe`, honestly](/learn/unsafe/) has five questions for reviewing a block.
+
+## Formatting: `cargo fmt --check`
+
+rustfmt is installed with the toolchain, and `cargo fmt` rewrites files in the standard style. `cargo fmt --check` changes nothing: it prints a diff and exits with status 1 if any file would change. Here it runs on a copy of the library with two functions squeezed onto the wrong lines:
+
+<Session guide="assistant-guardrails" run="fmt" />
+
+The first command fails with exit status 1, `cargo fmt` fixes both functions, and the second check passes. Formatting has nothing to do with correctness. The check is here so that a diff contains only real changes: when every contributor (and every tool) formats the same way, a review does not have to look past whitespace. Settings such as `max_width` go in `rustfmt.toml`, which [Project structure](/further/project-structure/#lints-formatting-and-the-minimum-rust-version) shows.
+
+## `rust-version`: the oldest Rust you support
+
+`rust-version = "1.85"` in `[package]` declares the minimum supported Rust version (MSRV). The Cargo Book describes three effects ([rust-version](https://doc.rust-lang.org/cargo/reference/rust-version.html)): on an older toolchain Cargo stops with an error (overridable with `--ignore-rust-version`), `cargo add` prefers dependency versions that support it, and the resolver may take it into account. [Project structure](/further/project-structure/#lints-formatting-and-the-minimum-rust-version) shows the refusal.
+
+What it does not do is compile your code with that old version. A one-line library with `rust-version = "1.85"` that calls `u32::is_multiple_of` shows this. Clippy warns, and `cargo build` on 1.99.1 succeeds without a word:
+
+<Files guide="assistant-guardrails" dir="snippet-msrv" files={["Cargo.toml"]} />
+
+<Session guide="assistant-guardrails" run="msrv-api" />
+
+The warning is `incompatible_msrv`, which is on by default. Clippy's `msrv` setting "defaults to the `rust-version` field in `Cargo.toml`" ([Clippy configuration](https://doc.rust-lang.org/clippy/lint_configuration.html)), and Clippy also uses it the other way round, to hold back advice the declared version cannot follow. Here is the same function written as `x % 2 == 0`, first with `rust-version = "1.85"` and then `"1.90"`:
+
+<Session guide="assistant-guardrails" run="msrv-old" />
+
+<Session guide="assistant-guardrails" run="msrv-new" />
+
+With 1.85 declared, Clippy says nothing, because `is_multiple_of` does not exist yet in 1.85. With 1.90 it suggests the method. So the field is worth setting for an application too, not only for a library that others build: it keeps the linter's advice inside the versions you support. To know that the declared version really builds the code, CI has to build with it. [Project structure](/further/project-structure/#lints-formatting-and-the-minimum-rust-version) installs 1.85.0 next to the current toolchain and runs the tests with it.
+
+## Tests as a guardrail
+
+The lints catch shapes of code. Only tests catch wrong answers. The fixed library has three unit tests and one doc test, the example in the comment on `from_csv`, which `cargo test` compiles and runs like any other test:
+
+<Session guide="assistant-guardrails" run="test" />
+
+Two habits make tests a guardrail rather than a decoration:
+
+- **Run them in CI, on every change**, so a passing test suite is a condition of merging, not something someone remembers to do.
+- **Read the tests that come with generated code before trusting them.** A test written by the same author, in the same pass, as the code it tests tends to share that code's assumptions: it checks what the code does, which is not always what it should do. [Reviewing Rust an assistant wrote](/assistant/review/) has more on this.
+
+A doc test is worth having in a library for a second reason: it is an example that cannot fall out of date without failing. [Testing](/build/testing/) covers unit and integration tests and `assert!`, and [More testing](/further/testing-more/) covers fixtures, doc tests, property tests, snapshot tests and coverage.
+
+## A CI workflow
+
+These are the three commands from this page, in a GitHub Actions workflow. This file has not been run on GitHub for this page. The session after it runs the same commands, in the same order, in the runner image.
+
+<Files guide="assistant-guardrails" dir="config" files={[".github/workflows/ci.yml"]} lang="yaml" title="GitHub Actions" />
+
+<Session guide="assistant-guardrails" run="ci-local" />
+
+What each line does:
+
+- **`actions/checkout@v7`** fetches the repository. v7 is the version its [README](https://github.com/actions/checkout) shows, checked in November 2026.
+- **`dtolnay/rust-toolchain@stable`** installs Rust; the version is chosen by the `@` part (`@stable`, `@nightly`, or a version such as `@1.89.0`), and `components` adds `rustfmt` and `clippy` ([README](https://github.com/dtolnay/rust-toolchain)). [`actions-rust-lang/setup-rust-toolchain`](https://github.com/actions-rust-lang/setup-rust-toolchain) is a common alternative; I did not use it here.
+- **`--locked`** makes Cargo fail instead of changing `Cargo.lock`, so CI builds the dependency versions that were reviewed and committed.
+- **Order.** `cargo fmt --check` compiles nothing, so it is the quickest to fail and goes first.
+
+A CI failure only protects anything if it blocks the merge. On GitHub that is a [protected branch](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches) with required status checks.
+
+## Dependencies an assistant suggests
+
+The compiler checks that your code calls a crate correctly. It cannot check that the crate is the one you meant. A suggested `Cargo.toml` line or `cargo add` command can name a crate that does not exist, or one whose name is close to a well-known crate but that belongs to someone else.
+
+A name that does not exist is the easy case. `cargo add` asks the crates.io index and stops (I checked first that this name returned "not found" from the crates.io API, in November 2026):
+
+<Files guide="assistant-guardrails" dir="newproj" files={["Cargo.toml"]} />
+
+<Session guide="assistant-guardrails" run="add-missing" />
+
+The harder case is a name that does exist because someone registered it. A 2025 USENIX Security paper, [*We Have a Package for You!*](https://arxiv.org/abs/2406.10279), generated 576,000 code samples in two languages with 16 code-generating models and found that the packages they named included names that did not exist, at least 5.2% on average for the commercial models and 21.7% for the open-source ones. It describes this as a form of package confusion attack: an attacker can publish a package under a name that tools tend to invent, and then a suggestion that used to fail at `cargo add` succeeds. The same risk exists for lookalike names of popular crates (typosquatting), whoever types them.
+
+So before adding a crate you did not pick yourself, look at it. `cargo info` (part of Cargo) prints what the registry knows about a package: its description, licence, `rust-version`, links to documentation and repository, and its features. I asked for a pinned version so the output stays comparable, but it still comes from the network:
+
+<Session guide="assistant-guardrails" run="info" />
+
+Check that the repository link goes where you expect and that the crate is the one the documentation you were reading uses. [Finding and using crates](/start/using-crates/#is-it-any-good) lists what else to look at on its crates.io page: recent downloads, last release, documentation and dependents.
+
+### cargo-deny and cargo-audit
+
+Two tools turn dependency checks into CI steps. Neither is installed in the image this site runs on, so nothing on this page ran them; the config below is shown, not tested.
+
+**[cargo-audit](https://github.com/rustsec/rustsec/tree/main/cargo-audit)** checks `Cargo.lock` against the RustSec Advisory Database of reported vulnerabilities. Install it with `cargo install cargo-audit` and run `cargo audit` in the project. Its README says: "Only run it on projects you trust", and that if there is no lock file it runs `cargo update --workspace` to make one.
+
+**[cargo-deny](https://embarkstudios.github.io/cargo-deny/)** checks the dependency graph against a policy file, `deny.toml`, in four parts: advisories (the same RustSec data), licences, bans and sources. Its quick start is `cargo install --locked cargo-deny && cargo deny init && cargo deny check`. A short `deny.toml`, with each key taken from its [configuration pages](https://embarkstudios.github.io/cargo-deny/checks/cfg.html) (checked in November 2026):
+
+<Files guide="assistant-guardrails" dir="config" files={["deny.toml"]} lang="toml" />
+
+`[sources]` is the part that most directly answers the lookalike problem: with `unknown-registry` and `unknown-git` set to `deny`, a dependency from an unexpected git URL or registry fails the check. It does not stop a bad crate published on crates.io itself; that still needs a person to look. The licence list is an example: put the licences your project accepts.
+
+## The short version
+
+For a new project, add this to `Cargo.toml`:
+
+```toml
+[package]
+# ...
+rust-version = "1.85"   # the oldest Rust you build and test with
+
+[lints.rust]
+unsafe_code = "forbid"  # or leave it out, and use undocumented_unsafe_blocks
+
+[lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+todo = "warn"
+unimplemented = "warn"
+dbg_macro = "warn"
+clone_on_ref_ptr = "warn"
+allow_attributes_without_reason = "warn"
+```
+
+This to `clippy.toml`:
+
+```toml
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+```
+
+And these steps to CI, with a rule that the check must pass before merging:
+
+```sh
+cargo fmt --check
+cargo clippy --all-targets --locked -- -D warnings
+cargo test --locked
+```
+
+Then, by hand or with cargo-deny: look at every new dependency before it goes in, and write a `reason` on every exception you keep.
+
+## Read more
+
+- Clippy: the [lint list for 1.99](https://clippy.rust-lang.org/rust-1.99.0/index.html) (each lint has an anchor, such as `#unwrap_used`) and [lint configuration](https://doc.rust-lang.org/clippy/lint_configuration.html).
+- The Cargo Book: [`[lints]`](https://doc.rust-lang.org/cargo/reference/manifest.html#the-lints-section), [rust-version](https://doc.rust-lang.org/cargo/reference/rust-version.html), [`cargo info`](https://doc.rust-lang.org/cargo/commands/cargo-info.html), and [Continuous integration](https://doc.rust-lang.org/cargo/guide/continuous-integration.html).
+- The Rust Reference: [lint attributes, including `expect` and `reason`](https://doc.rust-lang.org/reference/attributes/diagnostics.html).
+- In this section: [Reviewing Rust an assistant wrote](/assistant/review/), [Briefing an assistant on a Rust project](/assistant/briefing/) (which can point at the settings on this page), and the project [Review an assistant-style first draft](/projects/assistant-review/).
+
+<p class="lr-fine">Versions on this page: Rust 1.99.1 and Clippy 0.1.99 (lint list 1.99.0), checked in November 2026. The stock crate has no dependencies; anyhow 1.0.104 appears only in the <code>cargo info</code> run.</p>

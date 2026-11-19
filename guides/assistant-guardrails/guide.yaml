@@ -1,0 +1,124 @@
+# Guardrails: lints, formatting, tests and dependency checks set once in a project
+name: stock
+sessions:
+  versions:
+    dir: rust
+    steps:
+      - cmd: cargo --version
+      - cmd: cargo clippy --version
+  # Each lint's group and default level, read from Clippy itself rather than from memory.
+  groups:
+    dir: rust
+    steps:
+      - cmd: |-
+          help=$(clippy-driver -W help 2>&1); printf "%-33s %-12s %s\n" lint group default; for l in unwrap-used expect-used todo unimplemented dbg-macro clone-on-ref-ptr allow-attributes-without-reason undocumented-unsafe-blocks await-holding-lock incompatible-msrv; do level=$(echo "$help" | awk -v n="clippy::$l" '$1==n {print $2; exit}'); group=$(echo "$help" | awk -v n="clippy::$l" '$1 ~ /^clippy::(restriction|suspicious|style|complexity|correctness|perf|pedantic|nursery|cargo)$/ { for (i=2;i<=NF;i++) { x=$i; gsub(",","",x); if (x==n) {print substr($1,9); exit} } }'); printf "%-33s %-12s %s\n" "$l" "$group" "$level"; done
+        show: '$ clippy-driver -W help    # then, for each lint: the group that lists it, and its default level'
+      - cmd: rustc -W help | grep -E '^ *unsafe-code '
+        show: '$ rustc -W help    # the line for unsafe-code: its default level'
+  explain:
+    dir: rust
+    steps:
+      - cmd: cargo clippy --explain unwrap_used | sed -n '1,9p'
+        show: '$ cargo clippy --explain unwrap_used    # the first lines'
+  # The crate with an assistant-style first draft: the lints on, as warnings.
+  bad:
+    dir: rust
+    overlay:
+      src/lib.rs: bad/src/lib.rs
+    steps:
+      - cmd: cargo clippy
+  bad-ci:
+    dir: rust
+    overlay:
+      src/lib.rs: bad/src/lib.rs
+    steps:
+      - cmd: cargo clippy --all-targets -- -D warnings
+        expect: fail
+  good:
+    dir: rust
+    steps:
+      - cmd: cargo clippy --all-targets -- -D warnings
+  # The expectation outlives the code it excused.
+  expect-unfulfilled:
+    dir: rust
+    steps:
+      - cmd: sed -i 's/from_csv(STARTER).unwrap()/from_csv(STARTER).unwrap_or_default()/' src/lib.rs && cargo clippy
+        show: '$ cargo clippy    # after changing .unwrap() to .unwrap_or_default() in starter()'
+      - cmd: cargo clippy --all-targets -- -D warnings
+        expect: fail
+  # Without clippy.toml, the tests' unwraps are reported too.
+  no-clippy-toml:
+    dir: rust
+    steps:
+      - cmd: rm clippy.toml && cargo clippy --all-targets 2>&1 | grep -E '^(warning|error)' | sort | uniq -c
+        show: '$ cargo clippy --all-targets    # after deleting clippy.toml; the warnings, counted'
+  unsafe:
+    dir: snippet-unsafe
+    steps:
+      - cmd: cargo clippy
+  unsafe-forbid:
+    dir: snippet-unsafe
+    overlay:
+      Cargo.toml: snippet-unsafe/forbid.Cargo.toml
+    steps:
+      - cmd: cargo clippy
+        expect: fail
+  unsafe-allow:
+    dir: snippet-unsafe
+    overlay:
+      Cargo.toml: snippet-unsafe/forbid.Cargo.toml
+      src/lib.rs: snippet-unsafe/allowed.rs
+    steps:
+      - cmd: cargo clippy
+        expect: fail
+  fmt:
+    dir: rust
+    overlay:
+      src/lib.rs: bad/unformatted.rs
+    steps:
+      - cmd: cargo fmt --check
+        expect: fail
+      - cmd: cargo fmt
+      - cmd: cargo fmt --check
+  msrv-old:
+    dir: snippet-msrv
+    steps:
+      - cmd: cargo clippy
+  msrv-new:
+    dir: snippet-msrv
+    steps:
+      - cmd: sed -i 's/rust-version = "1.85"/rust-version = "1.90"/' Cargo.toml && cargo clippy
+        show: '$ cargo clippy    # after changing rust-version to "1.90"'
+  # Code that uses an API newer than the declared rust-version.
+  msrv-api:
+    dir: snippet-msrv
+    overlay:
+      src/lib.rs: snippet-msrv/new-api.rs
+    steps:
+      - cmd: cargo clippy
+      - cmd: cargo build
+  test:
+    dir: rust
+    steps:
+      - cmd: cargo test 2>&1 | grep -E 'Doc-tests|^test |test result' | sed -E 's/finished in [0-9.]+s/finished in X.XXs/'
+        show: '$ cargo test    # only the lines naming each test, and the totals; timings replaced by X.XXs'
+        varies: true
+  # What the CI file runs, in the same order.
+  ci-local:
+    dir: rust
+    steps:
+      - cmd: cargo fmt --check
+      - cmd: cargo clippy --all-targets --locked -- -D warnings
+      - cmd: cargo test --locked --quiet 2>&1 | sed -E 's/(finished in|ran in|took) [0-9.]+s/\1 X.XXs/g'
+        show: '$ cargo test --locked --quiet    # timings replaced by X.XXs'
+  # Needs network: asks the crates.io index.
+  add-missing:
+    dir: newproj
+    steps:
+      - cmd: cargo add tokio-async-retry-utils
+        expect: fail
+  info:
+    dir: newproj
+    steps:
+      - cmd: cargo info anyhow@1.0.104
+        varies: true

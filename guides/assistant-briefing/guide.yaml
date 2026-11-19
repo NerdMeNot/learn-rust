@@ -1,0 +1,61 @@
+# Briefing an assistant on a Rust project
+name: tally
+sessions:
+  # The three commands rust/AGENTS.md says must pass, exactly as it lists them.
+  checks:
+    dir: rust
+    steps:
+      - cmd: cargo fmt --check
+      - cmd: cargo clippy --all-targets -- -D warnings
+      - cmd: cargo test
+  # The same crate with one file not run through rustfmt: --check prints the diff and fails.
+  unformatted:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-unformatted/main.rs
+    steps:
+      - cmd: cargo fmt --check; echo "exit code $?"
+  run:
+    dir: rust
+    steps:
+      - cmd: cargo run
+  # A first draft that moves a Vec into a function, then uses it again.
+  moved:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-move/main.rs
+    steps:
+      - cmd: cargo build
+        expect: fail
+  clone:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-clone/main.rs
+    steps:
+      - cmd: cargo clippy -q --all-targets -- -D warnings
+      - cmd: cargo run -q
+        varies: true
+  borrow:
+    dir: rust
+    overlay:
+      src/main.rs: snippet-borrow/main.rs
+    steps:
+      - cmd: cargo clippy -q --all-targets -- -D warnings
+      - cmd: cargo run -q
+        varies: true
+  # Code written for an older major version of a crate, against the version Cargo.lock pins.
+  version-old:
+    dir: version-old
+    steps:
+      - cmd: cargo build
+      - cmd: cargo clippy -- -D warnings
+        expect: fail
+  version-013:
+    dir: version-013
+    steps:
+      - cmd: cargo build
+        expect: fail
+  version-new:
+    dir: version-new
+    steps:
+      - cmd: cargo run -q

@@ -1,0 +1,196 @@
+# Reviewing Rust an assistant wrote: one overlay of src/main.rs per pattern.
+# The code is written for this page, to show each pattern; it is not output from any tool.
+name: review
+sessions:
+  clone-error:
+    dir: rust
+    overlay: { src/main.rs: clone-error/src/main.rs }
+    steps:
+      - cmd: cargo build
+        expect: fail
+  clone-copy:
+    dir: rust
+    overlay: { src/main.rs: clone-copy/src/main.rs }
+    steps:
+      - cmd: cargo clippy
+      - cmd: cargo run
+  clone-fixed:
+    dir: rust
+    overlay: { src/main.rs: clone-fixed/src/main.rs }
+    steps:
+      - cmd: cargo run
+  unwrap-panic:
+    dir: rust
+    overlay: { src/main.rs: unwrap-panic/src/main.rs }
+    steps:
+      - cmd: cargo run
+        expect: fail
+  unwrap-lint:
+    dir: rust
+    overlay: { src/main.rs: unwrap-panic/src/main.rs }
+    steps:
+      - cmd: cargo clippy -- -W clippy::unwrap_used
+  unwrap-fixed:
+    dir: rust
+    overlay: { src/main.rs: unwrap-fixed/src/main.rs }
+    steps:
+      - cmd: cargo run
+  refcell-panic:
+    dir: rust
+    overlay: { src/main.rs: refcell-panic/src/main.rs }
+    steps:
+      - cmd: cargo clippy
+      - cmd: cargo run
+        expect: fail
+  refcell-plain:
+    dir: rust
+    overlay: { src/main.rs: refcell-plain/src/main.rs }
+    steps:
+      - cmd: cargo build
+        expect: fail
+  refcell-fixed:
+    dir: rust
+    overlay: { src/main.rs: refcell-fixed/src/main.rs }
+    steps:
+      - cmd: cargo run
+  cast-wrap:
+    dir: rust
+    overlay: { src/main.rs: cast-wrap/src/main.rs }
+    steps:
+      - cmd: cargo clippy
+      - cmd: cargo run
+  cast-lint:
+    dir: rust
+    overlay: { src/main.rs: cast-wrap/src/main.rs }
+    steps:
+      - cmd: cargo clippy -- -W clippy::cast_possible_truncation -W clippy::cast_sign_loss
+  cast-fixed:
+    dir: rust
+    overlay: { src/main.rs: cast-fixed/src/main.rs }
+    steps:
+      - cmd: cargo run
+  ptr-arg:
+    dir: rust
+    overlay: { src/main.rs: ptr-arg/src/main.rs }
+    steps:
+      - cmd: cargo clippy
+  ptr-arg-fixed:
+    dir: rust
+    overlay: { src/main.rs: ptr-arg-fixed/src/main.rs }
+    steps:
+      - cmd: cargo clippy
+      - cmd: cargo run
+  unsafe-bare:
+    dir: rust
+    overlay: { src/main.rs: unsafe-bare/src/main.rs }
+    steps:
+      - cmd: cargo clippy
+      - cmd: cargo clippy -- -W clippy::undocumented_unsafe_blocks
+  unsafe-fixed:
+    dir: rust
+    overlay: { src/main.rs: unsafe-fixed/src/main.rs }
+    steps:
+      - cmd: cargo clippy -- -W clippy::undocumented_unsafe_blocks
+      - cmd: cargo run
+  invented:
+    dir: rust
+    overlay: { src/main.rs: invented/src/main.rs }
+    steps:
+      - cmd: cargo build
+        expect: fail
+  invented-fixed:
+    dir: rust
+    overlay: { src/main.rs: invented-fixed/src/main.rs }
+    steps:
+      - cmd: cargo run
+  ignored-warn:
+    dir: rust
+    overlay: { src/main.rs: ignored-warn/src/main.rs }
+    steps:
+      - cmd: cargo build
+  ignored:
+    dir: rust
+    overlay: { src/main.rs: ignored/src/main.rs }
+    steps:
+      - cmd: cargo build
+      - cmd: cargo run
+      - cmd: cargo clippy -- -W clippy::let_underscore_must_use
+  ignored-fixed:
+    dir: rust
+    overlay: { src/main.rs: ignored-fixed/src/main.rs }
+    steps:
+      - cmd: cargo run
+  or-fun-call:
+    dir: rust
+    overlay: { src/main.rs: or-fun-call/src/main.rs }
+    steps:
+      - cmd: cargo run
+      - cmd: cargo clippy
+      - cmd: cargo clippy -- -W clippy::or_fun_call
+  or-fun-call-fixed:
+    dir: rust
+    overlay: { src/main.rs: or-fun-call-fixed/src/main.rs }
+    steps:
+      - cmd: cargo run
+  mutex-spawn:
+    dir: async
+    overlay: { src/main.rs: mutex-spawn/src/main.rs }
+    steps:
+      - cmd: cargo build
+        expect: fail
+  mutex-await:
+    dir: async
+    overlay: { src/main.rs: mutex-await/src/main.rs }
+    steps:
+      - cmd: cargo clippy
+  mutex-fixed:
+    dir: async
+    overlay: { src/main.rs: mutex-fixed/src/main.rs }
+    steps:
+      - cmd: cargo clippy
+      - cmd: cargo run
+  blocking:
+    dir: async
+    overlay: { src/main.rs: blocking/src/main.rs }
+    steps:
+      - cmd: cargo clippy
+      - cmd: cargo run
+        varies: true
+  blocking-fixed:
+    dir: async
+    overlay: { src/main.rs: blocking-fixed/src/main.rs }
+    steps:
+      - cmd: cargo run
+        varies: true
+  outdated:
+    dir: async
+    overlay: { src/main.rs: outdated/src/main.rs }
+    steps:
+      - cmd: cargo build
+        expect: fail
+  # Which Clippy group each opt-in lint belongs to: Clippy names the group that turned it on.
+  groups-pedantic:
+    dir: rust
+    overlay: { src/main.rs: cast-wrap/src/main.rs }
+    steps:
+      - cmd: cargo clippy -- -W clippy::pedantic 2>&1 | grep "implied by"
+  groups-nursery:
+    dir: rust
+    overlay: { src/main.rs: or-fun-call/src/main.rs }
+    steps:
+      - cmd: cargo clippy -- -W clippy::nursery 2>&1 | grep "implied by"
+  groups-restriction-unsafe:
+    dir: rust
+    overlay: { src/main.rs: unsafe-bare/src/main.rs }
+    steps:
+      - cmd: cargo clippy -- -W clippy::restriction 2>&1 | grep "implied by" | sort -u
+  groups-restriction-results:
+    dir: rust
+    overlay: { src/main.rs: ignored/src/main.rs }
+    steps:
+      - cmd: cargo clippy -- -W clippy::restriction 2>&1 | grep "implied by" | sort -u
+  groups-restriction-unwrap:
+    dir: rust
+    overlay: { src/main.rs: unwrap-panic/src/main.rs }
+    steps:
+      - cmd: cargo clippy -- -W clippy::restriction 2>&1 | grep "implied by" | sort -u

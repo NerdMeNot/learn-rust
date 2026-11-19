@@ -1,0 +1,272 @@
+---
+title: "Reviewing Rust an assistant wrote: a checklist"
+description: "A review checklist for Rust written with an assistant: clones, unwrap, RefCell, locks across await, casts, unsafe and ignored Results, each shown in a real run."
+---
+
+import { Files, Remember, Session } from '../../../components/guide'
+
+An assistant can get Rust to compile quickly, and the compiler checks a great deal. But "it builds" only means the compiler found nothing it is able to refuse. A clone that copies the data you meant to change, an `unwrap` that stops the program on bad input, a cast that turns 300 into 44: all of these compile, and some compile without a single warning. [Why Rust](/start/why-rust/#when-an-assistant-writes-your-rust) gives the argument in four points. This page is the practical half: what to look for in a diff, with each pattern run for real and then fixed.
+
+The code below was written for this site to show each pattern in a few lines. These are typical shapes of code that compiles but is wrong or costly, not output from any particular tool. Every compiler error, Clippy warning and program output on the page comes from a real run (Rust 1.99.1 and its Clippy, on Linux ARM64, Tokio 1.54.1 where async is needed). The Clippy lint names and groups were checked in November 2026 against that toolchain.
+
+<Remember>Read a diff's signatures first. Who owns what, what a function can fail with, and where `unsafe` and `.await` appear decide most of what can go wrong. The function bodies come after.</Remember>
+
+## The checklist
+
+| Pattern | What to look for in the diff | The fix | Where the site teaches it |
+| --- | --- | --- | --- |
+| [`.clone()` to silence the borrow checker](#a-clone-that-silences-the-borrow-checker) | a `.clone()` added next to a call that used to fail | borrow (`&` or `&mut`) instead | [Borrow checker](/learn/borrow-checker/), [Idioms](/learn/idioms/#habits-that-look-like-idioms) |
+| [`unwrap` in library code](#unwrap-and-expect-in-library-code) | `.unwrap()` / `.expect()` on input the caller controls | return a `Result` | [Errors](/learn/errors/#unwrap-and-expect) |
+| [`Rc<RefCell<_>>` where ownership works](#rcrefcell_-where-plain-ownership-works) | shared, mutable state with one real owner | `&mut`, and change the design | [Smart pointers](/learn/smart-pointers/) |
+| [A `std` lock held across `.await`](#a-std-mutex-guard-held-across-await) | `lock()` above an `.await` in the same scope | drop the guard before the `.await` | [Send and Sync](/learn/send-sync/), [Tokio](/build/tokio/) |
+| [Blocking calls in async code](#blocking-calls-inside-async-code) | `std::thread::sleep`, `std::fs`, heavy loops in an `async fn` | `tokio::time::sleep`, `spawn_blocking` | [Async basics](/learn/async-basics/#many-tasks-on-one-thread-and-blocking) |
+| [`as` casts](#as-casts-that-truncate-or-wrap) | `as u8`, `as u32`, `as usize` on values from outside | `try_from` | [Types](/learn/types/#as-casts-that-never-fail) |
+| [`&String` and `&Vec<T>` parameters](#string-and-vect-parameters) | parameter types that name the owner | `&str`, `&[T]` | [Strings](/learn/strings/), [Vectors](/learn/vectors/) |
+| [`unsafe` with no `// SAFETY:`](#unsafe-with-no-safety-comment) | any `unsafe` block | state and check the invariant, or remove `unsafe` | [`unsafe`, honestly](/learn/unsafe/) |
+| [Invented or outdated APIs](#a-method-that-does-not-exist-or-no-longer-does) | method names you have not seen, crate code in an old style | read the docs for the version in `Cargo.lock` | [Using crates](/start/using-crates/) |
+| [An ignored `Result`](#an-ignored-result) | `let _ =` on a call that can fail | `?`, or handle the error | [Errors](/learn/errors/#do-not-ignore-a-result) |
+| [`unwrap_or(call())`](#unwrap_or-with-a-call-in-it) | a function call inside `unwrap_or`, `or`, `map_or` | `unwrap_or_else(\|\| call())` | [Option](/learn/option/) |
+
+## A clone that silences the borrow checker
+
+The first version of this function takes the cart by value, so the cart is moved into it and `main` cannot print it afterwards. The compiler refuses, and its own help offers two ways out:
+
+<Files guide="assistant-review" dir="clone-error" files={["src/main.rs"]} />
+
+<Session guide="assistant-review" run="clone-error" />
+
+Both are real fixes for the error. Only one is a fix for the program. Taking the last suggestion, `cart.clone()`, builds and runs, and the milk is gone:
+
+<Files guide="assistant-review" dir="clone-copy" files={["src/main.rs"]} run="clone-copy" />
+
+`add_item` pushed onto the copy, and the copy was dropped when the function returned. Clippy's default run (the first command) has nothing to say about it: the code does exactly what it says. The other suggestion, borrowing, is the one that matches what the function is for. It changes the cart, so it takes `&mut`:
+
+<Files guide="assistant-review" dir="clone-fixed" files={["src/main.rs"]} run="clone-fixed" />
+
+**Why it matters.** A clone is a decision about ownership: from here on there are two values, and changes to one do not reach the other. When it is added only to make an error go away, read the code after it as if it said "copy". In a lucky case the cost is an allocation. In this case it is a lost update. [E0382](/errors/e0382/) has more examples of this error and its fixes.
+
+## `unwrap` and `expect` in library code
+
+A function another part of the program calls should not decide to end the program. This one does, on the second input:
+
+<Files guide="assistant-review" dir="unwrap-panic" files={["src/main.rs"]} />
+
+<Session guide="assistant-review" run="unwrap-panic" />
+
+The run never reaches `"70000"`, which would also fail (it does not fit in a `u16`). Clippy has a lint for this, `unwrap_used`, but it is in the `restriction` group, which is off by default, so you turn it on by name:
+
+<Session guide="assistant-review" run="unwrap-lint" />
+
+Its suggestion, `expect()`, gives a better message for the same panic. In a library, the fix is to return the error and let the caller decide:
+
+<Files guide="assistant-review" dir="unwrap-fixed" files={["src/main.rs"]} run="unwrap-fixed" />
+
+**Why it matters.** An `unwrap` is a claim that the value can never be an error. Ask what makes that true. In a test, in a short script, or right after a check the compiler cannot see, it can be a fair claim. On input from a file, a user or the network it is usually not, and [the Cloudflare outage](/start/why-rust/#when-an-assistant-writes-your-rust) is the expensive example. [Errors in real apps](/build/app-errors/) shows the `Result` types that real programs use.
+
+## `Rc<RefCell<_>>` where plain ownership works
+
+`Rc<RefCell<T>>` lets several owners share a value and change it, and it moves the borrow rules from compile time to run time. That move is the cost. Here the loop reads the messages through `borrow()` while it adds to them through `borrow_mut()`:
+
+<Files guide="assistant-review" dir="refcell-panic" files={["src/main.rs"]} />
+
+<Session guide="assistant-review" run="refcell-panic" />
+
+Clippy's default run is silent, and the program fails only when an urgent message arrives. Nothing in this program needs two owners. With a plain `&mut Vec<String>`, the same mistake is a compile error, with a help line that points at the fix:
+
+<Files guide="assistant-review" dir="refcell-plain" files={["src/main.rs"]} />
+
+<Session guide="assistant-review" run="refcell-plain" />
+
+The fix is the one the compiler names: collect the new messages first, then add them.
+
+<Files guide="assistant-review" dir="refcell-fixed" files={["src/main.rs"]} run="refcell-fixed" />
+
+**Why it matters.** Each `RefCell` trades a compile error for a possible panic. When you see `Rc<RefCell<_>>` in a diff, ask who really owns the value. If the answer is one struct or one function, plain ownership and `&mut` let the compiler do the checking. There are honest uses (a graph whose nodes are shared, a callback that changes state), and [Working with the borrow checker](/learn/borrow-checker/) describes when it is the right answer.
+
+## A `std` Mutex guard held across `.await`
+
+This handler locks a counter, adds one, and saves the new count, all while still holding the lock:
+
+<Files guide="assistant-review" dir="mutex-spawn" files={["src/main.rs"]} title="Rust (Tokio)" />
+
+<Session guide="assistant-review" run="mutex-spawn" />
+
+`tokio::spawn` can move a task to another thread between `.await`s, so it asks for a future that is `Send`. A `std::sync::MutexGuard` is not `Send`, and the guard is alive across the `.await`. This error has no code number. The help line names the missing trait, `Send`; [Send and Sync](/learn/send-sync/) explains the rule, and [async basics](/learn/async-basics/#a-future-that-must-cross-threads-is-send) shows it for futures.
+
+The compiler only refuses this when the future has to be `Send`. Await the same function directly instead of spawning it, and it builds. Clippy's default run still flags it, with `await_holding_lock`:
+
+<Session guide="assistant-review" run="mutex-await" />
+
+The fix is to end the guard's scope before the `.await`. A block does it, and the spawned version now builds, passes Clippy and runs:
+
+<Files guide="assistant-review" dir="mutex-fixed" files={["src/main.rs"]} title="Rust (Tokio)" run="mutex-fixed" />
+
+**Why it matters.** A blocking lock held across an `.await` is held for as long as the awaited work takes, and other tasks that want it wait for all of that. Tokio's [`Mutex` docs](https://docs.rs/tokio/1.54.1/tokio/sync/struct.Mutex.html#which-kind-of-mutex-should-you-use) say the ordinary standard-library `Mutex` is "ok and often preferred" in async code, and that their async mutex's advantage is "the ability to keep it locked across an `.await` point". So the two fixes are: drop the guard first (as above), or, if the lock really must span the `.await`, use `tokio::sync::Mutex`. Swapping one for the other only to make the error go away is the clone pattern again.
+
+## Blocking calls inside async code
+
+An `async fn` can call any function, including ones that block the thread. Neither the compiler nor Clippy's default run (the first command below) warns about the `std::thread::sleep` here, which stands in for any slow call that blocks (a large `std::fs` read, a password hash). The program runs on Tokio's single-threaded runtime, which makes the effect easy to see: a ticker should print every 100 ms.
+
+<Files guide="assistant-review" dir="blocking" files={["src/main.rs"]} title="Rust (Tokio)" run="blocking" />
+
+Tick 2 should have come at 100 ms. It came at 350, after the report, because the report task held the only thread for 350 ms and the ticker could not run. On a multi-threaded runtime the effect is less obvious, since the blocked thread is one of several, but each blocked thread is one fewer for every other task. The [`spawn_blocking`](https://docs.rs/tokio/1.54.1/tokio/task/fn.spawn_blocking.html) docs say blocking "may prevent the executor from driving other futures forward", and that the function runs a closure "on a thread where blocking is acceptable". With it, the ticks come on time:
+
+<Files guide="assistant-review" dir="blocking-fixed" files={["src/main.rs"]} title="Rust (Tokio)" run="blocking-fixed" />
+
+**Why it matters.** This bug does not fail. It makes a server slow in a way that is hard to trace, because the blocked task looks fine and the tasks around it look slow. When a diff adds an `async fn`, read every call inside it: a wait should be `tokio::time::sleep`, file work `tokio::fs` or `spawn_blocking`, and heavy computation `spawn_blocking` or a thread pool ([Rayon with Tokio](/build/rayon-tokio/)).
+
+## `as` casts that truncate or wrap
+
+`as` between integer types never fails. When the value does not fit, it keeps the low bits:
+
+<Files guide="assistant-review" dir="cast-wrap" files={["src/main.rs"]} run="cast-wrap" />
+
+Clippy's default run (the first command) was silent, and 300 became 44 and -1 became 255. Clippy can point at these casts, but the lints are in the `pedantic` group, off by default:
+
+<Session guide="assistant-review" run="cast-lint" />
+
+The fix is the one Clippy prints. `try_from` says what happens when the value does not fit:
+
+<Files guide="assistant-review" dir="cast-fixed" files={["src/main.rs"]} run="cast-fixed" />
+
+**Why it matters.** Whether 300 should be refused, clamped to 255 or wrapped is a decision about the device, not about Rust, and `as` makes it silently. When you see `as` on a value from outside the program (a length, a user's number, a file's field), ask which of the three the author meant. [Types](/learn/types/#as-casts-that-never-fail) shows the rules for each kind of cast.
+
+## `&String` and `&Vec<T>` parameters
+
+These functions only read their arguments, but their types name the owner:
+
+<Files guide="assistant-review" dir="ptr-arg" files={["src/main.rs"]} />
+
+Clippy's default run catches both, with `ptr_arg`:
+
+<Session guide="assistant-review" run="ptr-arg" />
+
+A `&String` parameter makes a caller with a `&str` (a literal, a slice of a larger string) build a `String` first, as the last line of `main` does. With `&str` and `&[u32]` the same functions take a `String`, a literal, an array or part of a `Vec`, and Clippy is quiet:
+
+<Files guide="assistant-review" dir="ptr-arg-fixed" files={["src/main.rs"]} run="ptr-arg-fixed" />
+
+**Why it matters.** Each one is small, but signatures are what the rest of the code is written against, and a `&String` in a public function spreads `.to_string()` through every caller. The same reasoning applies to a function that takes `String` but only reads it. [Strings](/learn/strings/) and [Vectors](/learn/vectors/) explain the owned and borrowed forms.
+
+## `unsafe` with no SAFETY comment
+
+This function reads the first byte without a bounds check:
+
+<Files guide="assistant-review" dir="unsafe-bare" files={["src/main.rs"]} />
+
+It is correct for `b"hi"`. Called with an empty slice, it reads past the end of the slice: undefined behaviour, which no run on this page shows because nothing is guaranteed about what it does. The default Clippy run (the first command) is silent. The lint for this, `undocumented_unsafe_blocks`, is in the `restriction` group, so you turn it on by name (the second command):
+
+<Session guide="assistant-review" run="unsafe-bare" />
+
+The comment is not paperwork. Writing it makes you state the condition the block depends on, and here that shows the condition is not checked. The fixed version checks it and says so. The last function does the same job in safe code, which is the better answer whenever there is one:
+
+<Files guide="assistant-review" dir="unsafe-fixed" files={["src/main.rs"]} run="unsafe-fixed" />
+
+**Why it matters.** Inside `unsafe`, the compiler takes the author's word. In a review, the first question is whether the block is needed at all, and the second is whether its `// SAFETY:` comment is true at every call. [`unsafe`, honestly](/learn/unsafe/#reviewing-a-block-five-questions) lists the questions to ask of each block.
+
+## A method that does not exist, or no longer does
+
+Code can name a method that sounds right and is not there. Rust will not build it:
+
+<Files guide="assistant-review" dir="invented" files={["src/main.rs"]} />
+
+<Session guide="assistant-review" run="invented" />
+
+Read the help line with care. It suggests `remove` because the name is similar, not because it does the same job: [`Vec::remove`](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.remove) takes an index, not a value. The method that removes by value is `retain`:
+
+<Files guide="assistant-review" dir="invented-fixed" files={["src/main.rs"]} run="invented-fixed" />
+
+The same thing happens with crates whose API changed. `tokio::time::delay_for` was a real function in Tokio 0.2 ([docs.rs](https://docs.rs/tokio/0.2.25/tokio/time/fn.delay_for.html)). Tokio's [changelog](https://github.com/tokio-rs/tokio/blob/master/tokio/CHANGELOG.md) records that 0.3.0 renamed it to `sleep`. Against the Tokio 1.54.1 in this project's `Cargo.lock`:
+
+<Files guide="assistant-review" dir="outdated" files={["src/main.rs"]} title="Rust (Tokio)" />
+
+<Session guide="assistant-review" run="outdated" />
+
+**Why it matters.** These two fail loudly, which is the good case. The quiet case is a function that still exists in the new version but behaves differently, or one that is deprecated and only warns. When a diff uses a crate, open its docs for the version in `Cargo.lock` (docs.rs has a page for each version), not the newest and not the one an example online used. [E0599](/errors/e0599/) and [E0425](/errors/e0425/) have more on the two errors.
+
+## An ignored `Result`
+
+The compiler warns when a `Result` is dropped unused:
+
+<Files guide="assistant-review" dir="ignored-warn" files={["src/main.rs"]} />
+
+<Session guide="assistant-review" run="ignored-warn" />
+
+Its help line shows how to silence it, and that is often what happens. The version with `let _ =` builds with no warning, and then reports success for a file it never wrote:
+
+<Files guide="assistant-review" dir="ignored" files={["src/main.rs"]} />
+
+<Session guide="assistant-review" run="ignored" only={[0, 1]} />
+
+Clippy's `let_underscore_must_use` (in `restriction`, so turned on by name) finds every `let _ =` on a `#[must_use]` value:
+
+<Session guide="assistant-review" run="ignored" only={[2]} />
+
+The fix passes the error up with `?`, and the caller says what went wrong:
+
+<Files guide="assistant-review" dir="ignored-fixed" files={["src/main.rs"]} run="ignored-fixed" />
+
+**Why it matters.** `let _ =` is sometimes right, for a result you have decided you do not need. It should say so in a comment. Without one, read it as "this error was never looked at", and ask what the program does next if the call failed. Here it prints "report saved".
+
+## `unwrap_or` with a call in it
+
+The argument to `unwrap_or` is worked out before `unwrap_or` runs, whether or not it is needed. The cache below holds `theme`, and the program still reads it from disk each time:
+
+<Files guide="assistant-review" dir="or-fun-call" files={["src/main.rs"]} />
+
+<Session guide="assistant-review" run="or-fun-call" only={[0]} />
+
+Clippy's default run says nothing. The lint, `or_fun_call`, is in the `nursery` group (lints still being worked on), so it too is turned on by name:
+
+<Session guide="assistant-review" run="or-fun-call" only={[1, 2]} />
+
+With `unwrap_or_else`, the closure runs only when the value is missing:
+
+<Files guide="assistant-review" dir="or-fun-call-fixed" files={["src/main.rs"]} run="or-fun-call-fixed" />
+
+**Why it matters.** Here the cost is a wasted read. If the call has a side effect (writing a log line, sending a request, taking a number from a counter), it is a bug. The same applies to `or`, `map_or` and `ok_or`.
+
+## Which lints are on by default
+
+Six of the eight lints on this page are off by default. Clippy says which group turns a lint on when you enable the group, which is how the groups in the table below were checked:
+
+<Session guide="assistant-review" run="groups-pedantic" />
+
+<Session guide="assistant-review" run="groups-nursery" />
+
+<Session guide="assistant-review" run="groups-restriction-unsafe" />
+
+<Session guide="assistant-review" run="groups-restriction-unwrap" />
+
+<Session guide="assistant-review" run="groups-restriction-results" />
+
+The `restriction` run also shows why you turn those lints on one by one: the group includes lints such as `implicit_return` and `print_stdout` that ban ordinary code, and [Clippy's documentation](https://doc.rust-lang.org/clippy/) says the group "should, _emphatically_, not be enabled as a whole".
+
+| Lint | Catches | On by default? |
+| --- | --- | --- |
+| `ptr_arg` | `&String`, `&Vec<T>` parameters | yes (the run says `on by default`) |
+| `await_holding_lock` | a `std` lock guard held across `.await` | yes |
+| `cast_possible_truncation`, `cast_sign_loss` | `as` casts that lose bits or the sign | no, `pedantic` |
+| `or_fun_call` | a call inside `unwrap_or` and friends | no, `nursery` |
+| `unwrap_used` | `unwrap()` on `Result` and `Option` | no, `restriction` |
+| `undocumented_unsafe_blocks` | `unsafe` with no `// SAFETY:` comment | no, `restriction` |
+| `let_underscore_must_use` | `let _ =` on a `#[must_use]` value | no, `restriction` |
+
+None of them catches the lost clone, the `RefCell` panic or the blocking call. Those need a reader. [Guardrails](/assistant/guardrails/) shows how to turn the useful ones on for the whole project, once, in `Cargo.toml`, and run them in CI.
+
+## How to review a diff
+
+1. **Read the signatures and the ownership first.** Parameter and return types, `&` versus `&mut` versus owned, every new `.clone()`, `Rc`, `RefCell` and `Arc`. Ask who owns each value and whether a clone was meant as a copy.
+2. **Then the error paths.** Every `unwrap`, `expect`, `let _ =`, `as` cast and index. Ask what happens on bad input, and whether the function's signature tells the caller it can fail.
+3. **Then `unsafe` and async.** Each `unsafe` block needs a true `// SAFETY:` comment, or no `unsafe`. Each `async fn` needs no blocking calls and no `std` lock held across an `.await`.
+4. **Then run Clippy with the guardrail lints on.** `cargo clippy` with the lints above enabled, and read every warning rather than silencing it with `#[allow]`.
+5. **Then the tests.** Run them, and check that one covers the case the diff changes, including the bad input. A test written alongside the code can share its mistake, so read what it checks ([Testing](/build/testing/)).
+
+[Project: review an assistant-style first draft](/projects/assistant-review/) walks through this list on a whole program, step by step.
+
+## Read more
+
+- Clippy's [lint list for Rust 1.99](https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html), the page each warning above links to, and the [Clippy book](https://doc.rust-lang.org/clippy/) for lint groups and configuration.
+- Tokio: [which kind of mutex to use](https://docs.rs/tokio/1.54.1/tokio/sync/struct.Mutex.html#which-kind-of-mutex-should-you-use) and [`spawn_blocking`](https://docs.rs/tokio/1.54.1/tokio/task/fn.spawn_blocking.html).
+- The standard library: [`TryFrom`](https://doc.rust-lang.org/std/convert/trait.TryFrom.html), [`Option::unwrap_or_else`](https://doc.rust-lang.org/std/option/enum.Option.html#method.unwrap_or_else), [`Vec::retain`](https://doc.rust-lang.org/std/vec/struct.Vec.html#method.retain) and [`RefCell`](https://doc.rust-lang.org/std/cell/struct.RefCell.html).
+- In this course: [Idioms: habits that look like idioms](/learn/idioms/#habits-that-look-like-idioms), [Working with the borrow checker](/learn/borrow-checker/), [`unsafe`, honestly](/learn/unsafe/) and [Errors](/learn/errors/).
+- The rest of this section: [Guardrails](/assistant/guardrails/), [Briefing an assistant](/assistant/briefing/) and [Learning Rust with an assistant](/assistant/learning/).

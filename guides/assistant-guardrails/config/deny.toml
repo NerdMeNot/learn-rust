@@ -1,0 +1,24 @@
+# cargo-deny settings. Not run on this page: cargo-deny is not installed in the image.
+# Each key is described at https://embarkstudios.github.io/cargo-deny/checks/cfg.html
+
+[advisories]
+# Fail on crates the RustSec database marks unmaintained or unsound,
+# whether you depend on them directly or not.
+unmaintained = "all"
+unsound = "all"
+yanked = "deny"
+
+[licenses]
+# Only these licences are accepted; any other fails the check.
+allow = ["MIT", "Apache-2.0"]
+
+[bans]
+# `serde = "*"` in a Cargo.toml fails the check.
+wildcards = "deny"
+# Two versions of one crate in the build is reported, not refused.
+multiple-versions = "warn"
+
+[sources]
+# Crates come from crates.io and nowhere else, unless added to an allow list.
+unknown-registry = "deny"
+unknown-git = "deny"

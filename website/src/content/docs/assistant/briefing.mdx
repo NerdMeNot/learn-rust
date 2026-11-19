@@ -1,0 +1,176 @@
+---
+title: "Briefing an assistant on a Rust project"
+description: "What to tell a coding assistant about a Rust project: an AGENTS.md template, the compiler's full errors, the ownership decision and pinned crate versions."
+---
+
+import { Files, Remember, Session, Tree } from '../../../components/guide'
+
+A coding assistant starts every session knowing nothing about your project. It does not know which commands must pass, which crates you allow, or that a library in your workspace must never panic. It fills those gaps with guesses, and in Rust a guess often compiles. [Why Rust](/start/why-rust/#when-an-assistant-writes-your-rust) makes the case that compiling is where review starts, not where it ends. This page is the step before review: what to write down once, so the first draft is closer to right, and what to send back when the compiler says no.
+
+There are four parts. A short instructions file in the repository. The compiler's full output, pasted as it is. A clear question about ownership when an error has more than one fix. And the crate versions the project really uses.
+
+The Rust code on this page was written for this site to show typical shapes. It is not the output of any particular assistant or model. Every command output, compiler error and Clippy message on this page comes from a real run, on Linux on ARM64 with Rust 1.99.1.
+
+## Where the instructions go
+
+Most coding assistants read a Markdown file from the repository at the start of a session. The file's name depends on the tool. Four tools' documentation was checked in November 2026; these details change, so check your tool's own page.
+
+| File | What the documentation says |
+| --- | --- |
+| `AGENTS.md` | [agents.md](https://agents.md/) calls it "a simple, open format for guiding coding agents". Put it at the root of the repository; in a large repository you can add one per subproject, and "the closest AGENTS.md to the edited file wins". The site lists more than twenty tools that read it. |
+| `AGENTS.md` in Codex | [OpenAI's Codex docs](https://learn.chatgpt.com/docs/agent-configuration/agents-md): Codex walks from the project root down to the current directory, reading at most one file per directory (an `AGENTS.override.md` first if there is one), and stops adding files at 32 KiB by default. |
+| `CLAUDE.md` | [Claude Code's docs](https://code.claude.com/docs/en/memory): a project file is `./CLAUDE.md` or `./.claude/CLAUDE.md`. Claude Code reads an `AGENTS.md` instead when there is no `CLAUDE.md` in the working directory or above it (from version 2.1.277), and a `CLAUDE.md` can import an `AGENTS.md`. |
+| `.github/copilot-instructions.md` | [GitHub's Copilot docs](https://docs.github.com/en/copilot/how-tos/configure-custom-instructions/add-repository-instructions): this file holds repository-wide instructions. The same page says you can also add `AGENTS.md` files anywhere in the repository, and "the nearest `AGENTS.md` file in the directory tree will take precedence". |
+
+If your team uses more than one tool, keep the instructions in one file and point the others at it, using whatever import or fallback each tool's documentation describes. Two copies drift apart.
+
+Claude Code's page says plainly that the file is treated "as context, not enforced configuration". Plan on that for any tool: an instruction to run `cargo clippy` does not run Clippy. That is what CI is for, and [Guardrails](/assistant/guardrails/) sets it up. The instructions file makes the right thing likely. CI makes the wrong thing visible.
+
+## A ready-to-copy instructions file
+
+Here is the whole file for a small crate, `tally`: a library that parses order lines like `apple,3,40` and a binary that prints the total. The file is `AGENTS.md`; rename it to whatever your tool reads. The crate itself is in the other tabs, so you can see that the file describes the code it sits next to.
+
+<Tree guide="assistant-briefing" dir="rust" name="tally" extra={[]} notes={{"AGENTS.md":"the instructions file","src/lib.rs":"the library, with unit tests","src/main.rs":"the binary","tests/totals.rs":"an integration test","orders.csv":"sample input","Cargo.lock":"created by Cargo; committed"}} />
+
+<Files guide="assistant-briefing" dir="rust" files={["AGENTS.md", "Cargo.toml", "src/lib.rs", "src/main.rs", "tests/totals.rs"]} title="tally" />
+
+Each section is there for a reason:
+
+- **The commands that must pass**, in the order to run them, written exactly as you would type them. "Run the linter" leaves the assistant to guess the flags; `cargo clippy --all-targets -- -D warnings` does not. `--all-targets` includes tests and examples, and `-D warnings` turns every warning into an error, so "it builds with warnings" no longer counts as done.
+- **The toolchain.** `rust-version` in `Cargo.toml` records the oldest Rust the crate supports. The [Cargo reference](https://doc.rust-lang.org/cargo/reference/rust-version.html) says Cargo reports an error when the package is built with an older toolchain, and that Clippy's `incompatible_msrv` lint uses the field too. Here it is the toolchain I tested with, 1.99. If you claim an older one, test on it.
+- **Where things live.** One line per file. It stops the assistant from putting parsing code in `main.rs`, or a second error type next to `ParseError`.
+- **The rules.** Each is a decision Rust leaves to you, and that an assistant cannot work out from the code alone. The error split (thiserror in the library, anyhow in the binary) is the one [Errors in real apps](/build/app-errors/) explains; drop that line if your project does it differently. `unwrap` outside tests and `main` is the habit [Why Rust](/start/why-rust/#when-an-assistant-writes-your-rust) warns about. The `// SAFETY:` rule is the one [`unsafe`, honestly](/learn/unsafe/) teaches. "Never weaken, skip or delete a test" and "do not silence a warning with `#[allow(...)]`" close the two quickest ways to turn a red build green.
+- **How to report back.** The full output of a failed command, and a note on every ownership change. The last two sections of this page show why.
+
+Keep it short. A long file is expensive to read for a person and for a tool. Claude Code's documentation suggests a target of under 200 lines per `CLAUDE.md` and says longer files "consume more context and reduce adherence". This file is 45 lines. What it leaves out is on purpose: Rust style is `rustfmt`'s job, and the checks behind each rule belong in CI, where they run whether anyone reads the file or not.
+
+### The commands in the file are real
+
+An instructions file that lists a command nobody has run is a guess too. Here are the three commands from the file, exactly as written, run on the crate above. `cargo fmt --check` and `cargo clippy` printed nothing, which means they passed; `cargo test` ran the two unit tests in `src/lib.rs`, then the integration test in `tests/`:
+
+<Session guide="assistant-briefing" run="checks" />
+
+`cargo fmt --check` only checks. It changes no files, prints the diff it would apply, and fails. Here it is on the same crate with `src/main.rs` written in long lines (that was my first draft of this crate, and the first run of the checks caught it):
+
+<Session guide="assistant-briefing" run="unformatted" />
+
+And the program itself, on the sample file:
+
+<Session guide="assistant-briefing" run="run" />
+
+When you copy the file into your own project, run its commands once yourself before you hand it over. If one of them fails today, the assistant's first job becomes fixing problems that were already there, and that is hard to tell apart from problems it causes.
+
+## Give it the compiler's words
+
+When a build fails, paste the whole error. Not "it says `orders` was moved", but every line from `error[...]` to the end. Rust's errors carry more than the message on the first line, and the rest is usually where the fix is.
+
+Here is a first draft of a `main.rs` for the crate above. A helper `summary` takes the orders by value, and `main` uses them again afterwards:
+
+<Files guide="assistant-briefing" dir="snippet-move" files={["main.rs"]} title="src/main.rs (first draft)" />
+
+<Session guide="assistant-briefing" run="moved" />
+
+A paraphrase like "borrow of moved value on line 14" keeps the first line and loses most of what matters:
+
+- **Why it moved.** The label under line 11 says `Vec<Order>` does not implement `Copy`, so passing it to a function moves it. That is the rule from [Ownership](/learn/ownership/).
+- **Where the move happened.** Line 13, `value moved here`. The error is reported on line 14, but the cause is the line before.
+- **That the fix may be in another place.** The `note:` points at line 4, the signature of `summary`: "this parameter takes ownership of the value". A paraphrase that names line 14 sends everyone to the wrong line.
+- **That there are two fixes.** The `note:` suggests borrowing "if owning the value isn't necessary". The `help:` suggests cloning "if the performance cost is acceptable". Both conditions are questions about your program.
+
+The code in brackets, `E0382`, is worth keeping too. The site has a page for it, [E0382: use of moved value](/errors/e0382/), with more examples, and [Reading compiler errors](/errors/) lists every code the site shows. With the code and the full text, the assistant (or a colleague) has what the compiler knew, not a summary of it.
+
+The same goes for Clippy warnings and test failures: the test name, the `assert_eq!` values on both sides, the panic message. This is why the instructions file asks the assistant to paste full output back to you, too. "Fixed the borrow error" tells you nothing you can check.
+
+## Ask for the decision, not "make it compile"
+
+"Make it compile" is a request with many answers, and the compiler accepts all of them. The error above offered two. Here they are, both run.
+
+**Fix 1: clone.** Give `summary` its own copy, as the `help:` line suggests. One change, at the call site:
+
+<Files guide="assistant-briefing" dir="snippet-clone" files={["main.rs"]} title="src/main.rs (clone)" run="clone" />
+
+**Fix 2: borrow.** `summary` only reads the orders, so it takes a slice, `&[Order]`, as the `note:` suggests, and the caller passes `&orders`:
+
+<Files guide="assistant-briefing" dir="snippet-borrow" files={["main.rs"]} title="src/main.rs (borrow)" run="borrow" />
+
+Both compile, both print the same total, and Clippy, run with the instructions file's flags, printed nothing for either. The first two lines each program printed are where they differ. The addresses are the location of the vector's elements on the heap, and they change from run to run. What does not change is the comparison. With the clone, `summary` read the orders at a different address from the one `main` holds: it was working on a second vector. `Order` derives `Clone`, so that copy also allocated a new `String` for every item name. With the borrow, both addresses are the same: one vector, read in two places.
+
+For three orders the copy costs nothing you would notice. The point is not the cost of this copy. It is that the choice between the two fixes depends on facts the compiler does not have:
+
+- **Does `summary` need to keep the data?** If it stores the orders in a struct, sends them to another thread or returns them inside something, it needs to own them, and `Vec<Order>` is the right parameter type. Then the caller chooses: clone, or move the call after the last use so nothing needs copying.
+- **Does it only read them?** Then a borrow says so in the signature, and every caller can keep its data.
+- **Is `summary` part of a public API?** Here it is a private function in `main.rs`, so changing its signature is free. If it were a `pub fn` in `src/lib.rs`, changing `Vec<Order>` to `&[Order]` would break every caller, and the instructions file says to keep public APIs stable unless asked.
+
+That is the question "who should own this?", and it is yours to answer. You know what the function is for. So instead of pasting the error and "fix this", paste the error with the answer: "`summary` only reads the orders; change it to borrow." Or ask for both options and their trade-offs before any code changes. The instructions file's last rule covers the case where you did not: if the assistant adds a `clone` or changes a parameter from `T` to `&T`, it says so and says why, so the decision shows up in the conversation and not only in the diff.
+
+[Working with the Borrow Checker](/learn/borrow-checker/) goes through the common shapes of this decision, starting with [this same error](/learn/borrow-checker/#use-after-move-e0382), and then when to clone, share with `Rc<RefCell<T>>` or restructure. [Reviewing Rust an assistant wrote](/assistant/review/) lists the clone-to-silence pattern among the things to look for in a diff.
+
+## Pin the versions, and say which they are
+
+Crates change their APIs between major versions, and code written for one version can fail against another. An assistant that does not know which version your project uses may write code for a different one, often the version it has seen most examples of.
+
+Rust already records the answer. `Cargo.toml` says which versions you accept; `Cargo.lock` records the exact version Cargo picked, and keeping it in the repository means every build uses the same one ([Cargo.toml vs Cargo.lock](https://doc.rust-lang.org/cargo/guide/cargo-toml-vs-cargo-lock.html) in the Cargo book explains the split). [Using crates](/start/using-crates/) covers the basics.
+
+Here is what a version mismatch looks like, with the `base64` crate. Since version 0.21, encoding goes through an `Engine` trait, and docs.rs marks the old free function [`base64::encode`](https://docs.rs/base64/0.21.0/base64/fn.encode.html) "Deprecated since 0.21.0: Use Engine::encode". Two small programs, each written for one version and built against the other.
+
+**New code, old pin.** This program uses the `Engine` API, but its `Cargo.lock` pins base64 0.13.1:
+
+<Files guide="assistant-briefing" dir="version-013" files={["src/main.rs", "Cargo.toml", "Cargo.lock"]} title="encode" />
+
+<Session guide="assistant-briefing" run="version-013" />
+
+`engine` and `Engine` do not exist in 0.13, so the build stops with [E0433](/errors/e0433/) and E0432 (both listed on [Reading compiler errors](/errors/)). The messages are about paths, and nothing in them says "wrong version". If you did not know which version was pinned, you might believe the assistant had made the names up.
+
+**Old code, new pin.** The opposite mismatch is quieter. This program calls `base64::encode`, and its `Cargo.lock` pins base64 0.22.1, where that function still exists but is deprecated:
+
+<Files guide="assistant-briefing" dir="version-old" files={["src/main.rs"]} title="encode" />
+
+<Session guide="assistant-briefing" run="version-old" />
+
+`cargo build` succeeded with a warning. The instructions file's Clippy command, with `-D warnings`, turned it into an error, and that is a reason to list that exact command. Look at the last line of the error, too: `to override -D warnings add #[allow(deprecated)]`. That is a real suggestion from the compiler, and it is exactly the shortcut the file's rule forbids. The fix is to use the API of the version you have:
+
+<Files guide="assistant-briefing" dir="version-new" files={["src/main.rs"]} title="encode" run="version-new" />
+
+Three habits make this kind of mismatch rare:
+
+- **Commit `Cargo.lock`**, for binaries and libraries alike, so the version the assistant can read in the repository is the version that builds.
+- **Name the versions of your main crates in the instructions file**, as the template does for anyhow and thiserror. A version number in the file is cheap, and it is more direct than hoping the lock file gets read.
+- **Link docs.rs with the version in the URL.** `https://docs.rs/base64/0.22.1/base64/` is the documentation for the version this project pins. A link without a version, `https://docs.rs/base64`, redirects to `/base64/latest/base64/`, the newest release, which may not be the one you use. When you paste documentation into a conversation, paste it from the versioned page.
+
+When an assistant proposes a new dependency, the same applies in reverse: ask which version it means, and check that it is the one `cargo add` picks. The Cargo reference says `cargo add` picks the newest version compatible with your `rust-version`, and tells you when that is not the newest release.
+
+<Remember>An error about a missing name in a crate (`could not find`, `no ... in the root`, `cannot find function`) after an assistant's change is worth one question before anything else: which version of that crate does this code expect, and which one does `Cargo.lock` pin?</Remember>
+
+## A checklist
+
+**Before you ask**
+
+- The instructions file is in the repository, in the place your tool reads, and its commands pass on the code as it is now.
+- The versions of the crates the task touches are named, in the file or in your request, with versioned docs.rs links if you paste documentation.
+- You know the ownership answer for the data involved: who creates it, who keeps it, who only reads it. If you do not, ask for options first and code second.
+- The request says what is out of scope: no new dependencies, no public API changes, no changes to tests, unless you say so.
+
+**While it works**
+
+- Paste errors whole: every line, with the code in brackets. Do not summarise them, and do not accept a summary back.
+- When an error has more than one fix (clone or borrow, own or share), answer the ownership question yourself, or ask for the options with their costs.
+- Watch for shortcuts that make a red build green: a new `.clone()`, `unwrap()`, `#[allow(...)]`, a deleted or `#[ignore]`d test, a weakened assertion.
+
+**Before you merge**
+
+- Run the three commands yourself, or let CI run them. A report that says "tests pass" is not a test run.
+- Read the diff for every ownership change it reported, and look for ones it did not report.
+- Check that `Cargo.toml` and `Cargo.lock` changed only if you agreed to a dependency change.
+- Go through [Reviewing Rust an assistant wrote](/assistant/review/) for the patterns that compile but are wrong, and make sure the checks in [Guardrails](/assistant/guardrails/) run on every pull request, so the rules in the file are checked and not only stated.
+
+[Learning Rust with an assistant](/assistant/learning/) is about the other side of this: using an assistant while you are still learning to answer the ownership question yourself.
+
+## Read more
+
+- [agents.md](https://agents.md/), the `AGENTS.md` format and the tools that read it.
+- Tool documentation for instructions files: [Claude Code](https://code.claude.com/docs/en/memory), [GitHub Copilot](https://docs.github.com/en/copilot/how-tos/configure-custom-instructions/add-repository-instructions), [Codex](https://learn.chatgpt.com/docs/agent-configuration/agents-md).
+- The Cargo book: [the `rust-version` field](https://doc.rust-lang.org/cargo/reference/rust-version.html) and [Cargo.toml vs Cargo.lock](https://doc.rust-lang.org/cargo/guide/cargo-toml-vs-cargo-lock.html).
+- `base64` on docs.rs, at the two versions on this page: [0.13.1](https://docs.rs/base64/0.13.1/base64/) and [0.22.1](https://docs.rs/base64/0.22.1/base64/).
+- In this course: [Working with the Borrow Checker](/learn/borrow-checker/), [Errors in real apps](/build/app-errors/), [Reading compiler errors](/errors/), [E0382](/errors/e0382/).
+
+<p class="lr-fine">The versions this page is about are anyhow 1.0.104, thiserror 2.0.21 and base64 0.13.1 and 0.22.1, as pinned in each project's <code>Cargo.lock</code>. The tool documentation in the first table was checked in November 2026.</p>

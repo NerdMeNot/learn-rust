@@ -73,7 +73,10 @@ async function build(): Promise<Map<string, ErrorEntry>> {
   }
 
   const guideRoute = (id: string) => {
-    const hit = docs.find(d => d.id.endsWith(`/${id}`) || d.id === id) ?? docs.find(d => d.id === 'std/tour' && id === 'std-tour')
+    // A guide's id is its page's last segment (app-errors: build/app-errors), or its track and
+    // name joined by a dash (further-performance: further/performance; project-todo: projects/todo).
+    const hit = docs.find(d => d.id.endsWith(`/${id}`) || d.id === id || d.id === id.replace('-', '/') || d.id === id.replace(/^project-/, 'projects/'))
+      ?? docs.find(d => d.id === 'std/tour' && id === 'std-tour')
     return hit ? `/${hit.id}/` : undefined
   }
   for (const path of Object.keys(guides).sort()) {

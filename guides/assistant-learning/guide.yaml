@@ -1,0 +1,94 @@
+# Learning Rust with an assistant (without outsourcing the understanding)
+name: assistant-learning
+sessions:
+  # Predict, then run
+  p1:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin p1
+        expect: fail
+  p2:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin p2
+  p3:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin p3
+  p4:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin p4
+        expect: fail
+  p4-fixed:
+    dir: rust
+    overlay:
+      src/bin/p4.rs: fixes/p4.rs
+    steps:
+      - cmd: cargo run --bin p4
+  # Ask why, not "fix it"
+  why:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin why
+        expect: fail
+  why-fixed:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin why_fixed
+  explain:
+    dir: rust
+    steps:
+      - cmd: rustc --explain E0502 | head -n 30
+  # One error, several fixes
+  playlist:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin playlist
+        expect: fail
+  fixes:
+    dir: rust
+    steps:
+      - cmd: cargo run -q --bin fix_borrow
+      - cmd: cargo run -q --bin fix_clone
+      - cmd: cargo run -q --bin fix_split
+      - cmd: cargo run -q --bin fix_index
+      - cmd: cargo run -q --bin fix_take
+      - cmd: cargo run -q --bin fix_design
+  # Reading signatures
+  sigs:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin sigs
+  sigs-moved:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin sigs_moved
+        expect: fail
+  sigs-borrowed:
+    dir: rust
+    steps:
+      - cmd: cargo run --bin sigs_borrowed
+        expect: fail
+  # Write the test first
+  tdd-todo:
+    dir: tdd
+    steps:
+      - cmd: cargo test
+        expect: fail
+        varies: true
+  tdd-first:
+    dir: tdd
+    overlay:
+      src/lib.rs: tdd-steps/first-draft.rs
+    steps:
+      - cmd: cargo test
+        expect: fail
+        varies: true
+  tdd-second:
+    dir: tdd
+    overlay:
+      src/lib.rs: tdd-steps/second-draft.rs
+    steps:
+      - cmd: cargo test
+        varies: true

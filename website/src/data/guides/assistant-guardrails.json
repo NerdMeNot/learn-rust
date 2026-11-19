@@ -1,0 +1,220 @@
+{
+ "id": "assistant-guardrails",
+ "files": {
+  "bad": {
+   "src/lib.rs": "//! A small stock-keeping library, written to show lints at work.\n\nuse std::collections::HashMap;\nuse std::sync::{Arc, Mutex};\n\n/// How many of each item are in stock.\n#[derive(Debug, Default)]\npub struct Stock {\n    counts: HashMap<String, u32>,\n}\n\nimpl Stock {\n    /// Reads lines like `widget,3`.\n    pub fn from_csv(text: &str) -> Stock {\n        let mut counts = HashMap::new();\n        for line in text.lines() {\n            let (name, n) = line.split_once(',').unwrap();\n            let n: u32 = n.trim().parse().expect(\"a number\");\n            counts.insert(name.to_string(), n);\n        }\n        Stock { counts }\n    }\n\n    /// Takes `n` of an item out of stock and returns how many are left.\n    pub fn take(&mut self, name: &str, n: u32) -> u32 {\n        let left = self.counts[name] - n;\n        dbg!(left);\n        self.counts.insert(name.to_string(), left);\n        left\n    }\n\n    /// Puts `n` of an item back.\n    pub fn restock(&mut self, _name: &str, _n: u32) {\n        todo!()\n    }\n}\n\n/// Gives another thread its own handle to the same stock.\npub fn share(stock: &Arc<Mutex<Stock>>) -> Arc<Mutex<Stock>> {\n    stock.clone()\n}\n\n/// Writes the stock somewhere slow.\npub async fn save(stock: &Mutex<Stock>) {\n    let guard = stock.lock().unwrap();\n    write_out(guard.counts.len()).await;\n}\n\nasync fn write_out(_items: usize) {}\n\n#[allow(dead_code)]\nfn old_parser() {}\n",
+   "unformatted.rs": "//! A small stock-keeping library, written to show lints at work.\n\nuse std::collections::HashMap;\nuse std::fmt;\nuse std::sync::{Arc, Mutex, PoisonError};\n\n/// How many of each item are in stock.\n#[derive(Debug, Default)]\npub struct Stock {\n    counts: HashMap<String, u32>,\n}\n\n/// What can go wrong.\n#[derive(Debug, PartialEq)]\npub enum StockError {\n    /// A line was not `name,count`.\n    BadLine(String),\n    /// There are fewer items than were asked for (or none at all).\n    NotEnough { name: String, have: u32, want: u32 },\n    /// Another thread panicked while holding the lock.\n    Poisoned,\n}\n\nimpl fmt::Display for StockError {\n    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {\n        match self {\n            StockError::BadLine(line) => write!(f, \"bad line: {line:?}\"),\n            StockError::NotEnough { name, have, want } => {\n                write!(f, \"wanted {want} {name}, have {have}\")\n            }\n            StockError::Poisoned => write!(f, \"the stock lock is poisoned\"),\n        }\n    }\n}\n\nimpl std::error::Error for StockError {}\n\nimpl<T> From<PoisonError<T>> for StockError {\n    fn from(_: PoisonError<T>) -> Self {\n        StockError::Poisoned\n    }\n}\n\n/// The stock a new shop starts with.\nconst STARTER: &str = \"widget,10\\ngadget,4\";\n\nimpl Stock {\n    /// Reads lines like `widget,3`.\n    ///\n    /// ```\n    /// let stock = stock::Stock::from_csv(\"widget,3\\ngadget,1\")?;\n    /// assert_eq!(stock.count(\"widget\"), 3);\n    /// # Ok::<(), stock::StockError>(())\n    /// ```\n    pub fn from_csv(text: &str) -> Result<Stock, StockError> {\n        let mut counts = HashMap::new();\n        for line in text.lines() {\n            let bad = || StockError::BadLine(line.to_string());\n            let (name, n) = line.split_once(',').ok_or_else(bad)?;\n            let n: u32 = n.trim().parse().map_err(|_| bad())?;\n            counts.insert(name.to_string(), n);\n        }\n        Ok(Stock { counts })\n    }\n\n    /// The stock every new shop starts with.\n    #[expect(\n        clippy::unwrap_used,\n        reason = \"STARTER is a constant, and a test parses it\"\n    )]\n    pub fn starter() -> Stock {\n        Stock::from_csv(STARTER).unwrap()\n    }\n\n    /// How many of an item there are (0 if it is unknown).\n    pub fn count(&self, name: &str) -> u32 {\n        self.counts.get(name).copied().unwrap_or(0)\n    }\n\n    /// Takes `n` of an item out of stock and returns how many are left.\n    pub fn take(&mut self, name: &str, n: u32) -> Result<u32, StockError> {\n        let have = self.count(name);\n        let left = have.checked_sub(n).ok_or(StockError::NotEnough {\n            name: name.to_string(),\n            have,\n            want: n,\n        })?;\n        self.counts.insert(name.to_string(), left);\n        Ok(left)\n    }\n\n    /// Puts `n` of an item back.\n    pub fn restock(&mut self, name: &str, n: u32) { *self.counts.entry(name.to_string()).or_insert(0) += n; }\n}\n\n/// Gives another thread its own handle to the same stock.\npub fn share( stock:&Arc<Mutex<Stock>> )->Arc<Mutex<Stock>>\n{\n  Arc::clone( stock )\n}\n\n/// Writes the stock somewhere slow.\npub async fn save(stock: &Mutex<Stock>) -> Result<(), StockError> {\n    let items = stock.lock()?.counts.len(); // the guard is dropped at the end of this line\n    write_out(items).await;\n    Ok(())\n}\n\nasync fn write_out(_items: usize) {}\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n\n    #[test]\n    fn starter_parses() {\n        assert_eq!(Stock::starter().count(\"widget\"), 10);\n    }\n\n    #[test]\n    fn take_too_many_is_an_error() {\n        let mut stock = Stock::from_csv(\"widget,2\").unwrap();\n        assert_eq!(stock.take(\"widget\", 1), Ok(1));\n        let err = stock.take(\"widget\", 5).unwrap_err();\n        assert_eq!(err.to_string(), \"wanted 5 widget, have 1\");\n    }\n\n    #[test]\n    fn bad_line_is_an_error() {\n        let err = Stock::from_csv(\"widget\").unwrap_err();\n        assert_eq!(err, StockError::BadLine(\"widget\".to_string()));\n    }\n}\n"
+  },
+  "config": {
+   ".github/workflows/ci.yml": "# The checks on this page, on every push and pull request.\n# Not run on this page: the sessions run the same commands in the runner image.\nname: CI\n\non:\n  push:\n  pull_request:\n\njobs:\n  check:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v7\n      - uses: dtolnay/rust-toolchain@stable\n        with:\n          components: rustfmt, clippy\n      - run: cargo fmt --check\n      - run: cargo clippy --all-targets --locked -- -D warnings\n      - run: cargo test --locked\n",
+   "deny.toml": "# cargo-deny settings. Not run on this page: cargo-deny is not installed in the image.\n# Each key is described at https://embarkstudios.github.io/cargo-deny/checks/cfg.html\n\n[advisories]\n# Fail on crates the RustSec database marks unmaintained or unsound,\n# whether you depend on them directly or not.\nunmaintained = \"all\"\nunsound = \"all\"\nyanked = \"deny\"\n\n[licenses]\n# Only these licences are accepted; any other fails the check.\nallow = [\"MIT\", \"Apache-2.0\"]\n\n[bans]\n# `serde = \"*\"` in a Cargo.toml fails the check.\nwildcards = \"deny\"\n# Two versions of one crate in the build is reported, not refused.\nmultiple-versions = \"warn\"\n\n[sources]\n# Crates come from crates.io and nowhere else, unless added to an allow list.\nunknown-registry = \"deny\"\nunknown-git = \"deny\"\n"
+  },
+  "newproj": {
+   "Cargo.lock": "# This file is automatically @generated by Cargo.\n# It is not intended for manual editing.\nversion = 4\n\n[[package]]\nname = \"retrying\"\nversion = \"0.1.0\"\n",
+   "Cargo.toml": "[package]\nname = \"retrying\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\n",
+   "src/main.rs": "fn main() {\n    println!(\"Hello, world!\");\n}\n"
+  },
+  "rust": {
+   "Cargo.lock": "# This file is automatically @generated by Cargo.\n# It is not intended for manual editing.\nversion = 4\n\n[[package]]\nname = \"stock\"\nversion = \"0.1.0\"\n",
+   "Cargo.toml": "[package]\nname = \"stock\"\nversion = \"0.1.0\"\nedition = \"2024\"\nrust-version = \"1.85\"\n\n[dependencies]\n\n[lints.rust]\nunsafe_code = \"forbid\"\n\n[lints.clippy]\nunwrap_used = \"warn\"\nexpect_used = \"warn\"\ntodo = \"warn\"\nunimplemented = \"warn\"\ndbg_macro = \"warn\"\nclone_on_ref_ptr = \"warn\"\nallow_attributes_without_reason = \"warn\"\n",
+   "clippy.toml": "# Tests may unwrap: a panic there is a failed test, which is what you want.\nallow-unwrap-in-tests = true\nallow-expect-in-tests = true\n",
+   "src/lib.rs": "//! A small stock-keeping library, written to show lints at work.\n\nuse std::collections::HashMap;\nuse std::fmt;\nuse std::sync::{Arc, Mutex, PoisonError};\n\n/// How many of each item are in stock.\n#[derive(Debug, Default)]\npub struct Stock {\n    counts: HashMap<String, u32>,\n}\n\n/// What can go wrong.\n#[derive(Debug, PartialEq)]\npub enum StockError {\n    /// A line was not `name,count`.\n    BadLine(String),\n    /// There are fewer items than were asked for (or none at all).\n    NotEnough { name: String, have: u32, want: u32 },\n    /// Another thread panicked while holding the lock.\n    Poisoned,\n}\n\nimpl fmt::Display for StockError {\n    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {\n        match self {\n            StockError::BadLine(line) => write!(f, \"bad line: {line:?}\"),\n            StockError::NotEnough { name, have, want } => {\n                write!(f, \"wanted {want} {name}, have {have}\")\n            }\n            StockError::Poisoned => write!(f, \"the stock lock is poisoned\"),\n        }\n    }\n}\n\nimpl std::error::Error for StockError {}\n\nimpl<T> From<PoisonError<T>> for StockError {\n    fn from(_: PoisonError<T>) -> Self {\n        StockError::Poisoned\n    }\n}\n\n/// The stock a new shop starts with.\nconst STARTER: &str = \"widget,10\\ngadget,4\";\n\nimpl Stock {\n    /// Reads lines like `widget,3`.\n    ///\n    /// ```\n    /// let stock = stock::Stock::from_csv(\"widget,3\\ngadget,1\")?;\n    /// assert_eq!(stock.count(\"widget\"), 3);\n    /// # Ok::<(), stock::StockError>(())\n    /// ```\n    pub fn from_csv(text: &str) -> Result<Stock, StockError> {\n        let mut counts = HashMap::new();\n        for line in text.lines() {\n            let bad = || StockError::BadLine(line.to_string());\n            let (name, n) = line.split_once(',').ok_or_else(bad)?;\n            let n: u32 = n.trim().parse().map_err(|_| bad())?;\n            counts.insert(name.to_string(), n);\n        }\n        Ok(Stock { counts })\n    }\n\n    /// The stock every new shop starts with.\n    #[expect(\n        clippy::unwrap_used,\n        reason = \"STARTER is a constant, and a test parses it\"\n    )]\n    pub fn starter() -> Stock {\n        Stock::from_csv(STARTER).unwrap()\n    }\n\n    /// How many of an item there are (0 if it is unknown).\n    pub fn count(&self, name: &str) -> u32 {\n        self.counts.get(name).copied().unwrap_or(0)\n    }\n\n    /// Takes `n` of an item out of stock and returns how many are left.\n    pub fn take(&mut self, name: &str, n: u32) -> Result<u32, StockError> {\n        let have = self.count(name);\n        let left = have.checked_sub(n).ok_or(StockError::NotEnough {\n            name: name.to_string(),\n            have,\n            want: n,\n        })?;\n        self.counts.insert(name.to_string(), left);\n        Ok(left)\n    }\n\n    /// Puts `n` of an item back.\n    pub fn restock(&mut self, name: &str, n: u32) {\n        *self.counts.entry(name.to_string()).or_insert(0) += n;\n    }\n}\n\n/// Gives another thread its own handle to the same stock.\npub fn share(stock: &Arc<Mutex<Stock>>) -> Arc<Mutex<Stock>> {\n    Arc::clone(stock)\n}\n\n/// Writes the stock somewhere slow.\npub async fn save(stock: &Mutex<Stock>) -> Result<(), StockError> {\n    let items = stock.lock()?.counts.len(); // the guard is dropped at the end of this line\n    write_out(items).await;\n    Ok(())\n}\n\nasync fn write_out(_items: usize) {}\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n\n    #[test]\n    fn starter_parses() {\n        assert_eq!(Stock::starter().count(\"widget\"), 10);\n    }\n\n    #[test]\n    fn take_too_many_is_an_error() {\n        let mut stock = Stock::from_csv(\"widget,2\").unwrap();\n        assert_eq!(stock.take(\"widget\", 1), Ok(1));\n        let err = stock.take(\"widget\", 5).unwrap_err();\n        assert_eq!(err.to_string(), \"wanted 5 widget, have 1\");\n    }\n\n    #[test]\n    fn bad_line_is_an_error() {\n        let err = Stock::from_csv(\"widget\").unwrap_err();\n        assert_eq!(err, StockError::BadLine(\"widget\".to_string()));\n    }\n}\n"
+  },
+  "snippet-msrv": {
+   "Cargo.lock": "# This file is automatically @generated by Cargo.\n# It is not intended for manual editing.\nversion = 4\n\n[[package]]\nname = \"evens\"\nversion = \"0.1.0\"\n",
+   "Cargo.toml": "[package]\nname = \"evens\"\nversion = \"0.1.0\"\nedition = \"2024\"\nrust-version = \"1.85\"\n\n[dependencies]\n",
+   "new-api.rs": "//! One function, to see which advice Clippy gives for which `rust-version`.\n\n/// Is `x` even?\npub fn is_even(x: u32) -> bool {\n    x.is_multiple_of(2)\n}\n",
+   "src/lib.rs": "//! One function, to see which advice Clippy gives for which `rust-version`.\n\n/// Is `x` even?\npub fn is_even(x: u32) -> bool {\n    x % 2 == 0\n}\n"
+  },
+  "snippet-unsafe": {
+   "Cargo.lock": "# This file is automatically @generated by Cargo.\n# It is not intended for manual editing.\nversion = 4\n\n[[package]]\nname = \"fastsum\"\nversion = \"0.1.0\"\n",
+   "Cargo.toml": "[package]\nname = \"fastsum\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\n\n[lints.clippy]\nundocumented_unsafe_blocks = \"warn\"\n",
+   "allowed.rs": "//! A crate that forbids `unsafe`, and one function that tries to opt out.\n\n/// Adds up the first `n` numbers, or all of them if there are fewer.\n#[allow(unsafe_code, reason = \"measured: the bounds check was slow\")]\npub fn sum_first(xs: &[u64], n: usize) -> u64 {\n    let n = n.min(xs.len());\n    let mut total = 0;\n    for i in 0..n {\n        // SAFETY: `i < n <= xs.len()`, so `i` is in bounds.\n        total += unsafe { *xs.get_unchecked(i) };\n    }\n    total\n}\n",
+   "forbid.Cargo.toml": "[package]\nname = \"fastsum\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\n\n[lints.rust]\nunsafe_code = \"forbid\"\n",
+   "src/lib.rs": "//! A crate that does need `unsafe`, so it cannot forbid it.\n\n/// Adds up the first `n` numbers, or all of them if there are fewer.\npub fn sum_first(xs: &[u64], n: usize) -> u64 {\n    let n = n.min(xs.len());\n    let mut total = 0;\n    for i in 0..n {\n        total += unsafe { *xs.get_unchecked(i) };\n    }\n    total\n}\n\n/// The same, with the promise written down.\npub fn sum_first_documented(xs: &[u64], n: usize) -> u64 {\n    let n = n.min(xs.len());\n    let mut total = 0;\n    for i in 0..n {\n        // SAFETY: `i < n <= xs.len()`, so `i` is in bounds.\n        total += unsafe { *xs.get_unchecked(i) };\n    }\n    total\n}\n"
+  }
+ },
+ "sessions": {
+  "versions": [
+   {
+    "show": "$ cargo --version",
+    "out": "cargo 1.99.1 (5f94df478 2026-08-27)\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo clippy --version",
+    "out": "clippy 0.1.99 (58cf8f9c35 2026-10-13)\n",
+    "exit": 0
+   }
+  ],
+  "groups": [
+   {
+    "show": "$ clippy-driver -W help    # then, for each lint: the group that lists it, and its default level",
+    "out": "lint                              group        default\nunwrap-used                       restriction  allow\nexpect-used                       restriction  allow\ntodo                              restriction  allow\nunimplemented                     restriction  allow\ndbg-macro                         restriction  allow\nclone-on-ref-ptr                  restriction  allow\nallow-attributes-without-reason   restriction  allow\nundocumented-unsafe-blocks        restriction  allow\nawait-holding-lock                suspicious   warn\nincompatible-msrv                 suspicious   warn\n",
+    "exit": 0
+   },
+   {
+    "show": "$ rustc -W help    # the line for unsafe-code: its default level",
+    "out": "                                                unsafe-code  allow    usage of `unsafe` code and other potentially unsound constructs\n",
+    "exit": 0
+   }
+  ],
+  "explain": [
+   {
+    "show": "$ cargo clippy --explain unwrap_used    # the first lines",
+    "out": "### What it does\nChecks for `.unwrap()` or `.unwrap_err()` calls on `Result`s and `.unwrap()` call on `Option`s.\n\n### Why restrict this?\nIt is better to handle the `None` or `Err` case,\nor at least call `.expect(_)` with a more helpful message. Still, for a lot of\nquick-and-dirty code, `unwrap` is a good choice, which is why this lint is\n`Allow` by default.\n\n",
+    "exit": 0
+   }
+  ],
+  "bad": [
+   {
+    "show": "$ cargo clippy",
+    "out": "warning: `allow` attribute without specifying a reason\n  --> src/lib.rs:51:1\n   |\n51 | #[allow(dead_code)]\n   | ^^^^^^^^^^^^^^^^^^^\n   |\n   = help: try adding a reason at the end with `, reason = \"..\"`\n   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#allow_attributes_without_reason\n   = note: requested on the command line with `-W clippy::allow-attributes-without-reason`\n\nwarning: used `unwrap()` on an `Option` value\n  --> src/lib.rs:17:29\n   |\n17 |             let (name, n) = line.split_once(',').unwrap();\n   |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n   |\n   = note: if this value is `None`, it will panic\n   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#unwrap_used\n   = note: requested on the command line with `-W clippy::unwrap-used`\n\nwarning: used `expect()` on a `Result` value\n  --> src/lib.rs:18:26\n   |\n18 |             let n: u32 = n.trim().parse().expect(\"a number\");\n   |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n   |\n   = note: if this value is an `Err`, it will panic\n   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#expect_used\n   = note: requested on the command line with `-W clippy::expect-used`\n\nwarning: the `dbg!` macro is intended as a debugging tool\n  --> src/lib.rs:27:9\n   |\n27 |         dbg!(left);\n   |         ^^^^^^^^^^\n   |\n   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#dbg_macro\n   = note: requested on the command line with `-W clippy::dbg-macro`\nhelp: remove the invocation before committing it to a version control system\n   |\n27 -         dbg!(left);\n27 +         left;\n   |\n\nwarning: `todo` should not be present in production code\n  --> src/lib.rs:34:9\n   |\n34 |         todo!()\n   |         ^^^^^^^\n   |\n   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#todo\n   = note: requested on the command line with `-W clippy::todo`\n\nwarning: using `.clone()` on a ref-counted pointer\n  --> src/lib.rs:40:5\n   |\n40 |     stock.clone()\n   |     ^^^^^^^^^^^^^ help: try: `std::sync::Arc::<std::sync::Mutex<Stock>>::clone(stock)`\n   |\n   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#clone_on_ref_ptr\n   = note: requested on the command line with `-W clippy::clone-on-ref-ptr`\n\nwarning: this `MutexGuard` is held across an await point\n  --> src/lib.rs:45:9\n   |\n45 |     let guard = stock.lock().unwrap();\n   |         ^^^^^\n   |\n   = help: consider using an async-aware `Mutex` type or ensuring the `MutexGuard` is dropped before calling `await`\nnote: these are all the await points this lock is held through\n  --> src/lib.rs:46:35\n   |\n46 |     write_out(guard.counts.len()).await;\n   |                                   ^^^^^\n   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#await_holding_lock\n   = note: `#[warn(clippy::await_holding_lock)]` on by default\n\nwarning: used `unwrap()` on a `Result` value\n  --> src/lib.rs:45:17\n   |\n45 |     let guard = stock.lock().unwrap();\n   |                 ^^^^^^^^^^^^^^^^^^^^^\n   |\n   = note: if this value is an `Err`, it will panic\n   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#unwrap_used\n\nwarning: `stock` (lib) generated 8 warnings (run `cargo clippy --fix --lib -p stock -- ` to apply 1 suggestion)\n\n",
+    "exit": 0
+   }
+  ],
+  "bad-ci": [
+   {
+    "show": "$ cargo clippy --all-targets -- -D warnings",
+    "out": "error: `allow` attribute without specifying a reason\n  --> src/lib.rs:51:1\n   |\n51 | #[allow(dead_code)]\n   | ^^^^^^^^^^^^^^^^^^^\n   |\n   = help: try adding a reason at the end with `, reason = \"..\"`\n   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#allow_attributes_without_reason\n   = note: `-D clippy::allow-attributes-without-reason` implied by `-D warnings`\n   = help: to override `-D warnings` add `#[allow(clippy::allow_attributes_without_reason)]`\n\nerror: used `unwrap()` on an `Option` value\n  --> src/lib.rs:17:29\n   |\n17 |             let (name, n) = line.split_once(',').unwrap();\n   |                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n   |\n   = note: if this value is `None`, it will panic\n   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#unwrap_used\n   = note: `-D clippy::unwrap-used` implied by `-D warnings`\n   = help: to override `-D warnings` add `#[allow(clippy::unwrap_used)]`\n\nerror: used `expect()` on a `Result` value\n  --> src/lib.rs:18:26\n   |\n18 |             let n: u32 = n.trim().parse().expect(\"a number\");\n   |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n   |\n   = note: if this value is an `Err`, it will panic\n   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#expect_used\n   = note: `-D clippy::expect-used` implied by `-D warnings`\n   = help: to override `-D warnings` add `#[allow(clippy::expect_used)]`\n\nerror: the `dbg!` macro is intended as a debugging tool\n  --> src/lib.rs:27:9\n   |\n27 |         dbg!(left);\n   |         ^^^^^^^^^^\n   |\n   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#dbg_macro\n   = note: `-D clippy::dbg-macro` implied by `-D warnings`\n   = help: to override `-D warnings` add `#[allow(clippy::dbg_macro)]`\nhelp: remove the invocation before committing it to a version control system\n   |\n27 -         dbg!(left);\n27 +         left;\n\nerror: `todo` should not be present in production code\n  --> src/lib.rs:34:9\n   |\n34 |         todo!()\n   |         ^^^^^^^\n   |\n   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#todo\n   = note: `-D clippy::todo` implied by `-D warnings`\n   = help: to override `-D warnings` add `#[allow(clippy::todo)]`\n\nerror: using `.clone()` on a ref-counted pointer\n  --> src/lib.rs:40:5\n   |\n40 |     stock.clone()\n   |     ^^^^^^^^^^^^^ help: try: `std::sync::Arc::<std::sync::Mutex<Stock>>::clone(stock)`\n   |\n   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#clone_on_ref_ptr\n   = note: `-D clippy::clone-on-ref-ptr` implied by `-D warnings`\n   = help: to override `-D warnings` add `#[allow(clippy::clone_on_ref_ptr)]`\n\nerror: this `MutexGuard` is held across an await point\n  --> src/lib.rs:45:9\n   |\n45 |     let guard = stock.lock().unwrap();\n   |         ^^^^^\n   |\n   = help: consider using an async-aware `Mutex` type or ensuring the `MutexGuard` is dropped before calling `await`\nnote: these are all the await points this lock is held through\n  --> src/lib.rs:46:35\n   |\n46 |     write_out(guard.counts.len()).await;\n   |                                   ^^^^^\n   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#await_holding_lock\n   = note: `-D clippy::await-holding-lock` implied by `-D warnings`\n   = help: to override `-D warnings` add `#[allow(clippy::await_holding_lock)]`\n\nerror: used `unwrap()` on a `Result` value\n  --> src/lib.rs:45:17\n   |\n45 |     let guard = stock.lock().unwrap();\n   |                 ^^^^^^^^^^^^^^^^^^^^^\n   |\n   = note: if this value is an `Err`, it will panic\n   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#unwrap_used\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "good": [
+   {
+    "show": "$ cargo clippy --all-targets -- -D warnings",
+    "out": "",
+    "exit": 0
+   }
+  ],
+  "expect-unfulfilled": [
+   {
+    "show": "$ cargo clippy    # after changing .unwrap() to .unwrap_or_default() in starter()",
+    "out": "warning: this lint expectation is unfulfilled\n  --> src/lib.rs:68:9\n   |\n68 |         clippy::unwrap_used,\n   |         ^^^^^^^^^^^^^^^^^^^\n   |\n   = note: STARTER is a constant, and a test parses it\n   = note: `#[warn(unfulfilled_lint_expectations)]` on by default\n\nwarning: `stock` (lib) generated 1 warning\n\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo clippy --all-targets -- -D warnings",
+    "out": "error: this lint expectation is unfulfilled\n  --> src/lib.rs:68:9\n   |\n68 |         clippy::unwrap_used,\n   |         ^^^^^^^^^^^^^^^^^^^\n   |\n   = note: STARTER is a constant, and a test parses it\n   = note: `-D unfulfilled-lint-expectations` implied by `-D warnings`\n   = help: to override `-D warnings` add `#[allow(unfulfilled_lint_expectations)]`\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "no-clippy-toml": [
+   {
+    "show": "$ cargo clippy --all-targets    # after deleting clippy.toml; the warnings, counted",
+    "out": "      1 warning: `stock` (lib test) generated 3 warnings\n      1 warning: used `unwrap()` on a `Result` value\n      2 warning: used `unwrap_err()` on a `Result` value\n",
+    "exit": 0
+   }
+  ],
+  "unsafe": [
+   {
+    "show": "$ cargo clippy",
+    "out": "warning: unsafe block missing a safety comment\n --> src/lib.rs:8:18\n  |\n8 |         total += unsafe { *xs.get_unchecked(i) };\n  |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  |\n  = help: consider adding a safety comment on the preceding line\n  = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#undocumented_unsafe_blocks\n  = note: requested on the command line with `-W clippy::undocumented-unsafe-blocks`\n\nwarning: `fastsum` (lib) generated 1 warning\n\n",
+    "exit": 0
+   }
+  ],
+  "unsafe-forbid": [
+   {
+    "show": "$ cargo clippy",
+    "out": "error: usage of an `unsafe` block\n --> src/lib.rs:8:18\n  |\n8 |         total += unsafe { *xs.get_unchecked(i) };\n  |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  |\n  = note: requested on the command line with `-F unsafe-code`\n\nerror: usage of an `unsafe` block\n  --> src/lib.rs:19:18\n   |\n19 |         total += unsafe { *xs.get_unchecked(i) };\n   |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "unsafe-allow": [
+   {
+    "show": "$ cargo clippy",
+    "out": "error[E0453]: allow(unsafe_code) incompatible with previous forbid\n --> src/lib.rs:4:9\n  |\n4 | #[allow(unsafe_code, reason = \"measured: the bounds check was slow\")]\n  |         ^^^^^^^^^^^ overruled by previous forbid\n  |\n  = note: `forbid` lint level was set on command line (`-F unsafe_code`)\n\nerror: usage of an `unsafe` block\n  --> src/lib.rs:10:18\n   |\n10 |         total += unsafe { *xs.get_unchecked(i) };\n   |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n   |\n   = note: requested on the command line with `-F unsafe-code`\n\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "fmt": [
+   {
+    "show": "$ cargo fmt --check",
+    "out": "Diff in /home/you/stock/src/lib.rs:90:\n     }\n \n     /// Puts `n` of an item back.\n-    pub fn restock(&mut self, name: &str, n: u32) { *self.counts.entry(name.to_string()).or_insert(0) += n; }\n+    pub fn restock(&mut self, name: &str, n: u32) {\n+        *self.counts.entry(name.to_string()).or_insert(0) += n;\n+    }\n }\n \n /// Gives another thread its own handle to the same stock.\nDiff in /home/you/stock/src/lib.rs:97:\n-pub fn share( stock:&Arc<Mutex<Stock>> )->Arc<Mutex<Stock>>\n-{\n-  Arc::clone( stock )\n+pub fn share(stock: &Arc<Mutex<Stock>>) -> Arc<Mutex<Stock>> {\n+    Arc::clone(stock)\n }\n \n /// Writes the stock somewhere slow.\n",
+    "exit": 1,
+    "error": true
+   },
+   {
+    "show": "$ cargo fmt",
+    "out": "",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo fmt --check",
+    "out": "",
+    "exit": 0
+   }
+  ],
+  "msrv-old": [
+   {
+    "show": "$ cargo clippy",
+    "out": "",
+    "exit": 0
+   }
+  ],
+  "msrv-new": [
+   {
+    "show": "$ cargo clippy    # after changing rust-version to \"1.90\"",
+    "out": "warning: manual implementation of `.is_multiple_of()`\n --> src/lib.rs:5:5\n  |\n5 |     x % 2 == 0\n  |     ^^^^^^^^^^ help: replace with: `x.is_multiple_of(2)`\n  |\n  = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#manual_is_multiple_of\n  = note: `#[warn(clippy::manual_is_multiple_of)]` on by default\n\nwarning: `evens` (lib) generated 1 warning (run `cargo clippy --fix --lib -p evens -- ` to apply 1 suggestion)\n\n",
+    "exit": 0
+   }
+  ],
+  "msrv-api": [
+   {
+    "show": "$ cargo clippy",
+    "out": "warning: current MSRV (Minimum Supported Rust Version) is `1.85.0` but this item is stable since `1.87.0`\n --> src/lib.rs:5:7\n  |\n5 |     x.is_multiple_of(2)\n  |       ^^^^^^^^^^^^^^^^^\n  |\n  = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.99.0/index.html#incompatible_msrv\n  = note: `#[warn(clippy::incompatible_msrv)]` on by default\n\nwarning: `evens` (lib) generated 1 warning\n\n",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo build",
+    "out": "",
+    "exit": 0
+   }
+  ],
+  "test": [
+   {
+    "show": "$ cargo test    # only the lines naming each test, and the totals; timings replaced by X.XXs",
+    "out": "test tests::bad_line_is_an_error ... ok\ntest tests::starter_parses ... ok\ntest tests::take_too_many_is_an_error ... ok\ntest result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in X.XXs\n   Doc-tests stock\ntest src/lib.rs - Stock::from_csv (line 50) ... ok\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in X.XXs\n",
+    "exit": 0,
+    "varies": true
+   }
+  ],
+  "ci-local": [
+   {
+    "show": "$ cargo fmt --check",
+    "out": "",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo clippy --all-targets --locked -- -D warnings",
+    "out": "",
+    "exit": 0
+   },
+   {
+    "show": "$ cargo test --locked --quiet    # timings replaced by X.XXs",
+    "out": "running 3 tests\n...\ntest result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in X.XXs\n\nrunning 1 test\n.\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in X.XXs\n\nall doctests ran in X.XXs; merged doctests compilation took X.XXs\n",
+    "exit": 0
+   }
+  ],
+  "add-missing": [
+   {
+    "show": "$ cargo add tokio-async-retry-utils",
+    "out": "error: the crate `tokio-async-retry-utils` could not be found in registry index.\n",
+    "exit": 101,
+    "error": true
+   }
+  ],
+  "info": [
+   {
+    "show": "$ cargo info anyhow@1.0.104",
+    "out": "anyhow #error #error-handling\nFlexible concrete Error type built on std::error::Error\nversion: 1.0.104\nlicense: MIT OR Apache-2.0\nrust-version: 1.68\ndocumentation: https://docs.rs/anyhow\nrepository: https://github.com/dtolnay/anyhow\ncrates.io: https://crates.io/crates/anyhow/1.0.104\nfeatures:\n +default   = [std]\n  std       = []\n  backtrace = []\n",
+    "exit": 0,
+    "varies": true
+   }
+  ]
+ }
+}

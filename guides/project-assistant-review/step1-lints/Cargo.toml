@@ -1,0 +1,24 @@
+[package]
+name = "logstat"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tokio = { version = "1.54.1", features = ["full"] }
+
+# The guardrails: the table from the Guardrails page, plus two lines for this program.
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+todo = "warn"
+unimplemented = "warn"
+dbg_macro = "warn"
+clone_on_ref_ptr = "warn"
+allow_attributes_without_reason = "warn"
+# For this program: a cast that can cut a number short, and a `let _ =`
+# that throws away a value marked #[must_use], such as a Result.
+cast_possible_truncation = "warn"
+let_underscore_must_use = "warn"

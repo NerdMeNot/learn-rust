@@ -272,6 +272,10 @@ export const ERROR_NOTES: Record<string, { name?: string; means: string; usually
     means: 'A `use` names something that does not exist at that path: a misspelt item, a crate that is not a dependency, or a module that is not declared.',
     usually: 'Check the spelling and the path, add the crate to `[dependencies]`, and make sure the module is declared with `mod` where you expect it.',
   },
+  E0453: {
+    means: 'A lint was set to `forbid`, and code below it tries to lower that lint with `#[allow(...)]`. `forbid` is `deny` that cannot be overridden, so the `allow` is refused.',
+    usually: 'Remove the `allow` and fix the code, or, if the exception is deliberate, change the project setting from `forbid` to `deny`, which an `#[allow]` with a reason can override.',
+  },
   E0463: {
     means: 'The compiler could not find a crate you asked for (`extern crate` or `use` of a crate that is not a dependency, or one that is not built for this target).',
     usually: 'Add it to `[dependencies]` in `Cargo.toml` and build with `cargo`, or check the target: some standard-library pieces do not exist for every target.',

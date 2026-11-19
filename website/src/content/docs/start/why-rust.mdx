@@ -145,7 +145,7 @@ Ask an assistant for Rust, paste the compiler's complaints back, repeat until it
 - **Some code the compiler can't vouch for.** Inside an `unsafe` block, the promises move from the compiler to whoever wrote the block. The first security bug in the Linux kernel's Rust code was a data race inside an `unsafe` block ([CVE-2025-68260](https://www.cve.org/CVERecord?id=CVE-2025-68260)). If you can't read a `// SAFETY:` comment and judge it, you can't review it. [`unsafe`, honestly](/learn/unsafe/) covers how.
 - **The quickest way to silence an error is often the wrong one.** `.clone()` to quiet the borrow checker, `unwrap` in a library, `Rc<RefCell<_>>` for everything: all three compile, and the [Idioms lesson](/learn/idioms/#habits-that-look-like-idioms) shows what each costs. [Working with the Borrow Checker](/learn/borrow-checker/) shows the fixes that change the design instead.
 
-An assistant doesn't change who reviews the code. Use one if you like. You still read what comes back, run it, and answer for it. Learning Rust is an investment, and [what it costs](#what-it-costs) is public.
+An assistant doesn't change who reviews the code. Use one if you like. You still read what comes back, run it, and answer for it. [Rust with an assistant](/assistant/review/) turns this into practice: what to look for in a diff, the lints that catch the usual habits, and how to brief an assistant on a Rust project. Learning Rust is an investment, and [what it costs](#what-it-costs) is public.
 
 ## Where to go from here
 

@@ -1,0 +1,220 @@
+---
+title: "Learning Rust with an assistant, without outsourcing the understanding"
+description: "Learning Rust alongside a coding assistant: predict before you run, ask why an error happens, choose borrow fixes yourself, and let tests judge the code."
+---
+
+import { Files, Remember, Session } from '../../../components/guide'
+
+This page is for the reader who is learning Rust and has an assistant open in the next window. Most of Rust's lessons arrive as compiler errors: E0382 is how you learn what a move is, E0502 is how you learn that a reader and a writer cannot overlap. If the assistant answers every one of those errors for you, the program gets fixed and the lesson goes nowhere. A few weeks later you have code that builds and no model of ownership to judge it with, and that model is what you need when the code compiles but is wrong. [When an assistant writes your Rust](/start/why-rust/#when-an-assistant-writes-your-rust) makes the case in four points. This page is the practice that follows from it.
+
+<Remember>Use the assistant to check your understanding, not to replace it. Before you read an answer, write down your own.</Remember>
+
+The programs on this page were written for this site to show each pattern. They are not the output of any assistant. Every output and error below comes from a real run in the site's image (Rust 1.99.1, edition 2024, Linux on ARM64). Apart from the test section's small library, the programs are files in one Cargo project, `src/bin/p1.rs` and so on, and run with `cargo run --bin p1`.
+
+## Predict, then run
+
+The cheapest habit is also the one that teaches most. Before you run a program, or ask anyone about it, write down one line: "prints X", or "error E0xxx on line N, because...". Then run it. When you are right, you have checked your model. When you are wrong, you have found the exact place where your model and Rust's differ, and that is the question to take to the assistant or to the lessons.
+
+Try these four. Each answer is folded away.
+
+### 1. Ownership: does it compile?
+
+<Files guide="assistant-learning" dir="rust" files={["src/bin/p1.rs"]} />
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="assistant-learning" run="p1" />
+
+E0382. A `for` loop over a `Vec` calls `into_iter()` on it, and the label says so: "`names` moved due to this implicit call to `.into_iter()`". The loop owns the strings now, and drops them when it ends. The `help:` line shows the borrow, `for name in &names`. In the other languages this site covers, a loop over a list leaves the list usable afterwards; in Rust, writing `names` rather than `&names` hands it over. See [`IntoIterator`: why `for x in v` works](/learn/iterators/#intoiterator-why-for-x-in-v-works) and [`/errors/e0382/`](/errors/e0382/).
+
+</details>
+
+### 2. Borrowing: does it compile?
+
+<Files guide="assistant-learning" dir="rust" files={["src/bin/p2.rs"]} />
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="assistant-learning" run="p2" />
+
+It compiles. `first` borrows `scores`, but its last use is the first `println!`, so the borrow is over before `push`. The program in the next section uses its reference after the push, and that is E0502. A borrow lasts until its last use, not until the end of the block. See [A borrow ends at its last use](/learn/mutable-borrows/#a-borrow-ends-at-its-last-use).
+
+</details>
+
+### 3. An iterator: what does it print, and in what order?
+
+<Files guide="assistant-learning" dir="rust" files={["src/bin/p3.rs"]} />
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="assistant-learning" run="p3" />
+
+Two things to get right. "chain built" comes first, because building the chain runs nothing: `sum` pulls the items through. And the items go through the chain one at a time (map 1, filter 2, map 2, ...), not one stage at a time. `filter` dropped 2, so the total is 4 + 6 = 10. See [What an iterator is](/learn/iterators/#what-an-iterator-is).
+
+</details>
+
+### 4. `match`: which error code?
+
+<Files guide="assistant-learning" dir="rust" files={["src/bin/p4.rs"]} />
+
+<details>
+<summary>Answer</summary>
+
+<Session guide="assistant-learning" run="p4" />
+
+E0004. The four arms do cover every `i32` when you read them, but the second note gives the rule: "match arms with guards don't count towards exhaustivity". The compiler counts only `0` and `1..=9`, and names the two ranges that are left. Ranges without guards are patterns it can check:
+
+<Files guide="assistant-learning" dir="fixes" files={["p4.rs"]} run="p4-fixed" />
+
+See [Every case must be covered](/learn/match/#every-case-must-be-covered) and [`/errors/e0004/`](/errors/e0004/).
+
+</details>
+
+The [checkpoint pages](/checkpoints/ownership/) are built for this: eight programs per part of the course, each with an answer folded away. Do one after each part, before you ask anything. [Ownership](/checkpoints/ownership/), [Data](/checkpoints/data/) and [Collections](/checkpoints/collections/) are the ones that pay off earliest.
+
+## Ask "why", not "fix it"
+
+Here is an error a beginner meets in the first week:
+
+<Files guide="assistant-learning" dir="rust" files={["src/bin/why.rs"]} />
+
+<Session guide="assistant-learning" run="why" />
+
+"Fix it" gets you a version that compiles. These three questions get you the reason, and you can ask them of the error before you ask anyone else:
+
+1. **What rule is this?** E0502: a value can have one writer or any number of readers at a time, not both. The three labels mark the reader starting (line 3), the writer (line 4), and the later use that keeps the reader alive (line 5).
+2. **Who owns the value?** `names` owns the strings. `longest` owns nothing: it is a reference to one string inside `names`. The [`Vec` docs](https://doc.rust-lang.org/std/vec/struct.Vec.html#guarantees) say that `push` "*will* (re)allocate if `len == capacity`", so after a push, `longest` could point at memory that has been freed. That is the bug the rule prevents.
+3. **What would each fix cost?** Printing `longest` before the push costs nothing, if the program can be written in that order. Cloning the name costs one `String` allocation and gives you a copy that no longer follows `names`. Keeping the position instead of a reference costs a lookup later, and the position is only right while nobody removes from the list.
+
+This one clones, because a copy of one short name is cheap and the program wants the name, not a live view:
+
+<Files guide="assistant-learning" dir="rust" files={["src/bin/why_fixed.rs"]} run="why-fixed" />
+
+When you do ask an assistant, ask those questions: "which rule does E0502 enforce here, and what could go wrong at run time without it?" rather than "make this compile". Then check what comes back against sources that do not guess. Three are on your machine or one click away.
+
+**`rustc --explain`.** Error codes come with a long explanation built into the compiler. E0502's has a failing example and a fixed one; here are its first 30 lines (`head` cuts the rest):
+
+<Session guide="assistant-learning" run="explain" />
+
+**This site's error pages.** Each code the site shows has a page, such as [`/errors/e0502/`](/errors/e0502/), with what it means and the real examples from the lessons. [Reading compiler errors](/errors/) lists them all and explains the layout of a message.
+
+**The standard library docs.** When an answer says a method "reallocates", "copies" or "takes ownership", the method's page says whether that is true. The quote about `push` above is from the docs, not from memory.
+
+If an explanation you get disagrees with one of these three, believe the three. Then work out why the explanation was wrong: that is often the most useful thing you learn that day.
+
+## A borrow error has more than one right fix
+
+The compiler's `help:` line offers one or two fixes. The fix that makes sense depends on what the code is for, and the compiler does not know that. Here is one starting error and six ways out of it.
+
+<Files guide="assistant-learning" dir="rust" files={["src/bin/playlist.rs"]} />
+
+<Session guide="assistant-learning" run="playlist" />
+
+The loop reads `self.songs`, and `self.record(..)` takes `&mut self`, which borrows *all* of `self`, songs included. The `help:` suggests two of the fixes below. Each tab is a complete program; all six print the same thing:
+
+<Files guide="assistant-learning" dir="rust" files={["src/bin/fix_borrow.rs", "src/bin/fix_clone.rs", "src/bin/fix_split.rs", "src/bin/fix_index.rs", "src/bin/fix_take.rs", "src/bin/fix_design.rs"]} run="fixes" />
+
+| Choice | In this program | What it costs |
+|---|---|---|
+| **Borrow for less time** (`fix_borrow`) | build all the lines first; the read borrow ends at `collect()` | an extra `Vec` of lines, built before any is recorded |
+| **Clone** (`fix_clone`) | loop over `self.songs.clone()` | a copy of every song on every call. The loop sees the old list, which is right here only because `record` never changes `songs` |
+| **Restructure: split the borrow** (`fix_split`) | `record` becomes a function that takes only `&mut Vec<String>` | `record` can no longer use other fields, and every caller passes the field |
+| **Restructure: take an index** (`fix_index`) | `for i in 0..self.songs.len()`; each `self.songs[i]` borrows for one line | a bounds check per access, and the range is worked out once, so songs added during the loop are not visited |
+| **Restructure: `std::mem::take`** (`fix_take`) | move the songs out, loop, put them back | `self.songs` is empty during the loop, and an early `return` or `?` forgets to put it back |
+| **Change the design** (`fix_design`) | the history is its own type, owned by the caller and passed in; `play_all` takes `&self` | a bigger change, and every caller now owns a `History` |
+
+Which one is right? Ask who should own the history. If it belongs to this one playlist, splitting the borrow is the small honest fix. If several parts of the program write to the same history, it was never the playlist's to own, and the last version says so. The clone works, and costs the most for the least reason: nothing here needed a second copy of the songs.
+
+This is the decision worth making yourself, even when an assistant writes the code: let it list the options, then pick by asking what each one costs in your program. [Working with the Borrow Checker](/learn/borrow-checker/) has the full set for each error code. Its [Two borrows at once](/learn/borrow-checker/#two-borrows-at-once-e0499-e0502) section is this error with a cost table of its own, [Clone or share](/learn/borrow-checker/#clone-or-share-when-rcrefcellt-is-the-honest-answer) is about when the clone is a bug, and [When the error does not go away](/learn/borrow-checker/#when-the-error-does-not-go-away-redesign) lists the signs that the design is the problem.
+
+## Write the test before you ask
+
+When you do want an assistant to write a function, write its tests first. The tests are your statement of what "right" means, written while you still have your own opinion about it. Then the assistant's answer is judged by them, not by how convincing it reads.
+
+Here is a small library: one function, stopped with `todo!()`, and four tests. Two of the tests are cases a quick first draft can get wrong: extra spaces, and a name that does not start with an ASCII letter.
+
+<Files guide="assistant-learning" dir="tdd" files={["src/lib.rs", "Cargo.toml"]} />
+
+The tests run, and all four fail at the `todo!` (the message includes the input, because the `todo!` formats it):
+
+<Session guide="assistant-learning" run="tdd-todo" />
+
+Now ask for an implementation. Here is a first draft of the kind that reads well and works for the obvious example:
+
+<Files guide="assistant-learning" dir="tdd-steps" files={["first-draft.rs"]} />
+
+<Session guide="assistant-learning" run="tdd-first" />
+
+The test you would have written without thinking, `two_words`, passes. The other three panic, and the messages say why. `split(' ')` gives an empty string for each extra space, and `word[..1]` on an empty string is out of bounds. `[..1]` cuts at byte 1, which is inside `é`, a character that takes two bytes in UTF-8 ([Strings](/learn/strings/) explains this). A version that passes all four:
+
+<Files guide="assistant-learning" dir="tdd-steps" files={["second-draft.rs"]} />
+
+<Session guide="assistant-learning" run="tdd-second" />
+
+`split_whitespace` skips runs of spaces, `chars().next()` takes the first character rather than the first byte, and `to_uppercase` returns an iterator because, in the [`char` docs'](https://doc.rust-lang.org/std/primitive.char.html#method.to_uppercase) words, a character's uppercase mapping can be "one or more `char`s". You should be able to say why each of the three replaces a piece of the first draft. If you cannot, that is the question to ask next. [Testing](/build/testing/) covers `cargo test` and the test attributes, and [More testing](/further/testing-more/) covers property tests, which generate the awkward inputs for you.
+
+## Read signatures yourself
+
+A function's signature tells you most of its ownership story before you read a line of its body or its docs. Whenever an assistant suggests a method you have not used, read its signature on docs.rust-lang.org and answer four questions before you trust the call:
+
+- **`&self`, `&mut self` or `self`?** Does it read the value, change it, or use it up?
+- **`&str` or `String`, `&[T]` or `Vec<T>`?** Does it borrow its arguments or take them?
+- **Does a reference come back?** Then the result borrows from something, usually `self`, and that thing must not change while you use the result.
+- **`Option` or `Result`?** What happens when it has nothing to give, and is that `None` or an error you should report?
+
+Four real signatures, copied from the [`String`](https://doc.rust-lang.org/std/string/struct.String.html) and [`str`](https://doc.rust-lang.org/std/primitive.str.html) docs:
+
+```rust
+pub fn push_str(&mut self, string: &str)
+pub fn split_once<P>(&self, delimiter: P) -> Option<(&str, &str)> where P: Pattern
+pub fn parse<F>(&self) -> Result<F, <F as FromStr>::Err> where F: FromStr
+pub const fn into_bytes(self) -> Vec<u8>
+```
+
+- `push_str` changes the string (`&mut self`) and only borrows the text it appends (`&str`), so you keep yours.
+- `split_once` reads (`&self`) and may find nothing (`Option`). The two `&str` halves have no lifetime written, so by the elision rules they borrow from `self`: the original string must stay unchanged while you use them.
+- `parse` reads and may fail (`Result`), and the error type depends on what you parse into.
+- `into_bytes` takes `self`: the `String` is used up. The docs add that it does "not need to copy its contents".
+
+Check your reading with a run:
+
+<Files guide="assistant-learning" dir="rust" files={["src/bin/sigs.rs"]} run="sigs" />
+
+And check the two predictions that are about errors. Using the string after `into_bytes`, and changing it while `split_once`'s halves are alive:
+
+<Session guide="assistant-learning" run="sigs-moved" />
+
+<Session guide="assistant-learning" run="sigs-borrowed" />
+
+Look at the `help:` under the first error. Cloning compiles, and it throws away the one thing `into_bytes` is for, which is not copying. Reading the signature is how you notice that. [Reading Rust signatures](/learn/reading-signatures/) teaches the full syntax, with five longer examples in [Decoding five signatures](/learn/reading-signatures/#decoding-five-signatures) and the first parameter in [What the first parameter promises](/learn/reading-signatures/#what-the-first-parameter-promises).
+
+## A weekly habit list
+
+None of these takes long, and together they keep the understanding on your side of the screen:
+
+- **Predict before every run** for a week, in writing. Keep a count of your misses; the misses are your reading list.
+- **Do one checkpoint page** after each part of the course, with no assistant open.
+- **Fix one borrow error by hand** each week, then ask an assistant for its fix and compare. If its fix differs, say what each one costs, using the table above.
+- **Run `rustc --explain`** on each new error code you meet, and read the site's page for it.
+- **Write the tests first** for anything you ask an assistant to write, including at least one input you expect to break it.
+- **Read the signature** of each new std method before you use it, and answer the four questions.
+- **Explain one piece of code you did not write**, out loud or in a comment, line by line: who owns each value, who borrows it, and for how long. Where you get stuck is where to read next.
+
+## Where to go next
+
+- [Reviewing Rust an assistant wrote](/assistant/review/): the patterns that compile and are still wrong, and how to spot them in a diff.
+- [Briefing an assistant on a Rust project](/assistant/briefing/): a template that tells it your project's rules, so fewer of these errors reach you.
+- [Guardrails](/assistant/guardrails/): the lints and checks you set once.
+- [Project: review an assistant-style first draft](/projects/assistant-review/): the review, step by step, on a real program.
+- The course itself, from [Rust at a glance](/learn/rust-at-a-glance/) to [Idioms](/learn/idioms/), with a checkpoint at the end of each part.
+
+## Read more
+
+- [Writing tests](https://doc.rust-lang.org/book/ch11-01-writing-tests.html), chapter 11.1 of The Rust Programming Language.
+- [`String`](https://doc.rust-lang.org/std/string/struct.String.html), [`str`](https://doc.rust-lang.org/std/primitive.str.html) and [`Vec`](https://doc.rust-lang.org/std/vec/struct.Vec.html) in the standard library docs, for the signatures and the `push` guarantee quoted above.
+- [`todo!`](https://doc.rust-lang.org/std/macro.todo.html), the placeholder the test section starts from.
+
+<p class="lr-fine">Signatures and quotations were checked against the standard library docs in November 2026.</p>

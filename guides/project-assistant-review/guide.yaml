@@ -1,0 +1,110 @@
+# Project: reviewing an assistant-style first draft
+name: logstat
+sessions:
+  # Step 0: the draft. Right on the happy path.
+  draft-run:
+    dir: step0-draft
+    steps:
+      - cmd: cargo run -q -- logs/*.log
+  # A file that is missing: the task panics, the panic is thrown away, the program exits 0.
+  draft-missing:
+    dir: step0-draft
+    steps:
+      - cmd: cargo run -q -- logs/*.log logs/missing.log; echo "exit code $?"
+        show: "$ cargo run -q -- logs/*.log logs/missing.log; echo \"exit code $?\""
+        varies: true
+  # A duration that is not a number: a panic while the lock is held poisons the mutex.
+  draft-bad:
+    dir: step0-draft
+    steps:
+      - cmd: printf '2026-11-03T10:00:09Z INFO GET / status=200 ms=fast\n' > logs/bad.log
+        show: "$ printf '2026-11-03T10:00:09Z INFO GET / status=200 ms=fast\\n' > logs/bad.log"
+      - cmd: cargo run -q -- logs/*.log; echo "exit code $?"
+        varies: true
+  # Clippy with its default lints only, on the draft.
+  draft-clippy:
+    dir: step0-draft
+    steps:
+      - cmd: "cargo clippy --all-targets 2>&1 | grep -oE 'index.html#[a-z_]+' | sort | uniq -c"
+  # Step 1: the same code with the [lints] table.
+  lints:
+    dir: step1-lints
+    steps:
+      - cmd: cargo clippy --all-targets -- -D warnings
+        expect: fail
+  lints-count:
+    dir: step1-lints
+    steps:
+      - cmd: "cargo clippy --all-targets 2>&1 | grep -oE 'index.html#[a-z_]+' | sort | uniq -c"
+  # Step 2: an error type.
+  errors-run:
+    dir: step2-errors
+    steps:
+      - cmd: cargo run -q -- logs/*.log
+      - cmd: cargo run -q -- logs/*.log logs/missing.log; echo "exit code $?"
+        show: "$ cargo run -q -- logs/*.log logs/missing.log; echo \"exit code $?\""
+      - cmd: printf '2026-11-03T10:00:09Z INFO GET / status=200 ms=fast\n' > logs/bad.log
+        show: "$ printf '2026-11-03T10:00:09Z INFO GET / status=200 ms=fast\\n' > logs/bad.log"
+      - cmd: cargo run -q -- logs/*.log; echo "exit code $?"
+  errors-count:
+    dir: step2-errors
+    steps:
+      - cmd: "cargo clippy --all-targets 2>&1 | grep -oE 'index.html#[a-z_]+' | sort | uniq -c"
+  # Step 3: ownership.
+  ownership-run:
+    dir: step3-ownership
+    steps:
+      - cmd: cargo run -q -- logs/*.log
+      - cmd: cargo run -q -- logs/*.log logs/missing.log; echo "exit code $?"
+        show: "$ cargo run -q -- logs/*.log logs/missing.log; echo \"exit code $?\""
+  ownership-count:
+    dir: step3-ownership
+    steps:
+      - cmd: "cargo clippy --all-targets 2>&1 | grep -oE 'index.html#[a-z_]+' | sort | uniq -c"
+  # Step 4: async. First, what happens if the lock is held across the new .await.
+  lock-across-await:
+    dir: step3-ownership
+    overlay:
+      src/lib.rs: snippet-lock/src/lib.rs
+    steps:
+      - cmd: cargo build
+        expect: fail
+  async-run:
+    dir: step4-async
+    steps:
+      - cmd: cargo run -q -- logs/*.log
+      - cmd: cargo run -q -- logs/*.log logs/missing.log; echo "exit code $?"
+        show: "$ cargo run -q -- logs/*.log logs/missing.log; echo \"exit code $?\""
+      - cmd: printf '2026-11-03T10:00:09Z INFO GET / status=200 ms=fast\n' > logs/bad.log
+        show: "$ printf '2026-11-03T10:00:09Z INFO GET / status=200 ms=fast\\n' > logs/bad.log"
+      - cmd: cargo run -q -- logs/*.log; echo "exit code $?"
+  async-clippy:
+    dir: step4-async
+    steps:
+      - cmd: cargo clippy --all-targets -- -D warnings
+  # Step 5: the tests. First the two edge cases against step 4's count_line.
+  edge-red:
+    dir: step4-async
+    overlay:
+      edge_cases.rs: snippet-edge/edge_cases.rs
+    steps:
+      - cmd: cat edge_cases.rs >> src/lib.rs
+        show: "$ cat edge_cases.rs >> src/lib.rs    # the two tests, added to step 4's code"
+      - cmd: cargo test -q --lib -- --test-threads=1
+        expect: fail
+        varies: true
+  test:
+    dir: rust
+    steps:
+      - cmd: "set -o pipefail; cargo test -- --test-threads=1 2>&1 | grep -E '^(running|test )' | sed -E 's/finished in [0-9.]+s/finished in X.XXs/'"
+        show: "$ cargo test -- --test-threads=1    # timings replaced by X.XXs"
+  final-clippy:
+    dir: rust
+    steps:
+      - cmd: cargo clippy --all-targets -- -D warnings
+      - cmd: cargo run -q -- logs/*.log
+      - cmd: cargo run -q -- logs/*.log logs/missing.log; echo "exit code $?"
+        show: "$ cargo run -q -- logs/*.log logs/missing.log; echo \"exit code $?\""
+      - cmd: printf '2026-11-03T10:00:09Z INFO GET / status=200 ms=fast\n' > logs/bad.log
+        show: "$ printf '2026-11-03T10:00:09Z INFO GET / status=200 ms=fast\\n' > logs/bad.log"
+      - cmd: cargo run -q -- logs/*.log; echo "exit code $?"
