@@ -52,8 +52,9 @@
    },
    {
     "show": "$ cargo test",
-    "out": "running 2 tests\ntest tests::skips_comments_and_blank_lines ... ok\ntest tests::reports_the_line_of_a_bad_number ... ok\n\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\nrunning 1 test\ntest totals_the_sample_file ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n   Doc-tests tally\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n",
-    "exit": 0
+    "out": "running 2 tests\ntest tests::reports_the_line_of_a_bad_number ... ok\ntest tests::skips_comments_and_blank_lines ... ok\n\ntest result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\nrunning 1 test\ntest totals_the_sample_file ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n   Doc-tests tally\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n",
+    "exit": 0,
+    "varies": true
    }
   ],
   "unformatted": [
@@ -86,7 +87,7 @@
    },
    {
     "show": "$ cargo run -q",
-    "out": "main holds orders at    0xc184d0cfadd0\nsummary reads orders at 0xc184d0cfa480\n3 orders, 1520 cents\nbiggest: coffee\n",
+    "out": "main holds orders at    0xbf2c3fe2edd0\nsummary reads orders at 0xbf2c3fe2e480\n3 orders, 1520 cents\nbiggest: coffee\n",
     "exit": 0,
     "varies": true
    }
@@ -99,7 +100,7 @@
    },
    {
     "show": "$ cargo run -q",
-    "out": "main holds orders at    0xb526788eedd0\nsummary reads orders at 0xb526788eedd0\n3 orders, 1520 cents\nbiggest: coffee\n",
+    "out": "main holds orders at    0xb1ddf85c9dd0\nsummary reads orders at 0xb1ddf85c9dd0\n3 orders, 1520 cents\nbiggest: coffee\n",
     "exit": 0,
     "varies": true
    }

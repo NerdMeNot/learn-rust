@@ -160,7 +160,7 @@
   "tdd-todo": [
    {
     "show": "$ cargo test",
-    "out": "running 4 tests\ntest tests::extra_spaces ... FAILED\ntest tests::not_ascii ... FAILED\ntest tests::two_words ... FAILED\ntest tests::empty ... FAILED\n\nfailures:\n\n---- tests::extra_spaces stdout ----\n\nthread 'tests::extra_spaces' (612) panicked at src/lib.rs:4:5:\nnot yet implemented: initials of \"  grace   hopper \"\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n---- tests::not_ascii stdout ----\n\nthread 'tests::not_ascii' (613) panicked at src/lib.rs:4:5:\nnot yet implemented: initials of \"élodie durand\"\n\n---- tests::two_words stdout ----\n\nthread 'tests::two_words' (614) panicked at src/lib.rs:4:5:\nnot yet implemented: initials of \"Ada Lovelace\"\n\n---- tests::empty stdout ----\n\nthread 'tests::empty' (611) panicked at src/lib.rs:4:5:\nnot yet implemented: initials of \"\"\n\nfailures:\n    tests::empty\n    tests::extra_spaces\n    tests::not_ascii\n    tests::two_words\n\ntest result: FAILED. 0 passed; 4 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\nerror: test failed, to rerun pass `--lib`\n",
+    "out": "running 4 tests\ntest tests::empty ... FAILED\ntest tests::extra_spaces ... FAILED\ntest tests::not_ascii ... FAILED\ntest tests::two_words ... FAILED\n\nfailures:\n\n---- tests::empty stdout ----\n\nthread 'tests::empty' (611) panicked at src/lib.rs:4:5:\nnot yet implemented: initials of \"\"\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n---- tests::extra_spaces stdout ----\n\nthread 'tests::extra_spaces' (612) panicked at src/lib.rs:4:5:\nnot yet implemented: initials of \"  grace   hopper \"\n\n---- tests::not_ascii stdout ----\n\nthread 'tests::not_ascii' (613) panicked at src/lib.rs:4:5:\nnot yet implemented: initials of \"élodie durand\"\n\n---- tests::two_words stdout ----\n\nthread 'tests::two_words' (614) panicked at src/lib.rs:4:5:\nnot yet implemented: initials of \"Ada Lovelace\"\n\nfailures:\n    tests::empty\n    tests::extra_spaces\n    tests::not_ascii\n    tests::two_words\n\ntest result: FAILED. 0 passed; 4 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\nerror: test failed, to rerun pass `--lib`\n",
     "exit": 101,
     "error": true,
     "varies": true
@@ -169,7 +169,7 @@
   "tdd-first": [
    {
     "show": "$ cargo test",
-    "out": "running 4 tests\ntest tests::two_words ... ok\ntest tests::empty ... FAILED\ntest tests::extra_spaces ... FAILED\ntest tests::not_ascii ... FAILED\n\nfailures:\n\n---- tests::empty stdout ----\n\nthread 'tests::empty' (96) panicked at src/lib.rs:5:25:\nend byte index 1 is out of bounds for string of length 0\n\n---- tests::extra_spaces stdout ----\n\nthread 'tests::extra_spaces' (97) panicked at src/lib.rs:5:25:\nend byte index 1 is out of bounds for string of length 0\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n---- tests::not_ascii stdout ----\n\nthread 'tests::not_ascii' (98) panicked at src/lib.rs:5:25:\nend byte index 1 is not a char boundary; it is inside 'é' (bytes 0..2 of string)\n\nfailures:\n    tests::empty\n    tests::extra_spaces\n    tests::not_ascii\n\ntest result: FAILED. 1 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\nerror: test failed, to rerun pass `--lib`\n",
+    "out": "running 4 tests\ntest tests::empty ... FAILED\ntest tests::extra_spaces ... FAILED\ntest tests::not_ascii ... FAILED\ntest tests::two_words ... ok\n\nfailures:\n\n---- tests::empty stdout ----\n\nthread 'tests::empty' (704) panicked at src/lib.rs:5:25:\nend byte index 1 is out of bounds for string of length 0\n\n---- tests::extra_spaces stdout ----\n\nthread 'tests::extra_spaces' (705) panicked at src/lib.rs:5:25:\nend byte index 1 is out of bounds for string of length 0\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n---- tests::not_ascii stdout ----\n\nthread 'tests::not_ascii' (706) panicked at src/lib.rs:5:25:\nend byte index 1 is not a char boundary; it is inside 'é' (bytes 0..2 of string)\n\nfailures:\n    tests::empty\n    tests::extra_spaces\n    tests::not_ascii\n\ntest result: FAILED. 1 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\nerror: test failed, to rerun pass `--lib`\n",
     "exit": 101,
     "error": true,
     "varies": true
@@ -178,7 +178,7 @@
   "tdd-second": [
    {
     "show": "$ cargo test",
-    "out": "running 4 tests\ntest tests::empty ... ok\ntest tests::extra_spaces ... ok\ntest tests::not_ascii ... ok\ntest tests::two_words ... ok\n\ntest result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n   Doc-tests initials\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n",
+    "out": "running 4 tests\ntest tests::empty ... ok\ntest tests::two_words ... ok\ntest tests::extra_spaces ... ok\ntest tests::not_ascii ... ok\n\ntest result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n   Doc-tests initials\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n",
     "exit": 0,
     "varies": true
    }

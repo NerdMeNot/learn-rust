@@ -7,7 +7,9 @@ sessions:
     steps:
       - cmd: cargo fmt --check
       - cmd: cargo clippy --all-targets -- -D warnings
+      # Tests run on several threads, so the order they finish in changes between runs.
       - cmd: cargo test
+        varies: true
   # The same crate with one file not run through rustfmt: --check prints the diff and fails.
   unformatted:
     dir: rust

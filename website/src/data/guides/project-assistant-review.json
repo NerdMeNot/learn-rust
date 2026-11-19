@@ -72,7 +72,7 @@
   "draft-missing": [
    {
     "show": "$ cargo run -q -- logs/*.log logs/missing.log; echo \"exit code $?\"",
-    "out": "thread 'tokio-rt-worker' (279) panicked at src/main.rs:42:59:\ncalled `Result::unwrap()` on an `Err` value: Os { code: 2, kind: NotFound, message: \"No such file or directory\" }\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nfiles   4\nERROR   2\nWARN    3\nINFO    7\nslowest 1840 ms\nexit code 0\n",
+    "out": "thread 'tokio-rt-worker' (286) panicked at src/main.rs:42:59:\ncalled `Result::unwrap()` on an `Err` value: Os { code: 2, kind: NotFound, message: \"No such file or directory\" }\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nfiles   4\nERROR   2\nWARN    3\nINFO    7\nslowest 1840 ms\nexit code 0\n",
     "exit": 0,
     "varies": true
    }
@@ -85,7 +85,7 @@
    },
    {
     "show": "$ cargo run -q -- logs/*.log; echo \"exit code $?\"",
-    "out": "thread 'tokio-rt-worker' (420) panicked at src/main.rs:28:14:\ncalled `Result::unwrap()` on an `Err` value: ParseIntError { kind: InvalidDigit }\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\nthread 'tokio-rt-worker' (419) panicked at src/main.rs:44:46:\ncalled `Result::unwrap()` on an `Err` value: PoisonError { .. }\n\nthread 'tokio-rt-worker' (418) panicked at src/main.rs:44:46:\ncalled `Result::unwrap()` on an `Err` value: PoisonError { .. }\n\nthread 'tokio-rt-worker' (417) panicked at src/main.rs:44:46:\ncalled `Result::unwrap()` on an `Err` value: PoisonError { .. }\n\nthread 'main' (284) panicked at src/main.rs:53:30:\ncalled `Result::unwrap()` on an `Err` value: PoisonError { .. }\nexit code 101\n",
+    "out": "thread 'tokio-rt-worker' (427) panicked at src/main.rs:28:14:\ncalled `Result::unwrap()` on an `Err` value: ParseIntError { kind: InvalidDigit }\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\nthread 'tokio-rt-worker' (425) panicked at src/main.rs:44:46:\ncalled `Result::unwrap()` on an `Err` value: PoisonError { .. }\n\nthread 'tokio-rt-worker' (424) panicked at src/main.rs:44:46:\ncalled `Result::unwrap()` on an `Err` value: PoisonError { .. }\n\nthread 'main' (291) panicked at src/main.rs:53:30:\ncalled `Result::unwrap()` on an `Err` value: PoisonError { .. }\nexit code 101\n",
     "exit": 0,
     "varies": true
    }
@@ -205,7 +205,7 @@
    },
    {
     "show": "$ cargo test -q --lib -- --test-threads=1",
-    "out": "running 2 tests\nedge_cases::a_field_that_ends_in_ms_is_not_the_duration --- FAILED\nedge_cases::a_level_word_inside_the_message_is_not_the_level --- FAILED\n\nfailures:\n\n---- edge_cases::a_field_that_ends_in_ms_is_not_the_duration stdout ----\n\nthread 'edge_cases::a_field_that_ends_in_ms_is_not_the_duration' (1359) panicked at src/lib.rs:105:9:\nassertion `left == right` failed\n  left: 40\n right: 12\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n---- edge_cases::a_level_word_inside_the_message_is_not_the_level stdout ----\n\nthread 'edge_cases::a_level_word_inside_the_message_is_not_the_level' (1360) panicked at src/lib.rs:97:9:\nassertion `left == right` failed\n  left: Stats { error: 1, warn: 0, info: 0, slowest_ms: 0 }\n right: Stats { error: 0, warn: 1, info: 0, slowest_ms: 0 }\n\nfailures:\n    edge_cases::a_field_that_ends_in_ms_is_not_the_duration\n    edge_cases::a_level_word_inside_the_message_is_not_the_level\n\ntest result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\nerror: test failed, to rerun pass `--lib`\n",
+    "out": "running 2 tests\nedge_cases::a_field_that_ends_in_ms_is_not_the_duration --- FAILED\nedge_cases::a_level_word_inside_the_message_is_not_the_level --- FAILED\n\nfailures:\n\n---- edge_cases::a_field_that_ends_in_ms_is_not_the_duration stdout ----\n\nthread 'edge_cases::a_field_that_ends_in_ms_is_not_the_duration' (1308) panicked at src/lib.rs:105:9:\nassertion `left == right` failed\n  left: 40\n right: 12\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n---- edge_cases::a_level_word_inside_the_message_is_not_the_level stdout ----\n\nthread 'edge_cases::a_level_word_inside_the_message_is_not_the_level' (1309) panicked at src/lib.rs:97:9:\nassertion `left == right` failed\n  left: Stats { error: 1, warn: 0, info: 0, slowest_ms: 0 }\n right: Stats { error: 0, warn: 1, info: 0, slowest_ms: 0 }\n\nfailures:\n    edge_cases::a_field_that_ends_in_ms_is_not_the_duration\n    edge_cases::a_level_word_inside_the_message_is_not_the_level\n\ntest result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\nerror: test failed, to rerun pass `--lib`\n",
     "exit": 101,
     "error": true,
     "varies": true

@@ -124,7 +124,7 @@
   "unwrap-panic": [
    {
     "show": "$ cargo run",
-    "out": "\"8080\" -> 8080\n\nthread 'main' (102) panicked at src/main.rs:4:29:\ncalled `Result::unwrap()` on an `Err` value: ParseIntError { kind: InvalidDigit }\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+    "out": "\"8080\" -> 8080\n\nthread 'main' (128) panicked at src/main.rs:4:29:\ncalled `Result::unwrap()` on an `Err` value: ParseIntError { kind: InvalidDigit }\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
     "exit": 101,
     "error": true
    }
@@ -151,7 +151,7 @@
    },
    {
     "show": "$ cargo run",
-    "out": "thread 'main' (91) panicked at src/main.rs:8:22:\nRefCell already borrowed\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
+    "out": "thread 'main' (258) panicked at src/main.rs:8:22:\nRefCell already borrowed\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n",
     "exit": 101,
     "error": true
    }
