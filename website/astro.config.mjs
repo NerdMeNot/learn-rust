@@ -5,6 +5,8 @@
 // landing page is a plain Astro route with its own layout.
 import { defineConfig } from 'astro/config'
 import starlight from '@astrojs/starlight'
+import sitemap from '@astrojs/sitemap'
+import { execFileSync } from 'node:child_process'
 import { readFileSync, existsSync } from 'node:fs'
 
 // Lessons are pages built from src/data (see src/pages/learn/[id].astro), so the
@@ -20,11 +22,39 @@ const docPages = (dir, ids) => ids.filter(id => existsSync(new URL(`./src/conten
 const lessonLinks = part =>
   lessons.filter(l => l.part === part).map(l => ({ label: `${l.order}. ${l.title}`, link: `/learn/${l.id}/` }))
 
+// <lastmod> for the sitemap: when the files a page is built from last changed in git.
+// A lesson is its whole folder (prose and programs); a guide page is its .mdx file. Pages
+// with no single source (the home page, the error index) are left without one.
+const SITE = 'https://learningrust.nerdmenot.in'
+const REPO = new URL('..', import.meta.url).pathname
+const gitDate = path => {
+  try { return execFileSync('git', ['log', '-1', '--format=%cI', '--', path], { cwd: REPO, encoding: 'utf8' }).trim() || undefined }
+  catch { return undefined }
+}
+const lessonDirs = Object.fromEntries(lessons.map(l => [l.id, l.dir]))
+const sourceOf = url => {
+  const path = new URL(url).pathname.replace(/^\/|\/$/g, '')
+  const lesson = path.match(/^learn\/([^/]+)$/)
+  if (lesson) return lessonDirs[lesson[1]] && `lessons/${lessonDirs[lesson[1]]}`
+  for (const ext of ['mdx', 'md']) {
+    const f = `website/src/content/docs/${path}.${ext}`
+    if (path && existsSync(REPO + f)) return f
+  }
+}
+
 export default defineConfig({
-  site: 'https://learningrust.nerdmenot.in',
+  site: SITE,
   // Lesson pages import lessons/*/lesson.mdx from outside website/.
   vite: { server: { fs: { allow: ['..'] } } },
   integrations: [
+    // Starlight adds a plain sitemap when there is none; this one adds <lastmod>.
+    sitemap({
+      serialize(item) {
+        const src = sourceOf(item.url)
+        const lastmod = src && gitDate(src)
+        return lastmod ? { ...item, lastmod } : item
+      },
+    }),
     starlight({
       title: 'Learn Rust',
       description:

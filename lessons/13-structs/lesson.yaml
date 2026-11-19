@@ -1,6 +1,7 @@
 # Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
 title: "Structs"
 part: "data"
+description: "Rust structs: named fields, impl blocks for methods, no constructors or zero values, and every field set on creation. Compared with classes and Go structs."
 intro: "Structs group named fields into one type of your own."
 coming_from:
   go: >-

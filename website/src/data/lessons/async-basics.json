@@ -2,6 +2,7 @@
  "id": "async-basics",
  "title": "Async Basics",
  "part": "concurrency",
+ "description": "How async works in Rust: an async fn returns a future that does nothing until polled. Write a tiny executor to see why you need a runtime like Tokio.",
  "intro": "An `async fn` returns a future: a value that describes some work and has not done it. Nothing runs until something polls the future, and `.await` is how one future waits for another. The standard library defines the `Future` trait and the types around it, and has no runtime to poll futures for you: you write a small one to see the idea, and use a crate such as Tokio for real programs.",
  "coming_from": {
   "go": "Go has no `async` and `await`, and no future value to hold. `go f()` starts `f` running alongside you, and a call that has to wait is an ordinary call. A Rust `async fn` differs on both counts: calling it builds a future that has not started, and `.await` marks each place where it waits. The scheduler that goroutines get from the language is, in Rust, a runtime that you choose.",

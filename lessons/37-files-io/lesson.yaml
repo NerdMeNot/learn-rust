@@ -1,6 +1,7 @@
 # Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
 title: "Files and I/O"
 part: "std"
+description: "Reading and writing files in Rust with std::fs and std::io: whole files, buffered lines and streams, and passing io::Result errors up with ?."
 intro: >-
   Reading and writing files lives in `std::fs` (whole files at once) and `std::io`
   (streams, buffers, line by line). Almost every call that touches the disk returns an

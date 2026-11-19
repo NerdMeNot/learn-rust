@@ -1,6 +1,7 @@
 # Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
 title: "Idioms and design patterns"
 part: "further"
+description: "Idiomatic Rust: newtypes, validated constructors, builders, impossible states made unwritable, and the patterns that enums, traits and ownership trim down."
 intro: >-
   An idiom is the way Rust code usually says a common thing: wrap a number in a type of its
   own, build a value in one place that checks it, make a wrong state impossible to write.

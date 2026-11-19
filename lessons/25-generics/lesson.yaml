@@ -1,6 +1,7 @@
 # Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
 title: "Generics"
 part: "abstractions"
+description: "Rust generics: write a function or type once with a placeholder T, and use trait bounds like T: PartialOrd to say what T must be able to do."
 intro: >-
   A generic function or type is written once with a placeholder, `T`, and the compiler
   fills it in for each type you use. A bound such as `T: PartialOrd` says what `T` must

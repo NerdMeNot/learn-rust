@@ -1,6 +1,7 @@
 # Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
 title: "Iterators"
 part: "collections"
+description: "Rust iterators are lazy: chain filter, map, zip and fold instead of writing the loop. Compared with Java streams and LINQ, plus the & that trips people up."
 intro: >-
   An iterator hands out items one at a time, and does nothing until something asks for
   them. You chain steps like `filter`, `map`, `zip` and `fold` onto it instead of

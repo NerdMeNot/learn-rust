@@ -2,6 +2,7 @@
  "id": "declarations-types",
  "title": "Declarations, literals and types",
  "part": "syntax",
+ "description": "Rust declarations side by side with your language: let, const, fn and struct, types after the name, literals, and the small symbols as, ::<> and |x|.",
  "intro": "Variables, constants, functions and types are declared with a keyword (`let`, `const`, `fn`, `struct`) and then a name. A type, where you write one, goes after the name behind a colon. Numbers, characters and strings have their own literal syntax, and a few small symbols (`as`, `::<>`, `<>`, `|x|`) cover conversions, generics and closures.",
  "coming_from": {
   "go": "`x := 5` is `let x = 5;`. The type goes after a colon, there is no `a, b int` shorthand, and the result type follows `->`. Go's `int` is 64 bits on a 64-bit machine; Rust's default integer is `i32`, so use `i64` (or `isize`) where you mean Go's `int`. `const` always needs a type, and `'R'` is a `char`, not a number.",

@@ -1,6 +1,7 @@
 # Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
 title: "Reading a function signature"
 part: "syntax"
+description: "How to read a Rust function signature: parameters, &self and &mut self, Result, generics and trait bounds, taken from real standard library functions."
 intro: >-
   A function's signature is everything before its body: the name, the parameters, the result
   type, and any conditions on generic types. In Rust it packs in a lot, because it also says

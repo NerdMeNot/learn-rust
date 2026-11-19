@@ -1,6 +1,7 @@
 # Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
 title: "Declarations, literals and types"
 part: "syntax"
+description: "Rust declarations side by side with your language: let, const, fn and struct, types after the name, literals, and the small symbols as, ::<> and |x|."
 intro: >-
   Variables, constants, functions and types are declared with a keyword (`let`, `const`, `fn`,
   `struct`) and then a name. A type, where you write one, goes after the name behind a colon.

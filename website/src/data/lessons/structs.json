@@ -2,6 +2,7 @@
  "id": "structs",
  "title": "Structs",
  "part": "data",
+ "description": "Rust structs: named fields, impl blocks for methods, no constructors or zero values, and every field set on creation. Compared with classes and Go structs.",
  "intro": "Structs group named fields into one type of your own.",
  "coming_from": {
   "go": "A Rust struct is a Go struct with `name: Type` order. You must set every field when you build one (there are no zero values), and fields are private to their module until you mark them `pub`, not when they start with a lowercase letter. There is no struct embedding: a struct that holds another one keeps it in a named field.",

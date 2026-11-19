@@ -1,6 +1,7 @@
 # Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
 title: "Printing and Formatting"
 part: "std"
+description: "println!, format! and write! in Rust: width, alignment, precision and hex, plus the Display trait you write and the Debug trait #[derive] writes for you."
 intro: >-
   `println!`, `format!` and `write!` share one mini-language inside the `{}`: width,
   alignment, precision, hex. Two traits decide how a value prints. `Display` (`{}`) is

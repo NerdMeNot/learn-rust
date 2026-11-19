@@ -1,6 +1,7 @@
 # Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
 title: "Send and Sync"
 part: "concurrency"
+description: "Rust's Send and Sync traits decide which types may cross threads, and why Arc<Mutex<T>> compiles where Rc<RefCell<T>> does not. No data races in safe Rust."
 intro: >-
   Two questions decide whether a type may be used from more than one thread. `Send`: may
   this value be moved to another thread? `Sync`: may several threads hold a `&T` to it at

@@ -2,6 +2,7 @@
  "id": "idioms",
  "title": "Idioms and design patterns",
  "part": "further",
+ "description": "Idiomatic Rust: newtypes, validated constructors, builders, impossible states made unwritable, and the patterns that enums, traits and ownership trim down.",
  "intro": "An idiom is the way Rust code usually says a common thing: wrap a number in a type of its own, build a value in one place that checks it, make a wrong state impossible to write. Many are design patterns you already know, trimmed because enums, traits and ownership do part of the work. This page shows the ones you will read most, the compiler error each one turns a mistake into, and the habits that look like idioms and are not.",
  "coming_from": {
   "go": "A defined type (`type UserID int`) is the newtype, and functional options are the cousin of the Rust builder. Go chose the zero value on purpose (`var p Port` is `0`), and most Go types are designed so it is valid; the cost shows when it should not be, so \"a `Port` that cannot be invalid\" is a convention there. A Rust type has no zero value unless you write one, so a `Port` comes from the function you wrote. Cleanup is also different: `defer` runs at the end of the function, a Rust `Drop` guard at the end of its scope.",

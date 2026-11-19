@@ -1,6 +1,7 @@
 # Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
 title: "Modules and Visibility"
 part: "abstractions"
+description: "Rust modules and visibility: everything is private until you mark it pub, and use gives a long path a short name. Compared with packages in your language."
 intro: >-
   A module is a named group of items, with its own private part. Everything inside is
   hidden from the outside until you mark it `pub`, and a `use` line gives a long path a

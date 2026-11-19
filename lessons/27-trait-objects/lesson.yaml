@@ -1,6 +1,7 @@
 # Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
 title: "Trait Objects (dyn)"
 part: "abstractions"
+description: "Rust trait objects (dyn Trait): keep different types in one list behind Box<dyn Trait>, and when to choose them over generics. Rust's take on interfaces."
 intro: >-
   A trait object is a value whose exact type is forgotten, and only the trait's methods
   remain. It is how one list holds squares and rectangles, or one variable holds

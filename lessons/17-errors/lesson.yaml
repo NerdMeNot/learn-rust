@@ -1,6 +1,7 @@
 # Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
 title: "Errors and Result"
 part: "data"
+description: "Rust has no exceptions: a function that can fail returns Result<T, E>, and the ? operator passes the error up. Compared with try/catch and Go's err != nil."
 intro: >-
   A function that can fail returns `Result<T, E>`: either `Ok(value)` or `Err(error)`.
   The `?` operator means "if this failed, return the error right now", in one character.

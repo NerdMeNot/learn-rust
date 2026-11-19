@@ -2,6 +2,7 @@
  "id": "common-traits",
  "title": "Common Traits",
  "part": "abstractions",
+ "description": "Debug, Display, Clone, Copy, PartialEq, Eq, Hash, Default and From: the standard traits nearly every Rust type needs, and when #[derive] writes them.",
  "intro": "Almost every type you write needs the same few abilities: print, copy, compare, use as a key, start from a default, convert. Each one is a standard trait. `#[derive(...)]` writes the obvious ones from the fields, and you write the rest by hand.",
  "coming_from": {
   "go": "Go gives a struct `==` (when every field is comparable), map-key use and `%v` printing without being asked. Rust makes each one a trait you ask for, usually in one `derive` line. `String()` is `impl Display`, and `cmp.Compare` is `Ord::cmp` (floats use `total_cmp`).",

@@ -1,6 +1,7 @@
 # Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
 title: "Enums"
 part: "data"
+description: "Rust enums are a fixed list of variants that can each carry data, like sealed classes or tagged unions, and match must handle every variant."
 intro: >-
   A Rust enum is a type with a fixed list of variants, and each variant can carry its
   own data. The compiler knows the full list, so it can check that you handled every

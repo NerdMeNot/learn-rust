@@ -2,6 +2,7 @@
  "id": "formatting",
  "title": "Printing and Formatting",
  "part": "std",
+ "description": "println!, format! and write! in Rust: width, alignment, precision and hex, plus the Display trait you write and the Debug trait #[derive] writes for you.",
  "intro": "`println!`, `format!` and `write!` share one mini-language inside the `{}`: width, alignment, precision, hex. Two traits decide how a value prints. `Display` (`{}`) is for people, and you write it yourself. `Debug` (`{:?}`) is for developers, and `#[derive(Debug)]` writes it for you.",
  "coming_from": {
   "go": "`{}` uses `Display`, close to your `String()` method, and `{:?}` uses `Debug`, which is what `%+v` prints for a struct with no `String()`. Go has one hook (`%v`, `%+v` and `%s` all call `String()`); Rust has two traits, and `{:?}` never uses your `Display`. Go prints any struct by default, but Rust only prints types that implement one of these traits.",

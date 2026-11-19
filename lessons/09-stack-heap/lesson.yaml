@@ -1,6 +1,7 @@
 # Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
 title: "Values, the Stack and the Heap"
 part: "ownership"
+description: "Where Rust values live: the stack and the heap, why a variable holds the value itself and not a reference, and how the type decides. Compared with GC languages."
 intro: >-
   A Rust variable holds a value itself, not an arrow to an object somewhere else. Where
   that value lives, on the stack or on the heap, is mostly decided by its type. This

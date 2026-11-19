@@ -2,6 +2,7 @@
  "id": "trait-objects",
  "title": "Trait Objects (dyn)",
  "part": "abstractions",
+ "description": "Rust trait objects (dyn Trait): keep different types in one list behind Box<dyn Trait>, and when to choose them over generics. Rust's take on interfaces.",
  "intro": "A trait object is a value whose exact type is forgotten, and only the trait's methods remain. It is how one list holds squares and rectangles, or one variable holds \"whichever shape we picked at run time\". You write `dyn Shape`, and you hold it behind a pointer.",
  "coming_from": {
   "go": "`&dyn Shape` and `Box<dyn Shape>` are interface values: a pointer to the data plus a pointer to a table of methods. `Vec<Box<dyn Shape>>` is your `[]Shape`. The differences: a type must say `impl Shape for Square` first, a `&dyn Shape` points at the original where a Go interface copies the value, and in Rust you choose per use between this and a generic `<T: Shape>`, which is decided at compile time.",

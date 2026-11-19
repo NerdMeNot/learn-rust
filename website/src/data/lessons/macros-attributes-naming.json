@@ -2,6 +2,7 @@
  "id": "macros-attributes-naming",
  "title": "Macros, attributes and comments",
  "part": "syntax",
+ "description": "Reading Rust's println! and vec! macros, #[derive] and other attributes, // and /// doc comments, and what cargo fmt and cargo clippy check.",
  "intro": "A name followed by `!`, such as `println!` or `vec!`, is a macro call: the compiler expands it into other code first. An ordinary Rust function has a fixed list of parameters, so this is how `println!` takes any number of arguments and checks its format string before the program runs. A line that starts with `#[...]` is an attribute, a note to the compiler about the item below it. Comments start with `//`, and `///` turns a comment into documentation. `cargo fmt` and `cargo clippy` format and check the code.",
  "coming_from": {
   "go": "`fmt.Printf(\"%d %s\", n, s)` is `println!(\"{} {}\", n, s)`: `{}` replaces the verbs, and the compiler checks the string against the arguments. Struct tags like `json:\"name\"` become attributes such as `#[serde(rename = \"name\")]` (from the serde crate). The nearest thing to `//go:build linux` is `#[cfg(target_os = \"linux\")]`, which applies to one item, not a whole file. `cargo fmt` is `gofmt`.",

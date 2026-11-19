@@ -1,6 +1,7 @@
 # Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
 title: "Lifetimes"
 part: "abstractions"
+description: "Rust lifetimes explained: what 'a means in a signature or struct, why the compiler usually infers it, and why a lifetime never makes a value live longer."
 intro: >-
   A lifetime is the stretch of the program during which a reference is valid. Every
   reference has one, and the compiler usually works it out. You write one, like `'a`,

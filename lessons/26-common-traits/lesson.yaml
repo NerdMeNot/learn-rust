@@ -1,6 +1,7 @@
 # Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
 title: "Common Traits"
 part: "abstractions"
+description: "Debug, Display, Clone, Copy, PartialEq, Eq, Hash, Default and From: the standard traits nearly every Rust type needs, and when #[derive] writes them."
 intro: >-
   Almost every type you write needs the same few abilities: print, copy, compare, use as
   a key, start from a default, convert. Each one is a standard trait. `#[derive(...)]`

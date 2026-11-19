@@ -1,6 +1,7 @@
 # Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
 title: "Async Basics"
 part: "concurrency"
+description: "How async works in Rust: an async fn returns a future that does nothing until polled. Write a tiny executor to see why you need a runtime like Tokio."
 intro: >-
   An `async fn` returns a future: a value that describes some work and has not done it. Nothing
   runs until something polls the future, and `.await` is how one future waits for another. The

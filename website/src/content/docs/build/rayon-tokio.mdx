@@ -1,6 +1,6 @@
 ---
 title: "Rayon and Tokio together"
-description: "Tokio can switch tasks only at an .await, so heavy CPU work does not belong on its threads. Hand a blocking call to spawn_blocking, and parallel work to rayon with rayon::spawn and a oneshot channel."
+description: "Mixing CPU-heavy work with async in Rust: spawn_blocking for blocking calls, and Rayon with a oneshot channel for parallel work, without stalling Tokio."
 ---
 
 import { Files, GuideGotcha, Remember, Session, Tree } from '../../../components/guide'

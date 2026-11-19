@@ -2,6 +2,7 @@
  "id": "ownership",
  "title": "Ownership and Moves",
  "part": "ownership",
+ "description": "Rust ownership and moves: every value has one owner, it is freed when the owner goes away, and assignment moves it. Side by side with Go, Python, Java and more.",
  "intro": "This is the big one. Every value in Rust has exactly one owner. When the owner goes away, the value is freed. Assigning a value to another variable moves it: the new variable becomes the owner, and the old one can't be used.",
  "coming_from": {
   "go": "In Go, `b := a` makes two slices share one array. In Rust, `let b = a;` moves the `Vec` to `b` and `a` can't be used any more, so if you want two you write `a.clone()`.",

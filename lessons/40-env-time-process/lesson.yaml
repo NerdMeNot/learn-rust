@@ -1,6 +1,7 @@
 # Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
 title: "Arguments, Environment, Time and Processes"
 part: "std"
+description: "Command-line arguments and environment variables (std::env), timing with Instant and Duration (std::time), and running other programs (std::process) in Rust."
 intro: >-
   Talking to the world outside your program: command-line arguments and environment
   variables (`std::env`), measuring time (`std::time`), and running other programs

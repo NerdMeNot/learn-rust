@@ -2,6 +2,7 @@
  "id": "modules",
  "title": "Modules and Visibility",
  "part": "abstractions",
+ "description": "Rust modules and visibility: everything is private until you mark it pub, and use gives a long path a short name. Compared with packages in your language.",
  "intro": "A module is a named group of items, with its own private part. Everything inside is hidden from the outside until you mark it `pub`, and a `use` line gives a long path a short name.",
  "coming_from": {
   "go": "A Go package is both the unit of privacy and the unit of compilation. Rust splits the two: a module (`mod`) is the privacy unit, a crate the compilation unit. You declare a module with `mod` instead of putting files in a folder, and visibility is `pub` instead of a capital letter.",

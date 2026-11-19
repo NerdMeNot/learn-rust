@@ -2,6 +2,7 @@
  "id": "collections",
  "title": "Collections: Maps, Sets, Queues and Heaps",
  "part": "std",
+ "description": "HashMap, BTreeMap, HashSet, VecDeque and BinaryHeap in Rust's std::collections, compared with the maps, sets and queues of your language.",
  "intro": "`std::collections` has what lies beyond `Vec`: a hash map, a sorted map, sets, a double-ended queue, a priority queue and a linked list. All of them ship with the standard library, and the docs say `Vec` and `HashMap` are the right starting point.",
  "coming_from": {
   "go": "Go gives you a map and a slice, and `container/heap` for a priority queue. Rust adds `BTreeMap` (keys kept sorted), `HashSet`, `VecDeque` (a queue) and `BinaryHeap`, which pops the largest first, so wrap items in `Reverse` for smallest first.",

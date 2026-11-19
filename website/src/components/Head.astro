@@ -8,6 +8,9 @@ import Default from '@astrojs/starlight/components/Head.astro'
 import { OTHERS, VERDICT } from '../lib/langs'
 import Analytics from './Analytics.astro'
 
+// The 404 page has a canonical URL like any page, so say plainly it is not one to index.
+const noindex = Astro.locals.starlightRoute.id === '404'
+
 const verdicts = Object.keys(VERDICT)
 const css = OTHERS.map(k => [
   `:root[data-from="${k}"] .lr-others [data-pane]:not([data-pane="${k}"]),`,
@@ -40,5 +43,6 @@ window.addEventListener('scroll',check,{passive:true});setTimeout(check,1500)})}
 <script is:inline set:html={boot} />
 <script is:inline set:html={progress} />
 <Default />
+{noindex && <meta name="robots" content="noindex" />}
 <Analytics />
 <style is:inline set:html={css} />

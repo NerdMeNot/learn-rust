@@ -2,6 +2,7 @@
  "id": "for-collections",
  "title": "Looping Over a Collection",
  "part": "collections",
+ "description": "The three Rust for loops over a collection, for x in &v, &mut v and v, and who owns the items afterwards. Compared with loops in your language.",
  "intro": "Rust has three ways to write `for x in …` over a list, and they differ in who owns the items afterwards. One borrows the list, one borrows it to change it, and one uses it up.",
  "coming_from": {
   "go": "`for n in &names` is `for _, n := range names`, and `v.iter().enumerate()` gives `i, n`. In Go `n` is a copy of the item, so you change items through the index. In Rust `for n in &mut nums` gives you a `&mut` reference to the item in the list (`*n *= 10` writes through it). `for n in names` (no `&`) has no Go counterpart: for a `Vec` it moves the items out, and `names` is gone.",

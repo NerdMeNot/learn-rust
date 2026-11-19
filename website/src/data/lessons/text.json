@@ -2,6 +2,7 @@
  "id": "text",
  "title": "Working with Text",
  "part": "std",
+ "description": "Working with text in Rust: String vs &str, trim, split, split_once, replace, parse and find, and why most methods return views into your text, not copies.",
  "intro": "Rust's text tools are methods on `str` itself: `trim`, `split`, `split_once`, `replace`, `parse`, `starts_with`, `find`. Most of them hand back views into your text instead of copies.",
  "coming_from": {
   "go": "The `strings` package becomes methods on `str`: `trim` is `TrimSpace`, `split_once` is `strings.Cut`, `parse` replaces `strconv`. `find` returns an `Option<usize>` instead of -1, and `split` gives a lazy iterator, not a slice.",

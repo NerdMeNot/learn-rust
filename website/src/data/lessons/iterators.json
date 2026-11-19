@@ -2,6 +2,7 @@
  "id": "iterators",
  "title": "Iterators",
  "part": "collections",
+ "description": "Rust iterators are lazy: chain filter, map, zip and fold instead of writing the loop. Compared with Java streams and LINQ, plus the & that trips people up.",
  "intro": "An iterator hands out items one at a time, and does nothing until something asks for them. You chain steps like `filter`, `map`, `zip` and `fold` onto it instead of writing the loop. The only surprise is how many `&` the closure receives.",
  "coming_from": {
   "go": "Go's standard library has no `map` or `filter` for slices, so this replaces a hand-written loop. The chain is lazy: nothing runs until `.collect()` or `.sum()`, and the closure often gets a reference, like `&i32`, instead of the number.",

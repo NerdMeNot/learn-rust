@@ -2,6 +2,7 @@
  "id": "smart-pointers",
  "title": "Box, Rc and RefCell",
  "part": "smart-pointers",
+ "description": "Box, Rc and RefCell in Rust: one owner on the heap, shared ownership with a count, and changing data behind a shared reference. When you really need them.",
  "intro": "A smart pointer is a value that owns data somewhere else, lets you reach it as if it were the value itself, and cleans it up when it goes out of scope. `Box<T>` is one owner on the heap. `Rc<T>` is several owners with a count. `RefCell<T>` lets you change something through a shared reference, by checking the borrowing rules when the program runs. Together they cover the cases where ownership really is shared. Most programs need them in a few places; the rest of the time a plain value or a reference does the job.",
  "coming_from": {
   "go": "Go has no owning pointer types: a `*T` is a plain pointer, and the garbage collector frees what nobody can reach. Copying a pointer is how you share, and every holder may change the value. Most Go pointers, passed to a function that uses them for the call, become a plain `&T` or `&mut T` in Rust. `Rc<T>` is for the sharing that remains, with the owners counted, and read-only until you add a `RefCell`. `Drop` does the job `defer` does, tied to the value instead of the function.",

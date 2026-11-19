@@ -2,6 +2,7 @@
  "id": "errors",
  "title": "Errors and Result",
  "part": "data",
+ "description": "Rust has no exceptions: a function that can fail returns Result<T, E>, and the ? operator passes the error up. Compared with try/catch and Go's err != nil.",
  "intro": "A function that can fail returns `Result<T, E>`: either `Ok(value)` or `Err(error)`. The `?` operator means \"if this failed, return the error right now\", in one character.",
  "coming_from": {
   "go": "`Result<T, E>` replaces `(T, error)`, and `?` does what `if err != nil { return err }` does. Go is the closest cousin: errors are plain values that you return and check. The difference is that Rust won't hand you the value until you have dealt with the `Err` case, and warns when you ignore a `Result` altogether.",

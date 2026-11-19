@@ -2,6 +2,7 @@
  "id": "borrow-checker",
  "title": "Working with the Borrow Checker",
  "part": "smart-pointers",
+ "description": "When Rust's borrow checker says no, the fix is usually small: borrow instead of move, copy first, split a struct, or keep an index. What each fix costs.",
  "intro": "The borrow checker is the part of the compiler that enforces ownership, borrowing and mutable borrows. When it says no, the program is usually one small change away from compiling: borrow instead of move, copy a small value out first, split a struct into parts, take a value out with `take`, or keep an index instead of a reference. Each fix has a cost, and some errors point at a design that should change.",
  "coming_from": {
   "go": "Go lets any pointer write and keeps whatever is reachable alive. The habits that meet a Rust error are a pointer into a slice that `append` then moves, two slices sharing one array, a pointer to the `range` variable (before Go 1.22), and a method that changes a struct while a loop reads another part of it.",

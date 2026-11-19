@@ -2,6 +2,7 @@
  "id": "env-time-process",
  "title": "Arguments, Environment, Time and Processes",
  "part": "std",
+ "description": "Command-line arguments and environment variables (std::env), timing with Instant and Duration (std::time), and running other programs (std::process) in Rust.",
  "intro": "Talking to the world outside your program: command-line arguments and environment variables (`std::env`), measuring time (`std::time`), and running other programs (`std::process`).",
  "coming_from": {
   "go": "`env::args()` is `os.Args`, program name first. `Instant` is the monotonic reading that a `time.Time` from `time.Now()` carries (`time.Since`), and `Command` is `exec.Command`. Go has a `flag` package in its standard library; Rust's has no flag parser (the `clap` crate does that). `env::var` returns a `Result`, where `os.Getenv` returns an empty string.",

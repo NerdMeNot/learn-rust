@@ -19,6 +19,7 @@ import GitHubLink from '../components/GitHubLink.astro'
 import { LANG, OTHERS, PARTS, PHRASEBOOK, VERDICT } from '../lib/langs'
 import { START } from '../lib/path'
 import index from '../data/lessons.json'
+import { minutes } from '../lib/readingTime'
 import versions from '../data/versions.json'
 import ownership from '../data/lessons/ownership.json'
 
@@ -65,13 +66,19 @@ const tracks = [
 ].filter(t => t.items.length > 0)
 const teaser = ownership.gotcha!
 const SITE = 'https://learningrust.nerdmenot.in'
-const DESC = 'Learn Rust if you already program in Go, Kotlin, Python, TypeScript, Java, C#, C or C++. Each lesson puts a Rust program beside the same one in your language, then shows the real compiler error for the habit that trips you.'
+// Search results show about 155 characters of a description, so this one stays under that.
+const DESC = 'Learn Rust from Go, Kotlin, Python, TypeScript, Java, C#, C or C++. Each lesson runs Rust beside your language and shows the habit the compiler refuses.'
+// Course workload for search engines: the same reading-time estimate the lesson pages show.
+const lessonRaw = import.meta.glob<string>('../../../lessons/*/lesson.mdx', { query: '?raw', import: 'default', eager: true })
+const workloadHours = Math.max(1, Math.round(Object.values(lessonRaw).reduce((n, raw) => n + minutes(raw), 0) / 60))
 const jsonld = {
   '@context': 'https://schema.org',
   '@graph': [
     { '@type': 'WebSite', '@id': SITE + '/#site', url: SITE + '/', name: 'Learn Rust', description: DESC, inLanguage: 'en' },
     { '@type': 'Course', name: 'Learn Rust (even with all your past baggage)', description: DESC, url: SITE + '/', inLanguage: 'en',
-      provider: { '@type': 'Organization', name: 'NerdMeNot', url: 'https://github.com/NerdMeNot' }, isAccessibleForFree: true, license: 'https://opensource.org/license/mit' },
+      provider: { '@type': 'Organization', name: 'NerdMeNot', url: 'https://github.com/NerdMeNot' }, isAccessibleForFree: true, license: 'https://opensource.org/license/mit',
+      offers: { '@type': 'Offer', category: 'Free', price: 0, priceCurrency: 'USD' },
+      hasCourseInstance: { '@type': 'CourseInstance', courseMode: 'Online', courseWorkload: `PT${workloadHours}H` } },
   ],
 }
 const v = versions as Record<string, string>

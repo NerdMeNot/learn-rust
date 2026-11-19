@@ -2,6 +2,7 @@
  "id": "copy-or-reference",
  "title": "Copy or reference? Telling them apart",
  "part": "ownership",
+ "description": "Does b = a give you a copy, a reference or a move? Test the rule in your own language, then see how Rust writes the answer into the code.",
  "intro": "Every language has a quiet rule for whether `b = a` or a `for` loop gives you your own copy or a second name for the same thing. Rust has the same three outcomes (a copy, a shared reference, a move), but it writes which one you get into the code. This lesson gives you tests to find the answer in your own language first.",
  "coming_from": {
   "go": "`for _, p := range people` hands you a copy of each element, so `p.Age++` changes nothing and you write `people[i].Age++` instead. In Rust the loop says which you get: `for p in &people` reads each element, `for p in &mut people` changes it. `range` over an array also copies the whole array first, and over a slice it does not.",

@@ -2,6 +2,7 @@
  "id": "statements-expressions",
  "title": "Statements and expressions",
  "part": "syntax",
+ "description": "In Rust, if, match, loops and blocks are expressions that produce a value. Why the last line without a semicolon is the result, and what a stray ; does.",
  "intro": "In Rust the pieces that steer a program, `if`, `match`, loops and `{ }` blocks, are expressions: they produce a value. The last line of a block, with no `;`, is the block's value, and a function's last line is what it returns.",
  "coming_from": {
   "go": "`if` and `switch` are statements in Go, so you declare `label := \"odd\"` first and assign inside a branch. In Rust `if` and `match` give a value, and a function ends with its result, written without `return` (`return x;` still works). `a = b = c` and `if x = 1` fail in both languages, for different reasons: Go's assignment is a statement, Rust's is an expression worth `()`.",

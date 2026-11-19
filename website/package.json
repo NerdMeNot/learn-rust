@@ -10,9 +10,11 @@
     "build": "astro build",
     "preview": "astro preview",
     "check-links": "python3 scripts/check-links.py dist",
-    "deploy": "astro build && wrangler pages deploy dist --project-name=${CLOUDFLARE_PROJECT:-learningrust}"
+    "deploy": "astro build && wrangler pages deploy dist --project-name=${CLOUDFLARE_PROJECT:-learningrust}",
+    "check-seo": "python3 scripts/check-seo.py dist"
   },
   "dependencies": {
+    "@astrojs/sitemap": "^3.7.4",
     "@astrojs/starlight": "^0.41.11",
     "astro": "^7.3.2",
     "marked": "^16.4.2"

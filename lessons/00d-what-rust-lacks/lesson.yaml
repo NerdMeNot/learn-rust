@@ -1,6 +1,7 @@
 # Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
 title: "What Rust doesn't have"
 part: "syntax"
+description: "Rust has no x++, ternary operator, null, C-style for, default arguments, classes or exceptions. The real compiler error for each, and what to write instead."
 intro: >-
   Some things you reach for by habit do not exist in Rust: `x++`, `a ? b : c`, `null`,
   C-style `for`, default arguments, classes, exceptions, `goto`. Each one fails with a

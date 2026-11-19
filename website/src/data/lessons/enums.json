@@ -2,6 +2,7 @@
  "id": "enums",
  "title": "Enums",
  "part": "data",
+ "description": "Rust enums are a fixed list of variants that can each carry data, like sealed classes or tagged unions, and match must handle every variant.",
  "intro": "A Rust enum is a type with a fixed list of variants, and each variant can carry its own data. The compiler knows the full list, so it can check that you handled every variant.",
  "coming_from": {
   "go": "Go has no sum types. The closest is an interface plus a type switch (or `iota` constants, when there is no data). An interface is open: anyone can add a type, and Go does not check that a type switch covers them all. A Rust enum is a closed list of variants, and `match` won't compile until every variant is handled.",

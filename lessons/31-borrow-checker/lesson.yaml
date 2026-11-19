@@ -1,6 +1,7 @@
 # Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
 title: "Working with the Borrow Checker"
 part: "smart-pointers"
+description: "When Rust's borrow checker says no, the fix is usually small: borrow instead of move, copy first, split a struct, or keep an index. What each fix costs."
 intro: >-
   The borrow checker is the part of the compiler that enforces ownership, borrowing and
   mutable borrows. When it says no, the program is usually one small change away from

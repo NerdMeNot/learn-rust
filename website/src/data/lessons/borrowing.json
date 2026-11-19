@@ -2,6 +2,7 @@
  "id": "borrowing",
  "title": "Borrowing",
  "part": "ownership",
+ "description": "Rust references (&T) let a function read a value without taking ownership. Nothing is copied, and the compiler checks the reference never outlives the value.",
  "intro": "A reference `&value` lets a function look at a value without taking ownership. The caller keeps the value, nothing is copied, and the compiler checks that the reference never outlives what it points at.",
  "coming_from": {
   "go": "`&nums` is the Rust way to pass a slice: the function sees the same elements and nothing is copied. A Go `[]int` is closest to `&mut [i32]`, since the function can write to the elements. Rust's `&[i32]` is the read-only form, and the compiler also checks that the reference never outlives `nums`.",

@@ -2,6 +2,7 @@
  "id": "what-rust-lacks",
  "title": "What Rust doesn't have",
  "part": "syntax",
+ "description": "Rust has no x++, ternary operator, null, C-style for, default arguments, classes or exceptions. The real compiler error for each, and what to write instead.",
  "intro": "Some things you reach for by habit do not exist in Rust: `x++`, `a ? b : c`, `null`, C-style `for`, default arguments, classes, exceptions, `goto`. Each one fails with a compiler message, and each has a Rust way. This page lists them, with the real error and what to write instead.",
  "coming_from": {
   "go": "`i++` is a statement in Go, and Rust has no `++` at all. Much else matches: Go has no ternary operator, no function overloading by type, no default arguments and no mixing of typed number types either. What you give up is `nil`, `goto`, `defer`, `for cond {}` and the `if err != nil` boilerplate: Rust has `Option`, labeled `break`, `Drop`, `while` and `?`. Watch the `break` inside a `switch`: in Rust it leaves the loop.",

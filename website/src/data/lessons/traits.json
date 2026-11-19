@@ -2,6 +2,7 @@
  "id": "traits",
  "title": "Traits (Interfaces)",
  "part": "abstractions",
+ "description": "Rust traits are interfaces with default methods. Use them to say what a function needs from its argument, compared with interfaces in Go, Java, Kotlin and C#.",
  "intro": "A trait is a list of methods a type promises to have. A trait can also include default methods, which a type gets without writing them. You use a trait to say what a function needs from its argument, instead of naming one type.",
  "coming_from": {
   "go": "A trait plays the part of a Go interface: the list of methods a function needs. The difference is that a type must say `impl Speaker for Robot`; having the right methods is not enough. A trait can also have default methods, which Go interfaces lack. And because the `impl` is a separate block, you can implement your own trait for types you did not write, such as `i32`, which Go does not allow.",

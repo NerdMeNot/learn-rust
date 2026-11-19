@@ -2,6 +2,7 @@
  "id": "stack-heap",
  "title": "Values, the Stack and the Heap",
  "part": "ownership",
+ "description": "Where Rust values live: the stack and the heap, why a variable holds the value itself and not a reference, and how the type decides. Compared with GC languages.",
  "intro": "A Rust variable holds a value itself, not an arrow to an object somewhere else. Where that value lives, on the stack or on the heap, is mostly decided by its type. This lesson explains both places, so every later lesson can use the words.",
  "coming_from": {
   "go": "A Go struct variable holds its fields directly, and so does Rust's. The difference is who picks the place. Go's escape analysis moves a value to the heap for you when it has to outlive the function; in Rust the type says: a plain value lives in its variable, and `Box`, `Vec` and `String` own heap memory. A `Vec`'s header is the same three words as a Go slice header.",

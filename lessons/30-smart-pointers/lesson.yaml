@@ -1,6 +1,7 @@
 # Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
 title: "Box, Rc and RefCell"
 part: "smart-pointers"
+description: "Box, Rc and RefCell in Rust: one owner on the heap, shared ownership with a count, and changing data behind a shared reference. When you really need them."
 intro: >-
   A smart pointer is a value that owns data somewhere else, lets you reach it as if it
   were the value itself, and cleans it up when it goes out of scope. `Box<T>` is one

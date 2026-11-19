@@ -2,6 +2,7 @@
  "id": "files-io",
  "title": "Files and I/O",
  "part": "std",
+ "description": "Reading and writing files in Rust with std::fs and std::io: whole files, buffered lines and streams, and passing io::Result errors up with ?.",
  "intro": "Reading and writing files lives in `std::fs` (whole files at once) and `std::io` (streams, buffers, line by line). Almost every call that touches the disk returns an `io::Result`, and `?` passes the error up to the caller.",
  "coming_from": {
   "go": "`fs::write` is `os.WriteFile`, and `fs::read_to_string` is `os.ReadFile` plus `string()` plus a UTF-8 check that can fail. `BufReader::lines()` takes the place of `bufio.Scanner`, and `?` replaces each `if err != nil`. A `File` closes at the end of its scope, but unlike `f.Close()` that cannot return an error.",

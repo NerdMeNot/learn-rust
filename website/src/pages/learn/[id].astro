@@ -65,7 +65,7 @@ const strip = mdx ? [
 const total = strip.reduce((n, x) => n + x.min, 0)
 const where = l.part === 'std' ? `Standard library · ${inPart.findIndex(x => x.id === l.id) + 1} of ${inPart.length}` : `${part.label} · Lesson ${l.order}`
 ---
-<StarlightPage frontmatter={{ title: l.title, description: plain(l.intro), tableOfContents: mdx ? { minHeadingLevel: 2, maxHeadingLevel: 2 } : false }} headings={headings}>
+<StarlightPage frontmatter={{ title: l.title, description: l.description ?? plain(l.intro), tableOfContents: mdx ? { minHeadingLevel: 2, maxHeadingLevel: 2 } : false }} headings={headings}>
   <div class:list={['lr-lesson', mdx && 'lr-lesson-long']}>
   <p class="lr-where">{where}{total > 0 && ` · about ${approx(total)}`}</p>
   <p class="lr-intro" set:html={inline(l.intro)} />

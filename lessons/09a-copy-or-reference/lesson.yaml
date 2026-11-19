@@ -1,6 +1,7 @@
 # Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
 title: "Copy or reference? Telling them apart"
 part: "ownership"
+description: "Does b = a give you a copy, a reference or a move? Test the rule in your own language, then see how Rust writes the answer into the code."
 intro: >-
   Every language has a quiet rule for whether `b = a` or a `for` loop gives you your own
   copy or a second name for the same thing. Rust has the same three outcomes (a copy,

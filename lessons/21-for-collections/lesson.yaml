@@ -1,6 +1,7 @@
 # Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
 title: "Looping Over a Collection"
 part: "collections"
+description: "The three Rust for loops over a collection, for x in &v, &mut v and v, and who owns the items afterwards. Compared with loops in your language."
 intro: >-
   Rust has three ways to write `for x in …` over a list, and they differ in who owns the
   items afterwards. One borrows the list, one borrows it to change it, and one uses it

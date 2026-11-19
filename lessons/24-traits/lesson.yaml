@@ -1,6 +1,7 @@
 # Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
 title: "Traits (Interfaces)"
 part: "abstractions"
+description: "Rust traits are interfaces with default methods. Use them to say what a function needs from its argument, compared with interfaces in Go, Java, Kotlin and C#."
 intro: >-
   A trait is a list of methods a type promises to have. A trait can also include
   default methods, which a type gets without writing them. You use a trait to say what

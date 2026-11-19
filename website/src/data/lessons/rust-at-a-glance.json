@@ -2,6 +2,7 @@
  "id": "rust-at-a-glance",
  "title": "Rust at a glance",
  "part": "syntax",
+ "description": "A quick visual guide to Rust syntax: what fn, let, &, ::, ? and ! mean, so you can read the shape of any Rust file before learning the details.",
  "intro": "Rust code is built from a small set of symbols that repeat on every page: `fn`, `let`, `&`, `::`, `?`, `!`. This page names each one, so you can read the shape of a file before you know what every piece does.",
  "coming_from": {
   "go": "`func` is `fn`, and `:=` is `let mut`: a plain `let` makes a variable that cannot change. Types still follow the name, but with a colon (`a: i32`), the return type goes after `->`, and you write the semicolons that Go adds for you. The last line of a block, without a `;`, is the block's value.",

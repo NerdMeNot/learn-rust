@@ -1,6 +1,7 @@
 # Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
 title: "Mutable Borrows"
 part: "ownership"
+description: "&mut in Rust lends a value so it can be changed, and while it is lent nothing else may use the value. Many readers or one writer, never both."
 intro: >-
   `&mut` lends a value so it can be changed. The rule: while something holds a `&mut`,
   nothing else can use that value at all. Many readers, or one writer, never both.

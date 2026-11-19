@@ -2,6 +2,7 @@
  "id": "send-sync",
  "title": "Send and Sync",
  "part": "concurrency",
+ "description": "Rust's Send and Sync traits decide which types may cross threads, and why Arc<Mutex<T>> compiles where Rc<RefCell<T>> does not. No data races in safe Rust.",
  "intro": "Two questions decide whether a type may be used from more than one thread. `Send`: may this value be moved to another thread? `Sync`: may several threads hold a `&T` to it at once? The compiler answers both from the types and refuses the program when the answer is no. Together with the borrow rules, that check is how safe Rust has no data races, and it is why `Arc<Mutex<T>>` compiles across threads where `Rc<RefCell<T>>` does not.",
  "coming_from": {
   "go": "Go compiles a program that shares a plain variable between goroutines, and the race detector (`go run -race`) reports unsynchronized accesses it sees when the program runs. Rust asks at compile time instead, from the types: `Send` (\"this value may move to another thread\") and `Sync` (\"a `&T` may be used by several threads\"). There is no flag to switch it on.",

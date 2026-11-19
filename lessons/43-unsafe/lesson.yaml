@@ -1,6 +1,7 @@
 # Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
 title: "unsafe, honestly"
 part: "further"
+description: "What unsafe Rust unlocks: raw pointers, FFI and a few other operations the compiler cannot check, and how to wrap them in a function that is safe to call."
 intro: >-
   `unsafe` does not turn the compiler off. It unlocks a short list of operations the compiler
   cannot check, such as reading through a raw pointer, and moves the proof to you: you write the

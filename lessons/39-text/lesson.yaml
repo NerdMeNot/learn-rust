@@ -1,6 +1,7 @@
 # Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
 title: "Working with Text"
 part: "std"
+description: "Working with text in Rust: String vs &str, trim, split, split_once, replace, parse and find, and why most methods return views into your text, not copies."
 intro: >-
   Rust's text tools are methods on `str` itself: `trim`, `split`, `split_once`,
   `replace`, `parse`, `starts_with`, `find`. Most of them hand back views into your text

@@ -1,6 +1,7 @@
 # Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
 title: "Macros, attributes and comments"
 part: "syntax"
+description: "Reading Rust's println! and vec! macros, #[derive] and other attributes, // and /// doc comments, and what cargo fmt and cargo clippy check."
 intro: >-
   A name followed by `!`, such as `println!` or `vec!`, is a macro call: the compiler expands it into
   other code first. An ordinary Rust function has a fixed list of parameters, so this is how

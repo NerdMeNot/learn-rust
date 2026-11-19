@@ -2,6 +2,7 @@
  "id": "patterns",
  "title": "Patterns",
  "part": "data",
+ "description": "Rust patterns and destructuring in match, let, if let, for and function parameters: how exhaustiveness is checked and what a pattern does to ownership.",
  "intro": "A pattern is a shape that a value is taken apart by (destructuring), with a name wherever you want to keep a part. `match` is where you meet them, but they also stand in `let`, `for`, function parameters and `if let`. The compiler checks that a pattern which must always fit does, and what a pattern does to ownership is worth knowing.",
  "coming_from": {
   "go": "Go has no way to take a struct or an array apart: you read `p.x` and `a[0]`, and the nearest things are `a, b := f()`, `for i, v := range` and `v, ok := m[k]`. A Rust pattern does those jobs and also takes structs, tuples and enums apart, in `let`, `for`, parameters and `if let`.",

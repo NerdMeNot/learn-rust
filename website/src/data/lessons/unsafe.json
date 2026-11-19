@@ -2,6 +2,7 @@
  "id": "unsafe",
  "title": "unsafe, honestly",
  "part": "further",
+ "description": "What unsafe Rust unlocks: raw pointers, FFI and a few other operations the compiler cannot check, and how to wrap them in a function that is safe to call.",
  "intro": "`unsafe` does not turn the compiler off. It unlocks a short list of operations the compiler cannot check, such as reading through a raw pointer, and moves the proof to you: you write the conditions down and promise they hold. You can write whole programs without it. It is there for talking to C, for building the pieces the standard library is made of, and for data structures the borrow checker cannot express. The craft is to keep the promise small and wrap it in a function that is safe to call.",
  "coming_from": {
   "go": "Go has the `unsafe` package: `unsafe.Pointer` and `unsafe.Add` give you pointer arithmetic, as the program above shows. A file that imports `unsafe` can use it anywhere, with no block marking each use. Rust marks every use and expects a `// SAFETY:` comment saying why it is sound.",

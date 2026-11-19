@@ -2,6 +2,7 @@
  "id": "reading-signatures",
  "title": "Reading a function signature",
  "part": "syntax",
+ "description": "How to read a Rust function signature: parameters, &self and &mut self, Result, generics and trait bounds, taken from real standard library functions.",
  "intro": "A function's signature is everything before its body: the name, the parameters, the result type, and any conditions on generic types. In Rust it packs in a lot, because it also says what a function may change, whether it can fail, and what its generic types must be able to do. This page reads real signatures from the standard library, piece by piece, and shows the `use`, `pub` and `::` syntax that finds them.",
  "coming_from": {
   "go": "`func Largest[T cmp.Ordered](list []T) T` becomes `fn largest<T: PartialOrd>(list: &[T]) -> &T`: the type parameter and its bound go in `<>` after the name, and the result follows `->`. Go's `int` is 32 or 64 bits by platform (64 on the runner), so write `i64` to pin it, or `isize` to follow the platform. The `&` in `&[T]` borrows the list (a view of its items) instead of taking it.",

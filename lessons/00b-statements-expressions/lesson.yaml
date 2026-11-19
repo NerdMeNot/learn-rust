@@ -1,6 +1,7 @@
 # Code lives beside this file (main.rs, main.go, ...). Outputs are generated, never typed.
 title: "Statements and expressions"
 part: "syntax"
+description: "In Rust, if, match, loops and blocks are expressions that produce a value. Why the last line without a semicolon is the result, and what a stray ; does."
 intro: >-
   In Rust the pieces that steer a program, `if`, `match`, loops and `{ }` blocks, are
   expressions: they produce a value. The last line of a block, with no `;`, is the block's
