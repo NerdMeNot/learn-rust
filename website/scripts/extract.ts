@@ -20,6 +20,7 @@
 import { $ } from 'bun'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { normalise, settle } from './settle'
 import { join } from 'node:path'
 import { loadGuides, writeGuide } from './guides.ts'
 import { LANG, OTHERS, type Lang, type Mode, type Status, type Verdict } from '../src/lib/langs.ts'
@@ -303,16 +304,6 @@ function trimStd(block: string): string {
 }
 
 /** Addresses, PIDs and thread ids change on every run; the reader cares about the shape. */
-function normalise(out: string) {
-  return out
-    .replace(/0x[0-9a-f]{6,16}/g, m => '0x' + '·'.repeat(Math.min(12, m.length - 2)))
-    .replace(/==\d+==/g, '==1==')
-    // Rust 1.9x panics name the OS thread id: thread 'main' (402) panicked
-    .replace(/(thread '[^']*') \(\d+\)/g, '$1 (1)')
-    .replace(/\b(pid|tid)=\d+/g, '$1=1')
-    .replace(/\/tmp\/job\/\w+\//g, '')
-    .replace(/ \(BuildId: [0-9a-f]+\)/g, '')
-}
 
 /** Same output on every run, once addresses and process ids are set aside? */
 const stable = (r: Result) => r.stable !== false || normalise(r.out ?? '') === normalise(r.out_2 ?? '')
@@ -456,7 +447,10 @@ for (const l of doLessons ? lessons : []) {
 
   const data = { id: l.id, ...l.doc, program, gotcha, faq, snippets, exercises, mdx: l.mdx || undefined }
   delete (data as any).langs
-  writeFileSync(join(outDir, `${l.id}.json`), JSON.stringify(data, null, 1) + '\n')
+  // A re-run that differs from the committed output only by noise keeps the committed text (see settle.ts).
+  const dest = join(outDir, `${l.id}.json`)
+  const settled = existsSync(dest) ? settle(JSON.parse(readFileSync(dest, 'utf8')), data) : data
+  writeFileSync(dest, JSON.stringify(settled, null, 1) + '\n')
   index.push({ id: l.id, dir: l.dir, title: l.doc.title, part: l.doc.part, order: l.doc.order, verdict: (l.doc.gotcha?.verdict as Verdict) ?? null, mdx: l.mdx })
 }
 

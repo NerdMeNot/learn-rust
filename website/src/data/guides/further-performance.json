@@ -225,7 +225,7 @@
   "perf": [
    {
     "show": "$ apt-get install linux-perf   # needs network",
-    "out": "perf version 6.12.113\n",
+    "out": "perf version 6.12.117\n",
     "exit": 0
    },
    {

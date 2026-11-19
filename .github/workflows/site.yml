@@ -77,12 +77,23 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
+      # Only the IndexNow script: the site itself comes from the build job's artifact.
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: website/scripts/indexnow.py
+          sparse-checkout-cone-mode: false
       - uses: actions/download-artifact@v8
         with:
           name: site
           path: dist
+      # Compare with the live site's page manifest before it is replaced.
+      - name: Find the pages that changed
+        run: python3 website/scripts/indexnow.py prepare dist
       - uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy dist --project-name=learningrust --branch=main
+      # Bing, Yandex and the other IndexNow engines; Google does not take part.
+      - name: Tell search engines what changed
+        run: python3 website/scripts/indexnow.py submit dist

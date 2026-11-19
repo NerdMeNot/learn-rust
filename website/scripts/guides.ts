@@ -29,6 +29,7 @@
  */
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join, relative } from 'node:path'
+import { settle } from './settle'
 
 const SKIP = new Set(['target', 'node_modules', '.DS_Store'])
 
@@ -120,5 +121,9 @@ export function writeGuide(g: ReturnType<typeof loadGuides>[number], results: Re
     }
   }
   mkdirSync(outDir, { recursive: true })
-  writeFileSync(join(outDir, `${g.id}.json`), JSON.stringify({ id: g.id, files: g.files, sessions, gotcha }, null, 1) + '\n')
+  // A re-run that differs from the committed output only by noise keeps the committed text (see settle.ts).
+  const dest = join(outDir, `${g.id}.json`)
+  const data = { id: g.id, files: g.files, sessions, gotcha }
+  const settled = existsSync(dest) ? settle(JSON.parse(readFileSync(dest, 'utf8')), data) : data
+  writeFileSync(dest, JSON.stringify(settled, null, 1) + '\n')
 }
