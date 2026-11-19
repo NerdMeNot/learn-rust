@@ -37,7 +37,9 @@ jobs:
         run: |
           if ! git diff --stat --exit-code -- website/src/data ':!website/src/data/**/*.runs.json' ':!website/src/data/runs.json'; then
             echo "::error::outputs changed when re-run; review the diff, then commit the new data"
-            git diff -- website/src/data/lessons website/src/data/guides | head -300
+            # The shown outputs only: the run caches (*.runs.json) change on every run and would
+            # fill the 300 lines before the change that matters.
+            git diff -- website/src/data/lessons website/src/data/guides ':!website/src/data/**/*.runs.json' | head -300
             exit 1
           fi
       - uses: actions/upload-artifact@v7
